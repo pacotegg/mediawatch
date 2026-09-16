@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  El servidor de casa habla HTTP a secas: es una máquina en la red local, sin
+  nombre de dominio y sin certificado que valga. Desde Android 9 eso está
+  prohibido salvo que se diga aquí expresamente.
+
+  No se puede acotar por dirección porque la elige el usuario al conectar (y
+  cambia si cambia el router), así que se permite en general. Lo que viaja por
+  ahí no sale de la red de casa.
+-->
+<network-security-config>
+  <base-config cleartextTrafficPermitted="true">
+    <trust-anchors>
+      <certificates src="system" />
+      <certificates src="user" />
+    </trust-anchors>
+  </base-config>
+</network-security-config>

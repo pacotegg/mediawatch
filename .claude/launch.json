@@ -1,0 +1,13 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "tvwatch",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "C:\tvwatch\\server\\src\\index.ts"
+      ],
+      "port": 8730
+    }
+  ]
+}

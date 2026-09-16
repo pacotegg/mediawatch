@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- El mismo negro azulado que usa la web; así no hay destello al arrancar. -->
+  <color name="fondo">#FF08080B</color>
+  <color name="texto">#FFEDEDF2</color>
+  <color name="texto_apagado">#FF8A8A99</color>
+  <color name="realce">#FFE0A340</color>
+  <!-- Fondo del icono adaptativo: el negro de la aplicación. -->
+  <color name="icono_fondo">#09090C</color>
+</resources>

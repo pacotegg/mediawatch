@@ -1,0 +1,1652 @@
+/*
+ * Interfaz de televisión de TvWatch.
+ *
+ * Tizen 6.0 (motor ~Chrome 76): no hay `aspect-ratio`, ni `gap` en flex, ni
+ * `:has`, ni `content-visibility`, ni `color-mix`. Medidas fijas sobre un lienzo
+ * de 1920x1080, que es lo que la tele escala.
+ *
+ * Se ve desde el sofá: tipografía grande, contraste alto y el foco siempre
+ * evidente. Nada de barras de desplazamiento: todo se mueve con `transform`.
+ */
+
+/*
+ * Paleta tomada del icono de TvWatch: el carbón del cuadrado y los tres
+ * colores de la «W». El azul manda (foco y acciones), el verde dice «visto» y
+ * el rojo se reserva para lo que borra o desconecta.
+ */
+:root {
+  --fondo: #16171c;
+  --menu-fondo: #1b1c22;
+  --superficie: #23242c;
+  --panel: #1d1e25;
+
+  --acento: #0094ff;
+  --acento-claro: #6ec4ff;
+  --acento-suave: rgba(0, 148, 255, 0.22);
+  --verde: #1bfd8d;
+  --rojo: #ff223c;
+
+  --texto: #f2f3f7;
+  --texto-sec: #b3b8c9;
+  --texto-ter: #7b8096;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+  color: var(--texto);
+  font-family: 'Segoe UI', Roboto, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * El vídeo va por debajo de la pagina, no dentro de ella.
+ *
+ * AVPlay no pinta en un elemento: pinta en el plano de vídeo del televisor, que
+ * queda POR DEBAJO de la capa web. Para verlo hay que dejar transparente todo
+ * lo que tiene encima —html, body y el propio reproductor—, y por eso el
+ * `background: #000` del reproductor dejaba la pantalla en negro con el audio
+ * sonando perfectamente. Comprobado en caliente en el salón: poniendo esos
+ * fondos transparentes con la película ya en marcha, la imagen aparece.
+ *
+ * Solo mientras se ve algo: en el resto de pantallas el fondo opaco es el que
+ * da el color de la aplicación.
+ */
+html {
+  background: transparent;
+}
+
+body {
+  background: var(--fondo);
+}
+
+body.viendo,
+body.viendo .reproductor,
+body.viendo .lienzo-video {
+  background: transparent;
+}
+
+img {
+  border: 0;
+  display: block;
+}
+
+button {
+  font-family: inherit;
+  outline: none;
+  border: 0;
+}
+
+/* ------------------------------------------------------------- estructura */
+
+.marco {
+  position: relative;
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+}
+
+.contenido {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+}
+
+.lienzo {
+  position: relative;
+  width: 1920px;
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+/* ------------------------------------------------------------ menú lateral */
+
+.menu {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 108px;
+  height: 1080px;
+  z-index: 40;
+  padding: 26px 0;
+  /* Un degradado de 400x1080 hay que repintarlo entero en cada fotograma de la
+     animación de ancho, y en la tele se notaba. Color plano: solo compone. */
+  background: var(--menu-fondo);
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  transition: width 0.15s cubic-bezier(0.22, 1, 0.36, 1);
+  overflow: hidden;
+}
+
+.menu.abierto {
+  width: 380px;
+}
+
+.menu-marca {
+  height: 62px;
+  padding-left: 30px;
+  margin-bottom: 12px;
+  white-space: nowrap;
+}
+
+.menu-icono {
+  display: inline-block;
+  width: 44px;
+  height: 44px;
+  border-radius: 11px;
+  vertical-align: middle;
+}
+
+.menu-nombre {
+  display: inline-block;
+  margin-left: 16px;
+  color: var(--texto);
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 62px;
+  vertical-align: middle;
+  visibility: hidden;
+}
+
+.menu.abierto .menu-nombre {
+  visibility: visible;
+}
+
+.menu-seccion {
+  padding: 22px 0 6px 36px;
+  font-size: 16px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--texto-ter);
+  white-space: nowrap;
+  visibility: hidden;
+}
+
+.menu.abierto .menu-seccion {
+  visibility: visible;
+}
+
+.opcion {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 62px;
+  padding: 0 26px 0 34px;
+  color: var(--texto-sec);
+  font-size: 23px;
+  line-height: 62px;
+  white-space: nowrap;
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+}
+
+.opcion .icono {
+  display: inline-block;
+  width: 30px;
+  height: 30px;
+  margin-right: 22px;
+  vertical-align: -7px;
+}
+
+.opcion .etiqueta {
+  visibility: hidden;
+}
+
+.menu.abierto .opcion .etiqueta {
+  visibility: visible;
+}
+
+.opcion.activa {
+  color: var(--texto);
+}
+
+.opcion.activa:before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 16px;
+  width: 5px;
+  height: 30px;
+  background: var(--acento);
+  border-radius: 0 4px 4px 0;
+}
+
+.opcion.enfocado {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+/* ----------------------------------------------------------------- héroe */
+
+.heroe {
+  position: relative;
+  width: 1920px;
+  height: 700px;
+  overflow: hidden;
+}
+
+.heroe-fondo {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1920px;
+  height: 700px;
+  opacity: 0;
+  transition: opacity 0.9s ease-in-out;
+}
+
+.heroe-fondo.visible {
+  opacity: 1;
+}
+
+.heroe-fondo img {
+  width: 1920px;
+  height: auto;
+}
+
+.velo-abajo {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 1920px;
+  height: 420px;
+  background: linear-gradient(to top, #16171c 4%, rgba(22, 23, 28, 0.85) 34%, rgba(22, 23, 28, 0));
+}
+
+.velo-izq {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1300px;
+  height: 700px;
+  background: linear-gradient(to right, rgba(22, 23, 28, 0.94) 6%, rgba(22, 23, 28, 0.7) 38%, rgba(22, 23, 28, 0));
+}
+
+.heroe-texto {
+  position: absolute;
+  left: 150px;
+  bottom: 74px;
+  width: 900px;
+}
+
+.heroe-logo {
+  max-width: 460px;
+  max-height: 140px;
+  margin-bottom: 18px;
+}
+
+.heroe-titulo {
+  font-size: 60px;
+  font-weight: 700;
+  margin: 0 0 14px;
+  letter-spacing: -1px;
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.9);
+}
+
+.heroe-meta {
+  font-size: 23px;
+  color: var(--texto-sec);
+  margin-bottom: 14px;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.9);
+}
+
+.heroe-meta .nota {
+  color: var(--acento);
+  font-weight: 600;
+}
+
+.heroe-sinopsis {
+  font-size: 22px;
+  line-height: 1.5;
+  color: var(--texto-sec);
+  max-height: 100px;
+  overflow: hidden;
+  margin-bottom: 24px;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.95);
+}
+
+.puntos {
+  position: absolute;
+  right: 90px;
+  bottom: 96px;
+}
+
+.punto {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-left: 9px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.punto.activo {
+  width: 30px;
+  border-radius: 5px;
+  background: var(--texto);
+}
+
+/* ---------------------------------------------------------------- botones */
+
+.boton {
+  display: inline-block;
+  height: 62px;
+  padding: 0 38px;
+  margin-right: 16px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  color: var(--texto);
+  font-size: 24px;
+  line-height: 62px;
+  cursor: pointer;
+  transition: transform 0.13s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.boton.primario {
+  background: var(--texto);
+  color: var(--fondo);
+  font-weight: 600;
+}
+
+.boton.enfocado {
+  background: #fff;
+  color: var(--fondo);
+  transform: scale(1.06);
+  box-shadow: 0 0 0 4px rgba(0, 148, 255, 0.55);
+}
+
+/* ----------------------------------------------------------------- filas */
+
+.fila {
+  position: relative;
+  padding-top: 18px;
+}
+
+.fila h2 {
+  margin: 0 0 16px 150px;
+  font-size: 30px;
+  font-weight: 600;
+  color: var(--texto);
+}
+
+/*
+ * El relleno vertical no es decorativo: la carátula enfocada crece un 8 % y,
+ * sin este hueco, `overflow: hidden` se la come por arriba y por abajo. En CSS
+ * no se puede recortar solo en horizontal, así que se recorta más lejos.
+ */
+.carrusel {
+  position: relative;
+  width: 1920px;
+  padding: 26px 0;
+  overflow: hidden;
+}
+
+.pista {
+  padding-left: 150px;
+  white-space: nowrap;
+  transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+.tarjeta {
+  display: inline-block;
+  vertical-align: top;
+  width: 214px;
+  margin-right: 26px;
+  white-space: normal;
+  cursor: pointer;
+}
+
+.lamina {
+  position: relative;
+  width: 214px;
+  height: 321px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--superficie);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.55);
+  /*
+   * Solo se anima `transform`, y corto. Animar también la sombra hacía que el
+   * borde de selección tardara 200 ms en aparecer: se veía ir por detrás del
+   * mando. El aro sale instantáneo y solo el crecimiento se suaviza.
+   */
+  transition: transform 0.13s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/*
+ * Las caratulas entran con un fundido de 0,2 s en vez de aparecer de golpe.
+ * Solo `opacity`, que compone la GPU sin repintar nada: en la medida de
+ * fotogramas no costo ninguno. Sin esto, bajando deprisa la rejilla parpadea.
+ */
+.lamina img {
+  opacity: 0;
+  transition: opacity 0.2s linear;
+}
+
+.lamina img.puesta {
+  opacity: 1;
+}
+
+body.rend-rapido .lamina img {
+  opacity: 1;
+  transition: none;
+}
+
+.lamina img {
+  width: 214px;
+  height: 321px;
+  object-fit: cover;
+}
+
+.tarjeta.enfocado .lamina {
+  transform: scale(1.08);
+  box-shadow: 0 0 0 4px var(--acento), 0 18px 40px rgba(0, 0, 0, 0.75);
+}
+
+.sin-lamina {
+  display: block;
+  padding: 18px;
+  font-size: 19px;
+  line-height: 1.3;
+  color: var(--texto-ter);
+}
+
+.progreso {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 6px;
+  background: rgba(0, 0, 0, 0.65);
+}
+
+.progreso i {
+  display: block;
+  height: 6px;
+  background: var(--acento);
+}
+
+.tarjeta .nombre {
+  margin-top: 22px;
+  font-size: 21px;
+  line-height: 1.25;
+  max-height: 52px;
+  overflow: hidden;
+  color: var(--texto-sec);
+}
+
+.tarjeta.enfocado .nombre {
+  color: #fff;
+}
+
+.tarjeta .anyo {
+  font-size: 18px;
+  color: var(--texto-ter);
+}
+
+/* ---------------------------------------------------------------- rejilla */
+
+.rejilla {
+  padding: 30px 0 40px 150px;
+  font-size: 0;
+}
+
+.rejilla .tarjeta {
+  margin-right: 26px;
+  margin-bottom: 34px;
+  font-size: 21px;
+}
+
+.cabecera {
+  padding: 40px 0 0 150px;
+}
+
+.cabecera h1 {
+  margin: 0;
+  font-size: 46px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+
+.cabecera p {
+  margin: 8px 0 0;
+  font-size: 22px;
+  color: var(--texto-ter);
+}
+
+/* ----------------------------------------------------------------- ficha */
+
+.ficha-fondo {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1920px;
+}
+
+.ficha-fondo img {
+  width: 1920px;
+  height: auto;
+  /* Se atenúa la imagen entera en vez de poner una caja detrás del texto: así
+     el fotograma sigue viéndose y la sinopsis se lee sobre él. */
+  opacity: 0.3;
+}
+
+/* Dos degradados: el horizontal apoya el texto de la izquierda, y el vertical
+   deja la parte baja casi lisa para que el reparto se lea sobre un fondo
+   uniforme y no medio tapado por un lado. */
+.ficha-velo {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1920px;
+  height: 1080px;
+  background:
+    linear-gradient(to bottom, rgba(18, 19, 23, 0) 50%, rgba(18, 19, 23, 0.85) 78%, rgba(18, 19, 23, 0.92) 100%),
+    linear-gradient(to right, rgba(18, 19, 23, 0.92) 0%, rgba(18, 19, 23, 0.82) 32%, rgba(18, 19, 23, 0.3) 60%, rgba(18, 19, 23, 0.12) 100%);
+}
+
+.ficha {
+  position: relative;
+  padding: 60px 110px 60px 150px;
+}
+
+.ficha-cuerpo {
+  max-width: 1020px;
+}
+
+.ficha-logo {
+  max-width: 460px;
+  max-height: 130px;
+  margin-bottom: 20px;
+}
+
+.ficha-titulo {
+  margin: 0 0 20px;
+  font-size: 52px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.5px;
+}
+
+/* Año, duración y estado en una sola línea, en negrita: es lo primero que se
+   mira después del título. */
+.linea-datos {
+  margin-bottom: 10px;
+  font-size: 26px;
+  font-weight: 700;
+}
+
+.linea-datos span {
+  margin-right: 26px;
+}
+
+.chip-vista {
+  padding: 5px 16px;
+  border-radius: 999px;
+  background: var(--acento-suave);
+  font-size: 21px;
+  font-weight: 600;
+  color: var(--acento-claro);
+}
+
+.linea-generos {
+  margin-bottom: 10px;
+  font-size: 24px;
+  color: var(--texto-sec);
+}
+
+.linea-nota {
+  margin-bottom: 26px;
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--texto);
+}
+
+/* Cada sitio con su nota y su nombre debajo, en pequeno: se lee de un vistazo
+   cual es cual sin tener que recordar de quien es cada numero. */
+.nota-fuente {
+  display: inline-block;
+  margin-right: 30px;
+  font-size: 17px;
+  font-weight: 500;
+  color: var(--texto-sec);
+  text-align: center;
+}
+
+.nota-fuente b {
+  display: block;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--texto);
+}
+
+.direccion {
+  margin-top: 14px;
+  font-size: 22px;
+  color: var(--texto-sec);
+}
+
+/* Las etiquetas técnicas van apartadas en una esquina: importan al decidir, no
+   al leer. */
+.tecnicas {
+  margin-top: 22px;
+}
+
+.etiqueta-tec {
+  display: inline-block;
+  margin: 0 8px 8px 0;
+  padding: 8px 15px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.13);
+  font-size: 18px;
+  color: var(--texto-sec);
+}
+
+/* Rojo solo para lo irreversible. */
+.boton.peligro {
+  background: rgba(214, 60, 60, 0.22);
+  color: #ff8a8a;
+}
+.boton.peligro.enfocado,
+.linea.peligro.enfocado {
+  background: #d63c3c;
+  color: #fff;
+}
+.linea.peligro {
+  color: #ff8a8a;
+}
+
+/* Un botón que refleja un estado ya activado: favorito puesto, por ejemplo. */
+.boton.activo {
+  background: var(--acento-suave);
+  color: var(--acento-claro);
+}
+
+.etiqueta-tec.destacada {
+  background: var(--acento-suave);
+  color: var(--acento-claro);
+}
+
+.sinopsis {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 25px;
+  line-height: 1.6;
+  color: var(--texto);
+  margin-bottom: 0;
+}
+
+/* `position: relative` no es decorativo: sin el, el velo —que es absoluto— se
+   pinta por encima de la fila y apaga las fotos de la izquierda. El margen
+   izquierdo es el mismo que el de la ficha, para no meterse bajo el menu. */
+.reparto {
+  position: relative;
+  padding-top: 40px;
+}
+
+/* Comparte la clase `fila` solo por la navegacion; el titulo sigue siendo un h3. */
+.reparto.fila {
+  padding-top: 40px;
+}
+
+/* El carrusel del reparto es mas bajo que el de caratulas: solo hay que dejar
+   sitio al aro de enfoque, no a un poster que crece. */
+.reparto .carrusel {
+  padding: 14px 0 10px;
+}
+
+.reparto h3,
+.episodios h3 {
+  /* Ambos bloques van fuera de la ficha: el margen del menu lo ponen aqui. */
+  margin: 0 0 16px 150px;
+  font-size: 26px;
+  font-weight: 600;
+}
+
+.persona {
+  display: inline-block;
+  width: 176px;
+  margin-right: 26px;
+  vertical-align: top;
+  text-align: center;
+  /* La pista no parte lineas; los nombres si deben poder partirse. */
+  white-space: normal;
+}
+
+.persona .foto {
+  width: 156px;
+  height: 156px;
+  margin: 0 auto 10px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--superficie);
+}
+
+.persona .foto img {
+  width: 156px;
+  height: 156px;
+  object-fit: cover;
+}
+
+.persona .nom {
+  font-size: 18px;
+  color: var(--texto-sec);
+  line-height: 1.25;
+}
+
+.persona .pap {
+  font-size: 16px;
+  color: var(--texto-ter);
+}
+
+/* ------------------------------------------------------------- episodios */
+
+.episodios {
+  position: relative;
+  padding-top: 40px;
+}
+
+.temporadas {
+  margin-bottom: 20px;
+  white-space: nowrap;
+}
+
+.temporada {
+  display: inline-block;
+  height: 52px;
+  padding: 0 26px;
+  margin-right: 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--texto-sec);
+  font-size: 21px;
+  line-height: 52px;
+  cursor: pointer;
+}
+
+.temporada.activa {
+  background: var(--acento-suave);
+  color: var(--acento-claro);
+}
+
+.temporada.enfocado {
+  background: #fff;
+  color: var(--fondo);
+}
+
+.episodio {
+  position: relative;
+  padding: 18px 24px;
+  margin-bottom: 10px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.07);
+  font-size: 22px;
+  cursor: pointer;
+  max-width: 1500px;
+}
+
+.episodio.enfocado {
+  background: #fff;
+  color: var(--fondo);
+}
+
+.episodio .num {
+  display: inline-block;
+  width: 130px;
+  color: var(--texto-ter);
+}
+
+.episodio.enfocado .num {
+  color: #4a4f63;
+}
+
+/* --------------------------------------------------------------- teclado */
+
+.buscador {
+  padding: 60px 0 0 150px;
+}
+
+.consulta {
+  display: inline-block;
+  min-width: 700px;
+  height: 74px;
+  padding: 0 26px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 30px;
+  line-height: 74px;
+  color: var(--texto);
+  margin-bottom: 26px;
+}
+
+.consulta .cursor {
+  color: var(--acento);
+}
+
+.teclado {
+  width: 800px;
+  font-size: 0;
+}
+
+.tecla {
+  display: inline-block;
+  width: 68px;
+  height: 68px;
+  margin: 0 8px 8px 0;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--texto);
+  font-size: 26px;
+  line-height: 68px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.tecla.ancha {
+  width: 154px;
+}
+
+.tecla.enfocado {
+  background: #fff;
+  color: var(--fondo);
+  transform: scale(1.08);
+}
+
+/* No se puede enfocar ni hace falta: es solo el recordatorio de que hay atajo. */
+.desde-el-movil {
+  width: 800px;
+  margin-top: 18px;
+  font-size: 20px;
+  color: var(--texto-ter);
+}
+
+/* ---------------------------------------------------------- pantallas varias */
+
+.centrado {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1920px;
+  height: 1080px;
+  text-align: center;
+}
+
+.centrado .interior {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 1920px;
+  margin-top: -220px;
+}
+
+.marca {
+  font-size: 62px;
+  font-weight: 700;
+  margin: 0 0 18px;
+  color: var(--acento);
+}
+
+.sub {
+  font-size: 27px;
+  color: var(--texto-sec);
+  line-height: 1.55;
+  margin: 0 0 30px;
+}
+
+.pie {
+  font-size: 20px;
+  color: var(--texto-ter);
+  margin-top: 40px;
+}
+
+.codigo {
+  font-size: 104px;
+  font-weight: 700;
+  letter-spacing: 16px;
+  color: var(--acento);
+  margin: 20px 0 10px;
+}
+
+.entrada {
+  font-size: 44px;
+  color: var(--acento);
+  margin: 20px 0 30px;
+  font-family: Consolas, monospace;
+}
+
+.vacio {
+  padding: 120px 0 0 150px;
+  font-size: 26px;
+  color: var(--texto-ter);
+}
+
+/* ------------------------------------------------------------ reproductor */
+
+.reproductor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1920px;
+  height: 1080px;
+  background: #000;
+  z-index: 60;
+}
+
+.lienzo-video {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1920px;
+  height: 1080px;
+}
+
+.lienzo-video video {
+  width: 1920px;
+  height: 1080px;
+}
+
+.controles {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 1920px;
+  padding: 60px 110px 64px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.9), rgba(0, 0, 0, 0));
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+
+.controles.visible {
+  opacity: 1;
+}
+
+.titulo-reproduccion {
+  font-size: 38px;
+  font-weight: 600;
+  margin-bottom: 22px;
+}
+
+.barra-tiempo {
+  width: 100%;
+  height: 9px;
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.barra-tiempo i {
+  display: block;
+  height: 9px;
+  width: 0;
+  background: var(--acento);
+}
+
+.tiempos {
+  margin-top: 12px;
+  font-size: 23px;
+  color: var(--texto-sec);
+}
+
+.tiempos span:last-child {
+  float: right;
+}
+
+/*
+ * «Termina a las 23:40».
+ *
+ * Va junto al tiempo transcurrido y no en el centro: centrado bailaba de sitio
+ * al cambiar de una cifra a otra, y lo que se lee de un vistazo desde el sofá
+ * tiene que estar siempre en el mismo punto.
+ */
+.osd-fin {
+  margin-left: 26px;
+  color: var(--texto-ter);
+}
+
+.ayuda {
+  clear: both;
+  padding-top: 16px;
+  font-size: 19px;
+  color: var(--texto-ter);
+}
+
+/*
+ * Controles del reproductor (OSD).
+ *
+ * Se dibujan encima del video, que en la tele va en su propio plano por debajo
+ * de la pagina. Nada de sombras ni desenfoques: cada efecto aqui cuesta
+ * fotogramas justo cuando mas falta hacen.
+ */
+.osd {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 1920px;
+  padding: 60px 110px 54px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.92), rgba(0, 0, 0, 0));
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.osd.visible {
+  opacity: 1;
+}
+
+.osd-titulo {
+  font-size: 40px;
+  font-weight: 600;
+}
+
+.osd-episodio {
+  margin-top: 6px;
+  font-size: 25px;
+  color: var(--texto-sec);
+}
+
+.osd .barra-tiempo {
+  position: relative;
+  margin-top: 22px;
+}
+
+/*
+ * Vista previa del salto: la miniatura del sitio al que vas a caer.
+ *
+ * La hoja viene con las miniaturas a 160 px, que en una pantalla de 1920 es un
+ * sello. Se agranda estirando el fondo (`background-size`) y no con
+ * `transform`: con transform la caja del elemento sigue midiendo 160 px, el
+ * texto de la hora se metia por encima de la imagen y la miniatura se salia del
+ * recuadro negro.
+ */
+.previa {
+  position: absolute;
+  /* Por encima del titulo: el panel apila titulo, barra y botones, y a ras de
+     barra la miniatura se comia el nombre de la pelicula. */
+  bottom: 396px;
+  left: 110px;
+  display: none;
+  padding: 6px 6px 4px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.8);
+  text-align: center;
+}
+
+.previa i {
+  display: block;
+  background-repeat: no-repeat;
+}
+
+.previa span {
+  display: block;
+  padding-top: 4px;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--texto);
+}
+
+/* La marca del salto acumulado: donde se va a caer cuando se suelte el mando. */
+.barra-tiempo b {
+  position: absolute;
+  top: -7px;
+  display: none;
+  width: 6px;
+  height: 23px;
+  margin-left: -3px;
+  border-radius: 3px;
+  background: #fff;
+}
+
+.osd-salto {
+  margin-left: 26px;
+  color: var(--acento-claro);
+  font-weight: 600;
+}
+
+.osd-botones {
+  clear: both;
+  padding-top: 24px;
+}
+
+.boton-osd {
+  margin-right: 14px;
+  padding: 14px 30px;
+  border: 0;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--texto);
+  font-family: inherit;
+  font-size: 24px;
+}
+
+.boton-osd.enfocado {
+  background: #fff;
+  color: #111;
+}
+
+/*
+ * Subtitulos. AVPlay no los dibuja: entrega el texto y lo pinta la aplicacion,
+ * asi que estos son los mismos SRT que van dentro del MKV, sin quemar nada.
+ */
+.subtitulos-tv {
+  position: absolute;
+  left: 0;
+  bottom: 92px;
+  width: 1920px;
+  padding: 0 220px;
+  text-align: center;
+  font-size: 42px;
+  line-height: 1.28;
+  font-weight: 600;
+  text-shadow: 0 2px 6px #000, 0 0 14px #000;
+}
+
+.subtitulos-tv span {
+  display: block;
+}
+
+/* Tamanos: el 100 son los 42 px de arriba. */
+.subtitulos-tv.sub-80 { font-size: 34px; }
+.subtitulos-tv.sub-125 { font-size: 52px; }
+.subtitulos-tv.sub-150 { font-size: 62px; }
+
+/* Con fondo en caja para peliculas con imagen muy clara; solo tras el texto,
+   no una banda entera, que tapa mas de lo que ayuda. */
+.subtitulos-tv.con-caja span {
+  display: inline-block;
+  margin: 2px 0;
+  padding: 2px 16px;
+  background: rgba(0, 0, 0, 0.72);
+  text-shadow: none;
+}
+
+/* Marcas de capitulo en la barra, como los cortes de un disco. */
+.barra-tiempo u {
+  position: absolute;
+  top: 0;
+  width: 3px;
+  height: 9px;
+  margin-left: -1px;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+/*
+ * Saltar cabecera o creditos. Abajo a la derecha y con el foco puesto, como en
+ * Netflix: es donde la gente ya lo busca.
+ */
+.salto-tramo {
+  position: absolute;
+  right: 110px;
+  bottom: 150px;
+  display: none;
+  padding: 18px 44px;
+  border: 2px solid rgba(255, 255, 255, 0.55);
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.7);
+  color: var(--texto);
+  font-family: inherit;
+  font-size: 28px;
+  font-weight: 600;
+}
+
+.salto-tramo.visible {
+  display: block;
+}
+
+.salto-tramo.enfocado {
+  border-color: #fff;
+  background: #fff;
+  color: #111;
+}
+
+/* El ajuste del desfase de subtitulos: un numero grande entre dos flechas. */
+.desfase {
+  margin: 26px 0 18px;
+  text-align: center;
+  font-size: 30px;
+  color: var(--texto-sec);
+}
+
+.desfase b {
+  display: inline-block;
+  min-width: 200px;
+  font-size: 46px;
+  font-weight: 700;
+  color: var(--texto);
+}
+
+/* Con los controles a la vista los subtitulos suben para no quedar tapados. */
+.osd.visible ~ .subtitulos-tv {
+  bottom: 420px;
+}
+
+.info-repro {
+  position: absolute;
+  top: 70px;
+  right: 70px;
+  display: none;
+  width: 760px;
+  padding: 30px 34px;
+  border-radius: 20px;
+  background: rgba(12, 13, 17, 0.92);
+}
+
+.info-repro h3 {
+  margin: 0 0 18px;
+  font-size: 28px;
+  font-weight: 600;
+}
+
+.fila-info {
+  margin-bottom: 12px;
+  font-size: 22px;
+}
+
+.fila-info span {
+  display: inline-block;
+  width: 190px;
+  color: var(--texto-ter);
+}
+
+.fila-info b {
+  font-weight: 600;
+}
+
+.nota-linea {
+  display: block;
+  margin-top: 4px;
+  font-size: 19px;
+  color: var(--texto-ter);
+}
+
+.cargando {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 1920px;
+  text-align: center;
+  font-size: 28px;
+  color: var(--texto-sec);
+  display: none;
+}
+
+.aviso {
+  position: absolute;
+  left: 460px;
+  bottom: 70px;
+  width: 1000px;
+  padding: 22px;
+  text-align: center;
+  font-size: 23px;
+  background: rgba(29, 30, 37, 0.97);
+  border-radius: 16px;
+  z-index: 70;
+}
+
+/* --------------------------------------------------------------------- QR */
+
+.qr {
+  display: inline-block;
+  padding: 18px;
+  margin: 10px 0 4px;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+}
+
+.qr img {
+  width: 300px;
+  height: 300px;
+}
+
+/* ---------------------------------------------------------- capa de menú */
+
+.capa {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1920px;
+  height: 1080px;
+  z-index: 55;
+  background: rgba(10, 11, 14, 0.84);
+}
+
+.panel {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 720px;
+  max-height: 760px;
+  margin: -320px 0 0 -360px;
+  padding: 34px;
+  border-radius: 24px;
+  background: var(--panel);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.85);
+  overflow: hidden;
+}
+
+.panel h3 {
+  margin: 0 0 22px;
+  font-size: 30px;
+  font-weight: 600;
+}
+
+.linea {
+  display: block;
+  width: 100%;
+  padding: 18px 22px;
+  margin-bottom: 10px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--texto-sec);
+  font-size: 23px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.linea.elegida {
+  color: var(--acento-claro);
+}
+
+.linea.enfocado {
+  background: #fff;
+  color: var(--fondo);
+}
+
+/* ------------------------------------------------------- ficha de persona */
+
+.persona-ficha {
+  padding: 70px 120px 20px 150px;
+}
+
+.persona-foto {
+  float: left;
+  width: 260px;
+  height: 260px;
+  margin-right: 44px;
+  border-radius: 24px;
+  overflow: hidden;
+  background: var(--superficie);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7);
+}
+
+.persona-foto img {
+  width: 260px;
+  height: 260px;
+  object-fit: cover;
+}
+
+.persona-datos {
+  overflow: hidden;
+}
+
+.persona-datos h1 {
+  margin: 0 0 8px;
+  font-size: 46px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+
+.persona-vida {
+  margin: 0 0 16px;
+  font-size: 22px;
+  color: var(--texto-ter);
+}
+
+.persona-bio {
+  font-size: 21px;
+  line-height: 1.55;
+  color: var(--texto-sec);
+  max-height: 170px;
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+
+.persona-cuenta {
+  margin: 0;
+  font-size: 20px;
+  color: var(--texto-ter);
+}
+
+.persona.enfocado .foto {
+  box-shadow: 0 0 0 4px var(--acento);
+}
+
+.persona.enfocado .nom {
+  color: #fff;
+}
+
+/* ==========================================================================
+   Modos de rendimiento
+   ==========================================================================
+   La tele es de 2021 y su GPU tiene poca holgura. En «máxima fluidez» se
+   renuncia a sombras, degradados y transiciones: el movimiento manda sobre el
+   adorno. Es el modo por defecto.
+   ========================================================================== */
+
+body.rend-rapido * {
+  transition: none !important;
+  animation: none !important;
+}
+
+/* El disco de la pausa: arriba a la derecha, girando despacio, y se va al seguir. */
+.disco {
+  position: absolute;
+  top: 70px;
+  right: 110px;
+  width: 300px;
+  height: 300px;
+  opacity: 0;
+  transform: scale(0.9);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+  filter: drop-shadow(0 18px 30px rgba(0, 0, 0, 0.6));
+  pointer-events: none;
+}
+.reproductor.pausado .disco {
+  opacity: 1;
+  transform: scale(1);
+  animation: girar-disco 40s linear infinite;
+}
+@keyframes girar-disco {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+body.rend-rapido .lamina,
+body.rend-rapido .boton,
+body.rend-rapido .ficha-poster,
+body.rend-rapido .persona-foto,
+body.rend-rapido .qr,
+body.rend-rapido .panel {
+  box-shadow: none;
+}
+
+body.rend-rapido .tarjeta.enfocado .lamina {
+  /* Sin crecimiento: mover 214x321 px de imagen escalada es lo más caro de
+     todo el recorrido. El aro basta para saber dónde estás. */
+  transform: none;
+  box-shadow: 0 0 0 5px var(--acento);
+}
+
+body.rend-rapido .boton.enfocado {
+  transform: none;
+}
+
+body.rend-rapido .heroe-fondo {
+  transition: none;
+}
+
+body.rend-rapido .velo-izq,
+body.rend-rapido .velo-abajo {
+  /* Dos degradados a pantalla completa sobre una imagen grande: se sustituyen
+     por planos con transparencia, que solo componen. */
+  background: linear-gradient(to right, rgba(18, 19, 23, 0.92) 0%, rgba(18, 19, 23, 0.82) 32%, rgba(18, 19, 23, 0.3) 60%, rgba(18, 19, 23, 0.12) 100%);
+}
+
+body.rend-rapido .heroe-titulo,
+body.rend-rapido .heroe-meta,
+body.rend-rapido .heroe-sinopsis {
+  text-shadow: none;
+}
+
+body.rend-medio .tarjeta.enfocado .lamina {
+  transform: scale(1.05);
+}
+
+/* ------------------------------------------------------------- ajustes */
+
+.ajustes {
+  padding: 40px 120px 60px 150px;
+}
+
+.grupo {
+  margin-bottom: 40px;
+  max-width: 1400px;
+}
+
+.grupo h2 {
+  margin: 0 0 6px;
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--texto);
+}
+
+.grupo .pista-ayuda {
+  margin: 0 0 16px;
+  font-size: 19px;
+  color: var(--texto-ter);
+  line-height: 1.45;
+}
+
+.opciones {
+  font-size: 0;
+}
+
+.eleccion {
+  display: inline-block;
+  height: 60px;
+  padding: 0 30px;
+  margin: 0 12px 12px 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.09);
+  color: var(--texto-sec);
+  font-size: 22px;
+  line-height: 60px;
+  cursor: pointer;
+}
+
+.eleccion.activa {
+  background: var(--acento-suave);
+  color: var(--acento-claro);
+}
+
+.eleccion.enfocado {
+  background: #fff;
+  color: var(--fondo);
+}
+
+.orden-fila {
+  display: block;
+  max-width: 1000px;
+  height: 62px;
+  margin-bottom: 8px;
+  padding: 0 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  line-height: 62px;
+  font-size: 22px;
+}
+
+.orden-fila .nom-menu {
+  display: inline-block;
+  width: 420px;
+  color: var(--texto-sec);
+  vertical-align: middle;
+}
+
+.orden-fila.oculta .nom-menu {
+  color: var(--texto-ter);
+  text-decoration: line-through;
+}
+
+.mini {
+  display: inline-block;
+  height: 44px;
+  min-width: 60px;
+  padding: 0 18px;
+  margin-right: 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--texto-sec);
+  font-size: 20px;
+  line-height: 44px;
+  text-align: center;
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+.mini.enfocado {
+  background: #fff;
+  color: var(--fondo);
+}
+
+.dato {
+  font-size: 21px;
+  color: var(--texto-ter);
+  line-height: 1.6;
+}
+
+/* La biografía se lee desde el sofá: cuerpo grande y más líneas. */
+.persona-bio {
+  font-size: 27px !important;
+  line-height: 1.5 !important;
+  max-height: 260px !important;
+  color: #d3d6e2 !important;
+}
+
+/* Los botones de la ficha pueden ser cinco: tienen que poder pasar a la
+   segunda línea en vez de salirse por el borde derecho. */
+/*
+ * Una sola fila, sin partirse.
+ *
+ * Con `max-width` los siete botones caian a dos y hasta tres lineas y la
+ * pelicula quedaba sepultada debajo. Seguidos, el mando los recorre de
+ * izquierda a derecha de una tirada, que es como se espera desde el sofa.
+ */
+.acciones {
+  margin-top: 30px;
+  white-space: nowrap;
+  /* La columna de texto mide 1020, pero los siete botones piden mas. Se declara
+     lo que ocupan de verdad —medido: 1.261 px— para que la caja no mienta. */
+  width: 1400px;
+}
+
+.acciones .boton {
+  margin-right: 12px;
+  padding: 0 24px;
+  font-size: 22px;
+}
+
+.acciones .boton:last-child {
+  margin-right: 0;
+}
+
+/* El verde del logotipo se reserva para «ya visto». */
+.tarjeta .nombre.vista {
+  color: var(--verde);
+}
+
+.progreso i {
+  background: var(--acento);
+}

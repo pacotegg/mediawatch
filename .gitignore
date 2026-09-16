@@ -1,0 +1,15 @@
+node_modules/
+web/dist/
+
+# Contiene la clave de API de TMDb, la base de datos, las carátulas
+# descargadas y las cachés de miniaturas: nada de esto debe compartirse.
+data/
+
+# Artefactos de compilación de los clientes
+tv/dist/
+tv/*.wgt
+android/app/build/
+android/.gradle/
+android/local.properties
+*.apk
+__pycache__/

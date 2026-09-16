@@ -1,0 +1,16 @@
+{
+  "name": "Media Watch",
+  "short_name": "Media Watch",
+  "description": "Tu biblioteca de cine y series en casa",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#09090C",
+  "theme_color": "#09090C",
+  "lang": "es",
+  "icons": [
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

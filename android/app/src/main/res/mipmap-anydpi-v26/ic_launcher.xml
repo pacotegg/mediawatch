@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Icono adaptativo: el sistema recorta y anima estas dos capas como quiera cada
+  lanzador (círculo, squircle, gota). El fondo es el negro de la aplicación, en
+  color plano; el monograma va en la capa de delante con margen de sobra.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+  <background android:drawable="@color/icono_fondo" />
+  <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+</adaptive-icon>

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!--
+    Sin barra de acción y con el fondo ya pintado de negro: mientras el WebView
+    carga, la pantalla es del color de la aplicación y no un rectángulo blanco.
+  -->
+  <style name="Tema" parent="Theme.AppCompat.NoActionBar">
+    <item name="colorPrimary">@color/fondo</item>
+    <item name="colorPrimaryDark">@color/fondo</item>
+    <item name="colorAccent">#E8B04A</item>
+    <item name="android:windowBackground">@color/fondo</item>
+    <item name="android:colorBackground">@color/fondo</item>
+    <item name="android:statusBarColor">@color/fondo</item>
+    <item name="android:navigationBarColor">@color/fondo</item>
+    <item name="android:textColor">@color/texto</item>
+  </style>
+
+  <!-- La pantalla de control de Chromecast, con la barra de arriba oscura. -->
+  <style name="TemaDeCast" parent="Theme.AppCompat.NoActionBar">
+    <item name="colorPrimary">@color/fondo</item>
+    <item name="colorPrimaryDark">@color/fondo</item>
+    <item name="colorAccent">#E8B04A</item>
+    <item name="android:windowBackground">@color/fondo</item>
+    <item name="android:statusBarColor">@color/fondo</item>
+    <item name="mediaRouteTheme">@style/Theme.MediaRouter</item>
+  </style>
+</resources>

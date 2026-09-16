@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+  <uses-permission android:name="android.permission.INTERNET" />
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+  <!-- Seguir sonando con la pantalla apagada y mostrar los controles ahí. -->
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+  <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+  <!--
+    Que la aplicación valga también en una tele o en un aparato sin pantalla
+    táctil: ninguna de las dos cosas es obligatoria. En esos aparatos se carga
+    la interfaz de mando a distancia en vez de la del móvil; lo decide
+    `Principal`.
+  -->
+  <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+  <uses-feature android:name="android.software.leanback" android:required="false" />
+
+  <application
+      android:allowBackup="true"
+      android:icon="@mipmap/ic_launcher"
+      android:roundIcon="@mipmap/ic_launcher"
+      android:label="@string/app_nombre"
+      android:banner="@drawable/banner"
+      android:hardwareAccelerated="true"
+      android:networkSecurityConfig="@xml/red"
+      android:supportsRtl="false"
+      android:theme="@style/Tema">
+
+    <activity
+        android:name=".Principal"
+        android:exported="true"
+        android:launchMode="singleTask"
+        android:windowSoftInputMode="adjustResize"
+        android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode|density">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="android.intent.category.LAUNCHER" />
+        <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+      </intent-filter>
+    </activity>
+
+    <!-- Chromecast: el receptor por defecto de Google, alimentado con HLS. -->
+    <meta-data
+        android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
+        android:value="casa.tvwatch.OpcionesDeCast" />
+    <activity
+        android:name=".ControlDeCast"
+        android:exported="false"
+        android:label="Emitiendo"
+        android:launchMode="singleTask"
+        android:screenOrientation="portrait"
+        android:theme="@style/TemaDeCast" />
+
+    <!--
+      El reproductor vive aquí, no en la pantalla: es lo que permite que la
+      película siga con la pantalla apagada y que el sistema pinte sus
+      controles en la pantalla de bloqueo, la notificación y el reloj.
+    -->
+    <service
+        android:name=".ReproduccionService"
+        android:exported="true"
+        android:foregroundServiceType="mediaPlayback">
+      <intent-filter>
+        <action android:name="androidx.media3.session.MediaSessionService" />
+      </intent-filter>
+    </service>
+  </application>
+</manifest>

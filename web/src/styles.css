@@ -1,0 +1,248 @@
+@import 'tailwindcss';
+/* El paquete declara cirílico, griego y vietnamita además del latino, pero cada
+   uno lleva su unicode-range: el navegador solo descarga el que necesita. */
+@import '@fontsource-variable/inter';
+
+@theme {
+  --font-sans: 'Inter Variable', -apple-system, 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif;
+
+  --color-ink-950: #07070a;
+  --color-ink-900: #0b0b11;
+  --color-ink-850: #101018;
+  --color-ink-800: #16161f;
+  --color-ink-700: #20202c;
+  --color-ink-600: #2c2c3a;
+
+  --color-mist-100: #f5f6fa;
+  --color-mist-300: #c9ccd8;
+  --color-mist-500: #8d92a6;
+  --color-mist-600: #6b7085;
+
+  --color-accent: #f0a54a;
+  --color-accent-soft: #ffc880;
+
+  --radius-card: 10px;
+  --radius-panel: 20px;
+
+  /* One easing vocabulary: `out` for entrances, `spring` for anything the
+     pointer touches, `soft` for crossfades. */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --ease-soft: cubic-bezier(0.4, 0, 0.2, 1);
+
+  --duration-fast: 160ms;
+  --duration-base: 240ms;
+  --duration-slow: 420ms;
+
+  /* Elevation scale. Dark UIs need two layers per shadow: a tight contact
+     shadow plus a wide ambient one, or cards look pasted on. */
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.5), 0 4px 12px -4px rgb(0 0 0 / 0.5);
+  --shadow-2: 0 2px 6px rgb(0 0 0 / 0.45), 0 12px 32px -12px rgb(0 0 0 / 0.85);
+  --shadow-3: 0 4px 10px rgb(0 0 0 / 0.45), 0 24px 56px -18px rgb(0 0 0 / 0.9);
+  --shadow-4: 0 8px 18px rgb(0 0 0 / 0.5), 0 40px 90px -24px rgb(0 0 0 / 0.95);
+}
+
+:root {
+  color-scheme: dark;
+  --tint: 40 40 60;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-ink-950);
+  color: var(--color-mist-100);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+
+/* Infuse-style frosted material: translucent, blurred, hairline top highlight. */
+@utility glass {
+  background: color-mix(in oklab, var(--color-ink-800) 62%, transparent);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid rgb(255 255 255 / 0.07);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.06),
+    var(--shadow-3);
+}
+
+/*
+ * A plain two-stop gradient over dark artwork bands badly on 8-bit panels.
+ * These stops trace an ease curve so the falloff stays invisible.
+ */
+@utility scrim-b {
+  background: linear-gradient(
+    to top,
+    rgb(7 7 10 / 1) 0%,
+    rgb(7 7 10 / 0.985) 8.1%,
+    rgb(7 7 10 / 0.945) 15.5%,
+    rgb(7 7 10 / 0.882) 22.5%,
+    rgb(7 7 10 / 0.8) 29%,
+    rgb(7 7 10 / 0.7) 35.3%,
+    rgb(7 7 10 / 0.591) 41.2%,
+    rgb(7 7 10 / 0.475) 47.1%,
+    rgb(7 7 10 / 0.362) 52.9%,
+    rgb(7 7 10 / 0.253) 58.8%,
+    rgb(7 7 10 / 0.157) 64.7%,
+    rgb(7 7 10 / 0.08) 71%,
+    rgb(7 7 10 / 0.034) 77.5%,
+    rgb(7 7 10 / 0.008) 84.5%,
+    rgb(7 7 10 / 0) 100%
+  );
+}
+
+@utility scrim-l {
+  background: linear-gradient(
+    to right,
+    rgb(7 7 10 / 0.94) 0%,
+    rgb(7 7 10 / 0.9) 11%,
+    rgb(7 7 10 / 0.83) 21%,
+    rgb(7 7 10 / 0.72) 30%,
+    rgb(7 7 10 / 0.58) 39%,
+    rgb(7 7 10 / 0.44) 48%,
+    rgb(7 7 10 / 0.3) 57%,
+    rgb(7 7 10 / 0.18) 66%,
+    rgb(7 7 10 / 0.09) 76%,
+    rgb(7 7 10 / 0.03) 87%,
+    rgb(7 7 10 / 0) 100%
+  );
+}
+
+@utility glass-strong {
+  background: color-mix(in oklab, var(--color-ink-900) 82%, transparent);
+  backdrop-filter: blur(40px) saturate(200%);
+  -webkit-backdrop-filter: blur(40px) saturate(200%);
+  border: 1px solid rgb(255 255 255 / 0.08);
+}
+
+@utility tinted {
+  background:
+    radial-gradient(120% 100% at 50% 0%, rgb(var(--tint) / 0.42) 0%, transparent 62%),
+    var(--color-ink-950);
+}
+
+/* A single fixed grain layer. Dithers the wide dark gradients so they read as
+   smooth instead of stepped, and costs one composited layer. */
+@utility grain {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.028;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+@utility no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@utility text-shadow-hero {
+  text-shadow: 0 2px 30px rgb(0 0 0 / 0.9), 0 1px 4px rgb(0 0 0 / 0.6);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(255 255 255 / 0.14);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(255 255 255 / 0.24);
+  background-clip: content-box;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/*
+ * Everything below animates transform/opacity only, so the compositor owns the
+ * frames and the main thread stays free for scrolling and image decoding.
+ */
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@utility fade-up {
+  animation: fade-up 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--i, 0) * 14ms);
+}
+
+/* Off-screen grid cells are skipped entirely; the size hint keeps the
+   scrollbar honest so scrolling never jumps. */
+@utility cull {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 280px;
+}
+
+/* Blurred bars are expensive to recomposite: give them their own layer. */
+@utility layer-promote {
+  transform: translateZ(0);
+  will-change: transform;
+}
+
+/* El disco de la pausa gira una vuelta cada 40 s: se nota que se mueve sin marear. */
+.disco-pausa {
+  animation: girar-disco 40s linear infinite;
+}
+@keyframes girar-disco {
+  from { rotate: 0deg; }
+  to { rotate: 360deg; }
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: rgb(255 255 255 / 0.045);
+}
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.06), transparent);
+  animation: shimmer 1.6s infinite;
+}
+
+/* Native controls are replaced by the custom overlay. */
+video::-webkit-media-controls {
+  display: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

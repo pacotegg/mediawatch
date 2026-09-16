@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<widget xmlns="http://www.w3.org/ns/widgets"
+        xmlns:tizen="http://tizen.org/ns/widgets"
+        id="http://cineteca.local/tv"
+        version="1.0.0"
+        viewmodes="maximized">
+  <name>Media Watch</name>
+  <description>Media Watch · tu biblioteca de películas y series</description>
+  <author>Media Watch</author>
+  <content src="index.html"/>
+  <icon src="icon.png"/>
+
+  <tizen:application id="Cineteca01.Cineteca" package="Cineteca01" required_version="6.0"/>
+  <tizen:profile name="tv-samsung"/>
+
+  <!-- avplay: reproductor nativo, descodifica MKV/HEVC/AC3 por hardware.
+       tvinputdevice: necesario para recibir las teclas multimedia del mando.
+       internet: hablar con el HTPC. -->
+  <tizen:privilege name="http://tizen.org/privilege/internet"/>
+  <tizen:privilege name="http://developer.samsung.com/privilege/avplay"/>
+  <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice"/>
+
+  <!-- El servidor va por HTTP en la red local, no por HTTPS. -->
+  <access origin="*" subdomains="true"/>
+
+  <!--
+    Sin esto rige la política por defecto de Tizen, que permite el script propio
+    pero descarta los estilos: la app arranca y se conecta, pero sale sin ningún
+    formato (comprobado: el <style> llegaba al documento y styleSheets seguía a
+    cero). El script se mantiene restringido a 'self'; se abren estilos en línea
+    (las barras de progreso llevan la anchura en el atributo) e imágenes, vídeo
+    y peticiones por HTTP hacia el HTPC.
+  -->
+  <tizen:content-security-policy>
+    default-src 'self' http: data:;
+    script-src 'self';
+    style-src 'self' 'unsafe-inline';
+    img-src 'self' http: data:;
+    media-src 'self' http:;
+    connect-src 'self' http:;
+    object-src 'none'
+  </tizen:content-security-policy>
+  <tizen:allow-navigation>*</tizen:allow-navigation>
+  <tizen:setting screen-orientation="landscape" background-support="disable"
+                 encryption="disable" hwkey-event="enable"/>
+</widget>
