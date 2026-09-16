@@ -7,7 +7,7 @@ import { db, normalize } from '../db.ts';
 import { thumbnail } from '../media/images.ts';
 import { clearDialogue, dialogueStats, ftsQuery, indexarEnSegundoPlano, searchDialogue } from '../scanner/dialogue.ts';
 import { detallePersona } from '../scanner/people.ts';
-import { currentUser, requireUser } from './auth.ts';
+import { currentUser, requireUser, sesionDe } from './auth.ts';
 import { marcarActividad } from '../media/ocupado.ts';
 import { loteOmdb, pararOmdb, rellenarConOmdb } from '../media/omdb.ts';
 
@@ -547,7 +547,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
       duracion,
       watched ? 1 : duracion && position > duracion * 0.95 ? 1 : 0,
     );
-    avanzar({ userId: user.id, itemId, episodeId: episodeId ?? null, position, duracion: duration ?? null, vista: Boolean(watched) });
+    avanzar({ userId: user.id, itemId, episodeId: episodeId ?? null, position, duracion: duration ?? null, vista: Boolean(watched), sesion: sesionDe(req) });
     return { ok: true };
   });
 

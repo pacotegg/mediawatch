@@ -174,17 +174,51 @@ export function enfocar(el: HTMLElement | null | undefined) {
   desplazarVertical(el, nodo);
 }
 
+/**
+ * Cuánto está desplazada la fila (carrusel) de un elemento, en píxeles.
+ *
+ * El índice guarda la posición en el documento, y las filas se mueven con
+ * `translateX`: una tarjeta que está la cuarta en su fila puede verse la
+ * primera si la fila está desplazada. Subir y bajar tiene que mirar dónde se
+ * ve cada tarjeta, no dónde está en el documento; si no, desde la cuarta de
+ * «Conciertos» se subía a la cuarta de «Documentales» aunque estuviera fuera
+ * de la pantalla.
+ */
+function desplazamientoDe(el: HTMLElement): number {
+  const carrusel = el.closest('[data-carrusel]');
+  const pista = carrusel ? (carrusel.firstElementChild as HTMLElement | null) : null;
+  if (!pista) return 0;
+  const m = /translateX\((-?[0-9.]+)px\)/.exec(pista.style.transform || '');
+  return m ? parseFloat(m[1]) : 0;
+}
+
 /** Mejor candidato en una dirección, dentro de la misma zona. */
 function mejorEn(desde: Nodo, direccion: number): HTMLElement | null {
   let mejor: HTMLElement | null = null;
   let mejorCoste = Infinity;
+  const vertical = direccion === TECLA.ARRIBA || direccion === TECLA.ABAJO;
+  const xDesde = desde.x + (vertical ? desplazamientoDe(desde.el) : 0);
+
+  // El desplazamiento de cada fila se lee una vez, no por tarjeta.
+  const desplazamientos = new Map<Element, number>();
+  const xVisible = (n: Nodo) => {
+    if (!vertical) return n.x;
+    const c = n.el.closest('[data-carrusel]');
+    if (!c) return n.x;
+    let d = desplazamientos.get(c);
+    if (d === undefined) { d = desplazamientoDe(n.el); desplazamientos.set(c, d); }
+    return n.x + d;
+  };
 
   for (let i = 0; i < indice.length; i++) {
     const n = indice[i];
     if (n.el === desde.el || n.menu !== desde.menu) continue;
 
-    const dx = n.x - desde.x;
+    const dx = xVisible(n) - xDesde;
     const dy = n.y - desde.y;
+    // Lo que está fuera de la pantalla por la izquierda no es candidato al
+    // subir o bajar: no se ve, y el foco iría a una tarjeta invisible.
+    if (vertical && xVisible(n) + n.ancho / 2 < 0) continue;
 
     let avance: number;
     let desvio: number;

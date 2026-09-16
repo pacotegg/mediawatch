@@ -80,9 +80,9 @@ function motivo(e: unknown): string {
   return String(e);
 }
 
-export type PistaNativa = { ordinal: number; indice: number; idioma: string; codec: string; canales: number };
+type PistaNativa = { ordinal: number; indice: number; idioma: string; codec: string; canales: number };
 
-export type Callbacks = {
+type Callbacks = {
   onTiempo: (segundos: number, duracionSegundos: number) => void;
   onBuffer: (cargando: boolean) => void;
   onFin: () => void;

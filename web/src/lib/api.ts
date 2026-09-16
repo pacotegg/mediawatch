@@ -272,6 +272,14 @@ export const api = {
     post<{ applied: string[]; title: string }>('/api/enrich/apply', body),
   enrichDismiss: (itemId: number) => post<{ ok: true }>('/api/enrich/dismiss', { itemId }),
 
+  // Actividad (solo administrador): quién ve qué, mensajes y parar.
+  actividad: () => request<Aparato[]>('/api/actividad'),
+  actividadMensaje: (sesion: string, texto: string) => post<{ enviado: true }>(`/api/actividad/${sesion}/mensaje`, { texto }),
+  actividadParar: (sesion: string) => post<{ parado: true }>(`/api/actividad/${sesion}/parar`, {}),
+  actividadCerrar: (sesion: string) => request<{ cerradas: number }>(`/api/actividad/${sesion}`, { method: 'DELETE' }),
+  // Lo que el servidor tiene para este aparato: avisos del administrador.
+  mando: () => request<{ mensaje: string | null; parar: boolean }>('/api/mando'),
+
   skipRanges: (episodeId: number) => request<{ ranges: SkipRange[] }>(`/api/episodes/${episodeId}/skip`),
   skipStatus: () => request<{ job: SkipJob; shows: SkipShow[] }>('/api/skip/status'),
   detectSkips: (showId: number, kind: 'cabecera' | 'creditos') => post<{ started: boolean }>('/api/skip/detect', { showId, kind }),
@@ -383,6 +391,27 @@ export type DialogueHit = {
   episode: number | null;
   startMs: number;
   snippet: string;
+};
+
+export type Aparato = {
+  sesion: string;
+  dispositivo: string | null;
+  ultimaVez: string;
+  userId: number;
+  usuario: string;
+  color: string | null;
+  esAdmin: number;
+  viendo: {
+    itemId: number;
+    fileId: number | null;
+    titulo: string;
+    episodio: string | null;
+    posicion: number;
+    duracion: number | null;
+    modo: string | null;
+    cliente: string | null;
+    desde: string;
+  } | null;
 };
 
 export type EstadoIndexado = {

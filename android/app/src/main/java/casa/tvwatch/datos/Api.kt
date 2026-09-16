@@ -30,6 +30,11 @@ object Api {
   val http: OkHttpClient = OkHttpClient.Builder()
     .connectTimeout(6, TimeUnit.SECONDS)
     .readTimeout(20, TimeUnit.SECONDS)
+    // Con nombre: el servidor apunta desde qué aparato se entra y sin esto
+    // la app salía como «Navegador» (el agente por defecto es «okhttp/4»).
+    .addInterceptor { cadena ->
+      cadena.proceed(cadena.request().newBuilder().header("User-Agent", "MediaWatch Android/" + android.os.Build.VERSION.RELEASE).build())
+    }
     .build()
 
   class FalloDeRed(mensaje: String) : Exception(mensaje)
@@ -141,6 +146,9 @@ object Api {
    */
   fun buscarDialogos(q: String): ResultadosDialogo =
     pedir("/api/search/dialogue?q=" + java.net.URLEncoder.encode(q, "UTF-8"))
+
+  /** Avisos del administrador para este aparato: un mensaje, o «para». */
+  fun avisos(): Avisos = pedir("/api/mando")
 
   /** Manda el texto a la television, que lo recoge en su pantalla de buscar. */
   fun enviarALaTele(texto: String) {
@@ -491,6 +499,9 @@ data class Dialogo(
 
 @Serializable
 data class EstadisticasDialogo(val frases: Long = 0)
+
+@Serializable
+data class Avisos(val mensaje: String? = null, val parar: Boolean = false)
 
 @Serializable
 data class ResultadosDialogo(

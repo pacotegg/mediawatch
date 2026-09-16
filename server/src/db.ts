@@ -311,10 +311,15 @@ anadirColumna('items', 'discart', 'TEXT');
 // Cuándo se revisaron sus imágenes en fanart.tv/TVDB, para no repetir la
 // comparación de idiomas (que baja previsualizaciones) en cada pasada.
 anadirColumna('items', 'arte_revisado', 'TEXT');
+// Cuándo se casó el reparto de este título con TMDb (fotos e ids de personas).
+anadirColumna('items', 'personas_revisadas', 'TEXT');
 
 // Cuando y desde donde se uso cada sesion, para poder caducarlas y para que se
 // vea que dispositivos tienen acceso.
 anadirColumna('sessions', 'last_seen', 'TEXT');
+// Qué aparato (ocho caracteres del token) hizo cada visionado: para la
+// pestaña de actividad, que enseña quién ve qué y desde dónde.
+anadirColumna('playbacks', 'sesion', 'TEXT');
 anadirColumna('sessions', 'device', 'TEXT');
 db.exec("UPDATE sessions SET last_seen = created_at WHERE last_seen IS NULL");
 

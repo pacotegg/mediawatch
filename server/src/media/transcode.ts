@@ -265,6 +265,8 @@ export type Session = {
   id: string;
   fileId: number;
   userId: number;
+  /** El aparato (ocho caracteres del token), para poder pararle solo a él. */
+  sesion?: string | null;
   proc: ChildProcessWithoutNullStreams;
   plan: PlaybackPlan;
   startedAt: number;
@@ -274,7 +276,7 @@ export type Session = {
 
 export const sessions = new Map<string, Session>();
 
-export function startStream(opts: StreamOptions & { fileId: number; userId: number; title: string }): Session {
+export function startStream(opts: StreamOptions & { fileId: number; userId: number; title: string; sesion?: string | null }): Session {
   const args = buildFfmpegArgs(opts);
   const proc = spawn(config.ffmpeg, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
   const id = `${opts.fileId}-${Date.now().toString(36)}`;
@@ -302,6 +304,7 @@ export function startStream(opts: StreamOptions & { fileId: number; userId: numb
     id,
     fileId: opts.fileId,
     userId: opts.userId,
+    sesion: opts.sesion ?? null,
     proc,
     plan: opts.plan,
     startedAt: Date.now(),

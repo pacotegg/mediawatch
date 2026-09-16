@@ -110,7 +110,7 @@ function marcarUso(token: string, req: FastifyRequest) {
   const agente = String(req.headers['user-agent'] ?? '');
   const dispositivo = /tizen|smart-?tv/i.test(agente)
     ? 'Televisión'
-    : /android/i.test(agente)
+    : /android|okhttp/i.test(agente)
       ? 'Android'
       : /iphone|ipad/i.test(agente)
         ? 'iOS'
@@ -119,7 +119,7 @@ function marcarUso(token: string, req: FastifyRequest) {
     .run(new Date().toISOString(), dispositivo, token);
 }
 
-export function currentUser(req: FastifyRequest): User | null {
+function tokenDe(req: FastifyRequest): string | null {
   const header = req.headers.authorization;
   const bearer = header?.startsWith('Bearer ') ? header.slice(7).trim() : null;
 
@@ -127,12 +127,31 @@ export function currentUser(req: FastifyRequest): User | null {
   // Authorization header, so the video endpoints also accept ?token=.
   const query = (req.query as { token?: string } | undefined)?.token;
 
-  const token = bearer ?? query ?? req.cookies[COOKIE];
+  return bearer ?? query ?? req.cookies[COOKIE] ?? null;
+}
+
+/**
+ * El aparato que hace la petición: los ocho primeros caracteres de su token.
+ * Es lo que ya se enseña en «Dispositivos» y lo que usa la pestaña de
+ * actividad para mandar un aviso a este aparato y no a otro del mismo perfil.
+ */
+export function sesionDe(req: FastifyRequest): string | null {
+  const t = tokenDe(req);
+  return t ? t.slice(0, 8) : null;
+}
+
+export function currentUser(req: FastifyRequest): User | null {
+  const token = tokenDe(req);
   if (!token) return null;
 
+  /*
+   * Las fechas se guardan en ISO con «T»; `datetime('now')` de SQLite da un
+   * espacio, y como texto la «T» siempre es mayor, así que la caducidad no
+   * caducaba nunca. `strftime` con el mismo formato sí compara bien.
+   */
   const row = db
     .prepare(`SELECT u.id, u.name, u.color, u.is_admin FROM sessions s JOIN users u ON u.id = s.user_id
-               WHERE s.token = ? AND COALESCE(s.last_seen, s.created_at) >= datetime('now', ?)`)
+               WHERE s.token = ? AND COALESCE(s.last_seen, s.created_at) >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)`)
     .get(token, `-${CADUCIDAD_DIAS} days`) as User | undefined;
 
   if (row) marcarUso(token, req);

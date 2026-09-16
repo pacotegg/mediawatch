@@ -126,7 +126,7 @@ export type Ficha = Titulo & {
 };
 
 /** Lo que el servidor sabe del fichero que se va a reproducir. */
-export type Capitulo = { start: number; end: number; title: string };
+type Capitulo = { start: number; end: number; title: string };
 
 /**
  * Tira de miniaturas para la barra. `times[i]` es el segundo exacto de la
@@ -159,10 +159,10 @@ export type InfoReproduccion = {
   subtitles: { id: string; language: string | null; title?: string | null; forced: boolean; source?: string }[];
 };
 
-export type Saga = { name: string; count: number; poster_id: number | null; fanart_id: number | null };
+type Saga = { name: string; count: number; poster_id: number | null; fanart_id: number | null };
 
 export const api = {
-  yo: () => pedir<{ id: number; name: string }>('/api/me'),
+  yo: () => pedir<{ id: number; name: string; is_admin: number }>('/api/me'),
   bibliotecas: () => pedir<{ id: number; name: string; kind: string; count: number }[]>('/api/libraries'),
   portada: () => pedir<{ hero: Titulo[]; rows: { key: string; title: string; kind: string; items: Titulo[] }[] }>('/api/home'),
   titulos: (biblioteca: number, offset: number, limite: number) =>
@@ -200,7 +200,11 @@ export const api = {
     pedir<{
       buscar: string | null;
       reproducir: { fileId: number; itemId: number; episodeId: number | null; position: number } | null;
-    }>('/api/mando'),
+      mensaje: string | null;
+      parar: boolean;
+    }>('/api/mando?tele=1'),
+  /** Solo los avisos del administrador, sin llevarse las órdenes del móvil (para dentro del reproductor). */
+  avisos: () => pedir<{ mensaje: string | null; parar: boolean }>('/api/mando'),
 
   iniciarEmparejado: () => pedir<{ code: string; expiresInSeconds: number; url: string }>('/api/auth/device/start', { method: 'POST' }),
 
@@ -266,7 +270,7 @@ export const idioma = (codigo: string | null | undefined) =>
  * estropearía el audio multicanal.
  */
 /** Lo que esta tele decodifica; lo sabe el servidor, no hay que listar codecs aqui. */
-export const PERFIL = 'samsung2021';
+const PERFIL = 'samsung2021';
 
 /**
  * `raw=1` entrega el fichero original: AVPlay decodifica MKV, HEVC, AC3 y DD+

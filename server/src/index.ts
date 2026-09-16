@@ -6,6 +6,7 @@ import fastifyStatic from '@fastify/static';
 import { ROOT, config } from './config.ts';
 import { db } from './db.ts';
 import animeRoutes from './routes/anime.ts';
+import actividadRoutes from './routes/actividad.ts';
 import authRoutes, { currentUser, limpiarSesiones } from './routes/auth.ts';
 import descargaRoutes from './routes/descargas.ts';
 import enrichRoutes from './routes/enrich.ts';
@@ -146,6 +147,7 @@ await app.register(preferenceRoutes);
 await app.register(enrichRoutes);
 await app.register(subtitleRoutes);
 await app.register(animeRoutes);
+await app.register(actividadRoutes);
 await app.register(descargaRoutes);
 await app.register(mandoRoutes);
 

@@ -146,6 +146,29 @@ export default function Player() {
   const { data: info } = useQuery<PlayInfo>({ queryKey: ['play', fileId], queryFn: () => api.playInfo(fileId), staleTime: Infinity });
   // Quién mira: la medición automática de subtítulos se guarda para todos, así que es cosa del administrador.
   const { data: yo } = useQuery({ queryKey: ['me'], queryFn: api.me, staleTime: Infinity });
+
+  /*
+   * Avisos del administrador mientras se ve algo: un mensaje que se enseña
+   * ocho segundos, o «para», que devuelve a la ficha. Se pregunta cada cinco
+   * segundos; si el servidor no contesta, no pasa nada.
+   */
+  const [avisoAdmin, setAvisoAdmin] = useState('');
+  useEffect(() => {
+    const t = window.setInterval(async () => {
+      try {
+        const r = await api.mando();
+        if (r.mensaje) {
+          setAvisoAdmin(r.mensaje);
+          window.setTimeout(() => setAvisoAdmin(''), 8000);
+        }
+        if (r.parar) {
+          videoRef.current?.pause();
+          navigate(-1);
+        }
+      } catch { /* sin red, sin avisos */ }
+    }, 5000);
+    return () => window.clearInterval(t);
+  }, [navigate]);
   const { data: show } = useQuery({ queryKey: ['item', itemId], queryFn: () => api.item(itemId), enabled: Boolean(itemId && episodeId) });
   // La ficha entera solo para saber si hay disco; es la misma consulta que la ficha, así que suele estar en caché.
   const { data: ficha } = useQuery({ queryKey: ['item', itemId], queryFn: () => api.item(itemId), enabled: Boolean(itemId) });
@@ -507,19 +530,18 @@ export default function Player() {
         className="h-full w-full"
       />
 
-      {/* El disco de la pausa: la carátula redonda, arriba a la derecha, girando despacio. */}
       <AnimatePresence>
-        {!playing && !buffering && ficha?.has_discart === 1 && (
-          <motion.img
-            key="disco"
-            src={img.discart(itemId, 600)}
-            alt=""
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.5 }}
-            className="disco-pausa pointer-events-none absolute right-8 top-16 w-40 md:w-56 drop-shadow-[0_18px_30px_rgba(0,0,0,0.6)]"
-          />
+        {avisoAdmin && (
+          <motion.div
+            key="aviso-admin"
+            initial={{ opacity: 0, y: -12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            className="pointer-events-none absolute left-1/2 top-8 z-20 max-w-[80vw] -translate-x-1/2 rounded-2xl bg-black/75 px-6 py-3 text-center text-[16px] text-mist-100 ring-1 ring-white/15 backdrop-blur"
+          >
+            <div className="text-[11px] uppercase tracking-wide text-accent">Mensaje del administrador</div>
+            <div className="whitespace-pre-line">{avisoAdmin}</div>
+          </motion.div>
         )}
       </AnimatePresence>
 
@@ -571,6 +593,10 @@ export default function Player() {
             </div>
 
             <div className="px-5 pb-5">
+              {/* El disco, quieto, justo encima de la barra: va con los controles y en pausa se queda con ellos. */}
+              {ficha?.has_discart === 1 && !buffering && (
+                <img src={img.discart(itemId, 600)} alt="" className="pointer-events-none mb-3 w-28 md:w-40 drop-shadow-[0_18px_30px_rgba(0,0,0,0.6)]" />
+              )}
               <div
                 onClick={scrub}
                 onMouseDown={() => setScrubbing(true)}

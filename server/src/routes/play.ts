@@ -11,7 +11,8 @@ import { clearOffset, isMeasuring, measure, offsetFor, saveOffset } from '../med
 import { ensure, generarLote, isGenerating, lote, pararLote, readManifest, sheetPath } from '../media/trickplay.ts';
 import { marcarActividad } from '../media/ocupado.ts';
 import { detectForShow, detectarTodas, job, pararDeteccion, showsWithRanges, skipRangesFor } from '../media/intros.ts';
-import { currentUser, requireUser } from './auth.ts';
+import { currentUser, requireUser, sesionDe } from './auth.ts';
+import type { ServerResponse } from 'node:http';
 
 function caps(req: FastifyRequest): ClientCaps {
   const q = req.query as Record<string, string | undefined>;
@@ -28,6 +29,34 @@ function caps(req: FastifyRequest): ClientCaps {
 /** Tasa media del fichero en bits por segundo, para el tope de calidad. */
 function tasaDe(path: string, info: MediaInfo): number {
   return info.duration > 0 ? Math.round((statSync(path).size * 8) / info.duration) : 0;
+}
+
+/**
+ * Los flujos que salen tal cual (el fichero por rangos o una tubería de ffmpeg
+ * que no pasa por `sessions`), por aparato: para poder cortarlos desde la
+ * pestaña de actividad. Se apuntan al empezar y se olvidan al cerrarse.
+ */
+export const flujosCrudos = new Map<string, Set<ServerResponse>>();
+
+function rastrear(req: FastifyRequest, reply: { raw: ServerResponse }) {
+  const sesion = sesionDe(req);
+  if (!sesion) return;
+  const conjunto = flujosCrudos.get(sesion) ?? new Set<ServerResponse>();
+  conjunto.add(reply.raw);
+  flujosCrudos.set(sesion, conjunto);
+  const soltar = () => {
+    conjunto.delete(reply.raw);
+    if (conjunto.size === 0) flujosCrudos.delete(sesion);
+  };
+  reply.raw.on('close', soltar);
+  reply.raw.on('finish', soltar);
+}
+
+/** Cortar todo lo que un aparato tenga abierto: tuberías de ffmpeg y flujos en crudo. */
+export function cortarAparato(sesion: string) {
+  for (const s of sessions.values()) if (s.sesion === sesion) stopSession(s.id);
+  for (const r of flujosCrudos.get(sesion) ?? []) r.destroy();
+  flujosCrudos.delete(sesion);
 }
 
 function fileRow(fileId: number) {
@@ -255,8 +284,10 @@ export default async function playRoutes(app: FastifyInstance) {
         duracion: info.duration ?? null,
         modo: raw ? 'raw' : plan.mode,
         cliente: nombreCliente(req.headers['user-agent'] as string | undefined),
+        sesion: sesionDe(req),
       });
     }
+    rastrear(req, reply);
 
     /*
      * Pista que la tele no decodifica (DTS, TrueHD, FLAC): video copiado tal
@@ -387,6 +418,7 @@ export default async function playRoutes(app: FastifyInstance) {
 
     const user = quienVe;
     const session = startStream({
+      sesion: sesionDe(req),
       path: row.path,
       info,
       plan,

@@ -20,7 +20,7 @@ const SALTO_MAXIMO = 90;
 
 const ahora = () => new Date().toISOString();
 
-type Clave = { userId: number; itemId: number; episodeId?: number | null };
+type Clave = { userId: number; itemId: number; episodeId?: number | null; sesion?: string | null };
 
 function sesionAbierta({ userId, itemId, episodeId }: Clave, margenMs: number) {
   const fila = db
@@ -43,17 +43,18 @@ export function comenzar(
 
   const abierta = sesionAbierta(datos, CORTE_SESION_MS);
   if (abierta) {
-    db.prepare('UPDATE playbacks SET updated_at = ?, modo = COALESCE(?, modo) WHERE id = ?').run(ahora(), datos.modo ?? null, abierta.id);
+    db.prepare('UPDATE playbacks SET updated_at = ?, modo = COALESCE(?, modo), sesion = COALESCE(?, sesion) WHERE id = ?')
+      .run(ahora(), datos.modo ?? null, datos.sesion ?? null, abierta.id);
     return abierta.id;
   }
 
   const t = ahora();
   const res = db
     .prepare(
-      `INSERT INTO playbacks (user_id, item_id, episode_id, file_id, started_at, updated_at, position, seconds, duration, modo, cliente, finished)
-       VALUES (?,?,?,?,?,?,0,0,?,?,?,0)`,
+      `INSERT INTO playbacks (user_id, item_id, episode_id, file_id, started_at, updated_at, position, seconds, duration, modo, cliente, finished, sesion)
+       VALUES (?,?,?,?,?,?,0,0,?,?,?,0,?)`,
     )
-    .run(datos.userId, datos.itemId, datos.episodeId ?? null, datos.fileId, t, t, datos.duracion ?? null, datos.modo ?? null, datos.cliente ?? null);
+    .run(datos.userId, datos.itemId, datos.episodeId ?? null, datos.fileId, t, t, datos.duracion ?? null, datos.modo ?? null, datos.cliente ?? null, datos.sesion ?? null);
   return Number(res.lastInsertRowid);
 }
 
@@ -73,9 +74,10 @@ export function avanzar(datos: Clave & { position: number; duracion?: number | n
     `UPDATE playbacks
         SET position = ?, seconds = seconds + ?, updated_at = ?,
             duration = COALESCE(?, duration),
-            finished = CASE WHEN ? THEN 1 ELSE finished END
+            finished = CASE WHEN ? THEN 1 ELSE finished END,
+            sesion = COALESCE(?, sesion)
       WHERE id = ?`,
-  ).run(datos.position, visto, ahora(), datos.duracion ?? null, datos.vista ? 1 : 0, id);
+  ).run(datos.position, visto, ahora(), datos.duracion ?? null, datos.vista ? 1 : 0, datos.sesion ?? null, id);
 }
 
 /** Nombre corto del cliente, para saber desde dónde se ve sin guardar el user-agent entero. */

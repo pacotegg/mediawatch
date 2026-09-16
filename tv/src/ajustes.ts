@@ -74,7 +74,7 @@ export function cargarAjustes(): Ajustes {
         reanudar: guardado.reanudar !== false,
         saltoCorto: guardado.saltoCorto || POR_DEFECTO.saltoCorto,
         saltoLargo: guardado.saltoLargo || POR_DEFECTO.saltoLargo,
-        ordenMenu: guardado.ordenMenu || [],
+        ordenMenu: recolocarAjustes(guardado.ordenMenu || []),
         ocultos: guardado.ocultos || [],
         idiomaAudio: guardado.idiomaAudio || POR_DEFECTO.idiomaAudio,
         preferirAtmos: guardado.preferirAtmos === true,
@@ -106,13 +106,30 @@ export function guardarAjustes(cambios: Partial<Ajustes>) {
 }
 
 /** El modo se aplica con una clase en <body> y lo resuelve el CSS. */
-export function aplicarRendimiento() {
+function aplicarRendimiento() {
   const clases = document.body.className.split(/\s+/).filter((c) => c.indexOf('rend-') !== 0);
   clases.push('rend-' + actuales.rendimiento);
   document.body.className = clases.join(' ').trim();
 }
 
 /** Ordena las claves del menú según la preferencia, sin perder ninguna nueva. */
+/**
+ * Un orden guardado de cuando «Ajustes» iba el último, tras las bibliotecas,
+ * se corrige una vez: pasa a ir detrás de Favoritos, con los fijos. Si el
+ * usuario lo mueve después a mano, se respeta (ya no queda detrás de una
+ * biblioteca).
+ */
+function recolocarAjustes(orden: string[]): string[] {
+  const i = orden.indexOf('ajustes');
+  if (i < 0) return orden;
+  const primeraLib = orden.findIndex((c) => c.indexOf('lib-') === 0);
+  if (primeraLib < 0 || i < primeraLib) return orden;
+  const sin = orden.filter((c) => c !== 'ajustes');
+  const fav = sin.indexOf('favoritos');
+  sin.splice(fav >= 0 ? fav + 1 : Math.min(4, sin.length), 0, 'ajustes');
+  return sin;
+}
+
 export function ordenar<T extends { clave: string }>(lista: T[]): T[] {
   const orden = actuales.ordenMenu;
   const ocultos = actuales.ocultos;

@@ -35,14 +35,19 @@ export async function detallePersona(personId: number): Promise<DetallePersona |
   const guardado = db
     .prepare('SELECT tmdb_id, biography, birthday, deathday, birthplace, profile, fetched_at FROM people_details WHERE person_id = ?')
     .get(personId) as DetallePersona | undefined;
-  if (guardado) return guardado;
+  // Completa del todo: ya está. Solo con el id (lo apunta la pasada de
+  // personas): se trae el resto por ese id, sin adivinar por nombre.
+  if (guardado && (guardado.biography || guardado.birthday || !guardado.tmdb_id)) return guardado;
 
   const persona = db.prepare('SELECT name FROM people WHERE id = ?').get(personId) as { name: string } | undefined;
   if (!persona) return null;
 
-  const busqueda = await tmdb<{ results: { id: number }[] }>('/search/person', { query: persona.name });
-  const encontrado = busqueda?.results?.[0];
-  if (!encontrado) return null;
+  let encontrado: { id: number } | undefined = guardado?.tmdb_id ? { id: guardado.tmdb_id } : undefined;
+  if (!encontrado) {
+    const busqueda = await tmdb<{ results: { id: number }[] }>('/search/person', { query: persona.name });
+    encontrado = busqueda?.results?.[0];
+  }
+  if (!encontrado) return guardado ?? null;
 
   const ficha = await tmdb<{
     id: number;

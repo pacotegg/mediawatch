@@ -15,12 +15,6 @@ import android.view.WindowManager
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.background
@@ -216,7 +210,7 @@ private fun Reproduciendo(
   var menuAbierto by remember { mutableStateOf(false) }
   var tramoALaVista by remember { mutableStateOf<RangoSalto?>(null) }
   var controlesVisibles by remember { mutableStateOf(true) }
-  /** Cada toque en los controles vuelve a contar los 3,5 s antes de esconderlos. */
+  /** Cada toque en los controles vuelve a contar los 5 s antes de esconderlos. */
   var ultimoToque by remember { mutableStateOf(0L) }
   var enMarcha by remember { mutableStateOf(false) }
   var cargando by remember { mutableStateOf(true) }
@@ -399,6 +393,30 @@ private fun Reproduciendo(
     }
   }
 
+  /*
+   * Avisos del administrador: un mensaje que se enseña ocho segundos, o
+   * «para», que saca del reproductor. Se pregunta cada cinco segundos; sin
+   * red no pasa nada.
+   */
+  var mensajeAdmin by remember { mutableStateOf("") }
+  LaunchedEffect(fileId) {
+    while (true) {
+      delay(5_000)
+      try {
+        val a = withContext(Dispatchers.IO) { Api.avisos() }
+        if (!a.mensaje.isNullOrBlank()) {
+          mensajeAdmin = a.mensaje
+          launch { delay(8_000); mensajeAdmin = "" }
+        }
+        if (a.parar) {
+          mensajeAdmin = ""
+          android.widget.Toast.makeText(contexto, "El administrador ha parado la reproducción", android.widget.Toast.LENGTH_LONG).show()
+          salir()
+        }
+      } catch (e: Exception) { /* sin red, sin avisos */ }
+    }
+  }
+
   /** Dar por visto este episodio y pasar al siguiente. */
   var encadenando by remember(fileId) { mutableStateOf(false) }
   fun pasarAlSiguiente() {
@@ -519,11 +537,11 @@ private fun Reproduciendo(
 
   androidx.activity.compose.BackHandler { if (menuAbierto) menuAbierto = false else salir() }
 
-  // Se esconden solos a los 3,5 s del último toque, y solo si está sonando:
-  // en pausa se quedan, que es cuando uno quiere verlos.
+  // Se esconden solos a los 5 s del último toque, como en la tele, y solo si
+  // está sonando: en pausa se quedan, que es cuando uno quiere verlos.
   LaunchedEffect(controlesVisibles, ultimoToque, enMarcha) {
     if (!controlesVisibles || !enMarcha) return@LaunchedEffect
-    delay(3_500)
+    delay(5_000)
     if (arrastre == null) controlesVisibles = false
   }
   LaunchedEffect(controlesVisibles) {
@@ -570,34 +588,23 @@ private fun Reproduciendo(
         },
     )
 
-    /*
-     * El disco en la pausa. La carátula redonda del Blu-ray, arriba a la
-     * derecha, girando despacio: un guiño a la estantería, y una señal
-     * inequívoca de que está parado sin tapar la imagen. Sigue girando sin
-     * saltos al reanudar porque se apaga con un fundido, no de golpe.
-     */
     AnimatedVisibility(
-      visible = tieneDisco && !enMarcha && !cargando && fallo.isEmpty() && cuentaAtras == null,
-      enter = fadeIn(Movimiento.aparecer(500)) + scaleIn(initialScale = 0.9f, animationSpec = Movimiento.aparecer(500)),
-      exit = fadeOut(Movimiento.aparecer(400)),
-      modifier = Modifier.align(Alignment.TopEnd).padding(top = 64.dp, end = 28.dp),
+      visible = mensajeAdmin.isNotEmpty(),
+      enter = fadeIn(Movimiento.aparecer(250)),
+      exit = fadeOut(Movimiento.aparecer(300)),
+      modifier = Modifier.align(Alignment.TopCenter).padding(top = 56.dp),
     ) {
-      val giro = rememberInfiniteTransition(label = "disco")
-      val angulo by giro.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(tween(40_000, easing = LinearEasing)),
-        label = "giro del disco",
-      )
-      Imagen(
-        recordarUrl(itemId, "discart", 600),
-        null,
+      Column(
         Modifier
-          // Pequeño y en la esquina: es un adorno, no puede tapar la imagen.
-          .size(124.dp)
-          .graphicsLayer { rotationZ = angulo; shadowElevation = 30f },
-        escala = ContentScale.Fit,
-      )
+          .clip(RoundedCornerShape(16.dp))
+          .background(Color(0xCC000000))
+          .padding(horizontal = 22.dp, vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+      ) {
+        Text("MENSAJE DEL ADMINISTRADOR", color = Realce, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(4.dp))
+        Text(mensajeAdmin, color = Color.White, fontSize = 16.sp)
+      }
     }
 
     if ((cargando || saltoPendiente != null) && fallo.isEmpty()) {
@@ -611,6 +618,7 @@ private fun Reproduciendo(
       modifier = Modifier.fillMaxSize(),
     ) {
       Controles(
+        disco = if (tieneDisco && !cargando && cuentaAtras == null) recordarUrl(itemId, "discart", 600) else null,
         enMarcha = enMarcha,
         posicion = arrastre ?: posicionUi,
         duracion = duracionConocida,
@@ -815,6 +823,8 @@ private fun Reproduciendo(
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 private fun Controles(
+  /** La carátula redonda del disco, si la hay: se enseña quieta encima de la barra. */
+  disco: String?,
   enMarcha: Boolean,
   posicion: Double,
   duracion: Double,
@@ -863,6 +873,16 @@ private fun Controles(
         .fillMaxWidth()
         .padding(horizontal = 28.dp, vertical = 18.dp),
     ) {
+      // El disco, quieto y a la izquierda, justo encima de la barra: va y viene
+      // con los controles y en pausa se queda con ellos. Girando distraía.
+      if (disco != null) {
+        Imagen(
+          disco,
+          null,
+          Modifier.padding(bottom = 10.dp).size(96.dp).graphicsLayer { shadowElevation = 30f },
+          escala = ContentScale.Fit,
+        )
+      }
       val tope = if (duracion > 0) duracion.toFloat() else 1f
       // Barra fina y un punto ámbar: la de Material es un dedo de gorda y
       // lleva un tope al final que no significa nada aquí.

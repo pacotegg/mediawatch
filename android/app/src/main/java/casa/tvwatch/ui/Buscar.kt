@@ -62,6 +62,9 @@ import kotlinx.coroutines.withContext
  * Y «Enviar a la tele»: se escribe aquí con el teclado del móvil y aparece en el
  * buscador del salón. Teclear «El halcón maltés» con las flechas del mando son
  * cuarenta y tantas pulsaciones y es la queja de siempre en cualquier tele.
+ * Al pulsarlo una vez, la pastilla se queda encendida y **cada letra que se
+ * escribe después va sola a la tele**, medio segundo tras dejar de teclear:
+ * el móvil hace de teclado. Se apaga pulsándola otra vez o al salir.
  */
 @Composable
 fun PantallaBuscar(
@@ -76,8 +79,23 @@ fun PantallaBuscar(
   var frases by remember { mutableStateOf<List<Dialogo>>(emptyList()) }
   var buscando by remember { mutableStateOf(false) }
   var aviso by remember { mutableStateOf("") }
+  /** Encendido, cada cambio del texto se manda a la tele (con medio segundo de calma). */
+  var espejo by remember { mutableStateOf(false) }
   val foco = remember { FocusRequester() }
   val ambito = rememberCoroutineScope()
+
+  LaunchedEffect(consulta, espejo) {
+    if (!espejo) return@LaunchedEffect
+    delay(500)
+    val q = consulta.trim()
+    if (q.length < 2) return@LaunchedEffect
+    try {
+      withContext(Dispatchers.IO) { Api.enviarALaTele(q) }
+      aviso = "En la tele: «$q»"
+    } catch (e: Exception) {
+      aviso = e.message ?: "No se pudo enviar."
+    }
+  }
 
   /*
    * Se busca al dejar de escribir, no en cada letra: 350 ms es lo que tarda uno
@@ -130,21 +148,26 @@ fun PantallaBuscar(
         verticalAlignment = Alignment.CenterVertically,
       ) {
         Text(
-          "Enviar a la tele",
-          color = Color(0xFF15100A),
+          if (espejo) "Tecleando en la tele" else "Enviar a la tele",
+          color = if (espejo) Realce else Color(0xFF15100A),
           fontSize = 13.sp,
           modifier = Modifier
             .clip(RoundedCornerShape(16.dp))
-            .background(Realce)
+            .background(if (espejo) FondoAlto else Realce)
             .clickable {
-              val q = consulta.trim()
-              ambito.launch {
-                aviso = try {
-                  withContext(Dispatchers.IO) { Api.enviarALaTele(q) }
-                  "Enviado. Si la tele está en Buscar, ya lo tiene."
-                } catch (e: Exception) {
-                  e.message ?: "No se pudo enviar."
+              espejo = !espejo
+              if (espejo) {
+                val q = consulta.trim()
+                ambito.launch {
+                  aviso = try {
+                    withContext(Dispatchers.IO) { Api.enviarALaTele(q) }
+                    "En la tele: «$q». Lo que escribas ahora también irá."
+                  } catch (e: Exception) {
+                    e.message ?: "No se pudo enviar."
+                  }
                 }
+              } else {
+                aviso = ""
               }
             }
             .padding(horizontal = 14.dp, vertical = 8.dp),

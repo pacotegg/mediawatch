@@ -21,7 +21,8 @@
  *    cuento. Al minuto se tira.
  */
 import type { FastifyInstance } from 'fastify';
-import { requireUser } from './auth.ts';
+import { requireUser, sesionDe } from './auth.ts';
+import { recogerAvisos } from '../media/avisos.ts';
 
 /** Cuánto aguanta un envío sin que nadie lo recoja. */
 const CADUCA_MS = 60_000;
@@ -72,7 +73,18 @@ export default async function mandoRoutes(app: FastifyInstance) {
   /** La televisión pregunta si hay algo que escribir. */
   app.get('/api/mando', async (req) => {
     const user = requireUser(req);
-    return { buscar: recogerBusqueda(user.id), reproducir: recogerReproduccion(user.id) };
+    // Las órdenes de buscar y reproducir son para la televisión (`?tele=1`):
+    // si las recogiera el navegador o el móvil, que también preguntan por los
+    // avisos, se las llevarían sin que nadie las viera.
+    const tele = (req.query as { tele?: string }).tele === '1';
+    // Y los avisos del administrador para este aparato: mensaje y «para».
+    const avisos = recogerAvisos(sesionDe(req) ?? '');
+    return {
+      buscar: tele ? recogerBusqueda(user.id) : null,
+      reproducir: tele ? recogerReproduccion(user.id) : null,
+      mensaje: avisos.mensaje,
+      parar: avisos.parar,
+    };
   });
 
   /** El móvil manda «ver esto en la tele». */

@@ -204,15 +204,6 @@ body {
   will-change: transform;
 }
 
-/* El disco de la pausa gira una vuelta cada 40 s: se nota que se mueve sin marear. */
-.disco-pausa {
-  animation: girar-disco 40s linear infinite;
-}
-@keyframes girar-disco {
-  from { rotate: 0deg; }
-  to { rotate: 360deg; }
-}
-
 @keyframes shimmer {
   100% {
     transform: translateX(100%);

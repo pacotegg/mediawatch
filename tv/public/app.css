@@ -126,6 +126,12 @@ button {
   border-right: 1px solid rgba(255, 255, 255, 0.06);
   transition: width 0.15s cubic-bezier(0.22, 1, 0.36, 1);
   overflow: hidden;
+  /*
+   * En su propia capa: al abrirse y cerrarse solo se repinta el menú, no lo
+   * que tiene debajo. Sin esto, moverse por el menú hacía parpadear las
+   * barras de progreso de «Continuar viendo», que quedan bajo su borde.
+   */
+  will-change: transform;
 }
 
 .menu.abierto {
@@ -415,13 +421,19 @@ button {
   border-radius: 12px;
   overflow: hidden;
   background: var(--superficie);
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.55);
   /*
    * Solo se anima `transform`, y corto. Animar también la sombra hacía que el
    * borde de selección tardara 200 ms en aparecer: se veía ir por detrás del
    * mando. El aro sale instantáneo y solo el crecimiento se suaviza.
+   *
+   * Sin sombra en las que no tienen el foco, y cada lámina en su propia capa
+   * (`will-change`). Medido en la QN93A: con sombra en las 190 carátulas de
+   * la portada, cada movimiento del mando costaba un parón de 210 ms —el
+   * «pequeño retraso»—; así, 90 ms. La sombra difusa de la enfocada también
+   * se fue: 90 ms más por ella sola.
    */
   transition: transform 0.13s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
 }
 
 /*
@@ -451,7 +463,7 @@ body.rend-rapido .lamina img {
 
 .tarjeta.enfocado .lamina {
   transform: scale(1.08);
-  box-shadow: 0 0 0 4px var(--acento), 0 18px 40px rgba(0, 0, 0, 0.75);
+  box-shadow: 0 0 0 4px var(--acento);
 }
 
 .sin-lamina {
@@ -469,6 +481,13 @@ body.rend-rapido .lamina img {
   width: 100%;
   height: 6px;
   background: rgba(0, 0, 0, 0.65);
+  /*
+   * En su propia capa: pegada al borde de una lámina que se escala y se
+   * recorta con esquinas redondeadas, la barra se repintaba en cada fotograma
+   * del zoom y parpadeaba en las películas a medio ver.
+   */
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }
 
 .progreso i {
@@ -671,6 +690,13 @@ body.rend-rapido .lamina img {
 .boton.activo {
   background: var(--acento-suave);
   color: var(--acento-claro);
+}
+
+/* La pista que se va a usar: ámbar, como todo lo que está «activo». */
+.etiqueta-tec.elegida {
+  background: rgba(240, 165, 74, 0.18);
+  color: #fff;
+  box-shadow: inset 0 0 0 1px rgba(240, 165, 74, 0.7);
 }
 
 .etiqueta-tec.destacada {
@@ -1440,27 +1466,17 @@ body.rend-rapido * {
   animation: none !important;
 }
 
-/* El disco de la pausa: arriba a la derecha, girando despacio, y se va al seguir. */
-.disco {
-  position: absolute;
-  top: 70px;
-  right: 110px;
-  width: 300px;
-  height: 300px;
-  opacity: 0;
-  transform: scale(0.9);
-  transition: opacity 0.6s ease, transform 0.6s ease;
-  filter: drop-shadow(0 18px 30px rgba(0, 0, 0, 0.6));
+/*
+ * El disco: dentro del OSD, justo encima del título, quieto. Aparece y se va
+ * con los controles (cinco segundos) y en pausa se queda, como todo lo demás.
+ * Sin sombra: un filtro sobre 200 px que se funde con el OSD cuesta fotogramas.
+ */
+.osd .disco {
+  display: block;
+  width: 200px;
+  height: 200px;
+  margin-bottom: 18px;
   pointer-events: none;
-}
-.reproductor.pausado .disco {
-  opacity: 1;
-  transform: scale(1);
-  animation: girar-disco 40s linear infinite;
-}
-@keyframes girar-disco {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
 }
 
 body.rend-rapido .lamina,

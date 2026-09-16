@@ -86,12 +86,34 @@ type Destino = { clave: string; etiqueta: string; icono: string; ir: () => void 
 let bibliotecas: { id: number; name: string; kind: string }[] = [];
 let temporizadorHeroe = 0;
 
+/**
+ * La última portada pintada y por dónde iba el foco.
+ *
+ * Volver de una ficha volvía a pedir `/api/home`, y como las filas de cada
+ * biblioteca son al azar, salía OTRA portada con el foco en «Ver ficha»: se
+ * perdía el sitio cada vez. Cinco minutos de vigencia, como en el móvil.
+ */
+type DatosPortada = { hero: Titulo[]; rows: { key: string; title: string; kind: string; items: Titulo[] }[] };
+let portadaGuardada: { datos: DatosPortada; cuando: number } | null = null;
+let focoPortada: string | null = null;
+const VIGENCIA_PORTADA_MS = 5 * 60_000;
+
+/** Quién es el perfil de esta sesión; lo que decide si sale «Eliminar». */
+let soyAdmin = false;
+
+/** La última saga abierta y la última tarjeta pulsada en Buscar: para volver ahí. */
+let focoSaga: string | null = null;
+let focoBuscar: string | null = null;
+
 function destinosBase(): Destino[] {
+  // Los cinco fijos juntos, Ajustes incluido; debajo, con su separador, las
+  // bibliotecas. Antes Ajustes iba al final, perdido tras nueve bibliotecas.
   const fijos: Destino[] = [
     { clave: 'inicio', etiqueta: 'Inicio', icono: 'inicio', ir: () => void pantallaPortada() },
     { clave: 'buscar', etiqueta: 'Buscar', icono: 'buscar', ir: () => pantallaBuscar() },
     { clave: 'sagas', etiqueta: 'Sagas', icono: 'saga', ir: () => void pantallaSagas() },
     { clave: 'favoritos', etiqueta: 'Favoritos', icono: 'favorito', ir: () => void pantallaFavoritos() },
+    { clave: 'ajustes', etiqueta: 'Ajustes', icono: 'ajustes', ir: () => pantallaAjustes() },
   ];
   const libs = bibliotecas.map((b) => ({
     clave: 'lib-' + b.id,
@@ -99,9 +121,7 @@ function destinosBase(): Destino[] {
     icono: b.kind === 'movie' ? 'pelicula' : 'serie',
     ir: () => void pantallaBiblioteca(b.id, b.name),
   }));
-  return fijos.concat(libs, [
-    { clave: 'ajustes', etiqueta: 'Ajustes', icono: 'ajustes', ir: () => pantallaAjustes() },
-  ]);
+  return fijos.concat(libs);
 }
 
 /** Lo que ve el menú: el orden elegido y sin las secciones escondidas. */
@@ -255,7 +275,12 @@ const filaHtml = (titulo: string, items: Titulo[]) =>
 function conectarTarjetas() {
   marco.querySelectorAll<HTMLElement>('.tarjeta:not([data-lista])').forEach((el) => {
     el.setAttribute('data-lista', '1');
-    el.addEventListener('click', () => void pantallaFicha(Number(el.getAttribute('data-id'))));
+    el.addEventListener('click', () => {
+      // Para volver aquí mismo desde la ficha.
+      if (idActual === 'portada') focoPortada = el.getAttribute('data-id');
+      if (idActual === 'buscar') focoBuscar = el.getAttribute('data-id');
+      void pantallaFicha(Number(el.getAttribute('data-id')));
+    });
   });
 }
 
@@ -380,14 +405,19 @@ function precargar() {
 
 /* ------------------------------------------------------------- portada */
 
-async function pantallaPortada() {
-  entrarEn('portada', () => void pantallaPortada());
-  pintar('inicio', '<div class="vacio">Cargando la biblioteca…</div>');
+async function pantallaPortada(volviendo = false) {
+  entrarEn('portada', () => void pantallaPortada(true));
 
-  let datos;
-  try {
-    datos = await api.portada();
-  } catch (e) {
+  let datos: DatosPortada;
+  const guardada = volviendo && portadaGuardada && Date.now() - portadaGuardada.cuando < VIGENCIA_PORTADA_MS ? portadaGuardada.datos : null;
+  if (guardada) {
+    datos = guardada;
+  } else {
+    pintar('inicio', '<div class="vacio">Cargando la biblioteca…</div>');
+    try {
+      datos = await api.portada();
+      portadaGuardada = { datos, cuando: Date.now() };
+    } catch (e) {
     if ((e as { status?: number }).status === 401) {
       olvidarToken();
       void pantallaConexion();
@@ -415,6 +445,7 @@ async function pantallaPortada() {
       if (marco.querySelector('[data-reintento]')) void pantallaPortada();
     }, 6000);
     return;
+    }
   }
 
   const heroes = datos.hero.slice(0, 6);
@@ -445,7 +476,9 @@ async function pantallaPortada() {
   conectarTarjetas();
 
   if (heroes.length) montarHeroe(heroes);
-  enfocar(marco.querySelector<HTMLElement>('[data-heroe] [data-nav]') || enfocables()[0]);
+  // Al volver, a la tarjeta en la que se estaba; si ya no está, al héroe.
+  const deAntes = guardada && focoPortada ? marco.querySelector<HTMLElement>('.fila [data-id="' + focoPortada + '"]') : null;
+  enfocar(deAntes || marco.querySelector<HTMLElement>('[data-heroe] [data-nav]') || enfocables()[0]);
 
   alPulsar((tecla) => (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE ? atrasHaciaMenu() : false));
 }
@@ -683,9 +716,14 @@ async function pantallaSagas() {
 
   pintar('sagas', cuerpo);
   marco.querySelectorAll<HTMLElement>('[data-saga]').forEach((el) => {
-    el.addEventListener('click', () => void pantallaSaga(el.getAttribute('data-saga') || ''));
+    el.addEventListener('click', () => {
+      focoSaga = el.getAttribute('data-saga');
+      void pantallaSaga(focoSaga || '');
+    });
   });
-  enfocar(marco.querySelector<HTMLElement>('.rejilla [data-nav]'));
+  // Al volver de una saga, a su tarjeta; si no, a la primera.
+  const deAntes = focoSaga ? Array.prototype.filter.call(marco.querySelectorAll<HTMLElement>('[data-saga]'), (el: HTMLElement) => el.getAttribute('data-saga') === focoSaga)[0] as HTMLElement | undefined : null;
+  enfocar(deAntes || marco.querySelector<HTMLElement>('.rejilla [data-nav]'));
   alPulsar((tecla) => (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE ? atrasHaciaMenu() : false));
 }
 
@@ -739,10 +777,15 @@ function pantallaBuscar(inicial = '') {
       el.addEventListener('click', () => pulsar(el.getAttribute('data-tecla') || ''));
     });
 
+    // Al volver de una ficha, a la tarjeta que se pulsó; si no, donde estaba
+    // el foco antes de repintar; si no, la primera tecla.
     const volver = claveFoco
       ? marco.querySelector<HTMLElement>('[data-tecla="' + claveFoco + '"]') ||
         marco.querySelector<HTMLElement>('[data-id="' + claveFoco + '"]')
-      : null;
+      : focoBuscar
+        ? marco.querySelector<HTMLElement>('[data-id="' + focoBuscar + '"]')
+        : null;
+    focoBuscar = null;
     enfocar(volver || marco.querySelector<HTMLElement>('[data-tecla]'));
     alPulsar(manejar);
   };
@@ -898,7 +941,7 @@ async function pantallaFicha(id: number) {
     '<button class="boton" data-nav data-vista>' + (vista ? 'Marcar no vista' : 'Marcar vista') + '</button>' +
     '<button class="boton' + (esFavorita ? ' activo' : '') + '" data-nav data-favorito>' +
     (esFavorita ? 'Quitar de favoritos' : 'Añadir a favoritos') + '</button>' +
-    '<button class="boton peligro" data-nav data-borrar>Eliminar</button>';
+    (soyAdmin ? '<button class="boton peligro" data-nav data-borrar>Eliminar</button>' : '');
 
   const reparto = (ficha.cast || []).filter((c) => c.role === 'actor').slice(0, 10);
 
@@ -941,15 +984,43 @@ async function pantallaFicha(id: number) {
 
     // En flujo y no en posicion absoluta: a 730 px fijos acababan encima de
     // los nombres del reparto en cuanto la sinopsis tenia tres lineas.
-    (etiquetas.length
+    // Las de audio y subtítulos van en su propio hueco: se repintan al elegir
+    // pista, marcando la que se va a usar.
+    (etiquetas.length || fichero
       ? '<div class="tecnicas">' +
-        etiquetas.map((t) => '<span class="etiqueta-tec' + (t === '4K' || t.indexOf('HDR') === 0 ? ' destacada' : '') + '">' + esc(t) + '</span>').join('') +
-        '</div>'
+        etiquetas.filter((t) => !esEtiquetaDePista(t)).map((t) => '<span class="etiqueta-tec' + (t === '4K' || t.indexOf('HDR') === 0 ? ' destacada' : '') + '">' + esc(t) + '</span>').join('') +
+        '<span data-chips-pistas>' +
+        etiquetas.filter(esEtiquetaDePista).map((t) => '<span class="etiqueta-tec">' + esc(t) + '</span>').join('') +
+        '</span></div>'
       : '') +
 
     '<div class="acciones">' + acciones + '</div>' +
     '</div>' +
     '</div>';
+
+  // En una serie, los episodios van justo debajo de las acciones: es a lo que
+  // se viene. El reparto y las relacionadas, después.
+  let bloqueEpisodios = '';
+  if (esSerie && ficha.episodes && ficha.episodes.length) {
+    const temporadas: number[] = [];
+    ficha.episodes.forEach((e) => {
+      if (temporadas.indexOf(e.season) < 0) temporadas.push(e.season);
+    });
+    temporadas.sort((a, b) => a - b);
+    const inicial = ficha.nextUp ? ficha.nextUp.season : temporadas[0];
+
+    bloqueEpisodios =
+      '<div class="episodios"><h3>Episodios</h3><div class="temporadas">' +
+      temporadas
+        .map(
+          (n) =>
+            '<button class="temporada' + (n === inicial ? ' activa' : '') + '" data-nav data-temporada="' + n + '">' +
+            (n === 0 ? 'Especiales' : 'Temporada ' + n) + '</button>',
+        )
+        .join('') +
+      '</div><div data-lista-episodios></div></div>';
+  }
+  cuerpo += bloqueEpisodios;
 
   if (reparto.length) {
     cuerpo +=
@@ -976,26 +1047,6 @@ async function pantallaFicha(id: number) {
   }
 
   if (ficha.similar && ficha.similar.length) cuerpo += filaHtml('Relacionadas', ficha.similar);
-
-  if (esSerie && ficha.episodes && ficha.episodes.length) {
-    const temporadas: number[] = [];
-    ficha.episodes.forEach((e) => {
-      if (temporadas.indexOf(e.season) < 0) temporadas.push(e.season);
-    });
-    temporadas.sort((a, b) => a - b);
-    const inicial = ficha.nextUp ? ficha.nextUp.season : temporadas[0];
-
-    cuerpo +=
-      '<div class="episodios"><h3>Episodios</h3><div class="temporadas">' +
-      temporadas
-        .map(
-          (n) =>
-            '<button class="temporada' + (n === inicial ? ' activa' : '') + '" data-nav data-temporada="' + n + '">' +
-            (n === 0 ? 'Especiales' : 'Temporada ' + n) + '</button>',
-        )
-        .join('') +
-      '</div><div data-lista-episodios></div></div>';
-  }
 
   cuerpo += '</div>';
   pintar('inicio', cuerpo);
@@ -1049,9 +1100,34 @@ async function pantallaFicha(id: number) {
     });
   }
 
+  /*
+   * Las etiquetas de audio y subtítulos enseñan **lo que se va a oír y leer**:
+   * la pista elegida (o la que se pondría sola) va marcada en ámbar, y si la
+   * tele no la lee, se dice que se convertirá. Se pintan al abrir la ficha y
+   * se repintan al elegir otra cosa en «Audio» o «Subtítulos».
+   */
+  const pintarChipsDePistas = (info: InfoReproduccion) => {
+    const hueco = marco.querySelector<HTMLElement>('[data-chips-pistas]');
+    if (!hueco || !fichero) return;
+    const propia = seleccion.fileId === fichero.id;
+    const iAudio = propia ? seleccion.audio : pistaInicial(info.audio);
+    const iSub = propia ? seleccion.subtitulo : -1;
+    const chip = (texto: string, elegida: boolean) =>
+      '<span class="etiqueta-tec' + (elegida ? ' elegida' : '') + '">' + (elegida ? '\u25b6 ' : '') + esc(texto) + '</span>';
+    let html = '';
+    info.audio.forEach((a, i) => {
+      if (i !== iAudio && i >= 3) return;
+      html += chip(nombreAudio(a) + (a.compatible === false && i === iAudio ? ' \u00b7 se convertirá a DD+' : ''), i === iAudio);
+    });
+    const sub = iSub >= 0 ? info.subtitles[iSub] : null;
+    html += chip(sub ? 'Subtítulos: ' + idioma(sub.language) + (sub.forced ? ' (forzados)' : '') : 'Sin subtítulos', !!sub);
+    hueco.innerHTML = html;
+  };
+  if (fichero) api.pistas(fichero.id).then(pintarChipsDePistas).catch(() => undefined);
+
   marco.querySelectorAll<HTMLElement>('[data-pistas]').forEach((el) => {
     el.addEventListener('click', () => {
-      if (fichero) void menuPistas(fichero.id, el.getAttribute('data-pistas') === 'audio' ? 'audio' : 'subs');
+      if (fichero) void menuPistas(fichero.id, el.getAttribute('data-pistas') === 'audio' ? 'audio' : 'subs', pintarChipsDePistas);
     });
   });
 
@@ -1094,7 +1170,19 @@ async function pantallaFicha(id: number) {
     pintarEpisodios(ficha.nextUp ? ficha.nextUp.season : Number(marco.querySelector<HTMLElement>('[data-temporada]')!.getAttribute('data-temporada')));
   }
 
-  enfocar(marco.querySelector<HTMLElement>('.ficha-datos [data-nav]') || marco.querySelector<HTMLElement>('[data-nav]'));
+  /*
+   * El foco empieza en «Reproducir» (o «Reanudar»); en una serie, en el
+   * episodio que toca ver. Antes apuntaba a una clase que no existía y caía
+   * en la primera cosa navegable de la página: el «Inicio» del menú.
+   */
+  const episodioQueToca = ficha.nextUp
+    ? marco.querySelector<HTMLElement>('[data-ep="' + ficha.nextUp.id + '"]')
+    : null;
+  enfocar(
+    (esSerie ? episodioQueToca || marco.querySelector<HTMLElement>('[data-lista-episodios] [data-nav]') : null) ||
+      marco.querySelector<HTMLElement>('.acciones [data-nav]') ||
+      marco.querySelector<HTMLElement>('.ficha [data-nav]'),
+  );
   alPulsar((tecla) => {
     if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE) {
       // A la pantalla de la que se vino, con su sitio; solo si no hay de dónde,
@@ -1173,8 +1261,13 @@ function confirmar(titulo: string, detalle: string, alAceptar: () => void) {
   alPulsar((tecla) => { if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE) { cerrar(); return true; } return false; });
 }
 
-async function menuPistas(fileId: number, tipo: 'audio' | 'subs') {
-  let info;
+/** Las etiquetas de la ficha que hablan de pistas, para pintarlas aparte. */
+function esEtiquetaDePista(t: string): boolean {
+  return t.indexOf('Subs:') === 0 || /^(Dolby|DTS|AAC|FLAC|MP3|Opus|PCM|TRUEHD|EAC3|AC3)/i.test(t);
+}
+
+async function menuPistas(fileId: number, tipo: 'audio' | 'subs', alCambiar?: (info: InfoReproduccion) => void) {
+  let info: InfoReproduccion;
   try {
     info = await api.pistas(fileId);
   } catch (e) {
@@ -1240,6 +1333,7 @@ async function menuPistas(fileId: number, tipo: 'audio' | 'subs') {
         seleccion.convertir = !!pista && pista.compatible === false;
       } else seleccion.subtitulo = v;
       cerrar();
+      if (alCambiar) alCambiar(info);
       aviso(tipo === 'audio' ? 'Audio seleccionado' : 'Subtítulos seleccionados');
     });
   });
@@ -1413,6 +1507,10 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     '<div class="reproductor">' +
     '<div class="lienzo-video" data-video></div>' +
     '<div class="osd" data-osd>' +
+    // El disco va dentro del OSD, justo encima del título: aparece y se va con
+    // los controles, y en pausa se queda con ellos. Quieto: girando distraía
+    // y arriba a la derecha tapaba la pantalla de información.
+    (ficha.has_discart ? '<img class="disco" alt="" src="' + imagen.disco(ficha.id, 600) + '">' : '') +
     '<div class="osd-titulo">' + esc(ficha.title) + '</div>' +
     (cabeceraEp ? '<div class="osd-episodio">' + esc(cabeceraEp) + '</div>' : '') +
     '<div class="previa" data-previa><i data-previa-foto></i><span data-previa-hora>0:00</span></div>' +
@@ -1428,8 +1526,6 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     '<button class="salto-tramo" data-tramo></button>' +
     '<div class="info-repro" data-info></div>' +
     '<div class="cargando" data-cargando>Cargando…</div>' +
-    // El disco: solo se ve en pausa, girando despacio. Un guiño a la estantería.
-    (ficha.has_discart ? '<img class="disco" data-disco alt="" src="' + imagen.disco(ficha.id, 600) + '">' : '') +
     '</div>';
 
   const lienzo = marco.querySelector<HTMLElement>('[data-video]')!;
@@ -1523,6 +1619,8 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
 
   const mostrar = () => {
     osd.classList.add('visible');
+    // Cinco segundos y se va todo, disco incluido; en pausa se queda (el
+    // reloj del reproductor no avisa y esto no se vuelve a evaluar).
     ocultarEn = Date.now() + 5000;
   };
 
@@ -1536,8 +1634,6 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
   const refrescarPlay = () => {
     const b = cajaBotones.querySelector<HTMLElement>('[data-accion="play"]');
     if (b) b.textContent = reproductor.reproduciendo() ? 'Pausa' : 'Reproducir';
-    // `.pausado` en el marco enseña el disco (CSS) y para su giro al seguir.
-    marco.firstElementChild?.classList.toggle('pausado', !reproductor.reproduciendo());
   };
 
   /** «Capítulos» solo aparece si el fichero los trae; por eso se reconstruye. */
@@ -1851,9 +1947,27 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
 
   /* ------------------------------------------------------------- pantalla */
 
+  /*
+   * Avisos del administrador mientras se ve algo: un mensaje en pantalla, o
+   * «para», que devuelve a la ficha. Cada cinco segundos; el sondeo general de
+   * fuera del reproductor no entra aquí (mira `viendo`), así que este es el
+   * único que hay mientras dura la película.
+   */
+  const temporizadorAvisos = window.setInterval(() => {
+    if (cerrado) { window.clearInterval(temporizadorAvisos); return; }
+    api
+      .avisos()
+      .then((r) => {
+        if (r.mensaje) aviso('Mensaje: ' + r.mensaje);
+        if (r.parar) { aviso('El administrador ha parado la reproducción'); salir(); }
+      })
+      .catch(() => undefined);
+  }, 5000);
+
   const salir = () => {
     if (cerrado) return;
     cerrado = true;
+    window.clearInterval(temporizadorAvisos);
     window.clearTimeout(temporizadorSalto);
     window.clearTimeout(temporizadorSub);
     const t = reproductor.tiempo();
@@ -2589,6 +2703,8 @@ function pantallaAjustes() {
 
 /** Reordenar y esconder secciones del menú, con el mando. */
 function pantallaOrdenMenu() {
+  /** Qué botón (subir/bajar/esconder + clave) tenía el foco antes de repintar, para volver a él. */
+  let focoDespues: string | null = null;
   const dibujar = function (): void {
     const a = ajustes();
     const todas = destinosBase();
@@ -2631,6 +2747,9 @@ function pantallaOrdenMenu() {
       claves[i] = claves[j];
       claves[j] = clave;
       guardarAjustes({ ordenMenu: claves });
+      // El foco sigue en el mismo botón de la misma sección, ya en su sitio
+      // nuevo; si ese botón ya no existe (llegó al borde), en el contrario.
+      focoDespues = (paso < 0 ? 'subir' : 'bajar') + ':' + clave;
       dibujar();
     };
 
@@ -2648,6 +2767,7 @@ function pantallaOrdenMenu() {
         if (i >= 0) ocultos.splice(i, 1);
         else ocultos.push(clave);
         guardarAjustes({ ocultos: ocultos });
+        focoDespues = 'ocultar:' + clave;
         dibujar();
       });
     });
@@ -2657,7 +2777,18 @@ function pantallaOrdenMenu() {
     const listo = marco.querySelector<HTMLElement>('[data-listo]');
     if (listo) listo.addEventListener('click', function () { pantallaAjustes(); });
 
-    enfocar(marco.querySelector<HTMLElement>('.ajustes [data-nav]'));
+    let volver: HTMLElement | null = null;
+    if (focoDespues) {
+      const partes = focoDespues.split(':');
+      const clave = partes.slice(1).join(':');
+      const otro = partes[0] === 'subir' ? 'bajar' : 'subir';
+      volver =
+        marco.querySelector<HTMLElement>('[data-' + partes[0] + '="' + clave + '"]') ||
+        marco.querySelector<HTMLElement>('[data-' + otro + '="' + clave + '"]') ||
+        marco.querySelector<HTMLElement>('[data-ocultar="' + clave + '"]');
+      focoDespues = null;
+    }
+    enfocar(volver || marco.querySelector<HTMLElement>('.ajustes [data-nav]'));
     alPulsar(function (tecla: number) {
       if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE) { pantallaAjustes(); return true; }
       return false;
@@ -2806,6 +2937,8 @@ async function arrancar() {
   } catch (e) {
     bibliotecas = [];
   }
+  // Solo el administrador borra: a los demás no se les enseña el botón.
+  api.yo().then((u) => { soyAdmin = u.is_admin === 1; }).catch(() => undefined);
   void pantallaPortada();
   escucharAlMovil();
 }

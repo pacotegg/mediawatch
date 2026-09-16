@@ -4,6 +4,7 @@ import { motion } from 'motion/react';
 import { Button, Field, Panel, Select, Slider, TextInput, Toggle } from '../components/Controls.tsx';
 import AnalysisPanels from '../components/AnalysisPanels.tsx';
 import MetadataReview from '../components/MetadataReview.tsx';
+import Actividad from '../components/Actividad.tsx';
 import { api } from '../lib/api.ts';
 import { fileSize } from '../lib/format.ts';
 import { usePreferences } from '../lib/preferences.tsx';
@@ -16,6 +17,7 @@ const TABS = [
   { key: 'analysis', label: 'Análisis' },
   { key: 'metadata', label: 'Metadatos' },
   { key: 'pin', label: 'PIN' },
+  { key: 'actividad', label: 'Actividad' },
   { key: 'server', label: 'Servidor' },
 ] as const;
 
@@ -553,13 +555,16 @@ function ServerTab() {
 
 export default function Settings() {
   const [tab, setTab] = useState<Tab>('playback');
+  const { data: yo } = useQuery({ queryKey: ['me'], queryFn: api.me, staleTime: Infinity });
+  // «Actividad» es cosa del administrador: quién ve qué, mensajes, parar.
+  const pestanas = TABS.filter((t) => t.key !== 'actividad' || yo?.is_admin === 1);
 
   return (
     <div className="mx-auto max-w-3xl px-4 pt-24 pb-24 sm:px-8">
       <h1 className="mb-6 text-2xl font-semibold tracking-tight">Ajustes</h1>
 
       <div className="no-scrollbar mb-6 flex gap-1 overflow-x-auto">
-        {TABS.map((t) => (
+        {pestanas.map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
@@ -580,6 +585,7 @@ export default function Settings() {
       {tab === 'analysis' && <AnalysisPanels />}
       {tab === 'metadata' && <MetadataReview />}
       {tab === 'pin' && <PinTab />}
+      {tab === 'actividad' && <Actividad />}
       {tab === 'server' && <ServerTab />}
     </div>
   );
