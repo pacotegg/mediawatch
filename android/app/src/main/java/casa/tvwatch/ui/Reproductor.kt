@@ -239,15 +239,19 @@ private fun Reproduciendo(
    * Lo que se manda al reproductor: la URL y, con ella, el título y la
    * carátula, que es lo que el sistema enseña en la pantalla de bloqueo.
    *
-   * Y los subtítulos, aparte. Cuando el vídeo va por tubería el servidor los
-   * quita (`-sn`), así que se le piden uno a uno como WebVTT y ExoPlayer los
-   * pone encima; con `desde` para que cuadren con un flujo que empieza a
-   * mitad. En crudo, los que van dentro del MKV ya llegan solos y solo se
-   * añaden los ficheros .srt de al lado, que antes no salían nunca.
+   * Y los subtítulos, aparte. Solo cuando el vídeo se recodifica: ahí el
+   * servidor los quita (`-sn`) y hay que pedirlos uno a uno como WebVTT. Las
+   * tuberías que copian el vídeo —cambiar el audio, cortar en un segundo— los
+   * llevan dentro (`-map 0:s?`), así que pedirlos era pagar dos veces: cada
+   * uno obliga al servidor a recorrer el MKV entero (medido: 106 s en un 4K)
+   * y ExoPlayer no arranca hasta que bajan todos.
+   *
+   * `desde` sí depende de la tubería, no de la recodificación: un flujo
+   * cortado empieza en cero y los .srt de al lado irían adelantados.
    */
   fun elemento(url: String): MediaItem {
     val subs = (info?.subtitles ?: emptyList())
-      .filter { porTuberia || it.source == "external" }
+      .filter { !videoEnCrudo || it.source == "external" }
       .map { st ->
         val desde = if (porTuberia) desdeDeLaTuberia.toInt() else 0
         MediaItem.SubtitleConfiguration.Builder(Uri.parse(Api.urlDeSubtitulo(fileId, st.id, desde)))
@@ -464,12 +468,24 @@ private fun Reproduciendo(
     reabrir(destino)
   }
 
-  /** Llevar a un punto por el camino que funcione con este flujo. */
+  /**
+   * Llevar a un punto por el camino que funcione con este flujo.
+   *
+   * Buscar dentro del fichero solo sale bien si el MKV trae su índice de
+   * saltos (`Cues`). Los de esta biblioteca **no lo traen** —comprobado con
+   * `mkvinfo`—, y sin él ExoPlayer da el flujo por no-buscable y un salto
+   * reinicia la lectura desde el principio: la película se queda cargando para
+   * siempre. No se adivina por el fichero: se le pregunta al reproductor, y
+   * cuando dice que no, se pide al servidor ya cortado, igual que en la tele.
+   * Desde ese momento el flujo es una tubería de verdad (`copia-desde`), así
+   * que las posiciones pasan a ir con desfase.
+   */
   fun irA(segundos: Double) {
-    if (!porTuberia) {
+    if (!porTuberia && reproductor.isCurrentMediaItemSeekable) {
       reproductor.seekTo((segundos * 1000).toLong())
       return
     }
+    porTuberia = true
     saltoPendiente = segundos
   }
 
@@ -658,9 +674,9 @@ private fun Reproduciendo(
       ) {
         Box(
           Modifier
+            .size(48.dp)
             .clip(RoundedCornerShape(24.dp))
-            .clickable { salir() }
-            .padding(horizontal = 14.dp, vertical = 2.dp),
+            .clickable { salir() },
           contentAlignment = Alignment.Center,
         ) {
           Text("‹", color = Color.White, fontSize = 36.sp)
@@ -893,11 +909,11 @@ private fun Controles(
         onValueChangeFinished = alSoltar,
         valueRange = 0f..tope,
         enabled = duracion > 0,
-        // Sin recortar la altura: la zona de toque del Slider son 48 dp y con
-        // 28 costaba cogerla. El pulgar, de 20, se ve y se agarra.
-        modifier = Modifier.fillMaxWidth(),
+        // La zona de arrastre es todo el alto del Slider, no el pulgar: con los
+        // 48 dp de serie, en apaisado y tan abajo, se escapaba. A 64 se coge.
+        modifier = Modifier.fillMaxWidth().height(64.dp),
         thumb = {
-          Box(Modifier.size(20.dp).clip(RoundedCornerShape(100.dp)).background(if (duracion > 0) Realce else Color.Transparent))
+          Box(Modifier.size(24.dp).clip(RoundedCornerShape(100.dp)).background(if (duracion > 0) Realce else Color.Transparent))
         },
         track = {
           Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x55FFFFFF))) {

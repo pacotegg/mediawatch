@@ -9,6 +9,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSourceBitmapLoader
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
@@ -57,6 +58,19 @@ class ReproduccionService : MediaSessionService() {
     }
 
     val reproductor = ExoPlayer.Builder(this)
+      /*
+       * Los decodificadores propios por delante de los del sistema.
+       *
+       * Sin esto el AAR de FFmpeg viaja en el APK sin usarse: `PREFER` es lo
+       * que hace que AC3, DD+, TrueHD y DTS los descodifique la aplicación en
+       * un móvil sin licencia Dolby, en vez de que el servidor tenga que
+       * convertir el audio. Lo busca por reflexión, así que si el `.so` no
+       * estuviera, se queda con los del sistema y no se rompe nada.
+       */
+      .setRenderersFactory(
+        DefaultRenderersFactory(this)
+          .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER),
+      )
       .setMediaSourceFactory(DefaultMediaSourceFactory(fuente))
       .setSeekBackIncrementMs(10_000)
       .setSeekForwardIncrementMs(30_000)

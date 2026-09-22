@@ -1,6 +1,7 @@
 # Media Watch (antes TvWatch / Cineteca) — dosier completo del proyecto
 
-Estado a **16 de septiembre de 2026**. Este documento es la memoria entera del
+Estado a **21 de septiembre de 2026** (auditoría completa: bugs corregidos,
+mantenimiento al estilo Plex añadido). Este documento es la memoria entera del
 proyecto para alimentar el proyecto de Claude: qué es, cómo está montado, cada
 carpeta y fichero, cómo se arranca, compila e instala, la cronología desde el
 primer día, el estado del git, las trampas ya pagadas y las reglas de trabajo
@@ -64,6 +65,10 @@ millones de frases de diálogo indexadas, 9 bibliotecas.
 - **El móvil como mando de la tele**: buscar tecleando en el móvil (en vivo) y
   «Ver en la tele» (la app de Tizen recoge la orden y reproduce).
 - **Disc art** (carátula redonda) en el reproductor, con los controles.
+- **Mantenimiento al estilo Plex** (21/09): copia de seguridad diaria de la BD
+  con rotación, limpieza semanal de caché de imágenes sin usar y de carpetas de
+  miniaturas huérfanas, y «optimizar base de datos» (VACUUM) a un clic desde
+  Ajustes → Servidor.
 
 ---
 
@@ -127,9 +132,9 @@ C:\tvwatch
 | `tvwatch.db` (+ `-wal`, `-shm`) | SQLite (150 MB), WAL |
 | `artwork/<itemId>/` | Imágenes bajadas (póster, fondo, logo, apaisada, disco) — 1.546 carpetas, 1,7 GB. Nunca se escribe en `E:\` |
 | `artwork/personas/<id>.jpg` | Fotos de reparto bajadas de TMDb |
-| `cache/` | Miniaturas redimensionadas (1,9 GB) |
-| `trickplay/` | Tiras de fotogramas para la barra (129 MB) |
-| `copias/` | Copias de seguridad de la BD (`tvwatch-2026-09-13-17-34-39.db`) |
+| `cache/images/` | Miniaturas redimensionadas, clave = hash de ruta+mtime+tamaño+ancho (1,9 GB, 63.613 ficheros a 21/09). Sin límite hasta el 21/09: purga semanal por antigüedad desde `media/images.ts` |
+| `trickplay/` | Tiras de fotogramas para la barra (129 MB). Carpetas huérfanas (fichero ya retirado) se limpian solas cada semana desde `media/trickplay.ts` |
+| `copias/` | Copias de seguridad de la BD, una diaria, `VACUUM INTO` (consistente con WAL abierto), rotando a las 14 más recientes desde el 21/09 (`db.ts`) |
 | `server.log`, `server.err`, `vigilante.log`, `completar-arte.log`, `completar-personas.log` | Registros |
 
 Bibliotecas configuradas (todas en `E:\`): Películas, Animación (`Pelis Animacion`),
@@ -144,18 +149,18 @@ Node ejecuta `src/index.ts` directamente: **no hay paso de compilación**.
 
 | Fichero | Líneas | Qué hace |
 |---|---|---|
-| `src/index.ts` | 227 | Arranque Fastify; CORS (el preflight **con `return`**); gancho global de autenticación (solo abiertas `/api/users`, `/api/auth/*`, `/api/qr.svg`); `trustProxy` acotado a localhost; `uncaughtException`/`unhandledRejection` capturados; escaneo automático cada 24 h y a los 20 s de arrancar; sirve `web/dist` y `/tv/`; `CINETECA_LOG=1` registra peticiones; registra todas las rutas |
+| `src/index.ts` | 261 | Arranque Fastify; CORS (el preflight **con `return`**); gancho global de autenticación (solo abiertas `/api/users`, `/api/auth/*`, `/api/qr.svg`); `trustProxy` acotado a localhost; `uncaughtException`/`unhandledRejection` capturados; escaneo automático cada 24 h y a los 20 s de arrancar; **mantenimiento semanal** (huérfanos de trickplay + caché de imágenes) y **copia de seguridad diaria** (21/09); sirve `web/dist` y `/tv/`; `CINETECA_LOG=1` registra peticiones; registra todas las rutas |
 | `src/config.ts` | 142 | Lee `data/config.json`; localiza ffmpeg/ffprobe/python por rutas absolutas (el entorno de logon no tiene PATH); `DATA_DIR` |
-| `src/db.ts` | 368 | Esquema y migraciones (`ALTER TABLE` idempotentes); `DatabaseSync` con `timeout: 10000` (CLI y servidor a la vez); `normalize()` (sin tildes) |
+| `src/db.ts` | 416 | Esquema y migraciones (`ALTER TABLE` idempotentes); `DatabaseSync` con `timeout: 10000` (CLI y servidor a la vez); `normalize()` (sin tildes); (21/09) `backupBaseDeDatos()` (`VACUUM INTO`, rota a 14), `optimizarBaseDeDatos()` (VACUUM+ANALYZE, bloqueante, solo a mano), `tamanoBaseDeDatos()` |
 | `src/media/transcode.ts` | 323 | `planPlayback()`: directa / remux / transcodificar según `ClientCaps` (códecs, `maxHeight`, `maxHeightHevc`, `hevc10`, `maxKbps`); ffmpeg QSV (`vpp_qsv=format=nv12`, tonemap HDR), VBR con `-b:v/-maxrate/-bufsize` (ICQ ignora `-maxrate`), `+delay_moov` para AC3 en fMP4, downmix con canal central por índice (`c2`), modo noche (`acompressor`+`alimiter level=false`), `adelay`/`atrim` para desfases, sesiones con `sesion` (aparato) |
-| `src/media/hls.ts` | 342 | HLS VOD con escalera de calidades, segmentación exacta por GOP (`-g`/`-forced_idr`, h264_qsv ignora `-force_key_frames`), `surround=1` (AC3/DD+ copiados o DD+ 5.1 para Chromecast), caché de segmentos |
-| `src/media/probe.ts` | 234 | ffprobe con caché por tamaño+fecha; `duracionFiable()` (descarta duraciones imposibles); detecta Atmos en `profile`; pistas de audio/subs |
+| `src/media/hls.ts` | 355 | HLS VOD con escalera de calidades, segmentación exacta por GOP (`-g`/`-forced_idr`, h264_qsv ignora `-force_key_frames`), `surround=1` (AC3/DD+ copiados o DD+ 5.1 para Chromecast), caché de segmentos; (21/09) cada sesión guarda el `dispositivo` que la pidió y `cerrarSesionesDe()` corta las de un aparato — antes «parar» en Actividad no tocaba el ffmpeg de HLS |
+| `src/media/probe.ts` | 237 | ffprobe con caché por tamaño+fecha; `duracionFiable()` (descarta duraciones imposibles); detecta Atmos en `profile`; pistas de audio/subs; (21/09) el `UPDATE` del re-sondeo protege `video_codec`/`width`/`height` con `COALESCE`, no solo `hdr` — si ffprobe fallaba a mitad, borraba codec/resolución ya buenos |
 | `src/media/capabilities.ts` | 238 | Detección de hardware codificando **ficheros reales** de la biblioteca (no sintéticos): qué codificador, tonemap, velocidad |
-| `src/media/trickplay.ts` | 332 | Tiras de miniaturas por fotogramas clave; tiempos de `showinfo`; lote con `ocupado` |
+| `src/media/trickplay.ts` | 362 | Tiras de miniaturas por fotogramas clave; tiempos de `showinfo`; lote con `ocupado`; (21/09) `limpiarHuerfanas()` borra carpetas de un fichero que ya no existe en `media_files` |
 | `src/media/intros.ts` | 217 | Detección de cabeceras/créditos por chromaprint (`scripts/intros.py`) |
 | `src/media/resync.ts` | 101 | Resincronía de subtítulos contra el audio (`scripts/resync.py`, correlación) |
 | `src/media/transcribe.ts` | 195 | Cola de transcripción Whisper (`scripts/transcribe.py`), solo ficheros sin subtítulos, idioma de la pista |
-| `src/media/images.ts` | 73 | Miniaturas con ffmpeg, cola limitada |
+| `src/media/images.ts` | 112 | Miniaturas con ffmpeg, cola limitada; (21/09) toca el `mtime` en cada acierto de caché y `limpiarCache()` purga lo que lleva 45 días sin pedirse — la clave por hash dejaba huérfana la miniatura vieja en cada cambio de carátula, sin límite |
 | `src/media/omdb.ts` | 141 | Rellena notas IMDb/RT/TMDb/TVDB que faltan (sobre todo series) |
 | `src/media/calidad.ts` | 166 | Detector de copias malas (bitrate/resolución/códec) |
 | `src/media/estadisticas.ts` | 175 | Estadísticas: biblioteca, actividad, problemas |
@@ -165,7 +170,8 @@ Node ejecuta `src/index.ts` directamente: **no hay paso de compilación**.
 | `src/media/avisos.ts` | 40 | Colas por sesión de mensaje/parar del administrador |
 | `src/routes/auth.ts` | 400 | Login por PIN (`^\d{6,}$`), sesiones (bearer, `?token=`, cookie), emparejado de aparatos (`/device/start|claim|poll`, QR), `sesionDe()`, caducidad con `strftime` ISO, freno de fuerza bruta (5 fallos → 15 min), reglas «desde fuera» por `X-Forwarded-*`, UA `okhttp` = Android |
 | `src/routes/library.ts` | 634 | Bibliotecas, portada, títulos (orden, género, `unwatched`), ficha, sagas, personas, favoritos, visto, progreso (upsert con `IS` por el NULL), «continuar» global y por biblioteca, similares, borrado de carpeta (solo admin, confirmando el título, solo dentro de una biblioteca), `discart`, `has_discart` |
-| `src/routes/play.ts` | 729 | `/info` (plan), `/stream` (directo/remux/pipe, `?raw=1`, `?t=N` corte con `-c copy` para AVPlay, perfil `samsung2021` → DD+ 5.1), HLS, subtítulos WebVTT (`?desde=` desplaza tiempos), desfases, resync, trickplay, sesiones, `cortarAparato()` |
+| `src/routes/play.ts` | 766 | `/info` (plan), `/stream` (directo/remux/pipe, `?raw=1`, `?t=N` corte con `-c copy` para AVPlay, perfil `samsung2021` → DD+ 5.1), HLS, subtítulos WebVTT (`?desde=` desplaza tiempos), desfases, resync, trickplay, sesiones, `cortarAparato()` (21/09: ahora también corta HLS); (21/09) el subtítulo externo comprueba `file_id`, antes se podía leer el de otro título adivinando el id |
+| `src/routes/mantenimiento.ts` | 94 | **Nuevo (21/09)**: `/api/mantenimiento/estado\|limpiar\|optimizar\|copia`, solo admin — tamaños de caché/trickplay/BD, disparar la limpieza, el VACUUM o una copia de seguridad a mano |
 | `src/routes/enrich.ts` | 130 | Scraper TMDb: candidatos con confianza, aplicar, descartar (admin), buscar por título, `arte` (elegir póster/fondo/logo/apaisada/disco) |
 | `src/routes/subtitles.ts` | 164 | Buscar/descargar (`subsfetch.py`), transcribir, faltantes |
 | `src/routes/preferences.ts` | 131 | Preferencias por usuario y ajustes del servidor |
@@ -173,12 +179,12 @@ Node ejecuta `src/index.ts` directamente: **no hay paso de compilación**.
 | `src/routes/mando.ts` | 113 | El móvil como mando: `POST /mando/buscar`, `POST /mando/reproducir`, `GET /mando` (`?tele=1` para que solo la tele consuma órdenes) + avisos |
 | `src/routes/actividad.ts` | 109 | Pestaña Actividad (admin): lista, mensaje, parar, cerrar sesión |
 | `src/routes/descargas.ts` | 73 | Entrega con rangos |
-| `src/scanner/scan.ts` | 506 | Recorre bibliotecas, lee NFO y arte del disco, `rescanItem()`, respeta `arte_fijado` |
+| `src/scanner/scan.ts` | 510 | Recorre bibliotecas, lee NFO y arte del disco, `rescanItem()`, respeta `arte_fijado`; (21/09) la numeración de reserva de episodios (sin `SxxExx` en el nombre) se reinicia por temporada, antes seguía contando desde la temporada anterior |
 | `src/scanner/nfo.ts` | 245 | Parser de NFO de tinyMediaManager (fast-xml-parser) |
 | `src/scanner/tmdb.ts` | 447 | Propuestas, imágenes (merge con fanart.tv), `descargar()`, ids externos |
-| `src/scanner/fanart.ts` | 396 | fanart.tv: rellenar y sustituir logos/apaisadas en otros idiomas; discart (prefiere Blu-ray); firmas 32×32 con ffmpeg (distancia <12 = misma imagen); `arte_revisado` 30 días |
+| `src/scanner/fanart.ts` | 409 | fanart.tv: rellenar y sustituir logos/apaisadas en otros idiomas; discart (prefiere Blu-ray); firmas 32×32 con ffmpeg (distancia <12 = misma imagen); `arte_revisado` 30 días; (21/09) `firma()` tiene timeout de 15 s (una imagen colgada paraba toda la pasada sin avisar) y la carpeta `_tmp` de comparación se borra al terminar |
 | `src/scanner/tvdb.ts` | 86 | TheTVDB v4: segunda fuente de logos con idioma |
-| `src/scanner/people.ts` | 89 | Biografía/foto de una persona por `tmdb_id` guardado |
+| `src/scanner/people.ts` | 93 | Biografía/foto de una persona por `tmdb_id` guardado; (21/09) una biografía vacía (`''`, marca a propósito de «ya comprobado, sin bio») se trataba como *falsy* y volvía a preguntar a TMDb en cada visita a la ficha |
 | `src/scanner/personas.ts` | 119 | Créditos por título → fotos e ids de todo el reparto (`personas_revisadas`) |
 | `src/scanner/dialogue.ts` | 271 | Índice FTS5 de subtítulos (UTF-8 y UTF-16 con BOM), en segundo plano, con progreso |
 | `src/scanner/anime.ts` | 384 | Fuentes de anime (Kitsu en `kitsu.app`; AniList y Jikan caídas) |
@@ -210,7 +216,7 @@ Columnas añadidas por migración que importan: `items.arte_fijado`, `tvdb_id`,
 `subtitles/*`, `enrich/*`, `anime/*`, `numeracion/*`, `omdb/*`, `skip/*`,
 `trickplay/*`, `dialogue/*`, `capabilities`, `calidad`, `estadisticas`, `stats`,
 `scan`, `scan/stream`, `sessions`, `descargas`, `mando`, `mando/buscar|reproducir`,
-`actividad`, `actividad/:sesion/mensaje|parar`.
+`actividad`, `actividad/:sesion/mensaje|parar`, `mantenimiento/estado|limpiar|optimizar|copia` (21/09, solo admin).
 
 ### 3.3 `web/`
 
@@ -223,12 +229,12 @@ fuente Inter variable. `npm run build` deja `web/dist`, que sirve el servidor.
 | `public/manifest.webmanifest`, `sw.js`, `icon-512.png`, `apple-touch-icon.png` | PWA «Media Watch» (icono nuevo) |
 | `src/main.tsx`, `src/App.tsx` | Arranque, rutas perezosas, proveedor de preferencias |
 | `src/styles.css` | Tailwind + utilidades (`layer-promote`, shimmer, cue de subtítulos) |
-| `src/lib/api.ts` (620) | Cliente de la API (`request()` pone `Content-Type` cuando hay cuerpo), tipos, `img.*` (incl. `discart`), actividad, mando |
+| `src/lib/api.ts` (634) | Cliente de la API (`request()` pone `Content-Type` cuando hay cuerpo), tipos, `img.*` (incl. `discart`), actividad, mando; (21/09) `post()` tenía la misma cabecera fija sin cuerpo — rompía `logout()`, `scan()`, `applyCapabilities()`, `stopTranscribe()` con 400 mudo, arreglado; nuevas `mantenimientoEstado/Limpiar/Optimizar/Copia` |
 | `src/lib/preferences.tsx` | Preferencias (calidad, HLS, subtítulos, saltos…) |
 | `src/lib/format.ts`, `tint.ts`, `vtt.ts` | Formato de tiempos, color dominante, desplazar VTT |
 | `src/pages/Home.tsx`, `Library.tsx`, `Detail.tsx` (629), `Person.tsx`, `Search.tsx`, `Favorites.tsx`, `Collections.tsx` | Navegación de la biblioteca |
 | `src/pages/Player.tsx` (823) | Reproductor: directo/pipe/HLS, pistas, desfases (`G`/`H`), miniaturas al pasar por la barra, saltar cabecera/créditos, capítulos, avisos del admin cada 5 s, disc art encima de la barra |
-| `src/pages/Settings.tsx` (592) | Ajustes: reproducción, biblioteca (escanear, emparejar tele, PIN), análisis, **Actividad** (admin) |
+| `src/pages/Settings.tsx` (661) | Ajustes: reproducción, biblioteca (escanear, emparejar tele, PIN), análisis, **Actividad** (admin); (21/09) panel **Mantenimiento** en Servidor: tamaños de BD/caché/miniaturas, vaciar caché y huérfanos, copia de seguridad, optimizar BD |
 | `src/pages/Login.tsx`, `Pair.tsx` | Perfiles con PIN; destino del QR de la tele |
 | `src/pages/Estadisticas.tsx`, `Descargas.tsx` | Tautulli-lite; descargas |
 | `src/components/Sidebar.tsx` | Menú lateral estilo Plex, colapsable, reordenable |
@@ -308,6 +314,58 @@ cd server && npm run personas
 ```bash
 cd /c/tvwatch/android && JAVA_HOME="C:\Program Files\Eclipse Adoptium\jdk-17.0.20.101-hotspot" /c/gradle/gradle-8.10.2/bin/gradle.bat --no-daemon :app:assembleRelease
 ```
+
+#### Rehacer `app/libs/lib-decoder-ffmpeg-release.aar` (22/09)
+
+Ese AAR **va versionado en git** porque no está en Maven: es la extensión de
+FFmpeg de media3 compilada a mano, y es lo que permite que un móvil sin licencia
+Dolby descodifique AC3, DD+, TrueHD y DTS por su cuenta. Sin él el servidor tiene
+que convertir el audio y la reproducción vuelve al modo tubería.
+
+Solo hay que rehacerlo si se sube la versión de media3 (tienen que coincidir).
+Requisitos: WSL con `build-essential` y `unzip` (el `sudo apt` lo lanza el
+usuario, pide contraseña), y en Windows `ndk;26.1.10909125` (**r26b**, la que
+pide la documentación) y `cmake;3.22.1` por `sdkmanager`.
+
+```bash
+# 1. En WSL: clonar, bajar el NDK de Linux y compilar (~2m30s, los 4 ABIs)
+mkdir -p ~/mw && cd ~/mw
+git clone --depth 1 --branch release/6.0 https://github.com/FFmpeg/FFmpeg.git ffmpeg
+git clone --depth 1 --branch 1.5.0 https://github.com/androidx/media.git media3
+curl -fL -o ndk.zip https://dl.google.com/android/repository/android-ndk-r26b-linux.zip
+unzip -q ndk.zip -d ndk
+cd ~/mw/media3/libraries/decoder_ffmpeg/src/main/jni && ln -s ~/mw/ffmpeg ffmpeg
+./build_ffmpeg.sh ~/mw/media3/libraries/decoder_ffmpeg/src/main ~/mw/ndk/android-ndk-r26b \
+  linux-x86_64 21 ac3 eac3 truehd dca flac alac
+```
+
+El script oficial compila **los cuatro ABIs** y no deja elegir; se deja así porque
+el `x86_64` es el que permite probarlo en el emulador. Luego se copia media3 a
+`C:\media3` (sin `.git` y **sin el enlace `jni/ffmpeg`**, que un enlace de WSL no
+le sirve a Windows: allí se recrea como carpeta real con los `*.h` de ffmpeg y
+`android-libs/`), se pone `local.properties` con `sdk.dir=C:/android-sdk` y:
+
+```bash
+cd /c/media3 && JAVA_HOME="C:\Program Files\Eclipse Adoptium\jdk-17.0.20.101-hotspot" ./gradlew.bat :lib-decoder-ffmpeg:assembleRelease --no-daemon
+cp /c/media3/libraries/decoder_ffmpeg/buildout/outputs/aar/lib-decoder-ffmpeg-release.aar /c/tvwatch/android/app/libs/
+```
+
+Comprobaciones que **no hay que saltarse**, porque el AAR se genera igual de
+grande aunque CMake no haya corrido y entonces no descodifica nada:
+
+```bash
+# los decodificadores tienen que estar DENTRO de la librería
+llvm-nm --defined-only .../android-libs/arm64-v8a/libavcodec.a | grep -oE "ff_[a-z0-9]+_decoder" | sort -u
+# y el .so dentro del APK
+unzip -l MediaWatch-<ver>.apk | grep libffmpegJNI
+# y en el móvil, al reproducir:  logcat | grep -i ffmpeg
+#   -> "DefaultRenderersFactory: Loaded FfmpegAudioRenderer"
+```
+
+`Capacidades.kt` **no** declara esos códecs a mano: se los pregunta a
+`FfmpegLibrary.supportsFormat(...)`, que mira si el decodificador está compilado
+de verdad. Si un día el `.so` no viaja en el APK, la app deja de declararlos sola
+y el servidor vuelve a convertir el audio, en vez de dejarte sin sonido.
 
 **Tele** (empaquetar+firmar+instalar en la misma ejecución; `--network host` obligatorio; perfil `dev` de la imagen; renombrar el `.wgt` porque el espacio de «Media Watch» rompe la instalación):
 
@@ -456,6 +514,40 @@ perfil «Casa» (admin) no tiene PIN y **no puede entrar desde fuera** a propós
   título/barra** en los tres clientes (TV instalada y cerrada; APK **3.7**).
 - Este dosier.
 
+### 21/09 — auditoría completa y mantenimiento al estilo Plex
+- Petición: revisión entera de servidor, APK y app de la tele — bugs, limpieza
+  de código, opciones, y qué más se puede implementar tipo Plex.
+- Tres agentes en paralelo (rutas, scanner/media, Android+Tizen) más revisión
+  propia de `db.ts`/`index.ts` y de `data/server.err` (el log, no solo el código).
+- **8 bugs de servidor corregidos**: 2 duraciones corruptas en la BD (una por
+  desbordamiento de 32 bits); `probe.ts` podía borrar codec/resolución con NULL
+  en un re-sondeo fallido; numeración de reserva de episodios por serie en vez
+  de por temporada; biografía vacía tratada como *falsy* (repreguntaba a TMDb
+  siempre); `fanart.ts` sin timeout (podía colgar toda la pasada) y sin limpiar
+  su temporal; **logout/escanear/aplicar capacidades/parar transcripción
+  fallaban con 400** desde la web (el ayudante `post()` mandaba
+  `Content-Type: application/json` con cuerpo vacío); subtítulo externo sin
+  comprobar el fichero al que pertenece; «parar» en Actividad no cortaba la
+  sesión HLS de ese aparato.
+- Descartada como falsa alarma una supuesta carrera en guardar progreso:
+  `node:sqlite` es síncrono, no hay hueco para que se entrelace sin un `await` real.
+- Queda **un fichero con los timestamps rotos de verdad** (no solo en la BD):
+  `Historias de la cripta` S06E03 (`media_files.id = 2912`), 18 h según el
+  último paquete de ffprobe. Solo se arregla remuxeando el archivo real, así
+  que se dejó pendiente de decisión del usuario.
+- **Mantenimiento nuevo**: copia de seguridad diaria (`VACUUM INTO`, rota a
+  14), limpieza semanal de caché de imágenes (63.613 ficheros, 1,8 GB, sin
+  límite hasta ahora) y de trickplay huérfano, «optimizar BD» (VACUUM) a mano.
+  Todo probado en el servidor real, no solo leído: login, los tres botones, y
+  el servidor siguiendo vivo después de un VACUUM de 8,3 s.
+- Android y Tizen revisados a fondo: **sin bugs ni TODOs pendientes**. Como no
+  cambió nada en su código, no se tocó el APK ni se instaló nada en la tele.
+- Deuda técnica identificada y **dejada sin tocar** por bajo valor frente al
+  riesgo: `if (!user.is_admin)` repetido en ~30 sitios, parseo de `Range`
+  duplicado en `play.ts`/`descargas.ts`.
+- Servidor reiniciado (vigilante) y web reconstruida con todos los cambios;
+  memoria de Claude (`gotchas-tvwatch`, `tvwatch-servidor-media`) actualizada.
+
 ---
 
 ## 6. Git
@@ -511,7 +603,20 @@ Servidor / SQLite
 - Los idiomas de fanart.tv no son fiables: comparar firmas con candidatas
   es/en/neutras antes de sustituir.
 - CLI y servidor a la vez → `database is locked`: `DatabaseSync(..., {timeout: 10000})`.
-- En la web, `request()` sin `Content-Type` → 400 mudo (pasó dos veces).
+- En la web, `request()` sin `Content-Type` → 400 mudo (pasó dos veces, y una
+  tercera dentro del propio ayudante `post()`: mirar `data/server.err`, no solo
+  el código, para encontrar este patrón — el mismo mensaje repetido muchas
+  veces es la pista).
+- Un `COALESCE` que protege una sola columna del `UPDATE` (p. ej. `hdr`) no
+  protege a las demás (`video_codec`, `width`, `height`) si no se repite en cada una.
+- Una cadena vacía guardada a propósito como marca («ya comprobado») es *falsy*
+  en JS: comprobar `!== null`, no la verdad del valor.
+- Una caché con clave por hash de contenido (ruta+mtime+tamaño) no tiene
+  «huérfanos que se puedan enumerar» de forma directa: hay que tocar el
+  `mtime` en cada acierto y purgar por antigüedad, no por referencia.
+- Antes de "arreglar" una carrera reportada en código con `node:sqlite`
+  (`DatabaseSync`, síncrono): comprobar si hay algún `await` real entre las dos
+  operaciones. Sin él, no puede entrelazarse aunque lleguen casi a la vez.
 
 Tele (Tizen / AVPlay)
 - Samsung no tiene Dolby Vision (usa HDR10/HDR10+); 2021 no decodifica DTS/TrueHD/FLAC.
@@ -563,9 +668,12 @@ Herramientas de la sesión
 
 ## 9. Estado actual, pendientes y descartes
 
-**Instalado/entregado a 16/09 noche**: servidor con todo lo anterior en marcha
-(vigilante), web compilada y servida, tele con la última compilación (disco
-quieto encima del título) instalada y cerrada, `MediaWatch-3.7.apk` entregado.
+**Instalado/entregado a 21/09**: servidor con todo lo anterior en marcha
+(vigilante, reiniciado tras la auditoría), web compilada y servida con el
+panel de Mantenimiento, tele con la última compilación (disco quieto encima
+del título) instalada y cerrada, `MediaWatch-3.7.apk` entregado — **sin
+cambios en Android/Tizen esta vuelta**, porque la auditoría no encontró nada
+que corregir en ninguno de los dos.
 
 **Descartado por el usuario**: descargas sin conexión en Android, ventana
 flotante (PiP), «Ver en la tele» dentro de la propia app de la tele, indexar
@@ -573,13 +681,26 @@ frases desde la UI del móvil.
 
 **Sin probar con aparato real**: Chromecast (el emulador no ve ninguno).
 
+**Pendiente de decisión del usuario (21/09)**: `media_files.id = 2912`
+(Historias de la cripta, S06E03) tiene los timestamps internos rotos de
+verdad; solo se arregla remuxeando el fichero real en `E:\`, y eso no se toca
+sin permiso explícito.
+
 **Ideas y cabos sueltos**:
-- Segundo commit con los cambios pendientes.
+- Segundo commit con los cambios pendientes (incluidos los del 21/09: no hay
+  ningún commit hecho esta vuelta, solo se modificaron ficheros en disco).
 - iOS/iPad: sin app nativa; la web como PWA es la vía (Safari sin HEVC por
   pipe en algunos casos; pendiente de evaluar Infuse-like).
 - 23.005 personas sin foto en ninguna fuente.
 - Descargas para la web existen pero no se usan mucho; revisar si se mantienen.
 - Notas OMDb: cuota diaria limitada, se rellena por tandas.
+- Limpieza cosmética identificada y aplazada: `if (!user.is_admin)` repetido
+  en ~30 sitios (un `requireAdmin()` único lo evitaría), parseo de `Range`
+  duplicado entre `play.ts` y `descargas.ts`.
+- Ideas de valor para Android/Tizen sin implementar (no pedidas explícitamente,
+  a valorar): notificaciones de episodios nuevos, control parental real por
+  clasificación de edad (hoy solo hay PIN de acceso a perfil, no filtrado de
+  contenido).
 
 ---
 

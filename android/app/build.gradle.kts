@@ -24,13 +24,18 @@ android {
      * `versionCode` sube siempre en uno: es lo que Android mira para instalar
      * encima. El nombre se ve al pie del menú lateral.
      */
-    versionCode = 10
-    versionName = "3.7"
+    versionCode = 11
+    versionName = "3.8"
   }
 
   buildFeatures { compose = true }
 
   buildTypes {
+    debug {
+      // Los cuatro ABIs: el emulador de este equipo es x86_64, y sin esa
+      // librería no se puede probar aquí lo que se le entrega al móvil.
+      ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") }
+    }
     release {
       isMinifyEnabled = false
       /*
@@ -39,6 +44,8 @@ android {
        * que una versión nueva se instala encima sin perder la sesión.
        */
       signingConfig = signingConfigs.getByName("debug")
+      // Solo lo que lleva el móvil: cada ABI de más son 1,2 MB de librería.
+      ndk { abiFilters += listOf("arm64-v8a") }
     }
   }
 
@@ -83,6 +90,21 @@ dependencies {
   // Sesión de medios: controles en la pantalla de bloqueo y en la notificación,
   // y que siga sonando con la pantalla apagada.
   implementation("androidx.media3:media3-session:1.5.0")
+
+  /*
+   * Decodificadores propios de AC3, DD+, TrueHD y DTS.
+   *
+   * Muchos móviles no traen licencia Dolby y su `MediaCodecList` no declara
+   * ninguno de los dos; entonces el servidor tenía que convertir el audio a
+   * AAC estéreo por una tubería de ffmpeg, y con ella los saltos costaban una
+   * reapertura. Con esto el aparato lo descodifica solo y el fichero va tal
+   * cual, que es lo que hacen Plex o VLC.
+   *
+   * No está en Maven: es un AAR compilado a mano desde media3 1.5.0 con
+   * FFmpeg 6.0.2 (`ac3 eac3 truehd dca flac alac`, solo audio). Si algún día
+   * hay que rehacerlo, está en MEDIAWATCH-PROYECTO.md.
+   */
+  implementation(files("libs/lib-decoder-ffmpeg-release.aar"))
 
   implementation("com.squareup.okhttp3:okhttp:4.12.0")
   implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")

@@ -2,6 +2,8 @@ package casa.tvwatch.datos
 
 import android.media.MediaCodecInfo
 import android.media.MediaCodecList
+import androidx.media3.common.MimeTypes
+import androidx.media3.decoder.ffmpeg.FfmpegLibrary
 
 /**
  * Qué sabe decodificar este aparato, preguntándoselo a él.
@@ -137,7 +139,37 @@ object Capacidades {
     // del todo, al menos eso se puede dar por hecho y algo sonará.
     encontrados += "aac"
     encontrados += "mp3"
+    encontrados += deLaExtension()
     return encontrados
+  }
+
+  /**
+   * Lo que descodifica la aplicación por su cuenta, además del sistema.
+   *
+   * El AAR de FFmpeg trae AC3, DD+, TrueHD y DTS, que es justo lo que muchos
+   * móviles no traen por no pagar la licencia. `MediaCodecList` no los ve —no
+   * son del sistema—, así que hay que añadirlos aquí; pero **no a mano**: se
+   * le pregunta a la propia librería, que mira si el decodificador está de
+   * verdad compilado dentro. Si un día el `.so` no viajara en el APK,
+   * `isAvailable()` da falso, el servidor deja de creer que este aparato lee
+   * DD+ y vuelve a convertir el audio. Vale más eso que quedarse en silencio.
+   */
+  private fun deLaExtension(): Set<String> {
+    val nuestros = mapOf(
+      MimeTypes.AUDIO_AC3 to "ac3",
+      MimeTypes.AUDIO_E_AC3 to "eac3",
+      MimeTypes.AUDIO_TRUEHD to "truehd",
+      MimeTypes.AUDIO_DTS to "dts",
+      MimeTypes.AUDIO_FLAC to "flac",
+      MimeTypes.AUDIO_ALAC to "alac",
+    )
+    return try {
+      if (!FfmpegLibrary.isAvailable()) emptySet()
+      else nuestros.filterKeys { FfmpegLibrary.supportsFormat(it) }.values.toSet()
+    } catch (e: Throwable) {
+      // Sin la librería (o sin el .so de este ABI) no se declara nada.
+      emptySet()
+    }
   }
 
   val hevc: Boolean get() = "hevc" in soportados

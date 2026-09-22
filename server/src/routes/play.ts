@@ -1,5 +1,5 @@
 import { comenzar, nombreCliente } from '../media/historial.ts';
-import { audioEnvolvente, cerrarSesiones, escalera, listaDeCalidad, listaMaestra, segmento, CALIDADES } from '../media/hls.ts';
+import { audioEnvolvente, cerrarSesiones, cerrarSesionesDe, escalera, listaDeCalidad, listaMaestra, segmento, CALIDADES } from '../media/hls.ts';
 import { spawn } from 'node:child_process';
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
@@ -52,9 +52,10 @@ function rastrear(req: FastifyRequest, reply: { raw: ServerResponse }) {
   reply.raw.on('finish', soltar);
 }
 
-/** Cortar todo lo que un aparato tenga abierto: tuberías de ffmpeg y flujos en crudo. */
+/** Cortar todo lo que un aparato tenga abierto: tuberías de ffmpeg, HLS y flujos en crudo. */
 export function cortarAparato(sesion: string) {
   for (const s of sessions.values()) if (s.sesion === sesion) stopSession(s.id);
+  cerrarSesionesDe(sesion);
   for (const r of flujosCrudos.get(sesion) ?? []) r.destroy();
   flujosCrudos.delete(sesion);
 }
@@ -341,7 +342,7 @@ export default async function playRoutes(app: FastifyInstance) {
         '-f', 'matroska', 'pipe:1',
       ];
       const proc = spawn(config.ffmpeg, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
-      proc.stderr.on('data', (d) => console.error('[remux-audio]', String(d).trim().slice(0, 200)));
+      proc.stderr.on('data', (d) => console.error('[remux-audio]', String(d).trim()));
       /*
  * Un `spawn` que no arranca —ffmpeg movido, bloqueado por el antivirus, disco
  * sin responder— emite «error» en el proceso hijo, y un «error» sin nadie
@@ -354,6 +355,38 @@ export default async function playRoutes(app: FastifyInstance) {
         .header('Content-Type', 'video/x-matroska')
         .header('Cache-Control', 'no-store')
         .header('X-TvWatch-Mode', modoAudio === 'normal' ? 'remux-audio' : 'remux-audio-' + modoAudio)
+        .send(proc.stdout);
+    }
+
+    /*
+     * Pista de audio elegida que no es la primera del contenedor.
+     *
+     * AVPlay arranca siempre con la primera pista, y cambiarla después con
+     * `setSelectTrack` deja el audio descuadrado del vídeo (visto en «¡Rompe
+     * Ralph!»: Atmos inglés primero, español AC3 segundo). Jellyfin en Tizen
+     * hace lo mismo que aquí: no fiarse del cambio nativo y servir el fichero
+     * con esa pista sola, copiada tal cual —ni el vídeo ni el Atmos se
+     * tocan—. Cuesta un ffmpeg que solo copia, como al saltar.
+     */
+    const pistaNoPrimera = raw && q.audio !== undefined && !!pistaElegida && pistaElegida.streamIndex !== info.audio[0]?.streamIndex;
+    if (pistaNoPrimera && audioDelayMs === 0) {
+      const args = [
+        '-hide_banner', '-loglevel', 'error', '-nostdin',
+        ...(start > 0 ? ['-ss', String(start)] : []),
+        '-i', row.path,
+        '-map', '0:v:0', '-map', `0:${audioIndex}`, '-map', '0:s?',
+        '-c', 'copy',
+        '-max_muxing_queue_size', '4096',
+        '-f', 'matroska', 'pipe:1',
+      ];
+      const proc = spawn(config.ffmpeg, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+      proc.stderr.on('data', (d) => console.error('[copia-pista]', String(d).trim()));
+      proc.on('error', (e) => console.error('[copia-pista] no arrancó ffmpeg:', e.message));
+      req.raw.on('close', () => proc.kill('SIGKILL'));
+      return reply
+        .header('Content-Type', 'video/x-matroska')
+        .header('Cache-Control', 'no-store')
+        .header('X-TvWatch-Mode', 'copia-pista')
         .send(proc.stdout);
     }
 
@@ -384,7 +417,7 @@ export default async function playRoutes(app: FastifyInstance) {
         '-f', 'matroska', 'pipe:1',
       ];
       const proc = spawn(config.ffmpeg, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
-      proc.stderr.on('data', (d) => console.error('[copia-desde]', String(d).trim().slice(0, 200)));
+      proc.stderr.on('data', (d) => console.error('[copia-desde]', String(d).trim()));
       proc.on('error', (e) => console.error('[copia-desde] no arrancó ffmpeg:', e.message));
       req.raw.on('close', () => proc.kill('SIGKILL'));
       return reply
@@ -523,6 +556,7 @@ export default async function playRoutes(app: FastifyInstance) {
         audioOptions: opcionesAudio(q, info.audio.find((a) => a.streamIndex === audioIndex)?.channels ?? 2),
         audioDelayMs: Math.max(-10_000, Math.min(10_000, Number(q.audiodelay ?? 0))),
         surround: q.surround === '1',
+        dispositivo: sesionDe(req),
       });
       return reply.header('Content-Type', 'video/mp2t').header('Cache-Control', 'no-store').send(datos);
     } catch (err) {
@@ -544,7 +578,10 @@ export default async function playRoutes(app: FastifyInstance) {
     reply.header('Content-Type', 'text/vtt; charset=utf-8').header('Cache-Control', 'public, max-age=86400');
 
     if (id.startsWith('external-')) {
-      const row = db.prepare('SELECT external FROM sub_tracks WHERE id = ?').get(Number(id.slice(9))) as { external: string } | undefined;
+      // Sin el `file_id = ?`, adivinar el id (autoincremental y pequeño) de la
+      // pista de subtítulo externo de OTRO fichero la servía igual aunque el
+      // fileId de la URL fuera distinto.
+      const row = db.prepare('SELECT external FROM sub_tracks WHERE id = ? AND file_id = ?').get(Number(id.slice(9)), Number(fileId)) as { external: string } | undefined;
       if (!row?.external) return reply.code(404).send('');
       const text = decodeText(readFileSync(row.external));
       if (row.external.toLowerCase().endsWith('.vtt')) return reply.send(desplazarVtt(text, desde));
