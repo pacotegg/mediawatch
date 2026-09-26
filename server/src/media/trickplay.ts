@@ -1,5 +1,5 @@
 import { execFile, spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { DATA_DIR, config } from '../config.ts';
@@ -329,4 +329,40 @@ export function ensure(fileId: number): TrickplayManifest | null {
   if (cached) return cached;
   if (!running.has(fileId)) generate(fileId).catch((err) => console.error(`[trickplay ${fileId}]`, err.message));
   return null;
+}
+
+/**
+ * Borra carpetas de miniaturas cuyo fichero ya no existe en la base.
+ *
+ * El escáner retira de `media_files` los ficheros que desaparecen del disco,
+ * pero nunca tocaba `data/trickplay/<id>`: esas carpetas (varios MB cada una)
+ * se quedaban para siempre. Al estilo del «vaciar papelera» de Plex; se llama
+ * después de cada escaneo, cuando ya se sabe qué ids siguen vivos.
+ */
+export async function limpiarHuerfanas(): Promise<number> {
+  let borradas = 0;
+  let nombres: string[];
+  try {
+    nombres = readdirSync(ROOT);
+  } catch {
+    return 0;
+  }
+  const vivos = new Set((db.prepare('SELECT id FROM media_files').all() as { id: number }[]).map((r) => r.id));
+  // Por lotes igual que la caché de imágenes: el borrado recursivo de una
+  // carpeta huérfana es E/S de verdad, no una comparación en memoria.
+  const LOTE = 200;
+  for (let inicio = 0; inicio < nombres.length; inicio += LOTE) {
+    for (const nombre of nombres.slice(inicio, inicio + LOTE)) {
+      const id = Number(nombre);
+      if (!Number.isInteger(id) || vivos.has(id)) continue;
+      try {
+        rmSync(join(ROOT, nombre), { recursive: true, force: true });
+        borradas++;
+      } catch {
+        /* se reintenta en la próxima pasada */
+      }
+    }
+    if (inicio + LOTE < nombres.length) await new Promise((r) => setImmediate(r));
+  }
+  return borradas;
 }

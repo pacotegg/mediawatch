@@ -450,6 +450,73 @@ function PinTab() {
   );
 }
 
+function tamano(bytes: number) {
+  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(2)} GB`;
+  if (bytes >= 1e6) return `${Math.round(bytes / 1e6)} MB`;
+  return `${bytes} B`;
+}
+
+function MantenimientoPanel() {
+  const queryClient = useQueryClient();
+  const [mensaje, setMensaje] = useState('');
+  const { data: estado } = useQuery({ queryKey: ['mantenimiento'], queryFn: api.mantenimientoEstado });
+
+  const limpiar = useMutation({
+    mutationFn: api.mantenimientoLimpiar,
+    onSuccess: (r) => {
+      setMensaje(`Retirados ${r.trickplayHuerfano} carpetas de miniaturas huérfanas y ${r.cacheImagenes} imágenes de caché sin usar.`);
+      queryClient.invalidateQueries({ queryKey: ['mantenimiento'] });
+    },
+  });
+
+  const optimizar = useMutation({
+    mutationFn: api.mantenimientoOptimizar,
+    onSuccess: (r) => {
+      setMensaje(`Base de datos optimizada: ${tamano(r.antes)} → ${tamano(r.despues)}.`);
+      queryClient.invalidateQueries({ queryKey: ['mantenimiento'] });
+    },
+  });
+
+  const copia = useMutation({
+    mutationFn: api.mantenimientoCopia,
+    onSuccess: () => {
+      setMensaje('Copia de seguridad guardada en data/copias.');
+      queryClient.invalidateQueries({ queryKey: ['mantenimiento'] });
+    },
+  });
+
+  const trabajando = limpiar.isPending || optimizar.isPending || copia.isPending;
+
+  return (
+    <Panel
+      title="Mantenimiento"
+      subtitle="Miniaturas huérfanas, caché sin usar y copias de la base de datos se retiran solas cada semana; aquí se puede forzar ahora mismo."
+    >
+      <div className="grid gap-2 text-[13px] sm:grid-cols-3">
+        <div><span className="text-mist-600">Base de datos: </span>{estado ? tamano(estado.baseDeDatos.bytes) : '—'}</div>
+        <div><span className="text-mist-600">Caché de imágenes: </span>{estado ? `${tamano(estado.cacheImagenes.bytes)} (${estado.cacheImagenes.ficheros})` : '—'}</div>
+        <div><span className="text-mist-600">Miniaturas: </span>{estado ? `${tamano(estado.trickplay.bytes)} (${estado.trickplay.ficheros})` : '—'}</div>
+      </div>
+      <p className="text-[12px] text-mist-600">
+        Copias de seguridad: {estado?.copias.total ?? 0} guardadas
+        {estado?.copias.ultima ? `, la última ${estado.copias.ultima.replace(/^tvwatch-|\.db$/g, '')}` : ''}.
+      </p>
+      <div className="flex flex-wrap gap-2 pt-1">
+        <Button variant="ghost" onClick={() => limpiar.mutate()} disabled={trabajando}>
+          {limpiar.isPending ? 'Limpiando…' : 'Vaciar caché y huérfanos'}
+        </Button>
+        <Button variant="ghost" onClick={() => copia.mutate()} disabled={trabajando}>
+          {copia.isPending ? 'Guardando…' : 'Copia de seguridad ahora'}
+        </Button>
+        <Button variant="ghost" onClick={() => optimizar.mutate()} disabled={trabajando}>
+          {optimizar.isPending ? 'Optimizando (puede tardar)…' : 'Optimizar base de datos'}
+        </Button>
+      </div>
+      {mensaje && <p className="text-[12.5px] text-mist-400">{mensaje}</p>}
+    </Panel>
+  );
+}
+
 function ServerTab() {
   const queryClient = useQueryClient();
   const { data: settings } = useQuery({ queryKey: ['server-settings'], queryFn: api.serverSettings });
@@ -547,6 +614,8 @@ function ServerTab() {
           <span className="font-mono text-[12px] text-mist-500">{settings?.transcodeDir}</span>
         </Field>
       </Panel>
+
+      <MantenimientoPanel />
 
       {message && <p className="text-center text-sm text-mist-400">{message}</p>}
     </div>

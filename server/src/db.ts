@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readdirSync, statSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
+import { Worker } from 'node:worker_threads';
 import { DATA_DIR } from './config.ts';
 
 mkdirSync(DATA_DIR, { recursive: true });
@@ -313,6 +314,10 @@ anadirColumna('items', 'discart', 'TEXT');
 anadirColumna('items', 'arte_revisado', 'TEXT');
 // Cuándo se casó el reparto de este título con TMDb (fotos e ids de personas).
 anadirColumna('items', 'personas_revisadas', 'TEXT');
+// Segunda pasada de personas: el IMDb que da TMDb (para confirmar en TVDB) y el
+// id de TVDB encontrado (0 = buscado y no está), ver scanner/detalles-personas.ts.
+anadirColumna('people_details', 'imdb_id', 'TEXT');
+anadirColumna('people_details', 'tvdb_id', 'INTEGER');
 
 // Cuando y desde donde se uso cada sesion, para poder caducarlas y para que se
 // vea que dispositivos tienen acceso.
@@ -364,5 +369,90 @@ anadirColumna('episodes', 'absolute', 'INTEGER');
  * respeta esos y sigue actualizando el resto.
  */
 anadirColumna('items', 'arte_fijado', 'TEXT');
+// Cuándo cambió por última vez alguna imagen (a mano o por TMDb). El fichero
+// en disco tiene siempre el mismo nombre (`poster.jpg`…), así que la URL con
+// la que el cliente pide la imagen nunca cambia; sin esta marca, el navegador
+// seguía enseñando la carátula vieja de su propia caché aunque el servidor ya
+// tuviera otra: elegir una imagen distinta «no cambiaba nada» en pantalla.
+anadirColumna('items', 'arte_actualizado', 'TEXT');
 
 prepararBusquedaDePersonas();
+
+const COPIAS_DIR = join(DATA_DIR, 'copias');
+
+/**
+ * Copia de seguridad consistente con `VACUUM INTO`.
+ *
+ * No es un simple `copyFile`: la base va en modo WAL, así que el fichero
+ * `.db` solo, sin el `-wal`, puede no tener los últimos cambios. `VACUUM INTO`
+ * escribe una copia completa y coherente en un solo paso. Conserva las 14 más
+ * recientes, al estilo de las copias rotadas de Plex.
+ *
+ * Sigue siendo síncrona y bloqueante —medido: ~466 ms sobre 168 MB—, así que
+ * quien la llama en el servidor real usa `backupBaseDeDatosEnWorker()`, más
+ * abajo, para no congelar el proceso mientras corre. Esta función tal cual
+ * sigue sirviendo para el CLI y para dentro del propio worker.
+ */
+export function backupBaseDeDatos(): string {
+  mkdirSync(COPIAS_DIR, { recursive: true });
+  const nombre = `tvwatch-${new Date().toISOString().replace(/T/, '-').replace(/:/g, '-').replace(/\..+/, '')}.db`;
+  const destino = join(COPIAS_DIR, nombre);
+  db.exec(`VACUUM INTO '${destino.replace(/'/g, "''")}'`);
+
+  const copias = readdirSync(COPIAS_DIR).filter((f) => f.startsWith('tvwatch-') && f.endsWith('.db')).sort();
+  while (copias.length > 14) unlinkSync(join(COPIAS_DIR, copias.shift()!));
+
+  return destino;
+}
+
+/**
+ * `VACUUM` de verdad: reescribe el fichero entero para recuperar el espacio
+ * de filas borradas (p. ej. los duplicados de `progress` de antes) y
+ * desfragmentar. Medido sobre 168 MB: ~1,3 s bloqueado, de un tirón —el
+ * mismo tipo de fallo que el escaneo completo (ver [[gotchas-tvwatch]] o
+ * `MEDIAWATCH-PROYECTO.md`), solo que más corto. Se llama a mano desde
+ * Ajustes, nunca en un temporizador, pero eso no evita el bloqueo: usar
+ * `optimizarBaseDeDatosEnWorker()` desde el servidor real.
+ */
+export function optimizarBaseDeDatos(): void {
+  db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+  db.exec('ANALYZE');
+  db.exec('VACUUM');
+}
+
+/*
+ * Las dos de arriba, en su propio hilo (`db-worker.ts`) — mismo patrón que
+ * `scanner/scan.ts` → `scanAllEnWorker`, y por el mismo motivo: pase lo que
+ * pase dentro, el hilo del servidor HTTP no se entera.
+ */
+function enWorkerDeBaseDeDatos(accion: 'optimizar' | 'backup'): Promise<string | undefined> {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL('./db-worker.ts', import.meta.url), { workerData: { accion } });
+    let asentado = false;
+    worker.on('message', (msg: { ok: boolean; destino?: string; error?: string }) => {
+      asentado = true;
+      if (msg.ok) resolve(msg.destino);
+      else reject(new Error(msg.error));
+    });
+    worker.on('error', (err) => { if (!asentado) reject(err); });
+    worker.on('exit', (code) => {
+      if (!asentado) reject(new Error(`El worker de base de datos terminó sin avisar (código ${code})`));
+    });
+  });
+}
+
+export function optimizarBaseDeDatosEnWorker(): Promise<void> {
+  return enWorkerDeBaseDeDatos('optimizar').then(() => undefined);
+}
+
+export function backupBaseDeDatosEnWorker(): Promise<string> {
+  return enWorkerDeBaseDeDatos('backup').then((destino) => destino!);
+}
+
+export function tamanoBaseDeDatos(): number {
+  try {
+    return statSync(join(DATA_DIR, 'tvwatch.db')).size;
+  } catch {
+    return 0;
+  }
+}
