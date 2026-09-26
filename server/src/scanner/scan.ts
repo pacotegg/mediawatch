@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { readdirSync, statSync } from 'node:fs';
-import { basename, dirname, extname, join } from 'node:path';
+import { basename, extname, join } from 'node:path';
 import { Worker } from 'node:worker_threads';
 import { db, normalize } from '../db.ts';
 import { config, type LibraryConfig } from '../config.ts';
@@ -591,46 +591,6 @@ export function rescanItem(itemId: number): boolean {
       : scanShowFolder(row.library_id, row.folder, files, now);
     db.exec('COMMIT');
     return count > 0;
-  } catch (err) {
-    db.exec('ROLLBACK');
-    throw err;
-  }
-}
-
-/**
- * Escanea una sola carpeta —una película o el raíz de una serie—, sin
- * recorrer la biblioteca entera. La usa la vigilancia de disco (`watch.ts`):
- * cuando el pipeline o una copia manual deja ficheros nuevos en `E:\`, esto
- * evita esperar al escaneo diario o pulsar «Actualizar biblioteca» a mano.
- *
- * Null si la carpeta no es hija directa de ninguna biblioteca configurada
- * (una temporada, un fichero suelto, algo fuera de `E:\`) o si ya no existe
- * —pudo borrarse entre el aviso del sistema de ficheros y que le tocara el turno—.
- */
-export function scanFolder(folderPath: string): { library: string; titulo: string; count: number } | null {
-  const lib = config.libraries.find((l) => dirname(folderPath).toLowerCase() === l.path.toLowerCase());
-  if (!lib) return null;
-
-  // Mismas reglas que el escaneo completo aplica a las carpetas de primer
-  // nivel: sin esto, un aviso del sistema de ficheros sobre `.actors` o una
-  // carpeta de staging con `_` delante (a propósito, para que el escaneo
-  // completo la ignore) se indexaría igual por este otro camino.
-  const nombre = basename(folderPath).toLowerCase();
-  if (SKIP_DIRS.has(nombre) || nombre.startsWith('_')) return null;
-
-  const files = listDir(folderPath);
-  if (files.length === 0) return null;
-
-  const now = new Date().toISOString();
-  const row = stmt.library.get(lib.name, lib.path, lib.kind) as { id: number };
-
-  db.exec('BEGIN');
-  try {
-    const count = lib.kind === 'movie'
-      ? scanMovieFolder(row.id, folderPath, files, now)
-      : scanShowFolder(row.id, folderPath, files, now);
-    db.exec('COMMIT');
-    return { library: lib.name, titulo: basename(folderPath), count };
   } catch (err) {
     db.exec('ROLLBACK');
     throw err;
