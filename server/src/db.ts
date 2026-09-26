@@ -76,6 +76,19 @@ CREATE TABLE IF NOT EXISTS item_ratings (
   PRIMARY KEY (item_id, fuente)
 );
 
+-- Generos de IMDb (via OMDb), ya traducidos al vocabulario de la biblioteca.
+-- Si una pelicula tiene fila aqui, el escaner usa ESTOS en vez de los del
+-- .nfo: decision del usuario el 26/09/2026. TMDb reparte generos de mas
+-- (Carrie o Arrastrame al infierno salian tambien en Thriller) e IMDb da solo
+-- los que definen la pelicula. Indexado por el id de IMDb y NO por item_id:
+-- los ids de la base se renumeran, los de IMDb no.
+CREATE TABLE IF NOT EXISTS imdb_generos (
+  imdb_id     TEXT PRIMARY KEY,
+  generos     TEXT NOT NULL,
+  crudos      TEXT,
+  actualizado TEXT NOT NULL
+);
+
 -- Las pistas no tenian indice por fichero: contar los ficheros sin subtitulos
 -- recorria las 16.370 filas de sub_tracks una vez por cada uno de los 5.566
 -- ficheros. Medido: 1.487 ms de los 2.280 que tardaba la pagina de

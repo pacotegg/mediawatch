@@ -249,6 +249,7 @@ const stmt = {
   genre: db.prepare('INSERT INTO genres (name) VALUES (?) ON CONFLICT(name) DO UPDATE SET name=excluded.name RETURNING id'),
   linkGenre: db.prepare('INSERT OR IGNORE INTO item_genres (item_id, genre_id) VALUES (?,?)'),
   clearGenres: db.prepare('DELETE FROM item_genres WHERE item_id = ?'),
+  imdbGeneros: db.prepare('SELECT generos FROM imdb_generos WHERE imdb_id = ?'),
   clearRatings: db.prepare("DELETE FROM item_ratings WHERE item_id = ? AND origen = 'nfo'"),
   addRating: db.prepare("INSERT OR REPLACE INTO item_ratings (item_id, fuente, valor, maximo, votos, origen) VALUES (?,?,?,?,?,'nfo')"),
   // `search_name` es el nombre sin tildes: es lo que permite encontrar a
@@ -316,7 +317,21 @@ function saveGenresAndPeople(itemId: number, nfo: NfoData | null, thumbs: Map<st
   stmt.clearGenres.run(itemId);
   stmt.clearPeople.run(itemId);
   if (!nfo) return;
-  for (const g of nfo.genres) {
+  /*
+   * Generos de IMDb si los hay; si no, los del .nfo (que son de TMDb). Decision
+   * del usuario el 26/09/2026: TMDb reparte generos de mas -Carrie o Arrastrame
+   * al infierno salian tambien en Thriller- e IMDb da solo los que definen la
+   * pelicula. Se buscan por el id de IMDb del .nfo, que no cambia, y NUNCA
+   * dejan una pelicula sin generos: si IMDb solo trae generos sin equivalente
+   * aqui (Biography, Sport...), la fila no existe o viene vacia y mandan los del
+   * .nfo. Tabla imdb_generos en db.ts; la rellena
+   * server/scripts/cargar_generos_imdb.py.
+   */
+  const deImdb = nfo.imdbId
+    ? ((stmt.imdbGeneros.get(nfo.imdbId) as { generos: string } | undefined)?.generos ?? '')
+        .split('|').filter(Boolean)
+    : [];
+  for (const g of deImdb.length > 0 ? deImdb : nfo.genres) {
     const row = stmt.genre.get(g) as { id: number };
     stmt.linkGenre.run(itemId, row.id);
   }
