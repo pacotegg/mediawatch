@@ -262,9 +262,27 @@ function resumen() {
   if (!existsSync(RESULTADOS)) return;
   const filas = readFileSync(RESULTADOS, 'utf8').split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
   const conDato = filas.filter((f: any) => typeof f.desfaseSeg === 'number');
-  const coinciden = conDato.filter((f: any) => Math.abs(f.desfaseSeg) <= 0.5 && f.mad <= 1);
-  const leve = conDato.filter((f: any) => Math.abs(f.desfaseSeg) > 0.5 && Math.abs(f.desfaseSeg) <= 2 && f.mad <= 1);
-  const difieren = conDato.filter((f: any) => Math.abs(f.desfaseSeg) > 2 && f.mad <= 1);
+  /*
+   * `mad <= 1` dice que las diferencias son consistentes, pero no cuántas hay.
+   * Sin un mínimo de muestras, un par de pistas **forzadas** —11 cues, 39 s de
+   * texto en una película de 104 minutos— salía como el único «DIFIEREN de
+   * verdad» de 1.661 comparaciones, con la misma autoridad que uno de 354
+   * muestras. Se comprobó el 26/09/2026 midiendo ese caso contra el audio:
+   * los subtítulos completos de esa película estaban perfectos (+0,25 s el
+   * externo, +0,35 s el incrustado) y el forzado no se puede adjudicar porque
+   * no hay material. Con este mínimo, los «difieren» de toda la biblioteca
+   * pasan de 1 a 0.
+   *
+   * Un estadístico limpio sobre pocos datos parece la evidencia más fuerte y
+   * suele ser la más débil.
+   */
+  const MUESTRAS_MINIMAS = 30;
+  const fiable = (f: any) => f.mad <= 1 && (f.muestras ?? 0) >= MUESTRAS_MINIMAS;
+
+  const coinciden = conDato.filter((f: any) => Math.abs(f.desfaseSeg) <= 0.5 && fiable(f));
+  const leve = conDato.filter((f: any) => Math.abs(f.desfaseSeg) > 0.5 && Math.abs(f.desfaseSeg) <= 2 && fiable(f));
+  const difieren = conDato.filter((f: any) => Math.abs(f.desfaseSeg) > 2 && fiable(f));
+  const pocasMuestras = conDato.filter((f: any) => f.mad <= 1 && (f.muestras ?? 0) < MUESTRAS_MINIMAS);
   const dudosos = conDato.filter((f: any) => f.mad > 1);
   const errores = filas.filter((f: any) => f.error);
 
@@ -274,6 +292,7 @@ function resumen() {
   console.log(`  diferencia leve (<=2 s):  ${leve.length}`);
   console.log(`  DIFIEREN (>2 s):          ${difieren.length}  -> aquí hay uno malo`);
   console.log(`  dudosos (no encajan):     ${dudosos.length}  -> contenidos distintos, la mediana no vale`);
+  console.log(`  pocas muestras (<${MUESTRAS_MINIMAS}):      ${pocasMuestras.length}  -> casi siempre pistas forzadas: no concluyen nada`);
   console.log(`errores: ${errores.length}`);
   console.log(`\nDetalle por fichero en ${RESULTADOS}`);
 }
