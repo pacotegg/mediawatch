@@ -17,7 +17,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -35,11 +37,15 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Path
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -72,7 +78,9 @@ import androidx.media3.session.SessionToken
 import casa.tvwatch.BotonDeCast
 import casa.tvwatch.ReproduccionService
 import com.google.common.util.concurrent.MoreExecutors
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import casa.tvwatch.datos.Ajustes
 import casa.tvwatch.datos.Calidad
 import casa.tvwatch.datos.Servidor
 import casa.tvwatch.datos.Api
@@ -189,6 +197,8 @@ private fun Reproduciendo(
    * episodio» y al acabar se encadena solo, como en cualquier plataforma.
    */
   var siguiente by remember(fileId) { mutableStateOf<Episodio?>(null) }
+  /** Y el de antes, para el botón de «anterior» de los controles. */
+  var anterior by remember(fileId) { mutableStateOf<Episodio?>(null) }
   /** Si el título tiene disco (la carátula redonda), para enseñarlo en la pausa. */
   var tieneDisco by remember(itemId) { mutableStateOf(Cache.fichaGuardada(itemId)?.tieneDisco == 1) }
   LaunchedEffect(fileId) {
@@ -198,8 +208,11 @@ private fun Reproduciendo(
       if (episodioId == null) return@LaunchedEffect
       val orden = ficha.episodes.sortedWith(compareBy({ it.season }, { it.episode }))
       val i = orden.indexOfFirst { it.id == episodioId }
-      if (i >= 0) siguiente = orden.drop(i + 1).firstOrNull { it.ficheroId != null }
-    } catch (e: Exception) { /* sin siguiente ni disco, y ya */ }
+      if (i >= 0) {
+        siguiente = orden.drop(i + 1).firstOrNull { it.ficheroId != null }
+        anterior = orden.take(i).lastOrNull { it.ficheroId != null }
+      }
+    } catch (e: Exception) { /* sin episodios vecinos ni disco, y ya */ }
   }
   /** Segundos que faltan para encadenar; nulo mientras no ha terminado. */
   var cuentaAtras by remember(fileId) { mutableStateOf<Int?>(null) }
@@ -208,6 +221,13 @@ private fun Reproduciendo(
   var fallo by remember(fileId) { mutableStateOf("") }
   var pistaAudio by remember(fileId) { mutableStateOf<Int?>(null) }
   var menuAbierto by remember { mutableStateOf(false) }
+  /*
+   * Cómo encaja el vídeo. Sin clave en el `remember` y guardado en Ajustes:
+   * es una manía de la persona, no de la película. Quien elige «rellenar»
+   * para quitarse las bandas negras lo quiere en la siguiente también, y en
+   * el episodio que encadena detrás.
+   */
+  var encaje by remember { mutableStateOf(Encaje.guardado()) }
   var tramoALaVista by remember { mutableStateOf<RangoSalto?>(null) }
   var controlesVisibles by remember { mutableStateOf(true) }
   /** Cada toque en los controles vuelve a contar los 5 s antes de esconderlos. */
@@ -221,6 +241,16 @@ private fun Reproduciendo(
 
   fun tocar() { ultimoToque = System.currentTimeMillis(); controlesVisibles = true }
   val tramosSaltados = remember(fileId) { mutableSetOf<String>() }
+
+  /*
+   * Desfase de subtítulos, en milisegundos y con signo. Lo aplica el servidor
+   * al generar el VTT, así que va en la URL: cambiarlo obliga a rehacer el
+   * `MediaItem`, igual que cambiar de calidad. Por eso no se recarga en cada
+   * pulsación sino cuando se deja de tocar (ver el `LaunchedEffect` de más
+   * abajo). Es por fichero, no una manía de la persona como el encaje: un
+   * `.srt` va corrido o no va corrido.
+   */
+  var retardoSubsMs by remember(fileId) { mutableStateOf(0) }
 
   /** Con el audio o el vídeo convertidos el flujo no admite rangos: buscar es reabrir. */
   var porTuberia by remember(fileId) { mutableStateOf(false) }
@@ -254,7 +284,7 @@ private fun Reproduciendo(
       .filter { !videoEnCrudo || it.source == "external" }
       .map { st ->
         val desde = if (porTuberia) desdeDeLaTuberia.toInt() else 0
-        MediaItem.SubtitleConfiguration.Builder(Uri.parse(Api.urlDeSubtitulo(fileId, st.id, desde)))
+        MediaItem.SubtitleConfiguration.Builder(Uri.parse(Api.urlDeSubtitulo(fileId, st.id, desde, retardoSubsMs)))
           .setMimeType(MimeTypes.TEXT_VTT)
           .setLanguage(st.language)
           .setLabel(idiomaLegible(st.language) + (if (st.forced) " (forzados)" else "") + (if (st.source == "external") " · fichero" else ""))
@@ -337,9 +367,22 @@ private fun Reproduciendo(
 
       desdeDeLaTuberia = desde
       val url = Api.urlDeFlujo(fileId, elegida?.id, if (porTuberia) desde else 0.0, videoEnCrudo, sinHevc, calidad)
-      reproductor.setMediaItem(elemento(url))
+      /*
+       * «Reanudar» arrancaba siempre desde el principio. Causa: `seekTo()`
+       * justo después de `prepare()` compite con el propio `MatroskaExtractor`,
+       * que en cuanto ve el primer Cluster salta él solo al final del fichero
+       * a por el `Cues` y vuelve —el mismo mecanismo de MEDIAWATCH-PROYECTO.md
+       * §4—; nuestro salto llegaba antes de que hubiera un mapa de búsqueda de
+       * verdad y se perdía. `setMediaItem(item, posición)` es la forma oficial
+       * de decir dónde empezar: el reproductor la incorpora al preparar el
+       * período, no como una corrección a destiempo.
+       */
+      if (!porTuberia && desde > 1) {
+        reproductor.setMediaItem(elemento(url), (desde * 1000).toLong())
+      } else {
+        reproductor.setMediaItem(elemento(url))
+      }
       reproductor.prepare()
-      if (!porTuberia && desde > 1) reproductor.seekTo((desde * 1000).toLong())
       reproductor.playWhenReady = true
     } catch (e: Exception) {
       fallo = e.message ?: "No se pudo empezar."
@@ -347,6 +390,49 @@ private fun Reproduciendo(
   }
 
   LaunchedEffect(fileId) { cargar(desdeSegundos) }
+
+  /*
+   * Distingue «el usuario ha movido el desfase» de «acabo de abrir la
+   * película» o «he leído el desfase guardado». Sin esto, el efecto de más
+   * abajo recargaría la película para dejarla como ya estaba.
+   */
+  var primeraPasada by remember(fileId) { mutableStateOf(true) }
+
+  /*
+   * El desfase que se dejó guardado la última vez, antes de que nadie toque
+   * nada. Si hay varias pistas con desfase se coge el mayor en valor
+   * absoluto: casi siempre hay una sola, y equivocarse aquí solo significa
+   * que el usuario lo reajusta.
+   */
+  LaunchedEffect(fileId) {
+    val guardados = withContext(Dispatchers.IO) { Api.desfasesDeSubtitulos(fileId) }
+    val mayor = guardados.values.maxByOrNull { kotlin.math.abs(it) } ?: 0
+    if (mayor != 0) {
+      // Cargar lo guardado no es que el usuario haya tocado nada: sin volver a
+      // armar `primeraPasada`, el efecto de abajo lo tomaría por un cambio y
+      // recargaría la película entera a los 700 ms de abrirla, para dejarla
+      // exactamente como ya estaba.
+      primeraPasada = true
+      retardoSubsMs = mayor
+    }
+  }
+
+  /*
+   * Aplicar el desfase cuando se deja de tocar, no en cada pulsación: cambia
+   * la URL del subtítulo y eso obliga a rehacer el `MediaItem`, que
+   * rebufferiza. Con 700 ms se puede ajustar de seguido y solo recarga una
+   * vez al final.
+   */
+  LaunchedEffect(retardoSubsMs) {
+    if (primeraPasada) { primeraPasada = false; return@LaunchedEffect }
+    delay(700)
+    val donde = (if (porTuberia) desdeDeLaTuberia else 0.0) + reproductor.currentPosition / 1000.0
+    cargar(donde)
+    // Que se recuerde para la próxima. Si no es administrador el servidor lo
+    // rechaza y no pasa nada: el desfase sigue puesto en esta reproducción.
+    val pista = info?.subtitles?.firstOrNull { it.source == "external" }?.id
+    if (pista != null) withContext(Dispatchers.IO) { Api.guardarDesfaseSubtitulo(fileId, pista, retardoSubsMs) }
+  }
 
   /* ------------------------------------- guardar el progreso y los saltos */
 
@@ -438,6 +524,30 @@ private fun Reproduciendo(
     }
   }
 
+  /**
+   * Cambiar de episodio a mano, con los botones de los controles.
+   *
+   * No es `pasarAlSiguiente`: aquel da el episodio por visto, que es lo
+   * correcto cuando se acaba solo o se saltan los créditos. Pulsar «siguiente»
+   * a los diez minutos no significa haberlo visto, así que aquí solo se guarda
+   * por dónde ibas y se cambia.
+   */
+  fun irAEpisodio(ep: Episodio?) {
+    val destino = ep ?: return
+    val fichero = destino.ficheroId ?: return
+    if (encadenando) return
+    encadenando = true
+    cuentaAtras = null
+    val donde = desfase + reproductor.currentPosition / 1000.0
+    reproductor.pause()
+    ambito.launch {
+      try {
+        withContext(Dispatchers.IO) { Api.guardarProgreso(itemId, episodioId, donde, duracionConocida) }
+      } catch (e: Exception) { /* se cambia igual */ }
+      alSiguiente(fichero, destino.id)
+    }
+  }
+
   LaunchedEffect(cuentaAtras) {
     val c = cuentaAtras ?: return@LaunchedEffect
     if (c <= 0) { pasarAlSiguiente(); return@LaunchedEffect }
@@ -471,14 +581,17 @@ private fun Reproduciendo(
   /**
    * Llevar a un punto por el camino que funcione con este flujo.
    *
-   * Buscar dentro del fichero solo sale bien si el MKV trae su índice de
-   * saltos (`Cues`). Los de esta biblioteca **no lo traen** —comprobado con
-   * `mkvinfo`—, y sin él ExoPlayer da el flujo por no-buscable y un salto
-   * reinicia la lectura desde el principio: la película se queda cargando para
-   * siempre. No se adivina por el fichero: se le pregunta al reproductor, y
-   * cuando dice que no, se pide al servidor ya cortado, igual que en la tele.
-   * Desde ese momento el flujo es una tubería de verdad (`copia-desde`), así
-   * que las posiciones pasan a ir con desfase.
+   * Los MKV de la biblioteca sí traen `Cues` —`mkvinfo` sin `-v` los oculta
+   * por colocarse al final del fichero, después del primer `Cluster`, donde
+   * deja de listar; comprobado recorriendo el EBML a mano, no con esa salida
+   * (MEDIAWATCH-PROYECTO.md §4)—, así que en el caso normal `isCurrentMediaItemSeekable`
+   * da `true` en cuanto el extractor termina su propio salto de ida y vuelta al
+   * `Cues`. Esto es la red de seguridad para cuando no: un fichero sin índice,
+   * o un salto pedido antes de que ese viaje haya terminado. Ahí ExoPlayer da
+   * el flujo por no-buscable y un salto reiniciaría la lectura desde el
+   * principio; se pide al servidor ya cortado, igual que en la tele. Desde ese
+   * momento el flujo es una tubería de verdad (`copia-desde`), así que las
+   * posiciones pasan a ir con desfase.
    */
   fun irA(segundos: Double) {
     if (!porTuberia && reproductor.isCurrentMediaItemSeekable) {
@@ -529,6 +642,20 @@ private fun Reproduciendo(
         if (estado == Player.STATE_ENDED && esEste && siguiente != null && cuentaAtras == null) cuentaAtras = 5
       }
       override fun onIsPlayingChanged(isPlaying: Boolean) { enMarcha = isPlaying }
+      /*
+       * Un salto mueve la barra en el acto, sin esperar al siguiente tic del
+       * reloj. Son 250 ms de nada, pero al arrastrar se notan: sueltas el dedo
+       * y el número tiene que estar ya donde lo has dejado.
+       */
+      override fun onPositionDiscontinuity(
+        anterior: Player.PositionInfo,
+        nueva: Player.PositionInfo,
+        motivo: Int,
+      ) {
+        if (arrastre == null) {
+          posicionUi = (if (porTuberia) desdeDeLaTuberia else 0.0) + nueva.positionMs / 1000.0
+        }
+      }
       override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
         val donde = desfase + reproductor.currentPosition / 1000.0
         if (rescates == 0) {
@@ -560,9 +687,27 @@ private fun Reproduciendo(
     delay(5_000)
     if (arrastre == null) controlesVisibles = false
   }
-  LaunchedEffect(controlesVisibles) {
-    while (controlesVisibles) {
-      if (arrastre == null) posicionUi = desfase + reproductor.currentPosition / 1000.0
+  /*
+   * El reloj de la barra. Corre **siempre**, no solo mientras se ven los
+   * controles.
+   *
+   * Atado a `controlesVisibles` se quedaba clavado después de un salto: los
+   * controles seguían en pantalla, pero la barra y el tiempo no se movían
+   * hasta esconderlos y volver a sacarlos, que era lo que arrancaba otro
+   * bucle. Lo más probable es que al tocar justo cuando tocaba esconderlos,
+   * el estado iba a `false` y volvía a `true` dentro del mismo fotograma:
+   * Compose junta las dos en una, la clave del efecto no cambia y la corrutina
+   * se queda cancelada con los controles a la vista. Corriendo siempre no hay
+   * forma de que pase, y lo que cuesta es leer una posición cada 250 ms.
+   *
+   * El desfase se lee aquí dentro y no fuera: si se captura al arrancar, un
+   * cambio a tubería lo deja con el valor viejo y la barra miente.
+   */
+  LaunchedEffect(Unit) {
+    while (true) {
+      if (arrastre == null) {
+        posicionUi = (if (porTuberia) desdeDeLaTuberia else 0.0) + reproductor.currentPosition / 1000.0
+      }
       delay(250)
     }
   }
@@ -593,6 +738,9 @@ private fun Reproduciendo(
           )
         }
       },
+      // El encaje se aplica aquí y no en `factory`: la vista se crea una vez
+      // y esto tiene que volver a pasar cada vez que se elige otro en el menú.
+      update = { vista -> vista.resizeMode = encaje.modo },
     )
 
     // Un toque en el vídeo enseña o esconde los controles.
@@ -650,6 +798,15 @@ private fun Reproduciendo(
         // Nunca al segundo exacto del final: por tubería eso es pedir un
         // flujo vacío. Dos segundos antes se ve el final y termina solo.
         alSoltar = { val destino = arrastre; arrastre = null; if (destino != null) irA(destino.coerceAtMost(maxOf(0.0, duracionConocida - 2))) },
+        /*
+         * En un episodio, los botones de los lados cambian de episodio; en una
+         * película saltan 10 s y 30 s. Poner anterior/siguiente en una
+         * película sería dejar dos botones muertos, y poner ±30 en una serie
+         * obliga a salir para cambiar de capítulo.
+         */
+        esEpisodio = episodioId != null,
+        alAnterior = if (anterior != null) ({ tocar(); irAEpisodio(anterior) }) else null,
+        alSiguienteEpisodio = if (siguiente != null) ({ tocar(); irAEpisodio(siguiente) }) else null,
       )
     }
 
@@ -691,17 +848,24 @@ private fun Reproduciendo(
           modifier = Modifier.weight(1f).padding(end = 12.dp),
         )
         BotonDeCast(Modifier.size(40.dp).padding(end = 4.dp))
-        Text(
-          "Pistas",
-          color = Color.White,
-          fontSize = 14.sp,
-          modifier = Modifier
-            .padding(end = 8.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .background(Color(0x66000000))
-            .clickable { menuAbierto = true }
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        )
+        // La rueda dentada de siempre, sin pastilla ni texto: es el gesto que
+        // ya está aprendido y deja el hueco para el título, que es lo que
+        // interesa leer. Zona de toque de 48 dp aunque el dibujo mida 24.
+        Box(
+          Modifier
+            .padding(end = 4.dp)
+            .size(48.dp)
+            .clip(RoundedCornerShape(100.dp))
+            .clickable { menuAbierto = true },
+          contentAlignment = Alignment.Center,
+        ) {
+          Icon(
+            Icons.Default.Settings,
+            contentDescription = "Opciones",
+            tint = Color.White,
+            modifier = Modifier.size(24.dp),
+          )
+        }
       }
     }
 
@@ -808,14 +972,20 @@ private fun Reproduciendo(
             pistaAudio = id
             porTuberia = !compatible || !videoEnCrudo
             desdeDeLaTuberia = donde
-            reproductor.setMediaItem(
-              elemento(Api.urlDeFlujo(fileId, id, if (porTuberia) donde else 0.0, videoEnCrudo, sinHevc, calidad)),
-            )
+            // Mismo motivo que en cargar(): setMediaItem(item, posición), no
+            // seekTo() después de prepare().
+            val elem = elemento(Api.urlDeFlujo(fileId, id, if (porTuberia) donde else 0.0, videoEnCrudo, sinHevc, calidad))
+            if (!porTuberia && donde > 1) {
+              reproductor.setMediaItem(elem, (donde * 1000).toLong())
+            } else {
+              reproductor.setMediaItem(elem)
+            }
             reproductor.prepare()
-            if (!porTuberia && donde > 1) reproductor.seekTo((donde * 1000).toLong())
             reproductor.playWhenReady = true
           }
         },
+        encajeActual = encaje,
+        alElegirEncaje = { encaje = it; Encaje.recordar(it) },
         calidadActual = calidad,
         alElegirCalidad = { c ->
           menuAbierto = false
@@ -826,6 +996,10 @@ private fun Reproduciendo(
             ambito.launch { cargar(donde) }
           }
         },
+        retardoSubsMs = retardoSubsMs,
+        // El menú no se cierra: así se ve el número moverse y se puede
+        // ajustar de seguido. La recarga la dispara el efecto con retardo.
+        alCambiarRetardoSubs = { retardoSubsMs = it },
         alCerrar = { menuAbierto = false },
       )
     }
@@ -833,8 +1007,14 @@ private fun Reproduciendo(
 }
 
 /**
- * Los controles: pausa en el centro con ±10/30 a los lados, y abajo la barra
- * con los tiempos. Sin más botones: lo demás está en «Pistas».
+ * Los controles: pausa en el centro, y abajo la barra en una sola línea con el
+ * tiempo a un lado y lo que queda al otro. Sin más botones: lo demás está en
+ * «Pistas».
+ *
+ * Lo que hay a los lados de la pausa depende de qué se esté viendo: en una
+ * película, saltar 10 s y 30 s; en un episodio, cambiar de episodio. Poner
+ * anterior/siguiente en una película serían dos botones muertos, y poner ±30
+ * en una serie obliga a salirse para cambiar de capítulo.
  */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
@@ -848,6 +1028,9 @@ private fun Controles(
   alSaltar: (Double) -> Unit,
   alArrastrar: (Double) -> Unit,
   alSoltar: () -> Unit,
+  esEpisodio: Boolean,
+  alAnterior: (() -> Unit)?,
+  alSiguienteEpisodio: (() -> Unit)?,
 ) {
   Box(Modifier.fillMaxSize()) {
     // Un velo suave arriba y abajo para que se lean los textos sobre cualquier fotograma.
@@ -857,37 +1040,61 @@ private fun Controles(
       ),
     )
 
+    /*
+     * Los de los lados van sin el c\u00edrculo gris detr\u00e1s: el dibujo blanco sobre
+     * el v\u00eddeo se lee igual y la pantalla queda mucho m\u00e1s limpia. La zona de
+     * toque sigue siendo de 60 dp aunque el dibujo mida la mitad.
+     */
     Row(
       Modifier.align(Alignment.Center),
-      horizontalArrangement = Arrangement.spacedBy(44.dp),
+      horizontalArrangement = Arrangement.spacedBy(48.dp),
       verticalAlignment = Alignment.CenterVertically,
     ) {
-      BotonRedondo("\u221210", 60.dp) { alSaltar(-10.0) }
+      if (esEpisodio) {
+        BotonDeControl(activo = alAnterior != null, alPulsar = alAnterior ?: {}) {
+          IconoEpisodio(haciaDelante = false, color = it, tamano = 30.dp)
+        }
+      } else {
+        BotonDeControl(alPulsar = { alSaltar(-10.0) }) {
+          Text("\u221210", color = it, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+        }
+      }
+
+      // El de en medio s\u00ed lleva aro: es el que se busca a ciegas.
       Box(
         Modifier
-          .size(84.dp)
+          .size(76.dp)
           .clip(RoundedCornerShape(100.dp))
-          .background(Color.White)
+          .border(2.dp, Color(0xE6FFFFFF), RoundedCornerShape(100.dp))
           .clickable(onClick = alPausar),
         contentAlignment = Alignment.Center,
       ) {
         if (enMarcha) {
-          Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Box(Modifier.size(9.dp, 30.dp).clip(RoundedCornerShape(2.dp)).background(Color.Black))
-            Box(Modifier.size(9.dp, 30.dp).clip(RoundedCornerShape(2.dp)).background(Color.Black))
+          Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+            Box(Modifier.size(6.dp, 26.dp).clip(RoundedCornerShape(2.dp)).background(Color.White))
+            Box(Modifier.size(6.dp, 26.dp).clip(RoundedCornerShape(2.dp)).background(Color.White))
           }
         } else {
-          Icon(Icons.Default.PlayArrow, contentDescription = "Reproducir", tint = Color.Black, modifier = Modifier.size(46.dp))
+          Icon(Icons.Default.PlayArrow, contentDescription = "Reproducir", tint = Color.White, modifier = Modifier.size(40.dp))
         }
       }
-      BotonRedondo("+30", 60.dp) { alSaltar(30.0) }
+
+      if (esEpisodio) {
+        BotonDeControl(activo = alSiguienteEpisodio != null, alPulsar = alSiguienteEpisodio ?: {}) {
+          IconoEpisodio(haciaDelante = true, color = it, tamano = 30.dp)
+        }
+      } else {
+        BotonDeControl(alPulsar = { alSaltar(30.0) }) {
+          Text("+30", color = it, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+        }
+      }
     }
 
     Column(
       Modifier
         .align(Alignment.BottomCenter)
         .fillMaxWidth()
-        .padding(horizontal = 28.dp, vertical = 18.dp),
+        .padding(horizontal = 16.dp, vertical = 14.dp),
     ) {
       // El disco, quieto y a la izquierda, justo encima de la barra: va y viene
       // con los controles y en pausa se queda con ellos. Girando distraía.
@@ -895,7 +1102,7 @@ private fun Controles(
         Imagen(
           disco,
           null,
-          Modifier.padding(bottom = 10.dp).size(96.dp).graphicsLayer { shadowElevation = 30f },
+          Modifier.padding(start = 6.dp, bottom = 10.dp).size(116.dp).graphicsLayer { shadowElevation = 30f },
           escala = ContentScale.Fit,
         )
       }
@@ -903,26 +1110,31 @@ private fun Controles(
       // Barra fina y un punto ámbar: la de Material es un dedo de gorda y
       // lleva un tope al final que no significa nada aquí.
       val fraccion = if (tope > 0) (posicion.toFloat().coerceIn(0f, tope) / tope) else 0f
-      Slider(
-        value = posicion.toFloat().coerceIn(0f, tope),
-        onValueChange = { alArrastrar(it.toDouble()) },
-        onValueChangeFinished = alSoltar,
-        valueRange = 0f..tope,
-        enabled = duracion > 0,
-        // La zona de arrastre es todo el alto del Slider, no el pulgar: con los
-        // 48 dp de serie, en apaisado y tan abajo, se escapaba. A 64 se coge.
-        modifier = Modifier.fillMaxWidth().height(64.dp),
-        thumb = {
-          Box(Modifier.size(24.dp).clip(RoundedCornerShape(100.dp)).background(if (duracion > 0) Realce else Color.Transparent))
-        },
-        track = {
-          Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x55FFFFFF))) {
-            Box(Modifier.fillMaxWidth(fraccion).height(4.dp).background(Realce))
-          }
-        },
-      )
-      Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+      /*
+       * Tiempo, barra y lo que queda, los tres en la misma línea y de lado a
+       * lado. Antes la barra iba arriba y los tiempos debajo: ocupaba el doble
+       * de alto y tapaba más película para decir lo mismo.
+       */
+      Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(tiempo(posicion), color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        Slider(
+          value = posicion.toFloat().coerceIn(0f, tope),
+          onValueChange = { alArrastrar(it.toDouble()) },
+          onValueChangeFinished = alSoltar,
+          valueRange = 0f..tope,
+          enabled = duracion > 0,
+          // La zona de arrastre es todo el alto del Slider, no el pulgar: con
+          // los 48 dp de serie, en apaisado y tan abajo, se escapaba.
+          modifier = Modifier.weight(1f).height(64.dp).padding(horizontal = 12.dp),
+          thumb = {
+            Box(Modifier.size(24.dp).clip(RoundedCornerShape(100.dp)).background(if (duracion > 0) Realce else Color.Transparent))
+          },
+          track = {
+            Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x55FFFFFF))) {
+              Box(Modifier.fillMaxWidth(fraccion).height(4.dp).background(Realce))
+            }
+          },
+        )
         Text(
           if (duracion > 0) "\u2212" + tiempo(duracion - posicion) else "",
           color = Color(0xCCFFFFFF),
@@ -933,17 +1145,52 @@ private fun Controles(
   }
 }
 
+/** Uno de los dos botones de los lados: dibujo blanco, sin fondo, y 60 dp de toque. */
 @Composable
-private fun BotonRedondo(texto: String, tamano: androidx.compose.ui.unit.Dp, alPulsar: () -> Unit) {
+private fun BotonDeControl(
+  activo: Boolean = true,
+  alPulsar: () -> Unit,
+  contenido: @Composable (Color) -> Unit,
+) {
   Box(
-    Modifier
-      .size(tamano)
-      .clip(RoundedCornerShape(100.dp))
-      .background(Color(0x33FFFFFF))
-      .clickable(onClick = alPulsar),
+    Modifier.size(60.dp).clip(RoundedCornerShape(100.dp)).clickable(enabled = activo, onClick = alPulsar),
     contentAlignment = Alignment.Center,
   ) {
-    Text(texto, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+    // Apagado en vez de escondido: en el primer y el último episodio el botón
+    // sigue ahí y los tres del centro no bailan de sitio.
+    contenido(if (activo) Color.White else Color(0x59FFFFFF))
+  }
+}
+
+/**
+ * Anterior y siguiente episodio: un triángulo y una barra.
+ *
+ * Dibujados y no `Icons.Default.SkipNext`, que **no existe**:
+ * `material-icons-core` trae 50 iconos y ese no está. El paquete extendido son
+ * megas para dos triángulos, y aquí no hay R8 que los pode
+ * (`isMinifyEnabled = false`).
+ */
+@Composable
+private fun IconoEpisodio(haciaDelante: Boolean, color: Color, tamano: androidx.compose.ui.unit.Dp) {
+  Canvas(Modifier.size(tamano)) {
+    val t = size.minDimension
+    val alto = t * 0.62f
+    val arriba = (t - alto) / 2f
+    val barra = t * 0.13f
+    val punta = Path()
+    if (haciaDelante) {
+      punta.moveTo(t * 0.12f, arriba)
+      punta.lineTo(t * 0.66f, t / 2f)
+      punta.lineTo(t * 0.12f, arriba + alto)
+      drawRect(color, topLeft = Offset(t * 0.74f, arriba), size = Size(barra, alto))
+    } else {
+      punta.moveTo(t * 0.88f, arriba)
+      punta.lineTo(t * 0.34f, t / 2f)
+      punta.lineTo(t * 0.88f, arriba + alto)
+      drawRect(color, topLeft = Offset(t * 0.13f, arriba), size = Size(barra, alto))
+    }
+    punta.close()
+    drawPath(punta, color)
   }
 }
 
@@ -951,6 +1198,28 @@ private fun tiempo(seg: Double): String {
   val t = maxOf(0, seg.toInt())
   val h = t / 3600; val m = (t % 3600) / 60; val s = t % 60
   return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
+}
+
+/**
+ * Cómo se encaja el vídeo en la pantalla.
+ *
+ * Los tres que trae Media3 y que son los que ofrece cualquier reproductor.
+ * «Ajustar» es lo correcto y lo que viene puesto: respeta la proporción y deja
+ * las bandas negras que tenga. Los otros dos son para el que prefiere llenar
+ * la pantalla del móvil a costa de algo, y conviene que el nombre lo diga:
+ * uno recorta imagen y el otro deforma a la gente.
+ */
+private enum class Encaje(val etiqueta: String, val modo: Int) {
+  // «Original» y no «Ajustar a la pantalla»: es el nombre que dice claramente
+  // por dónde se vuelve después de probar Rellenar o Estirar.
+  AJUSTAR("Original", AspectRatioFrameLayout.RESIZE_MODE_FIT),
+  RELLENAR("Rellenar · recorta los bordes", AspectRatioFrameLayout.RESIZE_MODE_ZOOM),
+  ESTIRAR("Estirar · deforma la imagen", AspectRatioFrameLayout.RESIZE_MODE_FILL);
+
+  companion object {
+    fun guardado(): Encaje = entries.firstOrNull { it.name == Ajustes.encajeVideo } ?: AJUSTAR
+    fun recordar(e: Encaje) { Ajustes.encajeVideo = e.name }
+  }
 }
 
 /**
@@ -969,6 +1238,10 @@ private fun MenuDePistas(
   alElegirAudio: (Int, Boolean) -> Unit,
   calidadActual: Calidad,
   alElegirCalidad: (Calidad) -> Unit,
+  encajeActual: Encaje,
+  alElegirEncaje: (Encaje) -> Unit,
+  retardoSubsMs: Int,
+  alCambiarRetardoSubs: (Int) -> Unit,
   alCerrar: () -> Unit,
 ) {
   Box(
@@ -1059,6 +1332,66 @@ private fun MenuDePistas(
       }
       if (subtitulos.isEmpty()) {
         Text("     Este fichero no trae ninguno", color = TextoTenue, fontSize = 12.sp)
+      }
+
+      /*
+       * Desfase. Solo se enseña si hay algún subtítulo en fichero aparte: los
+       * incrustados viajan dentro del MKV cuando el vídeo va en crudo y el
+       * servidor no los toca, así que enseñar el ajuste ahí sería ofrecer un
+       * botón que no hace nada. Y es justo donde no hace falta: el que va
+       * corrido casi siempre es el `.srt` descargado.
+       */
+      if (info?.subtitles?.any { it.source == "external" } == true) {
+        Spacer(Modifier.height(10.dp))
+        Row(
+          Modifier.fillMaxWidth().padding(start = 18.dp, end = 4.dp),
+          verticalAlignment = Alignment.CenterVertically,
+        ) {
+          Text("Desfase", color = TextoTenue, fontSize = 13.sp, modifier = Modifier.weight(1f))
+          Text(
+            "−",
+            color = Texto,
+            fontSize = 22.sp,
+            modifier = Modifier
+              .clickable { alCambiarRetardoSubs((retardoSubsMs - 100).coerceAtLeast(-10_000)) }
+              .padding(horizontal = 14.dp, vertical = 6.dp),
+          )
+          Text(
+            if (retardoSubsMs == 0) "0,0 s" else String.format("%+.1f s", retardoSubsMs / 1000.0).replace('.', ','),
+            color = if (retardoSubsMs == 0) TextoTenue else Realce,
+            fontSize = 14.sp,
+          )
+          Text(
+            "+",
+            color = Texto,
+            fontSize = 22.sp,
+            modifier = Modifier
+              .clickable { alCambiarRetardoSubs((retardoSubsMs + 100).coerceAtMost(10_000)) }
+              .padding(horizontal = 14.dp, vertical = 6.dp),
+          )
+        }
+        Text(
+          "     Si van adelantados, súbelo; si van atrasados, bájalo.",
+          color = TextoTenue,
+          fontSize = 11.sp,
+        )
+      }
+
+      // Tamaño de pantalla. No toca el vídeo ni al servidor: solo cómo lo
+      // encaja la vista, así que el cambio es instantáneo y no corta nada.
+      Spacer(Modifier.height(14.dp))
+      Text("Tamaño de pantalla", color = Texto, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+      Spacer(Modifier.height(6.dp))
+      Encaje.entries.forEach { e ->
+        Text(
+          (if (e == encajeActual) "✓  " else "     ") + e.etiqueta,
+          color = if (e == encajeActual) Realce else Texto,
+          fontSize = 14.sp,
+          modifier = Modifier
+            .fillMaxWidth()
+            .clickable { alElegirEncaje(e); alCerrar() }
+            .padding(vertical = 9.dp),
+        )
       }
 
       /*

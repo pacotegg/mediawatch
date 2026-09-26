@@ -4,6 +4,8 @@ import androidx.compose.foundation.background
 import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.layout.Arrangement
@@ -118,7 +120,13 @@ fun PantallaFicha(
   val esSerie = f.kind == "show"
   val ficheroPelicula = f.files.firstOrNull { it.episodioId == null }
   val progresoPelicula = f.progress.firstOrNull { it.episodioId == null }
-  val reanudarEn = if (progresoPelicula != null && progresoPelicula.watched == 0) progresoPelicula.position else 0.0
+  /*
+   * Dónde se reanuda. Mira también `estaVista`, que es el estado de aquí: al
+   * marcarla vista, el progreso que trajo el servidor sigue diciendo
+   * `watched = 0` hasta que se recarga la ficha, y sin esto se quedaba un
+   * «Reanudar 29:11» debajo de una película que acabas de dar por vista.
+   */
+  val reanudarEn = if (!estaVista && progresoPelicula != null && progresoPelicula.watched == 0) progresoPelicula.position else 0.0
 
   val temporadas = remember(f) { f.episodes.map { it.season }.distinct().sorted() }
   val temporadaActiva = temporada ?: temporadas.firstOrNull()
@@ -258,12 +266,19 @@ fun PantallaFicha(
         }
         Spacer(Modifier.height(12.dp))
         /*
-         * La fila de siempre: favorito, vista y las imágenes. Van en una sola
-         * línea de pastillas y no como botones grandes, porque son cosas que se
-         * usan de vez en cuando; el botón grande es para reproducir, que es a lo
-         * que se viene.
+         * La fila de siempre: favorito, vista, la tele y las imágenes. Van en
+         * una sola línea de pastillas y no como botones grandes, porque son
+         * cosas que se usan de vez en cuando; el botón grande es para
+         * reproducir, que es a lo que se viene.
+         *
+         * Con desplazamiento lateral: siendo administrador son cuatro y en un
+         * móvil estrecho la última se saldría de la pantalla. Así caben todas
+         * sin partir la fila en dos.
          */
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+          Modifier.horizontalScroll(rememberScrollState()),
+          horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
           Pastilla(
             if (esFavorita) "★ Favorita" else "☆ Favorita",
             activa = esFavorita,
@@ -294,19 +309,22 @@ fun PantallaFicha(
               }
             }
           }
-          // Cambiar las imágenes se guarda para todos: solo el administrador.
-          if (Ajustes.esAdmin) Pastilla("Imágenes") { alCambiarImagenes(f.kind, f.title, f.year) }
-        }
-        if (!esSerie && ficheroPelicula != null) {
-          Spacer(Modifier.height(8.dp))
           /*
            * Lo que hace Chromecast, con la aplicación de la tele de receptor:
            * la Samsung no tiene Google Cast. La tele lo recoge en dos segundos
            * si está en cualquier pantalla que no sea el reproductor.
+           *
+           * Sin el «desde 29:11» en la etiqueta: el tiempo sí se manda, pero
+           * puesto ahí alargaba la pastilla hasta sacarla de la fila y no dice
+           * nada que no diga ya el botón de arriba.
            */
-          Pastilla("Ver en la tele" + (if (reanudarEn > 0) " desde " + reloj(reanudarEn) else "")) {
-            mandarALaTele(ficheroPelicula.id, null, reanudarEn)
+          if (!esSerie && ficheroPelicula != null) {
+            Pastilla("Ver en la tele", icono = { IconoCast(it) }) {
+              mandarALaTele(ficheroPelicula.id, null, reanudarEn)
+            }
           }
+          // Cambiar las imágenes se guarda para todos: solo el administrador.
+          if (Ajustes.esAdmin) Pastilla("Imágenes") { alCambiarImagenes(f.kind, f.title, f.year) }
         }
 
         Spacer(Modifier.height(24.dp))

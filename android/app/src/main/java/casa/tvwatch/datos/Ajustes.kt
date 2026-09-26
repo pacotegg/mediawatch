@@ -82,6 +82,18 @@ object Ajustes {
     get() = Calidad.deNombre(prefs.getString("calidadFuera", null)) ?: Calidad.ALTA
     set(v) = prefs.edit().putString("calidadFuera", v.name).apply()
 
+  /*
+   * Cómo encaja el vídeo en la pantalla. Se guarda porque es una preferencia
+   * de la persona y del aparato, no de la película: quien no soporta las
+   * bandas negras de un 1.85:1 en un móvil alargado no las soporta tampoco en
+   * la siguiente, y tener que elegirlo en cada título sería un incordio.
+   * Se guarda el nombre y no el número de Media3: si algún día cambian sus
+   * constantes, aquí no se hereda un valor que signifique otra cosa.
+   */
+  var encajeVideo: String
+    get() = prefs.getString("encajeVideo", null) ?: "AJUSTAR"
+    set(v) = prefs.edit().putString("encajeVideo", v).apply()
+
   /** Sonido 5.1 (AC3/DD+) al Chromecast. Apagado: en un aparato sin Dolby es silencio. */
   var castCincoUno: Boolean
     get() = prefs.getBoolean("castCincoUno", false)

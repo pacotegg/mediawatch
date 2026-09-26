@@ -7,6 +7,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -36,7 +38,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
@@ -367,6 +375,12 @@ fun Pastilla(
   destacada: Boolean = false,
   activa: Boolean = false,
   modifier: Modifier = Modifier,
+  /**
+   * Dibujo opcional delante del texto. Recibe el color que toca según el
+   * estado, para que no haya que repetir aquí la regla de cuándo va en
+   * `SobreRealce` y cuándo en `Texto`.
+   */
+  icono: (@Composable (Color) -> Unit)? = null,
   alPulsar: () -> Unit,
 ) {
   val pulsacion = remember { MutableInteractionSource() }
@@ -385,17 +399,57 @@ fun Pastilla(
     label = "fondo de la pastilla",
   )
 
-  Text(
-    texto,
-    color = if (destacada || activa) SobreRealce else Texto,
-    style = MaterialTheme.typography.labelLarge,
-    modifier = modifier
-      .scale(escala)
-      .clip(RoundedCornerShape(Esquinas.pastilla))
-      .background(fondo)
-      .pulsable(pulsacion, alPulsar)
-      .padding(horizontal = 16.dp, vertical = 10.dp),
-  )
+  val color = if (destacada || activa) SobreRealce else Texto
+  val forma = modifier
+    .scale(escala)
+    .clip(RoundedCornerShape(Esquinas.pastilla))
+    .background(fondo)
+    .pulsable(pulsacion, alPulsar)
+    .padding(horizontal = 16.dp, vertical = 10.dp)
+
+  if (icono == null) {
+    Text(texto, color = color, style = MaterialTheme.typography.labelLarge, modifier = forma)
+  } else {
+    Row(forma, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+      icono(color)
+      Text(texto, color = color, style = MaterialTheme.typography.labelLarge)
+    }
+  }
+}
+
+/**
+ * El dibujo de «enviar a una pantalla».
+ *
+ * A mano y no `Icons.Default.Cast` porque ese icono **no existe** en
+ * `material-icons-core`: solo trae 50, y el paquete extendido son varios megas
+ * que aquí no se pueden podar (`isMinifyEnabled = false`). Son cuatro trazos.
+ */
+@Composable
+fun IconoCast(color: Color, tamano: Dp = 15.dp) {
+  Canvas(Modifier.size(tamano)) {
+    val t = size.minDimension
+    val grosor = t * 0.1f
+    drawRoundRect(
+      color = color,
+      topLeft = Offset(t * 0.12f, t * 0.14f),
+      size = Size(t * 0.76f, t * 0.58f),
+      cornerRadius = CornerRadius(t * 0.12f),
+      style = Stroke(width = grosor),
+    )
+    // Las ondas salen de la esquina de abajo a la izquierda, hacia arriba.
+    for (radio in listOf(0.26f, 0.44f)) {
+      drawArc(
+        color = color,
+        startAngle = -90f,
+        sweepAngle = 90f,
+        useCenter = false,
+        topLeft = Offset(t * 0.12f - t * radio, t * 0.86f - t * radio),
+        size = Size(t * radio * 2, t * radio * 2),
+        style = Stroke(width = grosor, cap = StrokeCap.Round),
+      )
+    }
+    drawCircle(color = color, radius = grosor * 0.85f, center = Offset(t * 0.16f, t * 0.82f))
+  }
 }
 
 /** Etiqueta de datos: 4K, HEVC, HDR10. No se pulsa. */
