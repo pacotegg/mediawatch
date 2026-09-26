@@ -149,9 +149,9 @@ def offset_whisper(sf, modelo, d, texto, idioma):
     return desfase_por_palabras(pal_audio, primeras_palabras(texto))
 
 
-def candidatos():
+def candidatos(medidas=MEDIDAS):
     vistos, salida = set(), []
-    for linea in open(MEDIDAS, encoding="utf-8"):
+    for linea in open(medidas, encoding="utf-8"):
         linea = linea.strip()
         if not linea:
             continue
@@ -185,13 +185,15 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--aplicar", action="store_true")
     p.add_argument("--limite", type=int, default=0)
+    p.add_argument("--medidas", default=MEDIDAS,
+                   help="fichero de medidas; por defecto la verificacion original")
     args = p.parse_args()
 
     sf = cargar_subsfetch()
     os.makedirs(TRABAJO, exist_ok=True)
     os.makedirs(RESPALDOS, exist_ok=True)
 
-    cola = candidatos()
+    cola = candidatos(args.medidas)
     if args.limite:
         cola = cola[:args.limite]
     print("candidatos (inmedible + solape >= %.2f): %d%s\n"
