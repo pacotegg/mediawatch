@@ -1,7 +1,7 @@
 # Media Watch (antes TvWatch / Cineteca) — dosier completo del proyecto
 
-Estado a **21 de septiembre de 2026** (auditoría completa: bugs corregidos,
-mantenimiento al estilo Plex añadido). Este documento es la memoria entera del
+Estado a **26 de septiembre de 2026** (subtítulos de la biblioteca medidos y
+corregidos; 23 commits repartidos por temas y subidos). Este documento es la memoria entera del
 proyecto para alimentar el proyecto de Claude: qué es, cómo está montado, cada
 carpeta y fichero, cómo se arranca, compila e instala, la cronología desde el
 primer día, el estado del git, las trampas ya pagadas y las reglas de trabajo
@@ -132,8 +132,8 @@ C:\tvwatch
 | `tvwatch.db` (+ `-wal`, `-shm`) | SQLite (150 MB), WAL |
 | `artwork/<itemId>/` | Imágenes bajadas (póster, fondo, logo, apaisada, disco) — 1.546 carpetas, 1,7 GB. Nunca se escribe en `E:\` |
 | `artwork/personas/<id>.jpg` | Fotos de reparto bajadas de TMDb |
-| `cache/images/` | Miniaturas redimensionadas, clave = hash de ruta+mtime+tamaño+ancho (1,9 GB, 63.613 ficheros a 21/09). Sin límite hasta el 21/09: purga semanal por antigüedad desde `media/images.ts` |
-| `trickplay/` | Tiras de fotogramas para la barra (129 MB). Carpetas huérfanas (fichero ya retirado) se limpian solas cada semana desde `media/trickplay.ts` |
+| `cache/images/` | Miniaturas redimensionadas, clave = hash de ruta+mtime+tamaño+ancho (1,9 GB a 26/09 gracias a la purga semanal; eran 63.613 ficheros sin límite hasta el 21/09). Sin límite hasta el 21/09: purga semanal por antigüedad desde `media/images.ts` |
+| `trickplay/` | Tiras de fotogramas para la barra (126 MB a 26/09). Carpetas huérfanas (fichero ya retirado) se limpian solas cada semana desde `media/trickplay.ts` |
 | `copias/` | Copias de seguridad de la BD, una diaria, `VACUUM INTO` (consistente con WAL abierto), rotando a las 14 más recientes desde el 21/09 (`db.ts`) |
 | `server.log`, `server.err`, `vigilante.log`, `completar-arte.log`, `completar-personas.log` | Registros |
 
@@ -687,8 +687,12 @@ verdad; solo se arregla remuxeando el fichero real en `E:\`, y eso no se toca
 sin permiso explícito.
 
 **Ideas y cabos sueltos**:
-- Segundo commit con los cambios pendientes (incluidos los del 21/09: no hay
-  ningún commit hecho esta vuelta, solo se modificaron ficheros en disco).
+- ~~Segundo commit con los cambios pendientes~~ — **hecho el 26/09**: 23 commits
+  repartidos por temas (17 en este repo, 13 en el del pipeline) y subidos. Los
+  dos repos son **públicos**, así que antes de empujar se enmascararon el
+  dominio, la IP pública y la de Tailscale reescribiendo la historia local —el
+  commit que los traía nunca se había subido, así que no ha habido fuga—. Antes
+  de cada push hay que pasar el barrido de la skill `publicar-sin-filtrar-datos`.
 - iOS/iPad: sin app nativa; la web como PWA es la vía (Safari sin HEVC por
   pipe en algunos casos; pendiente de evaluar Infuse-like).
 - 23.005 personas sin foto en ninguna fuente.
@@ -703,6 +707,55 @@ sin permiso explícito.
   contenido).
 
 ---
+
+
+## 9.bis Subtítulos de la biblioteca (26/09/2026)
+
+La pregunta de partida era si había que borrar los `.srt` de Bazarr, porque
+«más de la mitad» parecían mal sincronizados. **Se midió antes de decidir**, y
+la respuesta fue que no: de 1.661 comparaciones entre el subtítulo externo y el
+incrustado del mismo idioma, **los que difieren de verdad son cero**. Borrarlos
+a ciegas habría destruido ~1.500 subtítulos buenos.
+
+Tres piezas encadenadas, cada una con **una garantía distinta**, y esa
+diferencia es lo que hace aceptable escribir en `E:\`:
+
+| Script | Qué hace | Garantía |
+|---|---|---|
+| `server/scripts/verificar_subtitulos_externos.py` | Mide contra el audio | Solo mide, no toca nada |
+| `server/scripts/reescribir_subtitulos.py` | Aplica lo medido | Respaldo, revalida antes, **verifica después y deshace** |
+| `server/scripts/rescatar_inmedibles.py` | Los que no se pueden medir | Tres puertas independientes |
+
+**Resultado: 347 subtítulos corregidos**, 336 verificados por medida (residuo
+< 0,35 s) y 11 corroborados por dos métodos. El deshacer automático saltó **20
+veces** y los 20 ficheros volvieron con MD5 idéntico al respaldo. Cero pérdidas.
+Respaldos en `C:\Media\respaldos_srt`, registros en `data/`.
+
+**Los de solape bajo NO son «sin arreglo»** —así se dijo primero y era falso—.
+De 229 inmedibles con solape < 0,15, **170 son subtítulos en inglés sobre audio
+doblado al español** que el fichero no etiqueta: se transcribió el audio español
+forzando `language='en'` y se comparó con texto inglés, así que el solape bajo
+estaba garantizado de antemano. Comprobado en uno: Whisper detecta el audio como
+`es` con 0,89 de probabilidad. **El test de vocabulario no sirve entre idiomas
+distintos**; esos necesitan un método que mire *cuándo* se habla, no *qué*. Los
+59 restantes, del mismo idioma, sí son los sospechosos de verdad: otro episodio
+o un desfase tan grande que ninguna ventana cae donde toca.
+
+**Herramientas evaluadas y lo que se aprendió de cada una**:
+
+- **`alass`** (en `C:\scripts\bin\alass`, v2.0.0): excelente con señal fuerte —
+  corrigió un desfase de −12,90 s dejando −0,05 con rango interno 0,00—, pero
+  **con sus opciones por defecto destroza los ficheros de señal débil**: rangos
+  internos de hasta 1.318 s. Solo se usa con `--no-split --disable-fps-guessing`
+  y **corroborando la cifra con otro método**. Cazó tres invenciones suyas de
+  27 a 40 s de discrepancia.
+- **Whisper `medium`** para español (dobla los aciertos de `base`), **`base`**
+  para inglés (igual de bueno y 7× más rápido). **`distil-large-v3.5`
+  descartado**: transcribe el audio español al inglés aunque se le pase
+  `language='es'`.
+- **Marcas de tiempo por palabra** (`word_timestamps=True`): da el desfase con
+  ±0,9 s tras tres intentos de afinarlo. No basta para corregir; **sobra para
+  corroborar**. Ese es su sitio en la tercera puerta.
 
 ## 10. Claves, credenciales y dónde viven
 
