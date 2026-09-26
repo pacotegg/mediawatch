@@ -13,3 +13,8 @@ android/.gradle/
 android/local.properties
 *.apk
 __pycache__/
+
+# Permisos que Claude Code ha ido aprobando en ESTA maquina. No es un secreto
+# -solo lleva comandos y la IP de la LAN-, pero es local por definicion: lo que
+# se aprueba aqui no tiene por que valer en otro equipo.
+.claude/settings.local.json
