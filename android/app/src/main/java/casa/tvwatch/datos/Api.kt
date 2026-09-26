@@ -207,9 +207,40 @@ object Api {
     return partes.toString()
   }
 
-  /** Un subtítulo como WebVTT; `desde` resta segundos para flujos cortados. */
-  fun urlDeSubtitulo(fileId: Int, trackId: String, desde: Int = 0): String =
-    "${Servidor.baseCacheada()}/api/play/$fileId/subtitle/$trackId.vtt" + (if (desde > 0) "?desde=$desde" else "")
+  /**
+   * Un subtítulo como WebVTT. `desde` resta segundos para flujos cortados;
+   * `retardoMs` es el desfase que pide el usuario, con signo (positivo = más
+   * tarde), que el servidor aplica al generar el VTT. Van en la URL a
+   * propósito: cambiar el desfase cambia la URL, y eso es lo que obliga a
+   * rehacer el `MediaItem` para que ExoPlayer vuelva a pedirlo.
+   */
+  fun urlDeSubtitulo(fileId: Int, trackId: String, desde: Int = 0, retardoMs: Int = 0): String {
+    val partes = mutableListOf<String>()
+    if (desde > 0) partes.add("desde=$desde")
+    if (retardoMs != 0) partes.add("retardo=$retardoMs")
+    val consulta = if (partes.isEmpty()) "" else "?" + partes.joinToString("&")
+    return "${Servidor.baseCacheada()}/api/play/$fileId/subtitle/$trackId.vtt$consulta"
+  }
+
+  /** Desfases de subtítulos guardados para un fichero, por pista. */
+  fun desfasesDeSubtitulos(fileId: Int): Map<String, Int> = try {
+    pedir<Map<String, DesfaseGuardado>>("/api/play/$fileId/offsets").mapValues { it.value.offsetMs }
+  } catch (e: Exception) {
+    emptyMap()
+  }
+
+  /**
+   * Guardar el desfase para que se recuerde la próxima vez. El servidor solo
+   * se lo permite a un administrador —se guarda por fichero y no por perfil,
+   * así que un invitado no puede tocarlo—, de modo que un 403 aquí es normal
+   * y no debe romper nada: el desfase sigue aplicándose en esta reproducción.
+   */
+  fun guardarDesfaseSubtitulo(fileId: Int, trackId: String, offsetMs: Int): Boolean = try {
+    texto("/api/play/$fileId/offsets/$trackId", "{\"offsetMs\":$offsetMs}")
+    true
+  } catch (e: Exception) {
+    false
+  }
 
   /* --------------------------------------------------------- imagenes */
 
@@ -276,6 +307,10 @@ data class Perfil(
 
 @Serializable
 data class QuienEs(val nombre: String = "Media Watch", val publica: String = "")
+
+/** Lo que guarda el servidor en `sub_offsets` para una pista de subtítulos. */
+@Serializable
+data class DesfaseGuardado(val offsetMs: Int = 0, val method: String = "manual")
 
 @Serializable
 data class ListaDePerfiles(val users: List<Perfil> = emptyList(), val setupNeeded: Boolean = false)

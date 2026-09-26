@@ -76,11 +76,29 @@ export function measure(fileId: number, trackId: string, audioStreamIndex: numbe
       if (!stdout.trim()) return { ok: false, offsetMs: null, sigma: null, reason: `no se pudo medir: ${(err as Error).message}` };
     }
 
-    let parsed: { ok?: boolean; offset_s?: number; sigma?: number; motivo?: string };
+    let parsed: { ok?: boolean; offset_s?: number; factor?: number; sigma?: number; motivo?: string };
     try {
       parsed = JSON.parse(stdout.trim().split('\n').pop() ?? '{}');
     } catch {
       return { ok: false, offsetMs: null, sigma: null, reason: 'respuesta ilegible del medidor' };
+    }
+
+    /*
+     * Desde el 25/09 el medidor (subsfetch.py) también detecta subtítulos que
+     * van a otra velocidad (24 frente a 23,976, PAL...) y devuelve `factor`.
+     * Aquí solo se sabe guardar un desplazamiento: guardar el desfase sin el
+     * factor sería media corrección —cuadraría en un punto de la película y
+     * se iría separando en el resto—. En ese caso no se guarda nada y se dice
+     * qué pasa; la corrección de verdad es reescribir el subtítulo.
+     */
+    const factor = typeof parsed.factor === 'number' ? parsed.factor : 1;
+    if (parsed.ok && factor !== 1) {
+      return {
+        ok: false,
+        offsetMs: null,
+        sigma: parsed.sigma ?? null,
+        reason: `va a otra velocidad (×${factor.toFixed(5)}): un desfase fijo no lo arregla, hay que reescribir el subtítulo con los tiempos reescalados`,
+      };
     }
 
     const result: ResyncResult = {
