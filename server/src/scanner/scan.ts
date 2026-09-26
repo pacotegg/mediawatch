@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { readdirSync, statSync } from 'node:fs';
-import { basename, extname, join } from 'node:path';
+import { basename, dirname, extname, join } from 'node:path';
+import { Worker } from 'node:worker_threads';
 import { db, normalize } from '../db.ts';
 import { config, type LibraryConfig } from '../config.ts';
 import { parseNfo, type NfoData } from './nfo.ts';
@@ -268,10 +269,35 @@ function saveTracks(fileId: number, nfo: NfoData | null, subs: ReturnType<typeof
   stmt.clearTracks.run(fileId);
   stmt.clearSubs.run(fileId);
   nfo?.audio.forEach((a, i) => stmt.addAudio.run(fileId, i, a.codec ?? null, lang(a.language) ?? null, a.channels ?? null));
-  const seen = new Set<string>();
+
+  /*
+   * Los `<subtitle>` del `<streamdetails>` de tinyMediaManager **no son solo
+   * las pistas del contenedor**: incluyen los `.srt` que hay al lado del
+   * vídeo. Apuntarlos todos como incrustados (`external = NULL`) creaba una
+   * pista fantasma por cada subtítulo externo.
+   *
+   * Comprobado el 25/09 contra la biblioteca real: «Doc of the Dead» tenía
+   * dos filas de incrustadas en la base y `ffprobe` decía que el fichero no
+   * tiene ninguna — eran sus dos `.srt`. Los datos de vídeo, audio y duración
+   * del NFO sí son exactos (6 de 6 en una muestra al azar); el problema era
+   * solo esta lectura.
+   *
+   * Hacía daño de verdad en tres sitios: la lista de la biblioteca enseñaba
+   * subtítulos inexistentes, las estadísticas los contaban, y sobre todo
+   * `media/transcribe.ts` elige como candidatos los ficheros **sin ninguna**
+   * pista — así que se saltaba justo las películas que no tienen subtítulos y
+   * habría que transcribir. Además oscilaba: `mediaInfo()` corrige las filas
+   * al reproducir y el siguiente escaneo las volvía a pisar.
+   *
+   * Si el idioma ya lo cubre un fichero de al lado, se da por hecho que la
+   * entrada del NFO es ese mismo fichero y no una pista del contenedor. Lo
+   * que quede sin `.srt` equivalente sigue apuntándose como antes, para no
+   * perder la información de los miles de ficheros que aún no se han probado
+   * con `ffprobe`.
+   */
+  const idiomasExternos = new Set(subs.map((s) => s.language ?? '?'));
   nfo?.subtitles.forEach((s, i) => {
-    const key = `${lang(s.language) ?? '?'}:${i}`;
-    seen.add(key);
+    if (idiomasExternos.has(lang(s.language) ?? '?')) return;
     stmt.addSub.run(fileId, i, s.codec ?? 'embedded', lang(s.language) ?? null, 0, null);
   });
   for (const s of subs) {
@@ -389,9 +415,12 @@ function scanShowFolder(libId: number, dir: string, files: Entry[], now: string)
 
   for (const sd of seasonDirs) {
     const seasonFiles = listDir(sd.path);
+    // Numeración de reserva cuando el nombre no trae SxxExx: por temporada, no
+    // por serie entera, o la temporada 2 seguía contando donde dejó la 1.
+    let episodeEnEstaTemporada = 0;
     for (const video of videoFiles(seasonFiles)) {
       const base = basename(video.name, extname(video.name));
-      const nums = episodeNumbers(video.name) ?? { season: seasonNumber(sd.name) ?? 1, episode: episodes + 1 };
+      const nums = episodeNumbers(video.name) ?? { season: seasonNumber(sd.name) ?? 1, episode: episodeEnEstaTemporada + 1 };
       const epNfoPath = seasonFiles.find((f) => f.name.toLowerCase() === `${base.toLowerCase()}.nfo`)?.path;
       const epNfo = epNfoPath ? parseNfo(epNfoPath) : null;
       const thumb = findArt(seasonFiles, base, ['-thumb.jpg', '-thumb.png'], []);
@@ -411,6 +440,7 @@ function scanShowFolder(libId: number, dir: string, files: Entry[], now: string)
 
       saveTracks(file.id, epNfo, externalSubs(seasonFiles, base));
       episodes++;
+      episodeEnEstaTemporada++;
     }
   }
 
@@ -424,51 +454,121 @@ function scanShowFolder(libId: number, dir: string, files: Entry[], now: string)
 
 export type ScanProgress = { library: string; done: number; total: number; current: string };
 
-export function scanLibrary(lib: LibraryConfig, onProgress?: (p: ScanProgress) => void): number {
+/** Deja que el resto del servidor respire: una petición ya en curso puede seguir. */
+function cederElHilo(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
+/*
+ * Trocear en lotes, cada uno en su propia transaccion, y ceder el hilo entre
+ * lotes.
+ *
+ * Antes era una unica transaccion para la biblioteca entera: 1.834 titulos y
+ * 5.566 ficheros procesados en un solo tiron sincrono. Medido con el latido
+ * del bucle de eventos: 235 segundos seguidos sin que el servidor contestara
+ * a nadie, ni a la raiz. `node:sqlite` es sincrono de verdad, asi que la unica
+ * forma de que otra peticion se cuele es que no haya ninguna transaccion
+ * abierta en el momento de ceder — de ahi que el `await` vaya siempre
+ * *despues* del `COMMIT`, nunca en mitad de una transaccion.
+ *
+ * El tamano del lote (25) es el mismo con el que ya se avisaba del progreso:
+ * no es un numero nuevo, es reusar el que ya se habia medido como razonable.
+ */
+const LOTE = 25;
+
+async function escanearCarpetas(
+  lib: LibraryConfig,
+  row: { id: number },
+  entries: Entry[],
+  now: string,
+  onProgress?: (p: ScanProgress) => void,
+): Promise<number> {
+  let count = 0;
+  for (let inicio = 0; inicio < entries.length; inicio += LOTE) {
+    const lote = entries.slice(inicio, inicio + LOTE);
+    db.exec('BEGIN');
+    try {
+      lote.forEach((entry, j) => {
+        const files = listDir(entry.path);
+        count += lib.kind === 'movie'
+          ? scanMovieFolder(row.id, entry.path, files, now)
+          : scanShowFolder(row.id, entry.path, files, now);
+        if ((inicio + j) % 25 === 0) {
+          onProgress?.({ library: lib.name, done: inicio + j + 1, total: entries.length, current: entry.name });
+        }
+      });
+      db.exec('COMMIT');
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+    if (inicio + LOTE < entries.length) await cederElHilo();
+  }
+  return count;
+}
+
+/*
+ * Ficheros que ya no estan, en carpetas que siguen. El pipeline recodifica
+ * en su sitio y a veces cambia el nombre: la carpeta de la pelicula queda,
+ * con su logo y su fondo, pero el .mkv antiguo no. Hasta ahora esa fila se
+ * quedaba para siempre y la ficha decia «No se pudieron leer las pistas».
+ *
+ * Tambien en lotes: una biblioteca puede tener miles de ficheros y cada uno
+ * pasa por `existsSync`, que sobre `E:\` en un momento malo del disco no es
+ * gratis multiplicado por miles.
+ */
+async function retirarFicherosAusentes(libraryId: number): Promise<number> {
+  const ficheros = db
+    .prepare(`SELECT f.id, f.path FROM media_files f
+               LEFT JOIN items i ON i.id = f.item_id
+               LEFT JOIN episodes e ON e.id = f.episode_id
+               LEFT JOIN items s ON s.id = e.show_id
+              WHERE COALESCE(i.library_id, s.library_id) = ?`)
+    .all(libraryId) as { id: number; path: string }[];
+  let retirados = 0;
+  const LOTE_FICHEROS = 200;
+  for (let inicio = 0; inicio < ficheros.length; inicio += LOTE_FICHEROS) {
+    const lote = ficheros.slice(inicio, inicio + LOTE_FICHEROS);
+    db.exec('BEGIN');
+    try {
+      for (const f of lote) {
+        if (!existsSync(f.path)) {
+          stmt.clearTracks.run(f.id);
+          stmt.clearSubs.run(f.id);
+          db.prepare('DELETE FROM media_files WHERE id = ?').run(f.id);
+          retirados++;
+        }
+      }
+      db.exec('COMMIT');
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+    if (inicio + LOTE_FICHEROS < ficheros.length) await cederElHilo();
+  }
+  return retirados;
+}
+
+export async function scanLibrary(lib: LibraryConfig, onProgress?: (p: ScanProgress) => void): Promise<number> {
   const now = new Date().toISOString();
   const row = stmt.library.get(lib.name, lib.path, lib.kind) as { id: number };
   const entries = listDir(lib.path).filter((e) => e.isDir && !SKIP_DIRS.has(e.name.toLowerCase()) && !e.name.startsWith('_'));
-  let count = 0;
-  let retirados = 0;
+
+  const count = await escanearCarpetas(lib, row, entries, now, onProgress);
 
   db.exec('BEGIN');
   try {
-    entries.forEach((entry, i) => {
-      const files = listDir(entry.path);
-      count += lib.kind === 'movie'
-        ? scanMovieFolder(row.id, entry.path, files, now)
-        : scanShowFolder(row.id, entry.path, files, now);
-      if (i % 25 === 0) onProgress?.({ library: lib.name, done: i + 1, total: entries.length, current: entry.name });
-    });
     for (const stale of stmt.staleItems.all(row.id, now) as { id: number }[]) {
       stmt.deleteItem.run(stale.id);
-    }
-    /*
-     * Ficheros que ya no estan, en carpetas que siguen. El pipeline recodifica
-     * en su sitio y a veces cambia el nombre: la carpeta de la pelicula queda,
-     * con su logo y su fondo, pero el .mkv antiguo no. Hasta ahora esa fila se
-     * quedaba para siempre y la ficha decia «No se pudieron leer las pistas».
-     */
-    const ficheros = db
-      .prepare(`SELECT f.id, f.path FROM media_files f
-                 LEFT JOIN items i ON i.id = f.item_id
-                 LEFT JOIN episodes e ON e.id = f.episode_id
-                 LEFT JOIN items s ON s.id = e.show_id
-                WHERE COALESCE(i.library_id, s.library_id) = ?`)
-      .all(row.id) as { id: number; path: string }[];
-    for (const f of ficheros) {
-      if (!existsSync(f.path)) {
-        stmt.clearTracks.run(f.id);
-        stmt.clearSubs.run(f.id);
-        db.prepare('DELETE FROM media_files WHERE id = ?').run(f.id);
-        retirados++;
-      }
     }
     db.exec('COMMIT');
   } catch (err) {
     db.exec('ROLLBACK');
     throw err;
   }
+
+  const retirados = await retirarFicherosAusentes(row.id);
+
   onProgress?.({ library: lib.name, done: entries.length, total: entries.length, current: '' });
   if (retirados > 0) console.log(`[escaneo] ${lib.name}: ${retirados} ficheros ya no estan en disco, retirados`);
   return count;
@@ -497,10 +597,101 @@ export function rescanItem(itemId: number): boolean {
   }
 }
 
-export function scanAll(onProgress?: (p: ScanProgress) => void) {
+/**
+ * Escanea una sola carpeta —una película o el raíz de una serie—, sin
+ * recorrer la biblioteca entera. La usa la vigilancia de disco (`watch.ts`):
+ * cuando el pipeline o una copia manual deja ficheros nuevos en `E:\`, esto
+ * evita esperar al escaneo diario o pulsar «Actualizar biblioteca» a mano.
+ *
+ * Null si la carpeta no es hija directa de ninguna biblioteca configurada
+ * (una temporada, un fichero suelto, algo fuera de `E:\`) o si ya no existe
+ * —pudo borrarse entre el aviso del sistema de ficheros y que le tocara el turno—.
+ */
+export function scanFolder(folderPath: string): { library: string; titulo: string; count: number } | null {
+  const lib = config.libraries.find((l) => dirname(folderPath).toLowerCase() === l.path.toLowerCase());
+  if (!lib) return null;
+
+  // Mismas reglas que el escaneo completo aplica a las carpetas de primer
+  // nivel: sin esto, un aviso del sistema de ficheros sobre `.actors` o una
+  // carpeta de staging con `_` delante (a propósito, para que el escaneo
+  // completo la ignore) se indexaría igual por este otro camino.
+  const nombre = basename(folderPath).toLowerCase();
+  if (SKIP_DIRS.has(nombre) || nombre.startsWith('_')) return null;
+
+  const files = listDir(folderPath);
+  if (files.length === 0) return null;
+
+  const now = new Date().toISOString();
+  const row = stmt.library.get(lib.name, lib.path, lib.kind) as { id: number };
+
+  db.exec('BEGIN');
+  try {
+    const count = lib.kind === 'movie'
+      ? scanMovieFolder(row.id, folderPath, files, now)
+      : scanShowFolder(row.id, folderPath, files, now);
+    db.exec('COMMIT');
+    return { library: lib.name, titulo: basename(folderPath), count };
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+}
+
+export async function scanAll(onProgress?: (p: ScanProgress) => void) {
   const results: { name: string; count: number }[] = [];
   for (const lib of config.libraries) {
-    results.push({ name: lib.name, count: scanLibrary(lib, onProgress) });
+    results.push({ name: lib.name, count: await scanLibrary(lib, onProgress) });
   }
+
+  /*
+   * Plegar el WAL al acabar. SQLite no encoge nunca el `-wal` por su cuenta:
+   * el autocheckpoint lo reutiliza desde el principio, pero el fichero se
+   * queda del tamaño de la mayor ráfaga de escrituras que haya visto. Medido
+   * el 26/09/2026 tras la tanda de subtítulos: `tvwatch.db` 167,3 MB y
+   * `tvwatch.db-wal` 166,6 MB, casi el doble de disco para la misma base.
+   *
+   * Esto NO es `optimizarBaseDeDatos()`: no hay `VACUUM` ni `ANALYZE`, que sí
+   * bloquean y por eso siguen siendo cosa de Ajustes, a mano. Un checkpoint
+   * TRUNCATE solo vuelca las páginas pendientes y corta el fichero. Si hay
+   * alguien leyendo, devuelve ocupado y no pasa nada: se plegará al siguiente
+   * escaneo. Por eso no se comprueba el resultado ni se aborta el escaneo
+   * -que ya ha terminado bien- si esto no puede hacerse.
+   */
+  try {
+    db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+  } catch (err) {
+    console.error('[escaneo] no se pudo plegar el WAL:', (err as Error).message);
+  }
+
   return results;
+}
+
+/*
+ * `scanAll()` en su propio hilo (scan-worker.ts), para que un escaneo largo
+ * no dependa de ceder el hilo bien en cada rincón del código: pase lo que
+ * pase ahí dentro, el servidor HTTP no se entera. Ver el comentario de
+ * scan-worker.ts para el porqué completo.
+ */
+export function scanAllEnWorker(onProgress?: (p: ScanProgress) => void): Promise<{ name: string; count: number }[]> {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL('./scan-worker.ts', import.meta.url));
+    let asentado = false;
+    worker.on('message', (msg: { type: string; progress?: ScanProgress; results?: { name: string; count: number }[]; message?: string }) => {
+      if (msg.type === 'progress' && msg.progress) {
+        onProgress?.(msg.progress);
+      } else if (msg.type === 'done') {
+        asentado = true;
+        resolve(msg.results ?? []);
+      } else if (msg.type === 'error') {
+        asentado = true;
+        reject(new Error(msg.message));
+      }
+    });
+    worker.on('error', (err) => {
+      if (!asentado) reject(err);
+    });
+    worker.on('exit', (code) => {
+      if (!asentado) reject(new Error(`El worker de escaneo terminó sin avisar (código ${code})`));
+    });
+  });
 }

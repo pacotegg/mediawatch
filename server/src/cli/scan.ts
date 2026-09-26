@@ -6,7 +6,7 @@ const started = Date.now();
 console.log(`Bibliotecas configuradas: ${config.libraries.map((l) => l.name).join(', ')}`);
 
 let lastLine = '';
-const results = scanAll((p) => {
+const results = await scanAll((p) => {
   const line = `  ${p.library}: ${p.done}/${p.total}`;
   if (line !== lastLine) {
     process.stdout.write(`\r${line.padEnd(70)}`);
