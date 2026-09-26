@@ -136,6 +136,16 @@ function pickRating(node: Record<string, any>): { rating?: number; votes?: numbe
 
 function collectPeople(node: Record<string, any>): Person[] {
   const out: Person[] = [];
+  /*
+   * tinyMediaManager NO escribe <order> en los <actor>: la columna ord de
+   * item_people estaba vacia en las 87.590 apariciones (26/09/2026), la API no
+   * podia ordenar el reparto y salian secundarios antes que las estrellas. Pero
+   * el ORDEN de los <actor> en el .nfo SI es el de reparto, tal como viene de
+   * TMDb (comprobado: El club de la lucha -> Norton, Pitt, Bonham Carter;
+   * Troya -> Pitt, Bloom, Bana). Se usa esa posicion cuando falta <order>.
+   * `??` y no `||`: un <order>0</order> es el protagonista y no debe perderse.
+   */
+  let posicion = 0;
   for (const a of node.actor ?? []) {
     const name = str(a?.name);
     if (!name) continue;
@@ -143,9 +153,10 @@ function collectPeople(node: Record<string, any>): Person[] {
       name,
       role: 'actor',
       character: str(a?.role),
-      order: num(a?.order),
+      order: num(a?.order) ?? posicion,
       thumb: str(a?.thumb),
     });
+    posicion++;
   }
   for (const d of node.director ?? []) {
     const name = str(d);
