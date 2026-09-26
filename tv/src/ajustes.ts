@@ -31,6 +31,16 @@ export type Ajustes = {
   saltarCabecera: boolean;
   /** Enseñar en el reproductor a qué hora termina lo que se está viendo. */
   horaDeFin: boolean;
+  /*
+   * Salvapantallas de fondos, en minutos de quietud. 0 lo apaga.
+   *
+   * Dos tiempos y no uno porque no es lo mismo: en el menú no hay nada que
+   * mirar y puede entrar pronto; en pausa te has levantado un momento y que
+   * te tape la película a los dos minutos es un incordio. Esta tele es Neo
+   * QLED, no OLED, así que esto es estética, no defensa contra el quemado.
+   */
+  salvaMenu: number;
+  salvaPausa: number;
 };
 
 const POR_DEFECTO: Ajustes = {
@@ -58,6 +68,8 @@ const POR_DEFECTO: Ajustes = {
   modoAudio: 'normal',
   saltarCabecera: true,
   horaDeFin: true,
+  salvaMenu: 2,
+  salvaPausa: 5,
 };
 
 let actuales: Ajustes = POR_DEFECTO;
@@ -84,6 +96,16 @@ export function cargarAjustes(): Ajustes {
         modoAudio: guardado.modoAudio || POR_DEFECTO.modoAudio,
         saltarCabecera: guardado.saltarCabecera !== false,
         horaDeFin: guardado.horaDeFin !== false,
+        /*
+         * Con `??`, no con `||`: cero es «apagado», un valor legítimo que `||`
+         * convertiría en el de por defecto. Faltaban los dos aquí —estaban en
+         * `POR_DEFECTO` pero no en esta reconstrucción—, así que en cualquier
+         * tele con ajustes guardados quedaban en `undefined`, y como la
+         * comprobación es `aj.salvaPausa > 0`, el salvapantallas no llegaba a
+         * salir nunca.
+         */
+        salvaMenu: guardado.salvaMenu ?? POR_DEFECTO.salvaMenu,
+        salvaPausa: guardado.salvaPausa ?? POR_DEFECTO.salvaPausa,
       };
     }
   } catch (e) {

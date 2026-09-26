@@ -1473,8 +1473,14 @@ body.rend-rapido * {
  */
 .osd .disco {
   display: block;
-  width: 200px;
-  height: 200px;
+  /*
+   * 260 y no 200: la app se dibuja a 1920x1080 lógicos y la tele lo escala a
+   * sus 3840x2160, así que estos 260 son 520 píxeles de verdad en el panel, y
+   * se piden 600 en `imagen.disco(id, 600)`: siempre sobra resolución, nunca
+   * se estira. Un 30% más, que a 65 pulgadas se nota, sin comerse el OSD.
+   */
+  width: 260px;
+  height: 260px;
   margin-bottom: 18px;
   pointer-events: none;
 }
@@ -1665,4 +1671,61 @@ body.rend-medio .tarjeta.enfocado .lamina {
 
 .progreso i {
   background: var(--acento);
+}
+
+/*
+ * Salvapantallas. z-index 100: por encima de todo lo demás en la app,
+ * incluido el reproductor (70) — en pausa tiene que taparlo entero.
+ *
+ * Dos <img> superpuestas que se cruzan con opacidad: la que entra hace un
+ * zoom lento de fondo hacia arriba («Ken Burns»), la que sale se queda quieta
+ * desvaneciéndose. `object-fit: cover` para que un fanart 1080p o uno 4K
+ * llenen igual el panel sin bandas, cada uno a su tamaño real.
+ */
+.salva {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: #000;
+  overflow: hidden;
+}
+
+.salva-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transform: scale(1.08);
+  transition: opacity 1.8s ease;
+}
+
+.salva-img.activa {
+  opacity: 1;
+  animation: salva-zoom 14s ease-out forwards;
+}
+
+@keyframes salva-zoom {
+  from { transform: scale(1.08); }
+  to { transform: scale(1); }
+}
+
+/* Un degradado abajo, para que el título se lea sobre cualquier fotograma. */
+.salva-velo {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(0deg, rgba(0, 0, 0, 0.65) 0%, transparent 30%);
+  pointer-events: none;
+}
+
+.salva-titulo {
+  position: absolute;
+  left: 64px;
+  bottom: 56px;
+  color: #fff;
+  font-size: 28px;
+  font-weight: 600;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
+  opacity: 0.85;
 }

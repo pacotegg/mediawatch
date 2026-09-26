@@ -101,6 +101,9 @@ const VIGENCIA_PORTADA_MS = 5 * 60_000;
 /** Quién es el perfil de esta sesión; lo que decide si sale «Eliminar». */
 let soyAdmin = false;
 
+/** El reproductor de la película que se está viendo ahora, si hay alguna. */
+let reproductorActivo: Reproductor | null = null;
+
 /** La última saga abierta y la última tarjeta pulsada en Buscar: para volver ahí. */
 let focoSaga: string | null = null;
 let focoBuscar: string | null = null;
@@ -1333,8 +1336,9 @@ async function menuPistas(fileId: number, tipo: 'audio' | 'subs', alCambiar?: (i
         seleccion.convertir = !!pista && pista.compatible === false;
       } else seleccion.subtitulo = v;
       cerrar();
+      // Sin cartel: la línea elegida ya se queda marcada en amarillo, y el
+      // aviso tapaba la pantalla 4,5 s para decir lo que ya se ve.
       if (alCambiar) alCambiar(info);
-      aviso(tipo === 'audio' ? 'Audio seleccionado' : 'Subtítulos seleccionados');
     });
   });
 
@@ -1577,7 +1581,14 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
   const tramosSaltados: Record<string, boolean> = {};
 
   /** El audio se está reprocesando: el flujo va por tubería de ffmpeg. */
-  const porTuberia = () => convertir || modoAudio !== 'normal';
+  /*
+   * Cuándo la película llega por tubería (ffmpeg) en vez de como fichero:
+   * si hay que convertir el audio, si se pide modo noche o voces claras, y
+   * también si la pista elegida no es la primera del contenedor: AVPlay
+   * cambia de pista con `setSelectTrack` pero deja el audio descuadrado del
+   * vídeo, así que el servidor manda la película con esa pista sola, copiada.
+   */
+  const porTuberia = () => convertir || modoAudio !== 'normal' || audioOrdinal > 0;
 
   /*
    * Saltar volviendo a pedir la película cortada, en vez de buscar dentro.
@@ -1897,6 +1908,9 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
       temporizadorSub = window.setTimeout(() => { capaSubs.innerHTML = ''; }, 12000);
     },
   });
+  // Para el salvapantallas: necesita saber si hay algo en pausa ahora mismo,
+  // y esta es la única instancia viva mientras dura la película.
+  reproductorActivo = reproductor;
 
   /* --------------------------------------------------------------- saltos */
 
@@ -1967,6 +1981,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
   const salir = () => {
     if (cerrado) return;
     cerrado = true;
+    reproductorActivo = null;
     window.clearInterval(temporizadorAvisos);
     window.clearTimeout(temporizadorSalto);
     window.clearTimeout(temporizadorSub);
@@ -1995,6 +2010,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     // Se acabó: que no siga preguntando por la tira de miniaturas cada medio
     // minuto durante los diez minutos siguientes con la pantalla ya cambiada.
     cerrado = true;
+    reproductorActivo = null;
     const sig = siguienteEpisodio();
     if (!sig || !sig.file_id) {
       reproductor.cerrar();
@@ -2170,8 +2186,8 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     seleccion.audioId = audioId;
     seleccion.convertir = necesitaConvertir;
 
-    // Cambiar de pista dentro del contenedor lo hace la tele sola. Pasar a una
-    // que hay que convertir (o salir de ella) obliga a pedir otro flujo.
+    // Volver a la primera pista es el fichero en crudo; cualquier otra, o una
+    // que hay que convertir, es otro flujo del servidor (ver `porTuberia`).
     if (porTuberia() || antes) {
       abrirFlujo(reproductor.tiempo());
       aviso(necesitaConvertir ? 'Convirtiendo el audio a DD+ 5.1…' : 'Cambiando de pista…');
@@ -2517,6 +2533,19 @@ function pantallaAjustes() {
       '<button class="boton" data-nav data-parar-cabeceras>Parar la búsqueda</button>',
     ) +
 
+    grupo(
+      'Salvapantallas',
+      'Fondos de la biblioteca, a pantalla completa. En pausa el margen es mayor a propósito: seguramente te has levantado un momento, no que te hayas ido. «Apagado» lo quita del todo.',
+      elecciones('salvaMenu', [
+        { valor: 0, texto: 'En el menú: apagado' }, { valor: 1, texto: 'En el menú: 1 min' },
+        { valor: 2, texto: 'En el menú: 2 min' }, { valor: 5, texto: 'En el menú: 5 min' },
+      ], a.salvaMenu) +
+      elecciones('salvaPausa', [
+        { valor: 0, texto: 'En pausa: apagado' }, { valor: 3, texto: 'En pausa: 3 min' },
+        { valor: 5, texto: 'En pausa: 5 min' }, { valor: 10, texto: 'En pausa: 10 min' },
+      ], a.salvaPausa),
+    ) +
+
     grupo('Biblioteca', 'El servidor la revisa sola cada 24 h. Si acabas de añadir algo, pídelo aquí.',
       '<button class="boton" data-nav data-escanear>Actualizar biblioteca ahora</button>') +
 
@@ -2545,6 +2574,8 @@ function pantallaAjustes() {
       else if (campo === 'heroeSegundos') guardarAjustes({ heroeSegundos: Number(valor) });
       else if (campo === 'saltoCorto') guardarAjustes({ saltoCorto: Number(valor) });
       else if (campo === 'saltoLargo') guardarAjustes({ saltoLargo: Number(valor) });
+      else if (campo === 'salvaMenu') guardarAjustes({ salvaMenu: Number(valor) });
+      else if (campo === 'salvaPausa') guardarAjustes({ salvaPausa: Number(valor) });
       else if (campo === 'idiomaAudio') guardarAjustes({ idiomaAudio: String(valor) });
       else if (campo === 'preferirAtmos') guardarAjustes({ preferirAtmos: valor === 'si' });
       else if (campo === 'tamanoSubtitulos') guardarAjustes({ tamanoSubtitulos: Number(valor) });
@@ -2942,6 +2973,114 @@ async function arrancar() {
   void pantallaPortada();
   escucharAlMovil();
 }
+
+/* ------------------------------------------------------- salvapantallas */
+
+/*
+ * Fondos de la biblioteca, en pausa o en el menú, con tiempos distintos a
+ * propósito: en pausa alguien se ha levantado un momento, así que el margen
+ * por defecto es mayor (5 min) que en el menú (2 min), donde no hay nada que
+ * perder por entrar antes. Nunca en otra pantalla —rejilla, ficha, buscar—
+ * porque ahí sí hay algo que mirar de verdad.
+ *
+ * Los fondos son los que ya trajo la portada (`portadaGuardada`): no hace
+ * falta pedirle nada nuevo al servidor, y con 1.802 títulos con fanart en la
+ * biblioteca, lo que ya está cargado en memoria (héroe + todas las filas) da
+ * de sobra para no repetir en una sesión larga.
+ */
+let capaSalva: HTMLElement | null = null;
+let cicloSalva = 0;
+let ultimaActividad = Date.now();
+let fondosSalva: { id: number; title: string }[] = [];
+let indiceSalva = -1;
+let ladoASalva = true;
+const INTERVALO_SALVA_MS = 14_000;
+
+function fondosParaSalva(): { id: number; title: string }[] {
+  if (!portadaGuardada) return [];
+  const vistos = new Set<number>();
+  const salida: { id: number; title: string }[] = [];
+  const candidatos = portadaGuardada.datos.hero.concat(...portadaGuardada.datos.rows.map((r) => r.items));
+  for (const t of candidatos) {
+    if (t.has_fanart && !vistos.has(t.id)) {
+      vistos.add(t.id);
+      salida.push({ id: t.id, title: t.title });
+    }
+  }
+  // Al azar, no el orden de la portada: si no, cada sesión larga ve la misma secuencia.
+  for (let i = salida.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [salida[i], salida[j]] = [salida[j], salida[i]];
+  }
+  return salida;
+}
+
+/** Cambia al siguiente fondo con un cruce suave; el que entra hace un zoom lento. */
+function avanzarSalva() {
+  if (!capaSalva || !fondosSalva.length) return;
+  indiceSalva = (indiceSalva + 1) % fondosSalva.length;
+  const t = fondosSalva[indiceSalva];
+  const entra = capaSalva.querySelector<HTMLImageElement>(ladoASalva ? '[data-salva-a]' : '[data-salva-b]')!;
+  const sale = capaSalva.querySelector<HTMLImageElement>(ladoASalva ? '[data-salva-b]' : '[data-salva-a]')!;
+  const titulo = capaSalva.querySelector<HTMLElement>('[data-salva-titulo]')!;
+  ladoASalva = !ladoASalva;
+  entra.classList.remove('activa');
+  entra.onload = () => {
+    void entra.offsetWidth; // reinicia la animación de zoom del CSS
+    entra.classList.add('activa');
+    sale.classList.remove('activa');
+    titulo.textContent = t.title;
+  };
+  entra.src = imagen.fondo(t.id, 1920);
+}
+
+function mostrarSalvapantallas() {
+  if (capaSalva) return;
+  fondosSalva = fondosParaSalva();
+  if (fondosSalva.length < 2) return; // recién arrancado, sin portada cargada todavía
+  indiceSalva = -1;
+  ladoASalva = true;
+  const div = document.createElement('div');
+  div.className = 'salva';
+  div.innerHTML =
+    '<img class="salva-img" data-salva-a alt="">' +
+    '<img class="salva-img" data-salva-b alt="">' +
+    '<div class="salva-velo"></div>' +
+    '<div class="salva-titulo" data-salva-titulo></div>';
+  document.body.appendChild(div);
+  capaSalva = div;
+  avanzarSalva();
+  cicloSalva = window.setInterval(avanzarSalva, INTERVALO_SALVA_MS);
+}
+
+function ocultarSalvapantallas() {
+  if (!capaSalva) return;
+  window.clearInterval(cicloSalva);
+  capaSalva.remove();
+  capaSalva = null;
+}
+
+// Captura, no burbuja: así se adelanta a cualquier pantalla y, si el
+// salvapantallas está encendido, se traga la tecla entera — la que lo quita
+// no debe además activar el botón que tuviera el foco debajo.
+document.addEventListener('keydown', (e) => {
+  ultimaActividad = Date.now();
+  if (capaSalva) {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    ocultarSalvapantallas();
+  }
+}, true);
+
+window.setInterval(() => {
+  if (capaSalva) return;
+  const aj = ajustes();
+  const inactivoMin = (Date.now() - ultimaActividad) / 60_000;
+  const enPausa = reproductorActivo !== null && reproductorActivo.estado() === 'PAUSED';
+  const enMenu = !enPausa && idActual === 'portada' && !document.body.classList.contains('viendo');
+  if (enPausa && aj.salvaPausa > 0 && inactivoMin >= aj.salvaPausa) mostrarSalvapantallas();
+  else if (enMenu && aj.salvaMenu > 0 && inactivoMin >= aj.salvaMenu) mostrarSalvapantallas();
+}, 5_000);
 
 cargarAjustes();
 iniciarNavegacion();
