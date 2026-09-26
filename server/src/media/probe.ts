@@ -216,7 +216,10 @@ export async function mediaInfo(fileId: number): Promise<MediaInfo & { path: str
     cache.set(fileId, { info, marca: '' });
   }
 
-  db.prepare(`UPDATE media_files SET probed = 1, duration = ?, video_codec = ?, width = ?, height = ?, hdr = COALESCE(?, hdr) WHERE id = ?`)
+  // Si ffprobe no encuentra pista de vídeo en esta pasada (fichero a medio
+  // reescribir, JSON incompleto), `info.video` viene null: COALESCE conserva
+  // lo ya medido en vez de borrar codec/ancho/alto buenos.
+  db.prepare(`UPDATE media_files SET probed = 1, duration = ?, video_codec = COALESCE(?, video_codec), width = COALESCE(?, width), height = COALESCE(?, height), hdr = COALESCE(?, hdr) WHERE id = ?`)
     .run(info.duration || file.duration || null, info.video?.codec ?? null, info.video?.width ?? null, info.video?.height ?? null, info.video?.hdr ?? null, fileId);
 
   db.prepare('DELETE FROM audio_tracks WHERE file_id = ?').run(fileId);
