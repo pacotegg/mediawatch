@@ -38,7 +38,7 @@ function verifyPin(pin: string, stored: string): boolean {
  * falsificarlas, pero eso solo le haria pasar por «de fuera», que es el lado
  * estricto: no hay nada que ganar.
  */
-function deFuera(req: FastifyRequest): boolean {
+export function deFuera(req: FastifyRequest): boolean {
   return Boolean(req.headers['x-forwarded-for'] || req.headers['x-forwarded-proto']);
 }
 
@@ -355,6 +355,15 @@ export default async function authRoutes(app: FastifyInstance) {
   app.get('/api/qr.svg', async (req, reply) => {
     const { d } = req.query as { d?: string };
     if (!d) return reply.code(400).send('falta el contenido');
+    /*
+     * Solo el enlace de emparejamiento. Antes convertía cualquier texto en QR
+     * sin pedir sesión: un código malicioso servido desde tu propio dominio,
+     * que es justo lo que hace creíble a un QR. Es lo único para lo que se usa
+     * (`/emparejar?c=NNNNNN`), así que se acota a eso.
+     */
+    if (!/^https?:\/\/[^/]+\/emparejar\?c=\d{6}$/.test(d)) {
+      return reply.code(400).send('contenido no permitido');
+    }
     const svg = await toString(d, { type: 'svg', margin: 1, width: 420, color: { dark: '#07070a', light: '#ffffff' } });
     return reply.header('Content-Type', 'image/svg+xml').header('Cache-Control', 'no-store').send(svg);
   });
@@ -375,6 +384,22 @@ export default async function authRoutes(app: FastifyInstance) {
   });
 
   app.get('/api/auth/device/poll', async (req, reply) => {
+    /*
+     * Esta ruta entrega un token de sesión entero al que acierte el código, y
+     * está abierta sin autenticar porque la tele todavía no tiene ninguno.
+     * Son seis cifras: 800.000 combinaciones, ventana de diez minutos y, hasta
+     * ahora, ni freno ni límite de origen. La tele sondea cada dos segundos y
+     * suele llevarse el token primero, así que la carrera era estrecha —pero
+     * la superficie estaba ahí y desde internet no hace ninguna falta, igual
+     * que `device/start`.
+     *
+     * Se cierra desde internet y ya está: nada de freno por intentos fallidos,
+     * porque la tele sigue sondeando cada dos segundos aunque el código haya
+     * caducado, y esos 404 legítimos agotarían el contador en diez segundos
+     * dejando a la casa entera sin poder iniciar sesión.
+     */
+    if (deFuera(req)) return reply.code(403).send({ error: 'El emparejado se hace desde la red de casa' });
+
     const { code } = req.query as { code?: string };
     const entry = code ? pending.get(code) : undefined;
     if (!entry) return reply.code(404).send({ error: 'Código desconocido' });

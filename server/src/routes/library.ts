@@ -7,7 +7,7 @@ import { db, normalize } from '../db.ts';
 import { thumbnail } from '../media/images.ts';
 import { clearDialogue, dialogueStats, ftsQuery, indexarEnSegundoPlano, searchDialogue } from '../scanner/dialogue.ts';
 import { detallePersona } from '../scanner/people.ts';
-import { currentUser, requireUser, sesionDe } from './auth.ts';
+import { currentUser, deFuera, requireUser, sesionDe } from './auth.ts';
 import { marcarActividad } from '../media/ocupado.ts';
 import { loteOmdb, pararOmdb, rellenarConOmdb } from '../media/omdb.ts';
 
@@ -50,7 +50,7 @@ const ITEM_FIELDS = `
   i.id, i.kind, i.title, i.year, i.rating, i.runtime, i.mpaa, i.tagline,
   i.poster IS NOT NULL AS has_poster, i.fanart IS NOT NULL AS has_fanart,
   i.clearlogo IS NOT NULL AS has_logo, i.landscape IS NOT NULL AS has_landscape,
-  i.library_id, l.name AS library_name`;
+  i.arte_actualizado, i.library_id, l.name AS library_name`;
 
 function withProgress(rows: any[], userId: number | null) {
   if (!userId || rows.length === 0) return rows;
@@ -309,6 +309,28 @@ export default async function libraryRoutes(app: FastifyInstance) {
                   ORDER BY updated_at DESC LIMIT 20`)
         .all(user.id) as any[];
       if (continueItems.length) rows.push({ key: 'continue', title: 'Continuar viendo', kind: 'progress', items: continueItems });
+    }
+
+    /*
+     * Estrenos primero, y lo que acaba de entrar al servidor después. Son dos
+     * cosas distintas y se mezclaban en una sola fila: «Vaiana» se estrenó el
+     * 8 de julio y entró aquí el 14 de septiembre, y una peli de los ochenta
+     * bajada anoche encabezaba «Añadido recientemente» como si fuera novedad.
+     *
+     * `premiered` es fiable para esto: lo trae tinyMediaManager en ISO y lo
+     * tienen 1.725 de las 1.742 películas (99%), así que ordenar por él no
+     * deja fuera casi nada. Solo películas —el estreno de una serie es el de
+     * su primer capítulo, de hace veinte años en muchas— y nunca fechas por
+     * venir, que las hay en las fichas y encabezarían la fila sin poder verse.
+     */
+    const estrenos = db
+      .prepare(`SELECT ${ITEM_FIELDS} FROM items i JOIN libraries l ON l.id = i.library_id
+                WHERE i.kind = 'movie' AND i.premiered IS NOT NULL AND i.premiered != ''
+                  AND i.premiered <= date('now')
+                ORDER BY i.premiered DESC LIMIT 24`)
+      .all();
+    if (estrenos.length) {
+      rows.push({ key: 'estrenos', title: 'Estrenadas recientemente', kind: 'poster', items: withProgress(estrenos, user?.id ?? null) });
     }
 
     const recent = db
@@ -582,6 +604,14 @@ export default async function libraryRoutes(app: FastifyInstance) {
   app.delete('/api/items/:id', async (req, reply) => {
     const user = requireUser(req);
     if (!user.is_admin) return reply.code(403).send({ error: 'Solo un administrador puede borrar' });
+    /*
+     * Borrar es lo único de aquí que no se deshace: se lleva la carpeta entera
+     * de la biblioteca. Cambiar el PIN y emparejar ya estaban cerrados desde
+     * internet; esto no, y era lo más destructivo que quedaba abierto. Una
+     * sesión de admin olvidada en un móvil no debería poder vaciar `E:` desde
+     * fuera de casa.
+     */
+    if (deFuera(req)) return reply.code(403).send({ error: 'Borrar se hace desde la red de casa' });
     const id = Number((req.params as { id: string }).id);
     const { confirmar } = (req.body ?? {}) as { confirmar?: string };
 
