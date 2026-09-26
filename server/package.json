@@ -8,7 +8,8 @@
     "start": "node src/index.ts",
     "scan": "node src/cli/scan.ts",
     "arte": "node src/cli/completar-arte.ts",
-    "personas": "node src/cli/completar-personas.ts"
+    "personas": "node src/cli/completar-personas.ts",
+    "detalles": "node src/cli/completar-detalles.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",

@@ -84,3 +84,18 @@ export async function imagenesDeTvdb(kind: 'movie' | 'show', tvdbId: number): Pr
   const de = (tipo: number) => arts.filter((a) => a.type === tipo && a.image).map(aImagen).sort((a, b) => b.votos - a.votos);
   return { clearlogo: de(tipos.clearlogo), fanart: de(tipos.fanart), poster: de(tipos.poster) };
 }
+
+/**
+ * Una persona, buscada por nombre y **confirmada por su id de IMDb**: la
+ * búsqueda devuelve homónimos y hasta erratas («Telly Salavas»), y solo el
+ * IMDb distingue al bueno. La foto de relleno de TVDB (`images/missing`) no
+ * cuenta como foto.
+ */
+export async function buscarPersonaTvdb(nombre: string, imdbId: string): Promise<{ id: number; foto: string | null } | null> {
+  type Resultado = { tvdb_id: string; image_url?: string; remote_ids?: { id: string; sourceName: string }[] };
+  const r = await tvdb<Resultado[]>(`/search?type=people&query=${encodeURIComponent(nombre)}`);
+  const buena = r?.find((x) => x.remote_ids?.some((rid) => rid.sourceName === 'IMDB' && rid.id === imdbId));
+  if (!buena) return null;
+  const foto = buena.image_url && !/\/missing\//.test(buena.image_url) ? buena.image_url : null;
+  return { id: Number(buena.tvdb_id), foto };
+}

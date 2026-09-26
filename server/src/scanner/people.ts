@@ -35,9 +35,13 @@ export async function detallePersona(personId: number): Promise<DetallePersona |
   const guardado = db
     .prepare('SELECT tmdb_id, biography, birthday, deathday, birthplace, profile, fetched_at FROM people_details WHERE person_id = ?')
     .get(personId) as DetallePersona | undefined;
-  // Completa del todo: ya está. Solo con el id (lo apunta la pasada de
-  // personas): se trae el resto por ese id, sin adivinar por nombre.
-  if (guardado && (guardado.biography || guardado.birthday || !guardado.tmdb_id)) return guardado;
+  // Completa del todo: ya está. `biography` a cadena vacía (no NULL) es la
+  // marca de "ya comprobado en TMDb, no tenía biografía" que pone la pasada
+  // masiva (detalles-personas.ts); tratarla como "falta" volvía a preguntar a
+  // TMDb en cada visita a esa ficha. Solo con el id (lo apunta la pasada de
+  // personas) y sin haber comprobado aún el resto: se trae por ese id, sin
+  // adivinar por nombre.
+  if (guardado && (guardado.biography !== null || guardado.birthday || !guardado.tmdb_id)) return guardado;
 
   const persona = db.prepare('SELECT name FROM people WHERE id = ?').get(personId) as { name: string } | undefined;
   if (!persona) return null;
