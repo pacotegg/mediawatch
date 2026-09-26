@@ -140,6 +140,7 @@ type Sesion = {
   desde: number;
   ultimoUso: number;
   muerta: boolean;
+  dispositivo?: string;
 };
 
 const sesiones = new Map<string, Sesion>();
@@ -182,6 +183,8 @@ export type PeticionSegmento = {
   audioDelayMs?: number;
   /** AC3/DD+ 5.1 en vez de AAC estéreo: para un Chromecast con Dolby detrás. */
   surround?: boolean;
+  /** Token de sesión del aparato que pide el trozo, para poder cortarlo desde Actividad. */
+  dispositivo?: string;
 };
 
 function clave(p: PeticionSegmento) {
@@ -279,7 +282,7 @@ function arrancar(p: PeticionSegmento, desde: number): Sesion {
   mkdirSync(dir, { recursive: true });
 
   const proc = spawn(config.ffmpeg, argumentos(p, desde, dir), { stdio: ['ignore', 'ignore', 'pipe'] });
-  const sesion: Sesion = { clave: k, dir, proc, desde, ultimoUso: Date.now(), muerta: false };
+  const sesion: Sesion = { clave: k, dir, proc, desde, ultimoUso: Date.now(), muerta: false, dispositivo: p.dispositivo };
 
   let errores = '';
   proc.stderr.on('data', (d) => {
@@ -337,6 +340,16 @@ export async function segmento(p: PeticionSegmento, esperaMs = 40_000): Promise<
 /** Para liberar la GPU cuando alguien cierra el reproductor. */
 export function cerrarSesiones(fileId: number) {
   for (const s of sesiones.values()) if (s.clave.startsWith(`${fileId}|`)) matar(s);
+}
+
+/**
+ * Corta las sesiones HLS de un aparato. Sin esto, pulsar «parar» en Actividad
+ * sobre alguien viendo por HLS —el modo pensado justo para fuera de casa— no
+ * hacía nada: ese ffmpeg vive aquí, no en `sessions` ni en `flujosCrudos`, y
+ * seguía consumiendo GPU sirviendo trozos al aparato que se creía cortado.
+ */
+export function cerrarSesionesDe(dispositivo: string) {
+  for (const s of sesiones.values()) if (s.dispositivo === dispositivo) matar(s);
 }
 
 export const sesionesActivas = () => sesiones.size;
