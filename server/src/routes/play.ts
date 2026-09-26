@@ -60,6 +60,53 @@ export function cortarAparato(sesion: string) {
   flujosCrudos.delete(sesion);
 }
 
+/**
+ * Un flujo en crudo (el fichero servido por rangos) que el cliente deja de
+ * leer no se cierra solo — pausar en la tele no corta la conexión HTTP, solo
+ * deja de pedir más rango. Medido el 24/09: una pausa de la noche anterior
+ * seguía «en vuelo» más de 10 horas después (fileId 5630), justo antes de un
+ * bloqueo real del bucle de eventos de 90 s. Se cierra solo tras
+ * `INACTIVO_MIN` minutos sin que el flujo de lectura entregue ni un byte más
+ * (el evento 'data' del ReadStream solo se dispara cuando el pipe interno
+ * avanza; si el cliente no drena, deja de dispararse por el backpressure de
+ * Node — sin inventar nada, comprobado).
+ *
+ * Probado el 24/09 en la QN93A real: con la peli en pausa 10 min seguidos,
+ * AVPlay seguía drenando la conexión (sigue bufferizando en segundo plano
+ * aunque esté en pausa) y el corte nunca llegó a dispararse — no se pudo
+ * confirmar si reanuda bien tras un corte real. 20 min da margen de sobra a
+ * cualquier pausa normal; si algún día se ve `[crudo] cerrado` en
+ * `data/server.err` y algo no reanuda bien en la tele, es la primera
+ * sospechosa.
+ *
+ * De paso, ese mismo evento 'data' es la señal honrada de «se está leyendo
+ * del disco», así que también marca actividad para `ocupado.ts`. Hacía falta:
+ * `marcarActividad()` solo se llamaba al abrir el flujo (una vez en toda la
+ * película) y en cada `/api/progress`, que la tele deja de mandar en cuanto
+ * pausa porque el reloj no avanza. A los cinco minutos de pausa el servidor
+ * daba la casa por tranquila y los lotes de fondo se ponían a leer el mismo
+ * plato del que la tele seguía tirando —justo el escenario que `ocupado.ts`
+ * existe para evitar, y que su comentario dice que ya pasó una vez en el
+ * salón—. Es un `Date.now()` en una variable, sin E/S, así que llamarlo por
+ * cada trozo no cuesta nada.
+ */
+const INACTIVO_MIN = 20;
+function cerrarSiInactivo(stream: ReturnType<typeof createReadStream>, res: ServerResponse) {
+  let ultimoAvance = Date.now();
+  stream.on('data', () => {
+    ultimoAvance = Date.now();
+    marcarActividad();
+  });
+  const vigia = setInterval(() => {
+    if (Date.now() - ultimoAvance > INACTIVO_MIN * 60_000) {
+      console.log(`[crudo] cerrado por ${INACTIVO_MIN} min sin leer`);
+      stream.destroy();
+      res.destroy();
+    }
+  }, 60_000).unref();
+  res.on('close', () => clearInterval(vigia));
+}
+
 function fileRow(fileId: number) {
   return db
     .prepare(`SELECT f.id, f.path, f.item_id, f.episode_id,
@@ -81,15 +128,21 @@ function decodeText(buf: Buffer): string {
 }
 
 /**
- * Restar segundos a todos los tiempos de un WebVTT.
+ * Correr todos los tiempos de un WebVTT `segundos` segundos, en cualquiera de
+ * los dos sentidos. Positivo los retrasa (aparecen más tarde), negativo los
+ * adelanta. Los cues que se salen por delante del cero se tiran, y el que
+ * queda a caballo se recorta.
  *
- * Hace falta cuando el vídeo sale por tubería cortado en el segundo `desde`:
- * para el reproductor ese flujo empieza en cero, y unos subtítulos con los
- * tiempos de la película entera irían adelantados exactamente `desde`
- * segundos. Los cues que quedan enteros antes del corte se tiran.
+ * Nació solo para restar: cuando el vídeo sale por tubería cortado en el
+ * segundo `desde`, ese flujo empieza en cero para el reproductor y unos
+ * subtítulos con los tiempos de la película entera irían adelantados
+ * exactamente `desde`. Ahora lleva además el desfase que pide el usuario —un
+ * `.srt` descargado que va corrido—, que puede ir en los dos sentidos; por eso
+ * el parámetro pasó a ser con signo y los dos ajustes se suman antes de
+ * llamar.
  */
-function desplazarVtt(text: string, desde: number): string {
-  if (desde <= 0) return text;
+function desplazarVtt(text: string, segundos: number): string {
+  if (segundos === 0) return text;
   const aSeg = (h: string, m: string, sg: string, ms: string) => Number(h) * 3600 + Number(m) * 60 + Number(sg) + Number(ms) / 1000;
   const aTexto = (t: number) => {
     const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sg = Math.floor(t % 60), ms = Math.round((t % 1) * 1000);
@@ -100,8 +153,8 @@ function desplazarVtt(text: string, desde: number): string {
   for (const b of bloques) {
     const m = /(?:(\d{2}):)?(\d{2}):(\d{2})\.(\d{3})\s*-->\s*(?:(\d{2}):)?(\d{2}):(\d{2})\.(\d{3})/.exec(b);
     if (!m) { salida.push(b); continue; }
-    const ini = aSeg(m[1] ?? '00', m[2], m[3], m[4]) - desde;
-    const fin = aSeg(m[5] ?? '00', m[6], m[7], m[8]) - desde;
+    const ini = aSeg(m[1] ?? '00', m[2], m[3], m[4]) + segundos;
+    const fin = aSeg(m[5] ?? '00', m[6], m[7], m[8]) + segundos;
     if (fin <= 0) continue;
     salida.push(b.replace(m[0], `${aTexto(Math.max(0, ini))} --> ${aTexto(fin)}`));
   }
@@ -231,13 +284,23 @@ export default async function playRoutes(app: FastifyInstance) {
         compatible: audioCompatible((req.query as { perfil?: string }).perfil, a.codec),
       })),
       subtitles: [
-        ...info.subs.filter((s) => s.textual).map((s) => ({
-          id: `embedded-${s.streamIndex}`,
-          language: s.language,
-          title: s.title,
-          forced: s.forced,
-          source: 'embedded' as const,
-        })),
+        /*
+         * Un incrustado se omite si ya hay un externo del mismo idioma y del
+         * mismo tipo (forzado o no): antes se concatenaban sin más, y desde
+         * que se pueden extraer incrustados a `.srt` (24/09) eso significaba
+         * ver «Español» dos veces en el menú, sin forma de distinguirlos. El
+         * externo gana porque es el que se puede desajustar.
+         */
+        ...info.subs
+          .filter((s) => s.textual)
+          .filter((s) => !external.some((e) => (e.language ?? null) === (s.language ?? null) && Boolean(e.forced) === s.forced))
+          .map((s) => ({
+            id: `embedded-${s.streamIndex}`,
+            language: s.language,
+            title: s.title,
+            forced: s.forced,
+            source: 'embedded' as const,
+          })),
         ...external.map((s) => ({
           id: `external-${s.id}`,
           language: s.language,
@@ -341,8 +404,18 @@ export default async function playRoutes(app: FastifyInstance) {
         '-max_muxing_queue_size', '4096',
         '-f', 'matroska', 'pipe:1',
       ];
+      /*
+       * ffmpeg escribe a `pipe:1`. Cuando el cliente cierra -parar el vídeo,
+       * saltar, cambiar de pista-, la tubería muere y ffmpeg escupe «Error
+       * submitting a packet to the muxer: Invalid argument» antes de que le
+       * llegue el SIGKILL. Eso NO es una avería: es lo normal al parar. Pero
+       * caía en `server.err`, que es justo el fichero al que manda mirar el
+       * CLAUDE.md cuando algo falla de verdad -47 líneas falsas contadas el
+       * 26/09/2026-. Tras el cierre, su stderr ya no interesa.
+       */
+      let cerrado = false;
       const proc = spawn(config.ffmpeg, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
-      proc.stderr.on('data', (d) => console.error('[remux-audio]', String(d).trim()));
+      proc.stderr.on('data', (d) => { if (!cerrado) console.error('[remux-audio]', String(d).trim()); });
       /*
  * Un `spawn` que no arranca —ffmpeg movido, bloqueado por el antivirus, disco
  * sin responder— emite «error» en el proceso hijo, y un «error» sin nadie
@@ -350,7 +423,7 @@ export default async function playRoutes(app: FastifyInstance) {
  * una película eso es la película cortada y la aplicación sin servidor.
  */
       proc.on('error', (e) => console.error('[remux-audio] no arrancó ffmpeg:', e.message));
-      req.raw.on('close', () => proc.kill('SIGKILL'));
+      req.raw.on('close', () => { cerrado = true; proc.kill('SIGKILL'); });
       return reply
         .header('Content-Type', 'video/x-matroska')
         .header('Cache-Control', 'no-store')
@@ -379,10 +452,20 @@ export default async function playRoutes(app: FastifyInstance) {
         '-max_muxing_queue_size', '4096',
         '-f', 'matroska', 'pipe:1',
       ];
+      /*
+       * ffmpeg escribe a `pipe:1`. Cuando el cliente cierra -parar el vídeo,
+       * saltar, cambiar de pista-, la tubería muere y ffmpeg escupe «Error
+       * submitting a packet to the muxer: Invalid argument» antes de que le
+       * llegue el SIGKILL. Eso NO es una avería: es lo normal al parar. Pero
+       * caía en `server.err`, que es justo el fichero al que manda mirar el
+       * CLAUDE.md cuando algo falla de verdad -47 líneas falsas contadas el
+       * 26/09/2026-. Tras el cierre, su stderr ya no interesa.
+       */
+      let cerrado = false;
       const proc = spawn(config.ffmpeg, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
-      proc.stderr.on('data', (d) => console.error('[copia-pista]', String(d).trim()));
+      proc.stderr.on('data', (d) => { if (!cerrado) console.error('[copia-pista]', String(d).trim()); });
       proc.on('error', (e) => console.error('[copia-pista] no arrancó ffmpeg:', e.message));
-      req.raw.on('close', () => proc.kill('SIGKILL'));
+      req.raw.on('close', () => { cerrado = true; proc.kill('SIGKILL'); });
       return reply
         .header('Content-Type', 'video/x-matroska')
         .header('Cache-Control', 'no-store')
@@ -416,10 +499,20 @@ export default async function playRoutes(app: FastifyInstance) {
         '-max_muxing_queue_size', '4096',
         '-f', 'matroska', 'pipe:1',
       ];
+      /*
+       * ffmpeg escribe a `pipe:1`. Cuando el cliente cierra -parar el vídeo,
+       * saltar, cambiar de pista-, la tubería muere y ffmpeg escupe «Error
+       * submitting a packet to the muxer: Invalid argument» antes de que le
+       * llegue el SIGKILL. Eso NO es una avería: es lo normal al parar. Pero
+       * caía en `server.err`, que es justo el fichero al que manda mirar el
+       * CLAUDE.md cuando algo falla de verdad -47 líneas falsas contadas el
+       * 26/09/2026-. Tras el cierre, su stderr ya no interesa.
+       */
+      let cerrado = false;
       const proc = spawn(config.ffmpeg, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
-      proc.stderr.on('data', (d) => console.error('[copia-desde]', String(d).trim()));
+      proc.stderr.on('data', (d) => { if (!cerrado) console.error('[copia-desde]', String(d).trim()); });
       proc.on('error', (e) => console.error('[copia-desde] no arrancó ffmpeg:', e.message));
-      req.raw.on('close', () => proc.kill('SIGKILL'));
+      req.raw.on('close', () => { cerrado = true; proc.kill('SIGKILL'); });
       return reply
         .header('Content-Type', 'video/x-matroska')
         .header('Cache-Control', 'no-store')
@@ -440,13 +533,17 @@ export default async function playRoutes(app: FastifyInstance) {
         const match = /bytes=(\d*)-(\d*)/.exec(range);
         const startByte = Number(match?.[1] || 0);
         const endByte = match?.[2] ? Number(match[2]) : stat.size - 1;
+        const stream = createReadStream(row.path, { start: startByte, end: endByte });
+        cerrarSiInactivo(stream, reply.raw);
         return reply
           .code(206)
           .header('Content-Range', `bytes ${startByte}-${endByte}/${stat.size}`)
           .header('Content-Length', endByte - startByte + 1)
-          .send(createReadStream(row.path, { start: startByte, end: endByte }));
+          .send(stream);
       }
-      return reply.header('Content-Length', stat.size).send(createReadStream(row.path));
+      const streamCompleto = createReadStream(row.path);
+      cerrarSiInactivo(streamCompleto, reply.raw);
+      return reply.header('Content-Length', stat.size).send(streamCompleto);
     }
 
     const user = quienVe;
@@ -574,7 +671,16 @@ export default async function playRoutes(app: FastifyInstance) {
     const id = trackId.replace(/\.vtt$/, '');
     // `desde`: el vídeo va por tubería cortado en ese segundo, y los tiempos
     // tienen que ir restados para que cuadren. Sin él, tal cual.
-    const desde = Math.max(0, Number((req.query as { desde?: string }).desde ?? 0) || 0);
+    const consulta = req.query as { desde?: string; retardo?: string };
+    const desde = Math.max(0, Number(consulta.desde ?? 0) || 0);
+    /*
+     * `retardo`: el desfase que pide el usuario, en milisegundos y con signo
+     * (positivo = más tarde). Mismo tope de ±10 s que el desfase de audio y
+     * que el ajuste de la tele. Se suma al corte de la tubería, que va
+     * restado, así que el ajuste final es uno solo.
+     */
+    const retardoMs = Math.max(-10_000, Math.min(10_000, Number(consulta.retardo ?? 0) || 0));
+    const ajuste = retardoMs / 1000 - desde;
     reply.header('Content-Type', 'text/vtt; charset=utf-8').header('Cache-Control', 'public, max-age=86400');
 
     if (id.startsWith('external-')) {
@@ -584,16 +690,16 @@ export default async function playRoutes(app: FastifyInstance) {
       const row = db.prepare('SELECT external FROM sub_tracks WHERE id = ? AND file_id = ?').get(Number(id.slice(9)), Number(fileId)) as { external: string } | undefined;
       if (!row?.external) return reply.code(404).send('');
       const text = decodeText(readFileSync(row.external));
-      if (row.external.toLowerCase().endsWith('.vtt')) return reply.send(desplazarVtt(text, desde));
+      if (row.external.toLowerCase().endsWith('.vtt')) return reply.send(desplazarVtt(text, ajuste));
       if (/\.(ass|ssa)$/i.test(row.external)) {
         const proc = spawn(config.ffmpeg, ['-hide_banner', '-loglevel', 'error', '-i', row.external, '-f', 'webvtt', 'pipe:1'], { windowsHide: true });
         proc.on('error', (e) => console.error('[subtitulos] no arrancó ffmpeg:', e.message));
         // Si el cliente se va antes de terminar, que no quede ffmpeg suelto.
         req.raw.on('close', () => proc.kill('SIGKILL'));
-        if (desde > 0) return reply.send(desplazarVtt(await recoger(proc), desde));
+        if (ajuste !== 0) return reply.send(desplazarVtt(await recoger(proc), ajuste));
         return reply.send(proc.stdout);
       }
-      return reply.send(desplazarVtt(srtToVtt(text), desde));
+      return reply.send(desplazarVtt(srtToVtt(text), ajuste));
     }
 
     if (id.startsWith('embedded-')) {
@@ -607,7 +713,7 @@ export default async function playRoutes(app: FastifyInstance) {
       );
       proc.on('error', (e) => console.error('[subtitulos] no arrancó ffmpeg:', e.message));
       req.raw.on('close', () => proc.kill('SIGKILL'));
-      if (desde > 0) return reply.send(desplazarVtt(await recoger(proc), desde));
+      if (ajuste !== 0) return reply.send(desplazarVtt(await recoger(proc), ajuste));
       return reply.send(proc.stdout);
     }
 
