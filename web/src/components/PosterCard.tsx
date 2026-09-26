@@ -24,7 +24,7 @@ function PosterCard({ item, width, index = 0 }: { item: ItemSummary; width?: num
         {!loaded && <div className="skeleton absolute inset-0" />}
         {item.has_poster ? (
           <img
-            src={img.poster(item.id, !width || width >= 200 ? 400 : 300)}
+            src={img.poster(item.id, !width || width >= 200 ? 400 : 300, item.arte_actualizado)}
             alt={item.title}
             loading="lazy"
             decoding="async"

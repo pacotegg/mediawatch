@@ -11,6 +11,8 @@ export type ItemSummary = {
   has_fanart: number;
   has_logo: number;
   has_landscape: number;
+  /** Cuándo cambió la última imagen; se usa solo para forzar que el navegador la vuelva a pedir. */
+  arte_actualizado: string | null;
   library_id: number;
   library_name: string;
   position?: number;
@@ -63,6 +65,7 @@ export type ItemDetail = ItemSummary & {
   country: string | null;
   collection: string | null;
   imdb_id: string | null;
+  tmdb_id: string | null;
   votes: number | null;
   genres: string[];
   cast: { id: number; name: string; character: string | null; role: string; has_thumb: number }[];
@@ -106,8 +109,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
    * Si hay cuerpo, hay cabecera. Sin `Content-Type` Fastify no parsea el JSON,
    * la ruta ve los campos vacios y contesta 400 sin decir gran cosa: dos
    * llamadas nuevas se escribieron asi y fallaban en silencio.
+   *
+   * Se mira la cabecera, no si vienen cabeceras: antes bastaba con que la
+   * llamada pasara cualquier cabecera propia para que el `Content-Type` ya no
+   * se anadiera, y volvia el mismo 400 mudo por otra puerta.
    */
-  const cabeceras = init?.body && !init?.headers ? { 'Content-Type': 'application/json' } : init?.headers;
+  const cabeceras = new Headers(init?.headers ?? {});
+  if (init?.body && !cabeceras.has('Content-Type')) cabeceras.set('Content-Type', 'application/json');
   const res = await fetch(path, { credentials: 'same-origin', ...init, headers: cabeceras });
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }));
@@ -119,8 +127,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 const post = <T,>(path: string, body?: unknown) =>
   request<T>(path, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: body ? JSON.stringify(body) : undefined,
+    // Sin cuerpo, sin cabecera: igual que en request(), anunciar JSON vacío
+    // hace que Fastify lo rechace con 400 antes de llegar a la ruta. Rompía
+    // logout(), scan(), applyCapabilities() y stopTranscribe(), que llaman a
+    // post() sin segundo argumento.
+    ...(body ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {}),
   });
 
 export type PropuestaAnime = {
@@ -330,6 +341,17 @@ export const api = {
   capabilities: (force = false) => request<Capabilities>(`/api/capabilities${force ? '?force=1' : ''}`),
   applyCapabilities: () => post<{ applied: Capabilities['best'] }>('/api/capabilities/apply'),
 
+  mantenimientoEstado: () =>
+    request<{
+      baseDeDatos: { bytes: number };
+      cacheImagenes: { bytes: number; ficheros: number };
+      trickplay: { bytes: number; ficheros: number };
+      copias: { total: number; ultima: string | null };
+    }>('/api/mantenimiento/estado'),
+  mantenimientoLimpiar: () => post<{ cacheImagenes: number; trickplayHuerfano: number }>('/api/mantenimiento/limpiar', {}),
+  mantenimientoOptimizar: () => post<{ antes: number; despues: number }>('/api/mantenimiento/optimizar', {}),
+  mantenimientoCopia: () => post<{ ruta: string }>('/api/mantenimiento/copia', {}),
+
   subtitlesAvailable: () => request<{ available: boolean; script: string }>('/api/subtitles/available'),
   subtitlesJob: () => request<SubtitleJob>('/api/subtitles/job'),
   subtitlesFetch: (body: { fileId: number; languages?: string; forced?: boolean; mux?: boolean; localOnly?: boolean; dryRun?: boolean }) =>
@@ -521,12 +543,21 @@ export type EnrichStatus = {
   job: { running: boolean; done: number; total: number; error: string | null; finishedAt: string | null; found: number };
 };
 
+/*
+ * `v`: el fichero de cada imagen se llama siempre igual en disco
+ * (`poster.jpg`…), así que la URL no cambia sola cuando se elige otra
+ * carátula. Sin este parámetro, el navegador seguía enseñando la que tenía en
+ * su propia caché aunque el servidor ya sirviera otra — «elijo una imagen y
+ * no cambia nada». `arte_actualizado` del título hace de versión.
+ */
+const v = (stamp?: string | null) => (stamp ? `&v=${encodeURIComponent(stamp)}` : '');
+
 export const img = {
-  poster: (id: number, w = 320) => `/api/items/${id}/poster?w=${w}`,
-  fanart: (id: number, w = 1600) => `/api/items/${id}/fanart?w=${w}`,
-  logo: (id: number, w = 500) => `/api/items/${id}/logo?w=${w}`,
-  landscape: (id: number, w = 640) => `/api/items/${id}/landscape?w=${w}`,
-  discart: (id: number, w = 600) => `/api/items/${id}/discart?w=${w}`,
+  poster: (id: number, w = 320, stamp?: string | null) => `/api/items/${id}/poster?w=${w}${v(stamp)}`,
+  fanart: (id: number, w = 1600, stamp?: string | null) => `/api/items/${id}/fanart?w=${w}${v(stamp)}`,
+  logo: (id: number, w = 500, stamp?: string | null) => `/api/items/${id}/logo?w=${w}${v(stamp)}`,
+  landscape: (id: number, w = 640, stamp?: string | null) => `/api/items/${id}/landscape?w=${w}${v(stamp)}`,
+  discart: (id: number, w = 600, stamp?: string | null) => `/api/items/${id}/discart?w=${w}${v(stamp)}`,
   episode: (id: number, w = 420) => `/api/episodes/${id}/thumb?w=${w}`,
   person: (id: number, w = 160) => `/api/people/${id}/thumb?w=${w}`,
 };

@@ -368,8 +368,8 @@ export async function ponerArte(itemId: number, papel: Papel, url: string) {
 
   const papeles = new Set((item.arte_fijado ?? '').split(',').filter(Boolean));
   papeles.add(papel);
-  db.prepare(`UPDATE items SET ${COLUMNA_DE[papel]} = ?, arte_fijado = ? WHERE id = ?`)
-    .run(destino, [...papeles].join(','), itemId);
+  db.prepare(`UPDATE items SET ${COLUMNA_DE[papel]} = ?, arte_fijado = ?, arte_actualizado = ? WHERE id = ?`)
+    .run(destino, [...papeles].join(','), new Date().toISOString(), itemId);
 
   return { papel, ruta: destino };
 }
@@ -389,8 +389,8 @@ export function soltarArte(itemId: number, papel: Papel) {
   const papeles = new Set((item.arte_fijado ?? '').split(',').filter(Boolean));
   papeles.delete(papel);
   // A NULL: el proximo escaneo lo rellena con lo que encuentre en la carpeta.
-  db.prepare(`UPDATE items SET ${COLUMNA_DE[papel]} = NULL, arte_fijado = ? WHERE id = ?`)
-    .run(papeles.size ? [...papeles].join(',') : null, itemId);
+  db.prepare(`UPDATE items SET ${COLUMNA_DE[papel]} = NULL, arte_fijado = ?, arte_actualizado = ? WHERE id = ?`)
+    .run(papeles.size ? [...papeles].join(',') : null, new Date().toISOString(), itemId);
   return { papel, soltado: true };
 }
 
@@ -435,6 +435,7 @@ export async function applyProposal(request: ApplyRequest) {
   if (updates.fanart) papeles.add('fanart');
   if (updates.clearlogo) papeles.add('clearlogo');
   if (papeles.size) updates.arte_fijado = [...papeles].join(',');
+  if (updates.poster || updates.fanart || updates.clearlogo) updates.arte_actualizado = new Date().toISOString();
 
   updates.tmdb_id = String(request.tmdbId);
 

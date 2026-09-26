@@ -30,7 +30,7 @@
  * pide a TMDb una vez y se guarda en `items.tvdb_id`.
  */
 import { spawn } from 'node:child_process';
-import { mkdirSync, statSync, existsSync } from 'node:fs';
+import { mkdirSync, statSync, existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { config, DATA_DIR } from '../config.ts';
 import { db } from '../db.ts';
@@ -171,9 +171,18 @@ function firma(ruta: string): Promise<Buffer | null> {
       { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] },
     );
     const trozos: Buffer[] = [];
+    let terminado = false;
+    // Una imagen corrupta o un origen que se cuelga (fanart.tv/TVDB lentos)
+    // dejaba este proceso sin cerrar nunca: nadie escuchaba 'close' porque
+    // ffmpeg tampoco recibía EOF, y completarConFanart() se quedaba parado en
+    // ese título para siempre, sin avisar.
+    const limite = setTimeout(() => { terminado = true; proc.kill('SIGKILL'); resolve(null); }, 15_000);
     proc.stdout.on('data', (d) => trozos.push(d));
-    proc.on('error', () => resolve(null));
+    proc.on('error', () => { if (!terminado) { terminado = true; clearTimeout(limite); resolve(null); } });
     proc.on('close', () => {
+      if (terminado) return;
+      terminado = true;
+      clearTimeout(limite);
       const b = Buffer.concat(trozos);
       resolve(b.length === 2048 ? b : null);
     });
@@ -355,6 +364,10 @@ export async function completarConFanart(reemplazar: boolean, forzar = false): P
   } catch (err) {
     estado.error = (err as Error).message;
   } finally {
+    // Un único fichero reutilizado (candidata.jpg/png) que antes se dejaba en
+    // disco al terminar: basura permanente, y si el proceso moría a mitad de
+    // una descarga, ese resto parcial podía confundir la siguiente pasada.
+    try { rmSync(tmp, { recursive: true, force: true }); } catch { /* ya no está, no importa */ }
     estado.enCurso = false;
     estado.terminadoEn = new Date().toISOString();
   }

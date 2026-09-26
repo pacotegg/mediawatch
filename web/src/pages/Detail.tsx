@@ -63,7 +63,11 @@ function MetadataFixer({ itemId, item, onClose }: { itemId: number; item: ItemDe
           kind={item.kind === 'show' ? 'show' : 'movie'}
           titulo={item.title}
           anio={item.year ?? null}
-          tmdbId={data?.proposal?.tmdbId ?? null}
+          // La propuesta recién buscada manda; si aún no ha llegado (o no
+          // encontró nada), se usa el id que ya tenía guardado el título —
+          // así las imágenes aparecen sin depender de que la corrección de
+          // metadatos encuentre nada nuevo.
+          tmdbId={data?.proposal?.tmdbId ?? (item.tmdb_id ? Number(item.tmdb_id) : null)}
         />
       </motion.div>
     </motion.div>
@@ -189,8 +193,8 @@ export default function Detail() {
   }, [itemId]);
 
   useEffect(() => {
-    if (item?.has_poster) tintFrom(img.poster(itemId, 200)).then(setTint);
-  }, [item?.has_poster, itemId]);
+    if (item?.has_poster) tintFrom(img.poster(itemId, 200, item.arte_actualizado)).then(setTint);
+  }, [item?.has_poster, item?.arte_actualizado, itemId]);
 
   /*
    * Las dos escriben en el servidor y luego refrescan **todo** lo que enseña ese
@@ -304,7 +308,7 @@ export default function Detail() {
             initial={{ opacity: 0, scale: 1.06 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
-            src={img.fanart(itemId, 1920)}
+            src={img.fanart(itemId, 1920, item.arte_actualizado)}
             alt=""
             className="h-full w-full object-cover"
           />
@@ -341,7 +345,7 @@ export default function Detail() {
             className="min-w-0 max-w-[900px] pb-1"
           >
             {item.has_logo ? (
-              <img src={img.logo(itemId, 560)} alt={item.title} className="mb-3 max-h-24 w-auto max-w-[min(420px,80vw)] object-contain object-left drop-shadow-[0_6px_20px_rgba(0,0,0,0.8)]" />
+              <img src={img.logo(itemId, 560, item.arte_actualizado)} alt={item.title} className="mb-3 max-h-24 w-auto max-w-[min(420px,80vw)] object-contain object-left drop-shadow-[0_6px_20px_rgba(0,0,0,0.8)]" />
             ) : (
               <h1 className="mb-3 text-4xl font-bold tracking-tight text-shadow-hero">{item.title}</h1>
             )}

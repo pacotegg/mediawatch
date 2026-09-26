@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type ImagenDisponible, type PapelArte } from '../lib/api.ts';
 
@@ -43,6 +43,18 @@ export default function SelectorDeArte({
   const [consulta, setConsulta] = useState(titulo);
   const [aviso, setAviso] = useState('');
 
+  /*
+   * `useState(tmdbId)` solo lee el valor inicial una vez. Este componente se
+   * monta desde «Corregir metadatos» antes de que termine la búsqueda en
+   * TMDb, así que `tmdbId` llega en `null` en el primer render y el selector
+   * se quedaba sin imágenes para siempre aunque la búsqueda encontrara la
+   * película: había que teclear el título otra vez a mano en este mismo
+   * cuadro para que apareciera algo. Al llegar el id de verdad, se adopta.
+   */
+  useEffect(() => {
+    if (tmdbId != null) setElegido(tmdbId);
+  }, [tmdbId]);
+
   const busqueda = useMutation({
     mutationFn: () => api.enrichSearch(consulta.trim(), kind, anio),
     onError: (e: Error) => setAviso(e.message),
@@ -61,11 +73,18 @@ export default function SelectorDeArte({
       setAviso(
         papel === 'poster' ? 'Carátula cambiada.' : papel === 'fanart' ? 'Fondo cambiado.' : 'Logotipo cambiado.',
       );
-      // Las imágenes se sirven por la misma URL, así que hay que forzar que se
-      // vuelvan a pedir: si no, el navegador enseña la de antes desde su caché.
+      /*
+       * El fichero en disco se llama siempre igual (`poster.jpg`…), así que la
+       * URL con la que se pide la imagen no cambia sola: sin la marca
+       * `arte_actualizado` que ahora trae la ficha, el navegador seguía
+       * enseñando la vieja de su propia caché. Antes esto se «arreglaba» con
+       * una recarga completa de la página (`location.reload()`), que además de
+       * innecesaria cerraba este mismo cuadro de golpe. Con la marca en la
+       * URL, invalidar basta: React vuelve a pedir la ficha y la imagen
+       * cambia sola en cuanto llega el nuevo `arte_actualizado`.
+       */
       queryClient.invalidateQueries({ queryKey: ['item', itemId] });
       queryClient.invalidateQueries({ queryKey: ['home'] });
-      setTimeout(() => window.location.reload(), 600);
     },
     onError: (e: Error) => setAviso(e.message),
   });

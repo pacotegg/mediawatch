@@ -23,7 +23,11 @@ function Arrow({ dir, onClick, visible }: { dir: 'left' | 'right'; onClick: () =
 function ContinueCard({ item }: { item: ItemSummary }) {
   const duration = item.progressDuration ?? (item.runtime ? item.runtime * 60 : 0);
   const pct = duration ? Math.min(100, ((item.position ?? 0) / duration) * 100) : 0;
-  const art = item.has_landscape ? img.landscape(item.id, 640) : item.has_fanart ? img.fanart(item.id, 640) : img.poster(item.id, 400);
+  const art = item.has_landscape
+    ? img.landscape(item.id, 640, item.arte_actualizado)
+    : item.has_fanart
+      ? img.fanart(item.id, 640, item.arte_actualizado)
+      : img.poster(item.id, 400, item.arte_actualizado);
 
   return (
     <Link to={`/titulo/${item.id}`} className="group block w-[300px] shrink-0">

@@ -29,7 +29,7 @@ export default function Hero({ items }: { items: ItemSummary[] }) {
           transition={{ opacity: { duration: 1.1 }, scale: { duration: ROTATE_MS / 1000, ease: 'linear' } }}
           className="absolute inset-0"
         >
-          <img src={img.fanart(item.id, 1920)} alt="" className="h-full w-full object-cover" />
+          <img src={img.fanart(item.id, 1920, item.arte_actualizado)} alt="" className="h-full w-full object-cover" />
         </motion.div>
       </AnimatePresence>
 
@@ -47,7 +47,7 @@ export default function Hero({ items }: { items: ItemSummary[] }) {
             className="max-w-2xl px-4 sm:px-8"
           >
             {item.has_logo ? (
-              <img src={img.logo(item.id, 520)} alt={item.title} className="mb-4 max-h-28 w-auto max-w-[min(440px,80vw)] object-contain drop-shadow-[0_6px_24px_rgba(0,0,0,0.85)]" />
+              <img src={img.logo(item.id, 520, item.arte_actualizado)} alt={item.title} className="mb-4 max-h-28 w-auto max-w-[min(440px,80vw)] object-contain drop-shadow-[0_6px_24px_rgba(0,0,0,0.85)]" />
             ) : (
               <h1 className="mb-4 text-4xl font-bold tracking-tight text-shadow-hero sm:text-5xl">{item.title}</h1>
             )}
