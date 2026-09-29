@@ -22,9 +22,13 @@ function CollectionCard({ collection, index }: { collection: CollectionSummary; 
         )}
         <div className="scrim-b absolute inset-0" />
 
-        {collection.poster_id && (
+        {(collection.imagen_propia || collection.poster_id) && (
           <img
-            src={img.poster(collection.poster_id, 200)}
+            src={
+              collection.imagen_propia
+                ? api.imagenSaga(collection.name, 200)
+                : img.poster(collection.poster_id!, 200)
+            }
             alt=""
             loading="lazy"
             className="absolute bottom-3 left-3 h-20 w-auto rounded-md shadow-[var(--shadow-2)] ring-1 ring-white/20"

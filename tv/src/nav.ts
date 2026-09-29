@@ -220,12 +220,23 @@ function mejorEn(desde: Nodo, direccion: number): HTMLElement | null {
     // subir o bajar: no se ve, y el foco iría a una tarjeta invisible.
     if (vertical && xVisible(n) + n.ancho / 2 < 0) continue;
 
+    /*
+     * Al subir o bajar, el desvío se mide hasta el BORDE más cercano del
+     * candidato, no hasta su centro. Con el centro, una fila ancha (la lista
+     * de episodios, casi todo el ancho de la pantalla) queda con el centro
+     * muy lejos del de una píldora de temporada estrecha, y bajar desde la
+     * temporada salía disparado hasta el reparto —mucho más lejos, pero mejor
+     * alineado con el centro— en vez de entrar en el episodio de justo
+     * debajo. Restar la mitad del ancho no cambia nada para las tarjetas
+     * estrechas (carátulas, píldoras): sigue haciendo falta salirse de su
+     * franja para que el desvío deje de ser cero.
+     */
     let avance: number;
     let desvio: number;
     if (direccion === TECLA.IZQUIERDA) { avance = -dx; desvio = Math.abs(dy); }
     else if (direccion === TECLA.DERECHA) { avance = dx; desvio = Math.abs(dy); }
-    else if (direccion === TECLA.ARRIBA) { avance = -dy; desvio = Math.abs(dx); }
-    else { avance = dy; desvio = Math.abs(dx); }
+    else if (direccion === TECLA.ARRIBA) { avance = -dy; desvio = Math.max(0, Math.abs(dx) - n.ancho / 2); }
+    else { avance = dy; desvio = Math.max(0, Math.abs(dx) - n.ancho / 2); }
 
     if (avance <= 8) continue;
     const coste = avance + desvio * 3;

@@ -159,7 +159,14 @@ export type InfoReproduccion = {
   subtitles: { id: string; language: string | null; title?: string | null; forced: boolean; source?: string }[];
 };
 
-type Saga = { name: string; count: number; poster_id: number | null; fanart_id: number | null };
+type Saga = {
+  name: string;
+  count: number;
+  poster_id: number | null;
+  fanart_id: number | null;
+  /** 1 si la saga tiene una imagen propia, que manda sobre la de las peliculas. */
+  imagen_propia?: number;
+};
 
 export const api = {
   yo: () => pedir<{ id: number; name: string; is_admin: number }>('/api/me'),
@@ -170,7 +177,27 @@ export const api = {
   ficha: (id: number) => pedir<Ficha>('/api/items/' + id),
   buscar: (q: string) => pedir<{ items: Titulo[] }>('/api/search?q=' + encodeURIComponent(q)),
   colecciones: () => pedir<Saga[]>('/api/collections'),
-  coleccion: (nombre: string) => pedir<{ name: string; items: Titulo[] }>('/api/collections/' + encodeURIComponent(nombre)),
+  coleccion: (nombre: string) =>
+    pedir<{ name: string; items: Titulo[]; arteItemId: number | null; arteImagen: boolean }>(
+      '/api/collections/' + encodeURIComponent(nombre),
+    ),
+  /** Qué película presta la imagen de la saga; `null` vuelve a la automática. */
+  fijarArteSaga: (nombre: string, itemId: number | null) =>
+    pedir<{ name: string; arteItemId: number | null }>('/api/collections/' + encodeURIComponent(nombre) + '/arte', {
+      method: 'POST',
+      body: JSON.stringify({ itemId }),
+    }),
+  /** Una imagen del buzón (data/arte-entrada) como imagen de la saga. */
+  arteSagaDelBuzon: (nombre: string, buzon: string) =>
+    pedir<{ name: string; arteImagen: boolean }>('/api/collections/' + encodeURIComponent(nombre) + '/arte', {
+      method: 'POST',
+      body: JSON.stringify({ buzon }),
+    }),
+  /** Lo que hay en el buzón, para poder elegirlo con el mando. */
+  buzonArte: () => pedir<{ carpeta: string; imagenes: { nombre: string; bytes: number }[] }>('/api/enrich/arte/buzon'),
+
+  /** Featurettes, «como se hizo» y demas videos que acompanyan a un titulo. */
+  extras: (itemId: number) => pedir<{ extras: Extra[] }>('/api/items/' + itemId + '/extras'),
   favoritos: () => pedir<Titulo[]>('/api/favorites'),
   continuarEn: (biblioteca: number) => pedir<Titulo[]>('/api/libraries/' + biblioteca + '/continuar'),
   borrar: (itemId: number, confirmar: string) =>
@@ -243,6 +270,16 @@ function conToken(url: string): string {
   return url + (url.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(t);
 }
 
+export type Extra = {
+  id: number;
+  titulo: string;
+  tipo: string;
+  duration: number | null;
+  size: number | null;
+  /** «Temporada 3» cuando el disco los trae repartidos por temporada. */
+  grupo: string | null;
+};
+
 export const imagen = {
   poster: (id: number, w: number) => conToken(servidor() + '/api/items/' + id + '/poster?w=' + w),
   fondo: (id: number, w: number) => conToken(servidor() + '/api/items/' + id + '/fanart?w=' + w),
@@ -250,10 +287,18 @@ export const imagen = {
   disco: (id: number, w: number) => conToken(servidor() + '/api/items/' + id + '/discart?w=' + w),
   persona: (id: number, w: number) => conToken(servidor() + '/api/people/' + id + '/thumb?w=' + w),
   tira: (fileId: number, hoja: number) => conToken(servidor() + '/api/play/' + fileId + '/trickplay/' + hoja),
+  /** La imagen propia de una saga, la que se eligió del buzón. */
+  saga: (nombre: string, w: number) =>
+    conToken(servidor() + '/api/collections/' + encodeURIComponent(nombre) + '/imagen?w=' + w),
   // El QR se pinta en la pantalla de emparejamiento, antes de tener token: esa
   // ruta queda abierta a propósito en el servidor.
+  /** Un fotograma del extra, que el servidor saca con ffmpeg y guarda. */
+  extra: (id: number) => conToken(servidor() + '/api/extras/' + id + '/thumb'),
   qr: (contenido: string) => servidor() + '/api/qr.svg?d=' + encodeURIComponent(contenido),
 };
+
+/** AVPlay abre una URL pelada: el token tiene que ir dentro. */
+export const urlExtra = (id: number) => conToken(servidor() + '/api/extras/' + id + '/stream');
 
 const IDIOMAS: Record<string, string> = {
   spa: 'Español', eng: 'Inglés', cat: 'Catalán', glg: 'Gallego', eus: 'Euskera',

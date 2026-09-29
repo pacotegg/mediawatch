@@ -7,6 +7,7 @@ import { CandidateRow } from '../components/MetadataReview.tsx';
 import AnimeFixer from '../components/AnimeFixer.tsx';
 import NumeracionFixer from '../components/NumeracionFixer.tsx';
 import SelectorDeArte from '../components/SelectorDeArte.tsx';
+import Extras from '../components/Extras.tsx';
 import Row from '../components/Row.tsx';
 import { api, img, type Episode, type ItemDetail } from '../lib/api.ts';
 import { audioLabel, certification, clock, codecLabel, fileSize, languageName, resolutionLabel, runtime } from '../lib/format.ts';
@@ -427,6 +428,8 @@ export default function Detail() {
                   Desde el principio
                 </button>
               )}
+
+              <Extras itemId={item.id} />
 
               <button
                 onClick={() => favorite.mutate(!esFavorita)}

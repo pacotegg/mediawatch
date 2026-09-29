@@ -8,6 +8,8 @@ import {
   token,
   idioma,
   urlReproduccion,
+  urlExtra,
+  type Extra,
   type Ficha,
   type InfoReproduccion,
   type RangoSalto,
@@ -77,6 +79,21 @@ function aviso(mensaje: string) {
   setTimeout(() => {
     if (el.parentElement) el.parentElement.removeChild(el);
   }, 4500);
+}
+
+/**
+ * Confirmación rápida de un cambio que ya se ve en pantalla (la pista elegida
+ * queda marcada, el desfase se mueve en vivo): no hace falta que ocupe media
+ * pantalla ni que dure 4,5 s como un aviso de error.
+ */
+function avisoRapido(mensaje: string) {
+  const el = document.createElement('div');
+  el.className = 'aviso rapido';
+  el.textContent = mensaje;
+  marco.appendChild(el);
+  setTimeout(() => {
+    if (el.parentElement) el.parentElement.removeChild(el);
+  }, 1800);
 }
 
 /* ------------------------------------------------------------ menú lateral */
@@ -434,9 +451,9 @@ async function pantallaPortada(volviendo = false) {
     pintar(
       'inicio',
       '<div class="vacio">No se pudo conectar con el servidor.<br>' +
-        '<span class="dato" data-reintento>Reintentando…</span></div>' +
+        '<span class="dato" data-reintento>Reintentando…</span>' +
         '<div class="acciones" data-bloque><button class="boton" data-nav data-ahora>Reintentar ahora</button>' +
-        '<button class="boton" data-nav data-otro-servidor>Cambiar de servidor</button></div>',
+        '<button class="boton" data-nav data-otro-servidor>Cambiar de servidor</button></div></div>',
     );
     enfocar(marco.querySelector<HTMLElement>('[data-ahora]'));
     const ahora = marco.querySelector<HTMLElement>('[data-ahora]');
@@ -708,7 +725,11 @@ async function pantallaSagas() {
         (s) =>
           '<div class="tarjeta" data-nav data-saga="' + esc(s.name) + '">' +
           '<div class="lamina">' +
-          (s.poster_id ? '<img data-src="' + imagen.poster(s.poster_id, 320) + '" alt="">' : '<span class="sin-lamina">' + esc(s.name) + '</span>') +
+          (s.imagen_propia
+            ? '<img data-src="' + imagen.saga(s.name, 320) + '" alt="">'
+            : s.poster_id
+              ? '<img data-src="' + imagen.poster(s.poster_id, 320) + '" alt="">'
+              : '<span class="sin-lamina">' + esc(s.name) + '</span>') +
           '</div>' +
           '<div class="nombre">' + esc(s.name) + '</div>' +
           '<div class="anyo">' + s.count + ' títulos</div>' +
@@ -736,9 +757,90 @@ async function pantallaSaga(nombre: string) {
   try {
     const datos = await api.coleccion(nombre);
     pantallaRejilla('sagas', datos.name, datos.items.length + ' títulos, en orden cronológico', datos.items);
+
+    /*
+     * El boton se injerta en la cabecera DESPUES de pintar la rejilla, en vez de
+     * anyadir un parametro mas a `pantallaRejilla`, que la comparten las
+     * bibliotecas, los favoritos y las busquedas y no tienen imagen que elegir.
+     * Hay que reindexar: el foco no conoce lo que aparece despues de pintar.
+     */
+    const cabecera = marco.querySelector<HTMLElement>('.cabecera');
+    if (soyAdmin && cabecera) {
+      cabecera.insertAdjacentHTML(
+        'beforeend',
+        '<button class="boton" data-nav data-arte-saga>Cambiar la imagen</button>',
+      );
+      const b = marco.querySelector<HTMLElement>('[data-arte-saga]');
+      if (b) b.addEventListener('click', () => void menuArteSaga(datos.name, datos.items, datos.arteItemId));
+      indexar();
+    }
   } catch (e) {
     void pantallaSagas();
   }
+}
+
+/**
+ * Que pelicula presta la caratula y el fondo de la saga.
+ *
+ * Por defecto sale el poster de la mas antigua, que en «Alien» o «Terminator»
+ * no es la imagen por la que se reconoce la saga. Se elige entre las que ya
+ * estan, sin bajar arte nuevo: solo se guarda de cual se cogen las dos.
+ */
+async function menuArteSaga(nombre: string, items: Titulo[], elegida: number | null) {
+  const teclasAntes = manejadorActual();
+
+  /*
+   * Los ficheros del buzon van con valores por debajo de -100, y el nombre se
+   * saca del indice: `menuLista` trabaja con numeros, y meter cadenas ahi
+   * obligaria a tocar un menu que usan el audio, los subtitulos y los
+   * capitulos. Si el buzon no se puede leer, se sigue sin el: elegir entre las
+   * peliculas tiene que funcionar igual.
+   */
+  const DESDE_BUZON = -100;
+  let buzon: { nombre: string; bytes: number }[] = [];
+  try {
+    buzon = (await api.buzonArte()).imagenes;
+  } catch (e) {
+    buzon = [];
+  }
+
+  const opciones: OpcionLista[] = [{ valor: -1, texto: 'Automática', nota: 'la más antigua con carátula' }];
+  buzon.forEach((img, i) => {
+    opciones.push({ valor: DESDE_BUZON - i, texto: 'Mi imagen: ' + img.nombre, nota: Math.round(img.bytes / 1024) + ' kB' });
+  });
+  for (const t of items) {
+    opciones.push({ valor: t.id, texto: t.title + (t.year ? ' (' + t.year + ')' : '') });
+  }
+  if (buzon.length === 0) {
+    opciones.push({ valor: -2, texto: 'Para usar una imagen tuya…', nota: 'déjala en la carpeta data/arte-entrada del servidor' });
+  }
+
+  menuLista(
+    'Imagen de ' + nombre,
+    opciones,
+    elegida ?? -1,
+    (valor) => {
+      if (valor === -2) return;
+      const hecho = (texto: string) => () => {
+        aviso(texto);
+        // Se repinta la saga: la cabecera y la rejilla no cambian, pero la
+        // lista de sagas de detras si, y al volver tiene que salir la nueva.
+        void pantallaSaga(nombre);
+      };
+      const fallo = (e: unknown) => aviso((e as Error).message || 'No se pudo cambiar');
+      if (valor <= DESDE_BUZON) {
+        const img = buzon[DESDE_BUZON - valor];
+        if (!img) return;
+        api.arteSagaDelBuzon(nombre, img.nombre).then(hecho('Imagen de la saga cambiada')).catch(fallo);
+        return;
+      }
+      api
+        .fijarArteSaga(nombre, valor < 0 ? null : valor)
+        .then(hecho(valor < 0 ? 'Imagen automática' : 'Imagen de la saga cambiada'))
+        .catch(fallo);
+    },
+    () => alPulsar(teclasAntes),
+  );
 }
 
 /* -------------------------------------------------------------- buscador */
@@ -879,9 +981,9 @@ async function pantallaFicha(id: number) {
      */
     pintar(
       'inicio',
-      '<div class="vacio">No se pudo abrir la ficha.</div>' +
+      '<div class="vacio">No se pudo abrir la ficha.' +
         '<div class="acciones" data-bloque><button class="boton" data-nav data-reintentar>Reintentar</button>' +
-        '<button class="boton" data-nav data-inicio>Ir al inicio</button></div>',
+        '<button class="boton" data-nav data-inicio>Ir al inicio</button></div></div>',
     );
     const rein = marco.querySelector<HTMLElement>('[data-reintentar]');
     if (rein) rein.addEventListener('click', () => void pantallaFicha(id));
@@ -941,6 +1043,7 @@ async function pantallaFicha(id: number) {
   // «Eliminar» va el último a propósito: es lo único que no se puede deshacer,
   // y no debe quedar de paso entre los botones que se usan todos los días.
   acciones +=
+    '<button class="boton" data-nav data-extras hidden>Extras</button>' +
     '<button class="boton" data-nav data-vista>' + (vista ? 'Marcar no vista' : 'Marcar vista') + '</button>' +
     '<button class="boton' + (esFavorita ? ' activo' : '') + '" data-nav data-favorito>' +
     (esFavorita ? 'Quitar de favoritos' : 'Añadir a favoritos') + '</button>' +
@@ -1085,6 +1188,35 @@ async function pantallaFicha(id: number) {
             .catch((e) => aviso((e as Error).message || 'No se pudo eliminar'));
         },
       );
+    });
+  }
+
+  /*
+   * El boton de extras nace oculto y solo aparece si los hay: la mayoria de los
+   * titulos no tienen ninguno -126 de 1.946-, y un boton que abre una ventana
+   * vacia es peor que no tenerlo. La lista se pide aparte para no retrasar la
+   * ficha, que es lo que se esta mirando.
+   */
+  const bExtras = marco.querySelector<HTMLElement>('[data-extras]');
+  if (bExtras) {
+    let losExtras: Extra[] = [];
+    api
+      .extras(ficha.id)
+      .then((r) => {
+        losExtras = r.extras || [];
+        if (losExtras.length === 0) return;
+        bExtras.textContent = 'Extras (' + losExtras.length + ')';
+        bExtras.removeAttribute('hidden');
+        // El boton no estaba cuando se indexo la navegacion.
+        indexar();
+      })
+      .catch(() => { /* sin extras: el boton se queda escondido */ });
+    bExtras.addEventListener('click', () => {
+      if (losExtras.length === 0) return;
+      menuExtras(ficha, losExtras, () => {
+        indexar();
+        enfocar(bExtras);
+      });
     });
   }
 
@@ -1425,6 +1557,144 @@ type OpcionLista = { valor: number; texto: string; nota?: string };
  * Lista de opciones con su propio teclado. Quien la abre decide a dónde se
  * vuelve al cerrarla, porque el reproductor no quiere lo mismo que la ficha.
  */
+/**
+ * Los extras de un titulo: featurettes, «como se hizo», escenas eliminadas.
+ *
+ * Dos niveles cuando son muchos -Breaking Bad tiene 143, repartidos por
+ * temporada en el propio disco-: primero las secciones y dentro los videos. Con
+ * pocos se entra directo, que para seis un menu de paso sobra.
+ *
+ * A diferencia de `menuLista`, este pinta la miniatura del video enfocado: son
+ * nombres como «301 No Mas» que no dicen nada por si solos.
+ */
+const EXTRAS_DIRECTO = 10;
+
+function menuExtras(ficha: Ficha, extras: Extra[], alCerrar: () => void) {
+  const seccionDe = (e: Extra) => (e.grupo ? e.tipo + ' · ' + e.grupo : e.tipo);
+  const secciones: string[] = [];
+  for (let n = 0; n < extras.length; n++) {
+    const nom = seccionDe(extras[n]);
+    if (secciones.indexOf(nom) < 0) secciones.push(nom);
+  }
+
+  const porSecciones = extras.length > EXTRAS_DIRECTO && secciones.length > 1;
+
+  const verLista = (titulo: string, lista: Extra[], alVolver: () => void) => {
+    const capa = document.createElement('div');
+    capa.className = 'capa';
+    capa.innerHTML =
+      '<div class="panel panel-extras"><h3>' + esc(titulo) + '</h3>' +
+      '<div class="extras-cuerpo">' +
+      '<div class="extras-previa"><img alt=""><p class="extras-pie"></p></div>' +
+      '<div class="extras-lista">' +
+      lista
+        .map((e) => '<button class="linea">' + esc(e.titulo) +
+          (e.duration ? '<span class="nota-linea">' + minutos(e.duration) + '</span>' : '') + '</button>')
+        .join('') +
+      '</div></div></div>';
+    marco.appendChild(capa);
+
+    const lineas: HTMLElement[] = [];
+    capa.querySelectorAll<HTMLElement>('.linea').forEach((el) => lineas.push(el));
+    const previa = capa.querySelector<HTMLImageElement>('.extras-previa img')!;
+    const pie = capa.querySelector<HTMLElement>('.extras-pie')!;
+    let i = 0;
+
+    const pintarFoco = () => {
+      for (let n = 0; n < lineas.length; n++) {
+        if (n === i) lineas[n].classList.add('enfocado');
+        else lineas[n].classList.remove('enfocado');
+      }
+      lineas[i].scrollIntoView({ block: 'nearest' });
+      // La miniatura la genera el servidor la primera vez que se pide, asi que
+      // puede tardar un segundo: mientras, se deja la anterior en vez de un hueco.
+      previa.src = imagen.extra(lista[i].id);
+      pie.textContent = lista[i].tipo + (lista[i].grupo ? ' · ' + lista[i].grupo : '');
+    };
+    pintarFoco();
+
+    const cerrar = () => {
+      if (capa.parentElement) capa.parentElement.removeChild(capa);
+    };
+
+    alPulsar((tecla) => {
+      if (tecla === TECLA.ABAJO) { i = Math.min(lineas.length - 1, i + 1); pintarFoco(); return true; }
+      if (tecla === TECLA.ARRIBA) { i = Math.max(0, i - 1); pintarFoco(); return true; }
+      if (tecla === TECLA.ENTRAR) { const e = lista[i]; cerrar(); verExtra(ficha, e, alCerrar); return true; }
+      if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE) { cerrar(); alVolver(); return true; }
+      return true;
+    });
+  };
+
+  if (!porSecciones) {
+    verLista('Extras', extras, alCerrar);
+    return;
+  }
+
+  const verSecciones = () => {
+    const opciones = secciones.map((nom, n) => {
+      let cuantos = 0;
+      for (let k = 0; k < extras.length; k++) if (seccionDe(extras[k]) === nom) cuantos++;
+      return { texto: nom, nota: String(cuantos), valor: n };
+    });
+    menuLista('Extras', opciones, -1, (v) => {
+      const lista: Extra[] = [];
+      for (let k = 0; k < extras.length; k++) if (seccionDe(extras[k]) === secciones[v]) lista.push(extras[k]);
+      verLista(secciones[v], lista, verSecciones);
+    }, alCerrar);
+  };
+  verSecciones();
+}
+
+/** «12 min», para la lista de extras. */
+function minutos(segundos: number): string {
+  const m = Math.round(segundos / 60);
+  return m >= 60 ? Math.floor(m / 60) + 'h ' + (m % 60) + 'm' : m + ' min';
+}
+
+/**
+ * Un extra se ve y ya: ni progreso, ni pistas, ni reanudar. Es un video corto
+ * que acompanya a la pelicula, no la pelicula.
+ */
+function verExtra(ficha: Ficha, extra: Extra, alSalir: () => void) {
+  alPulsar(null);
+  document.body.classList.add('viendo');
+
+  const capa = document.createElement('div');
+  capa.className = 'capa capa-extra';
+  capa.innerHTML =
+    '<div class="extra-cabecera"><h3>' + esc(extra.titulo) + '</h3>' +
+    '<p>' + esc(ficha.title) + ' · ' + esc(extra.tipo) + '</p></div>' +
+    '<div class="extra-video"></div>';
+  marco.appendChild(capa);
+  const hueco = capa.querySelector<HTMLElement>('.extra-video')!;
+
+  let cerrado = false;
+  const reproductor = new Reproductor({
+    onTiempo: () => {},
+    onBuffer: () => {},
+    onFin: () => salir(),
+    onError: (mensaje) => { avisoRapido('No se pudo reproducir: ' + mensaje); salir(); },
+  });
+
+  const salir = () => {
+    if (cerrado) return;
+    cerrado = true;
+    try { reproductor.cerrar(); } catch (e) { /* ya estaba cerrado */ }
+    if (capa.parentElement) capa.parentElement.removeChild(capa);
+    document.body.classList.remove('viendo');
+    alSalir();
+  };
+
+  reproductor.abrir(urlExtra(extra.id), hueco, 0, extra.duration || 0);
+
+  alPulsar((tecla) => {
+    if (tecla === TECLA.ENTRAR || tecla === TECLA.PLAY_PAUSA) { reproductor.alternarPausa(); return true; }
+    if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE || tecla === TECLA.PARAR) { salir(); return true; }
+    return true;
+  });
+}
+
 function menuLista(
   titulo: string,
   opciones: OpcionLista[],
@@ -1458,6 +1728,10 @@ function menuLista(
       if (n === i) lineas[n].classList.add('enfocado');
       else lineas[n].classList.remove('enfocado');
     }
+    // Con muchas pistas (o notas largas: "la tele no la lee...") la lista
+    // pasa de los 760px del panel; sin esto, la opción enfocada podía quedar
+    // fuera de la vista, sin scroll y sin ninguna forma de verla ni elegirla.
+    lineas[i].scrollIntoView({ block: 'nearest' });
   };
   pintarFoco();
 
@@ -1552,6 +1826,9 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
   let botones: HTMLElement[] = [];
 
   capaSubs.className = 'subtitulos-tv sub-' + aj.tamanoSubtitulos + (aj.fondoSubtitulos === 'caja' ? ' con-caja' : '');
+  // La altura elegida en Ajustes. El CSS la suma a las dos alturas que tiene el
+  // subtitulo (la normal y la de cuando estan los controles a la vista).
+  capaSubs.style.setProperty('--subir', aj.subirSubtitulos + 'px');
 
   let enBotones = false;
   let iBoton = 1;
@@ -1888,7 +2165,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
       }
       aviso(mensaje);
     },
-    onSubtitulo: (texto) => {
+    onSubtitulo: (texto, milisegundos) => {
       window.clearTimeout(temporizadorSub);
       // AVPlay entrega el texto del MKV tal cual, con las etiquetas de estilo
       // de ASS y sus saltos de línea propios. Los subtítulos los pinta la
@@ -1903,9 +2180,19 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
         .split('\n')
         .map((l) => '<span>' + esc(l) + '</span>')
         .join('');
-      // Red de seguridad: si no llega el siguiente cambio, el texto no se queda
-      // clavado en pantalla el resto de la película.
-      temporizadorSub = window.setTimeout(() => { capaSubs.innerHTML = ''; }, 12000);
+      /*
+       * Se quita cuando toca. AVPlay dice cuánto dura cada línea en el primer
+       * argumento de `onsubtitlechange`, y aquí se estaba ignorando: el texto
+       * aguantaba hasta la línea siguiente, o 12 s si no llegaba ninguna. En una
+       * película con silencios largos —Backrooms— eso deja el último subtítulo
+       * clavado en pantalla un buen rato.
+       *
+       * El tope son 10 s, que es de sobra para leer una línea, y vale también
+       * de red para los ficheros que no declaran duración. El mínimo evita que
+       * una duración absurdamente corta lo haga parpadear.
+       */
+      const dura = milisegundos > 0 ? Math.max(700, Math.min(10000, milisegundos)) : 10000;
+      temporizadorSub = window.setTimeout(() => { capaSubs.innerHTML = ''; }, dura);
     },
   });
   // Para el salvapantallas: necesita saber si hay algo en pausa ahora mismo,
@@ -2171,7 +2458,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
       modoAudio = nuevo as 'normal' | 'night' | 'dialogue';
       guardarAjustes({ modoAudio: modoAudio });
       abrirFlujo(reproductor.tiempo());
-      aviso(modoAudio === 'normal' ? 'Audio original' : modoAudio === 'night' ? 'Volumen nocturno' : 'Voces claras');
+      avisoRapido(modoAudio === 'normal' ? 'Audio original' : modoAudio === 'night' ? 'Volumen nocturno' : 'Voces claras');
       return;
     }
 
@@ -2193,7 +2480,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
       aviso(necesitaConvertir ? 'Convirtiendo el audio a DD+ 5.1…' : 'Cambiando de pista…');
       return;
     }
-    if (reproductor.elegirAudio(n)) aviso('Audio: ' + nombreAudio(pista));
+    if (reproductor.elegirAudio(n)) avisoRapido('Audio: ' + nombreAudio(pista));
     else abrirFlujo(reproductor.tiempo());
   }
 
@@ -2251,7 +2538,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     seleccion.fileId = fileId;
     seleccion.subtitulo = n;
     capaSubs.innerHTML = '';
-    if (reproductor.elegirSubtitulo(n)) aviso(n < 0 ? 'Subtítulos apagados' : 'Subtítulos puestos');
+    if (reproductor.elegirSubtitulo(n)) avisoRapido(n < 0 ? 'Subtítulos apagados' : 'Subtítulos puestos');
     else aviso('No se pudo cambiar: ' + (reproductor.fallo || 'la tele lo rechaza'));
   }
 
@@ -2355,7 +2642,21 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE) {
       if (infoVisible) { alternarInfo(); return true; }
       if (enTramo) { soltarTramo(); return true; }
-      if (enBotones) { enBotones = false; pintarFocoBotones(); mostrar(); return true; }
+      /*
+       * Un Atrás para ocultar los controles, otro para salir de la película.
+       * Antes, con los controles enfocados, Atrás solo les quitaba el foco y
+       * volvía a armar el temporizador de 5 s: el menú se quedaba en pantalla
+       * igual, así que parecía que Atrás no hacía nada y la siguiente
+       * pulsación sacaba de la película sin aviso. Y viendo la película sin
+       * los controles enfocados, Atrás salía a la primera, sin poder
+       * arrepentirse de una pulsación accidental.
+       */
+      if (osd.classList.contains('visible')) {
+        enBotones = false;
+        pintarFocoBotones();
+        osd.classList.remove('visible');
+        return true;
+      }
       salir();
       return true;
     }
@@ -2448,6 +2749,9 @@ function elecciones(campo: string, opciones: Opcion[], valorActual: string | num
   );
 }
 
+/** Qué campo se acaba de tocar, para reenfocarlo tras repintar en vez de subir arriba. */
+let focoAjustesDespues: string | null = null;
+
 function pantallaAjustes() {
   const a = ajustes();
 
@@ -2494,7 +2798,8 @@ function pantallaAjustes() {
       ], a.tamanoSubtitulos) +
       elecciones('fondoSubtitulos', [
         { valor: 'sombra', texto: 'Con sombra' }, { valor: 'caja', texto: 'Sobre caja negra' },
-      ], a.fondoSubtitulos),
+      ], a.fondoSubtitulos) +
+      '<button class="boton" data-nav data-posicion-subs>Ajustar la altura…</button>',
     ) +
 
     grupo(
@@ -2583,6 +2888,7 @@ function pantallaAjustes() {
       else if (campo === 'modoAudio') guardarAjustes({ modoAudio: valor as 'normal' | 'night' | 'dialogue' });
       else if (campo === 'saltarCabecera') guardarAjustes({ saltarCabecera: valor === 'si' });
       else if (campo === 'horaDeFin') guardarAjustes({ horaDeFin: valor === 'si' });
+      focoAjustesDespues = campo;
       pantallaAjustes();
     });
   });
@@ -2709,11 +3015,9 @@ function pantallaAjustes() {
   });
 
   const bEscanear = marco.querySelector<HTMLElement>('[data-escanear]');
-  if (bEscanear) bEscanear.addEventListener('click', () => {
-    api.escanear()
-      .then((r) => aviso(r.started ? 'Actualizando la biblioteca… tarda medio minuto' : r.reason || 'Ya está en marcha'))
-      .catch(() => aviso('No se pudo pedir la actualización'));
-  });
+  if (bEscanear) bEscanear.addEventListener('click', () => panelEscaneo());
+  const ps = marco.querySelector<HTMLElement>('[data-posicion-subs]');
+  if (ps) ps.addEventListener('click', function () { panelAlturaSubtitulos(); });
   const r = marco.querySelector<HTMLElement>('[data-reordenar]');
   if (r) r.addEventListener('click', function () { pantallaOrdenMenu(); });
   const sv = marco.querySelector<HTMLElement>('[data-servidor]');
@@ -2726,9 +3030,154 @@ function pantallaAjustes() {
     });
   }
 
-  enfocar(marco.querySelector<HTMLElement>('.ajustes [data-nav]'));
+  const volver = focoAjustesDespues
+    ? marco.querySelector<HTMLElement>('[data-campo="' + focoAjustesDespues + '"].activa')
+    : null;
+  focoAjustesDespues = null;
+  enfocar(volver || marco.querySelector<HTMLElement>('.ajustes [data-nav]'));
   alPulsar(function (tecla: number) {
     return tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE ? atrasHaciaMenu() : false;
+  });
+}
+
+/**
+ * Actualizar la biblioteca, enseñando por dónde va.
+ *
+ * El servidor ya publicaba el progreso en `/api/scan/stream` (un SSE con
+ * biblioteca, hechos, total y la carpeta que está leyendo) y la tele no lo
+ * usaba: llamaba a `POST /api/scan`, que contesta al instante, y lo único que
+ * se veía era un «tarda medio minuto». Ojo: el stream ARRANCA el escaneo, no
+ * se limita a mirarlo, así que aquí no se llama a las dos cosas.
+ *
+ * `EventSource` no puede mandar cabeceras, así que el token va en la URL, igual
+ * que en las carátulas y el vídeo.
+ */
+function panelEscaneo() {
+  const teclasAntes = manejadorActual();
+  const focoAntes = actual();
+
+  const capa = document.createElement('div');
+  capa.className = 'capa';
+  capa.innerHTML =
+    '<div class="panel"><h3>Actualizando la biblioteca</h3>' +
+    '<p class="dato" data-donde>Empezando…</p>' +
+    '<div class="barra-escaneo"><i data-avance></i></div>' +
+    '<p class="dato" data-cuenta></p>' +
+    '<p class="pista-ayuda">Volver cierra esto; la actualización sigue en el servidor.</p></div>';
+  marco.appendChild(capa);
+  const donde = capa.querySelector<HTMLElement>('[data-donde]')!;
+  const avance = capa.querySelector<HTMLElement>('[data-avance]')!;
+  const cuenta = capa.querySelector<HTMLElement>('[data-cuenta]')!;
+
+  let fuente: EventSource | null = null;
+  const cerrar = () => {
+    if (fuente) fuente.close();
+    if (capa.parentElement) capa.parentElement.removeChild(capa);
+    alPulsar(teclasAntes);
+    enfocar(focoAntes);
+  };
+  alPulsar((tecla) => {
+    if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE || tecla === TECLA.ENTRAR) { cerrar(); return true; }
+    return true;
+  });
+
+  // Una tele sin EventSource se queda como estaba: pide el escaneo y avisa.
+  if (typeof EventSource === 'undefined') {
+    cerrar();
+    api.escanear()
+      .then((r) => aviso(r.started ? 'Actualizando la biblioteca… tarda medio minuto' : r.reason || 'Ya está en marcha'))
+      .catch(() => aviso('No se pudo pedir la actualización'));
+    return;
+  }
+
+  const t = token();
+  fuente = new EventSource(servidor() + '/api/scan/stream' + (t ? '?token=' + encodeURIComponent(t) : ''));
+  fuente.addEventListener('progress', (e) => {
+    const p = JSON.parse((e as MessageEvent).data) as { library: string; done: number; total: number; current: string };
+    donde.textContent = p.library + (p.current ? ' · ' + p.current : '');
+    avance.style.width = p.total ? Math.min(100, Math.round((p.done / p.total) * 100)) + '%' : '0%';
+    cuenta.textContent = p.done + ' de ' + p.total;
+  });
+  fuente.addEventListener('done', (e) => {
+    const d = JSON.parse((e as MessageEvent).data) as { results: { name: string; count: number }[] };
+    if (fuente) fuente.close();
+    fuente = null;
+    donde.textContent = 'Listo';
+    avance.style.width = '100%';
+    cuenta.textContent = (d.results || []).map((r) => r.name + ': ' + r.count).join(' · ');
+  });
+  fuente.addEventListener('error', (e) => {
+    // Dos cosas llegan por aquí: el aviso del servidor («ya hay un escaneo en
+    // curso»), que trae datos, y un corte de conexión, que no.
+    let mensaje = 'Se ha cortado la conexión con el servidor';
+    const datos = (e as MessageEvent).data;
+    if (datos) {
+      try {
+        mensaje = (JSON.parse(datos) as { message?: string }).message || mensaje;
+      } catch (err) {
+        /* el corte no trae cuerpo */
+      }
+    }
+    if (fuente) fuente.close();
+    fuente = null;
+    donde.textContent = mensaje;
+  });
+}
+
+/**
+ * Altura de los subtítulos, sobre un fotograma de verdad.
+ *
+ * Se mueve en cada pulsación y no al aceptar, y encima de una imagen de la
+ * biblioteca con una frase de dos líneas: un número de píxeles no dice nada, y
+ * lo que se quiere saber es si tapa la cara del actor o los rótulos quemados.
+ * Se usa la misma clase que el reproductor, con el tamaño y el fondo elegidos,
+ * así que lo que se ve aquí es exactamente lo que se verá luego.
+ */
+function panelAlturaSubtitulos() {
+  const a = ajustes();
+  let subir = a.subirSubtitulos;
+  const teclasAntes = manejadorActual();
+  const focoAntes = actual();
+
+  const heroe = portadaGuardada && portadaGuardada.datos.hero.length ? portadaGuardada.datos.hero[0] : null;
+  const capa = document.createElement('div');
+  capa.className = 'capa capa-ejemplo';
+  capa.innerHTML =
+    (heroe ? '<img class="ejemplo-fondo" alt="" src="' + esc(imagen.fondo(heroe.id, 1280)) + '">' : '') +
+    '<div class="ejemplo-ayuda">Arriba y abajo mueven los subtítulos · Enter los deja así · Volver lo cancela' +
+    '<b data-valor></b></div>' +
+    '<div class="subtitulos-tv sub-' + a.tamanoSubtitulos + (a.fondoSubtitulos === 'caja' ? ' con-caja' : '') +
+    '" data-muestra><span>Así van a quedar los subtítulos.</span>' +
+    '<span>Una frase larga parte en dos líneas, como esta.</span></div>';
+  marco.appendChild(capa);
+
+  const muestra = capa.querySelector<HTMLElement>('[data-muestra]')!;
+  const etiqueta = capa.querySelector<HTMLElement>('[data-valor]')!;
+  const pintar2 = () => {
+    muestra.style.setProperty('--subir', subir + 'px');
+    etiqueta.textContent = subir === 0 ? 'Donde siempre' : (subir > 0 ? subir + ' px más arriba' : -subir + ' px más abajo');
+  };
+  pintar2();
+
+  const cerrar = () => {
+    if (capa.parentElement) capa.parentElement.removeChild(capa);
+    alPulsar(teclasAntes);
+    enfocar(focoAntes);
+  };
+
+  alPulsar((tecla) => {
+    // Los topes no son de adorno: pasando de 360 el subtítulo se va al centro
+    // de la pantalla, y por debajo de −60 se sale por el borde de abajo.
+    if (tecla === TECLA.ARRIBA) { subir = Math.min(360, subir + 20); pintar2(); return true; }
+    if (tecla === TECLA.ABAJO) { subir = Math.max(-60, subir - 20); pintar2(); return true; }
+    if (tecla === TECLA.ENTRAR) {
+      guardarAjustes({ subirSubtitulos: subir });
+      cerrar();
+      aviso(subir === 0 ? 'Subtítulos donde siempre' : 'Altura de los subtítulos guardada');
+      return true;
+    }
+    if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE) { cerrar(); return true; }
+    return true;
   });
 }
 
@@ -2980,8 +3429,9 @@ async function arrancar() {
  * Fondos de la biblioteca, en pausa o en el menú, con tiempos distintos a
  * propósito: en pausa alguien se ha levantado un momento, así que el margen
  * por defecto es mayor (5 min) que en el menú (2 min), donde no hay nada que
- * perder por entrar antes. Nunca en otra pantalla —rejilla, ficha, buscar—
- * porque ahí sí hay algo que mirar de verdad.
+ * perder por entrar antes. Vale cualquier pantalla que no sea el reproductor
+ * —portada, rejilla, ficha, buscar, ajustes—: si llevas dos minutos sin tocar
+ * el mando, ya no estás leyendo nada.
  *
  * Los fondos son los que ya trajo la portada (`portadaGuardada`): no hace
  * falta pedirle nada nuevo al servidor, y con 1.802 títulos con fanart en la
@@ -3077,7 +3527,7 @@ window.setInterval(() => {
   const aj = ajustes();
   const inactivoMin = (Date.now() - ultimaActividad) / 60_000;
   const enPausa = reproductorActivo !== null && reproductorActivo.estado() === 'PAUSED';
-  const enMenu = !enPausa && idActual === 'portada' && !document.body.classList.contains('viendo');
+  const enMenu = !enPausa && !document.body.classList.contains('viendo');
   if (enPausa && aj.salvaPausa > 0 && inactivoMin >= aj.salvaPausa) mostrarSalvapantallas();
   else if (enMenu && aj.salvaMenu > 0 && inactivoMin >= aj.salvaMenu) mostrarSalvapantallas();
 }, 5_000);

@@ -89,6 +89,37 @@ export default function SelectorDeArte({
     onError: (e: Error) => setAviso(e.message),
   });
 
+  /*
+   * Dos caminos para una imagen que no está en TMDb, porque no se usan igual:
+   * subirla desde este ordenador, y coger una de las que haya en el buzón
+   * (`data/arte-entrada`), que es el único camino que también sirve desde la
+   * tele, donde no se puede navegar el disco con un mando.
+   */
+  const refrescarFicha = () => {
+    queryClient.invalidateQueries({ queryKey: ['item', itemId] });
+    queryClient.invalidateQueries({ queryKey: ['home'] });
+  };
+
+  const subir = useMutation({
+    mutationFn: (fichero: File) => api.subirArte(itemId, papel, fichero),
+    onSuccess: () => {
+      setAviso('Imagen subida y puesta.');
+      refrescarFicha();
+    },
+    onError: (e: Error) => setAviso(e.message),
+  });
+
+  const { data: buzon } = useQuery({ queryKey: ['buzon-arte'], queryFn: () => api.buzonArte(), retry: false });
+
+  const delBuzon = useMutation({
+    mutationFn: (nombre: string) => api.ponerArteDelBuzon(itemId, papel, nombre),
+    onSuccess: () => {
+      setAviso('Imagen del buzón puesta.');
+      refrescarFicha();
+    },
+    onError: (e: Error) => setAviso(e.message),
+  });
+
   const lista: ImagenDisponible[] = imagenes?.[papel] ?? [];
   const forma = PAPELES.find((p) => p.clave === papel)!.proporcion;
 
@@ -176,6 +207,61 @@ export default function SelectorDeArte({
       {elegido != null && !isLoading && lista.length === 0 && (
         <p className="text-[13px] text-mist-500">TMDb no tiene ninguna imagen de este tipo para este título.</p>
       )}
+
+      <div className="mt-5 border-t border-white/10 pt-4">
+        <h4 className="mb-2 text-[13px] font-semibold text-mist-200">Una imagen mía</h4>
+        <p className="mb-3 text-[12px] text-mist-500">
+          Se guarda igual que las de TMDb: aparte de la carpeta de la película y sin que el escáner la pise. Vale
+          JPEG, PNG y WebP, hasta 20 MB; el tipo se comprueba por el contenido del fichero.
+        </p>
+
+        <label className="inline-flex cursor-pointer items-center rounded-full bg-white/10 px-3.5 py-1.5 text-[12.5px] hover:bg-white/18">
+          {subir.isPending ? 'Subiendo…' : `Subir imagen para «${PAPELES.find((p) => p.clave === papel)!.etiqueta}»`}
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="hidden"
+            disabled={subir.isPending}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              // Se limpia el input: si no, elegir el MISMO fichero otra vez (por
+              // ejemplo tras recortarlo) no dispara `change` y parece que no va.
+              e.target.value = '';
+              if (f) subir.mutate(f);
+            }}
+          />
+        </label>
+
+        {buzon && buzon.imagenes.length > 0 && (
+          <div className="mt-4">
+            <p className="mb-2 text-[12px] text-mist-500">
+              O una de las {buzon.imagenes.length} que hay en el buzón
+              (<code className="text-mist-400">{buzon.carpeta}</code>), donde puedes dejarlas desde el propio HTPC:
+            </p>
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(110px,1fr))] gap-2.5">
+              {buzon.imagenes.map((img) => (
+                <button
+                  key={img.nombre}
+                  onClick={() => delBuzon.mutate(img.nombre)}
+                  disabled={delBuzon.isPending}
+                  title={`${img.nombre} · ${Math.round(img.bytes / 1024)} kB`}
+                  className={`group relative overflow-hidden rounded-lg bg-ink-800 ring-1 ring-white/10 hover:ring-white/40 disabled:opacity-50 ${forma}`}
+                >
+                  <img
+                    src={`/api/enrich/arte/buzon/${encodeURIComponent(img.nombre)}`}
+                    alt=""
+                    loading="lazy"
+                    className="h-full w-full object-cover"
+                  />
+                  <span className="absolute inset-x-0 bottom-0 truncate bg-black/70 px-1 py-0.5 text-[9.5px] text-mist-300">
+                    {img.nombre}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
 
       <div className="mt-4 flex items-center gap-3">
         <button

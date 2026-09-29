@@ -309,11 +309,57 @@ function TranscribePanel() {
   );
 }
 
+function CreditosPeliculasPanel() {
+  const cliente = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ['creditos-peliculas'],
+    queryFn: api.creditosPeliculas,
+    refetchInterval: (q) => (q.state.data?.job.running ? 4000 : 20000),
+  });
+  const refrescar = () => cliente.invalidateQueries({ queryKey: ['creditos-peliculas'] });
+  const iniciar = useMutation({ mutationFn: api.detectarCreditosPeliculas, onSuccess: refrescar });
+  const parar = useMutation({ mutationFn: api.pararCreditosPeliculas, onSuccess: refrescar });
+
+  const job = data?.job;
+  return (
+    <Panel
+      title="Créditos de las películas"
+      subtitle="Se buscan por el texto que sube, y las escenas de mitad o final de créditos quedan fuera: el botón lleva a ellas. Tarda unos dos minutos por película, lee del disco solo cuando nadie está viendo algo, y se puede parar y seguir después sin repetir lo hecho. Las que ya traen un capítulo de créditos no se miran."
+    >
+      <Field label="Estado">
+        <span className="text-[13px] text-mist-300">
+          {data ? `${data.analizadas} analizadas · ${data.conCreditos} con créditos · ${data.conEscenas} con escena extra` : '…'}
+        </span>
+      </Field>
+      <div className="flex gap-2">
+        <Button onClick={() => iniciar.mutate()} disabled={Boolean(job?.running)}>
+          {job?.running ? 'Analizando…' : 'Analizar las que faltan'}
+        </Button>
+        {job?.running && (
+          <Button onClick={() => parar.mutate()} disabled={job.parando}>
+            {job.parando ? 'Parando…' : 'Parar'}
+          </Button>
+        )}
+      </div>
+      {job?.running && (
+        <p className="text-[13px] text-mist-400">
+          {job.esperando ? 'En espera: hay alguien viendo algo. ' : ''}
+          {job.hechas} de {job.total}
+          {job.actual ? ` · ${job.actual}` : ''}
+        </p>
+      )}
+      {iniciar.error && <p className="text-[13px] text-red-400">{(iniciar.error as Error).message}</p>}
+      {job?.error && <p className="text-[13px] text-red-400">{job.error}</p>}
+    </Panel>
+  );
+}
+
 export default function AnalysisPanels() {
   return (
     <div className="space-y-5">
       <DialoguePanel />
       <SkipPanel />
+      <CreditosPeliculasPanel />
       <TranscribePanel />
     </div>
   );

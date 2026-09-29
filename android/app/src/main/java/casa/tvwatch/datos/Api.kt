@@ -135,6 +135,11 @@ object Api {
   fun fotoDeEpisodio(id: Int, ancho: Int) = "${Servidor.baseCacheada()}/api/episodes/$id/thumb?w=$ancho"
   fun saga(nombre: String): ContenidoDeSaga = pedir("/api/collections/" + java.net.URLEncoder.encode(nombre, "UTF-8").replace("+", "%20"))
   fun ficha(id: Int): Ficha = pedir("/api/items/$id")
+
+  /** Featurettes, «como se hizo» y demas videos que acompanyan a un titulo. */
+  fun extras(itemId: Int): RespuestaExtras = pedir("/api/items/$itemId/extras")
+  fun urlDeExtra(id: Int) = "${Servidor.baseCacheada()}/api/extras/$id/stream"
+  fun miniaturaDeExtra(id: Int) = "${Servidor.baseCacheada()}/api/extras/$id/thumb"
   fun buscar(q: String): Resultados = pedir("/api/search?q=" + java.net.URLEncoder.encode(q, "UTF-8"))
 
   /**
@@ -409,6 +414,20 @@ data class Progreso(
 
 @Serializable
 data class Persona(val id: Int, val name: String, val role: String, val character: String? = null, @SerialName("has_thumb") val tieneFoto: Int = 0)
+
+@Serializable
+data class Extra(
+  val id: Int,
+  val titulo: String,
+  val tipo: String,
+  val duration: Double? = null,
+  val size: Long? = null,
+  /** «Temporada 3» cuando el disco los trae repartidos por temporada. */
+  val grupo: String? = null,
+)
+
+@Serializable
+data class RespuestaExtras(val extras: List<Extra> = emptyList())
 
 @Serializable
 data class Ficha(

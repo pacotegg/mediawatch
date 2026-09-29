@@ -25,6 +25,12 @@ export type Ajustes = {
   fondoSubtitulos: 'sombra' | 'caja';
   /** Retardo por defecto de los subtítulos, en milisegundos. */
   retardoSubtitulos: number;
+  /**
+   * Cuántos píxeles se SUBEN los subtítulos respecto a su sitio de siempre.
+   * Negativo los baja. Hay teles con la imagen recortada por abajo y películas
+   * con rótulos quemados justo ahí, y no hay una altura que valga para todas.
+   */
+  subirSubtitulos: number;
   /** Cómo sale el audio: normal (sin tocar), noche o voces claras. */
   modoAudio: 'normal' | 'night' | 'dialogue';
   /** Ofrecer el botón de saltar cabecera cuando se haya detectado. */
@@ -65,6 +71,7 @@ const POR_DEFECTO: Ajustes = {
   tamanoSubtitulos: 100,
   fondoSubtitulos: 'sombra',
   retardoSubtitulos: 0,
+  subirSubtitulos: 0,
   modoAudio: 'normal',
   saltarCabecera: true,
   horaDeFin: true,
@@ -93,6 +100,8 @@ export function cargarAjustes(): Ajustes {
         tamanoSubtitulos: guardado.tamanoSubtitulos || POR_DEFECTO.tamanoSubtitulos,
         fondoSubtitulos: guardado.fondoSubtitulos === 'caja' ? 'caja' : 'sombra',
         retardoSubtitulos: guardado.retardoSubtitulos || 0,
+        // `??`: cero es «donde siempre», no «sin valor».
+        subirSubtitulos: guardado.subirSubtitulos ?? 0,
         modoAudio: guardado.modoAudio || POR_DEFECTO.modoAudio,
         saltarCabecera: guardado.saltarCabecera !== false,
         horaDeFin: guardado.horaDeFin !== false,

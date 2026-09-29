@@ -55,6 +55,16 @@ export type Episode = {
   video_codec: string | null;
 };
 
+export type Extra = {
+  id: number;
+  titulo: string;
+  tipo: string;
+  duration: number | null;
+  size: number | null;
+  /** «Temporada 3» cuando los extras vienen repartidos por temporada. */
+  grupo: string | null;
+};
+
 export type ItemDetail = ItemSummary & {
   /** El disco redondo del Blu-ray, si lo hay: gira en la pausa del reproductor. */
   has_discart?: number;
@@ -89,6 +99,8 @@ export type PlayInfo = {
   plan: { mode: 'direct' | 'remux' | 'transcode'; videoAction: string; audioAction: string; reasons: string[] };
   audio: { id: number; codec: string; language: string | null; channels: number | null; title: string | null; default: boolean }[];
   subtitles: { id: string; language: string | null; title: string | null; forced: boolean; source: 'embedded' | 'external' }[];
+  /** Cabecera y créditos; en una película salen de los capítulos del fichero. */
+  skip?: SkipRange[];
 };
 
 export type PapelArte = 'poster' | 'fanart' | 'clearlogo' | 'landscape';
@@ -294,13 +306,21 @@ export const api = {
   skipRanges: (episodeId: number) => request<{ ranges: SkipRange[] }>(`/api/episodes/${episodeId}/skip`),
   skipStatus: () => request<{ job: SkipJob; shows: SkipShow[] }>('/api/skip/status'),
   detectSkips: (showId: number, kind: 'cabecera' | 'creditos') => post<{ started: boolean }>('/api/skip/detect', { showId, kind }),
+  creditosPeliculas: () => request<CreditosPeliculas>('/api/skip/peliculas'),
+  detectarCreditosPeliculas: () => post<{ started: boolean; total: number }>('/api/skip/peliculas/detectar', {}),
+  pararCreditosPeliculas: () => post<{ parando: boolean }>('/api/skip/peliculas/parar', {}),
 
   searchDialogue: (q: string) =>
     request<{ hits: DialogueHit[]; stats: DialogueStats; error?: string }>(`/api/search/dialogue?q=${encodeURIComponent(q)}`),
   dialogueStatus: (language = 'spa') => request<DialogueStats>(`/api/dialogue/status?language=${encodeURIComponent(language)}`),
   indexDialogue: (language: string, reset = false) => post<{ started: boolean }>('/api/dialogue/index', { language, reset }),
 
+  /** Featurettes, tomas falsas y «como se hizo» de un titulo. */
+  extras: (itemId: number) => request<{ extras: Extra[] }>(`/api/items/${itemId}/extras`),
+
   collections: () => request<CollectionSummary[]>('/api/collections'),
+  /** La imagen propia de una saga; solo sirve si `imagen_propia` viene a 1. */
+  imagenSaga: (nombre: string, w: number) => `/api/collections/${encodeURIComponent(nombre)}/imagen?w=${w}`,
   collection: (name: string) => request<{ name: string; items: ItemSummary[] }>(`/api/collections/${encodeURIComponent(name)}`),
 
   trickplay: async (fileId: number): Promise<Trickplay | null> => {
@@ -316,6 +336,20 @@ export const api = {
   /** Poner una imagen concreta; con url null se suelta y vuelve la de la carpeta. */
   ponerArte: (itemId: number, papel: PapelArte, url: string | null) =>
     post<{ papel: PapelArte }>('/api/enrich/arte', { itemId, papel, url }),
+  /**
+   * Subir una imagen del propio ordenador. Va el fichero crudo, sin formulario:
+   * el servidor lo recibe como un Buffer y decide el formato por los primeros
+   * bytes, no por lo que diga aquí el navegador.
+   */
+  subirArte: (itemId: number, papel: PapelArte, fichero: File) =>
+    request<{ papel: PapelArte; ruta: string }>(
+      `/api/enrich/arte/subir?itemId=${itemId}&papel=${papel}`,
+      { method: 'POST', headers: { 'Content-Type': fichero.type || 'image/jpeg' }, body: fichero },
+    ),
+  /** Las imágenes que hay en data/arte-entrada, para elegir sin subir nada. */
+  buzonArte: () => request<{ carpeta: string; imagenes: { nombre: string; bytes: number }[] }>('/api/enrich/arte/buzon'),
+  ponerArteDelBuzon: (itemId: number, papel: PapelArte, nombre: string) =>
+    post<{ papel: PapelArte }>('/api/enrich/arte/buzon', { itemId, papel, nombre }),
 
   animeItem: (itemId: number) => request<CandidatoAnime>(`/api/anime/item/${itemId}`),
   animeSearch: (query: string, year?: number | null) =>
@@ -402,6 +436,24 @@ export type SkipJob = {
 
 export type SkipShow = { id: number; title: string; episodes: number; intros: number; credits: number };
 
+export type CreditosPeliculas = {
+  job: {
+    running: boolean;
+    total: number;
+    hechas: number;
+    actual: string;
+    conCreditos: number;
+    conEscenas: number;
+    parando: boolean;
+    esperando: boolean;
+    error: string | null;
+    finishedAt: string | null;
+  };
+  analizadas: number;
+  conCreditos: number;
+  conEscenas: number;
+};
+
 export type DialogueHit = {
   itemId: number;
   title: string;
@@ -460,6 +512,8 @@ export type CollectionSummary = {
   first_year: number | null;
   last_year: number | null;
   poster_id: number | null;
+  /** 1 si la saga tiene una imagen propia, elegida a mano. */
+  imagen_propia?: number;
   fanart_id: number | null;
   seen?: number;
 };
@@ -649,3 +703,6 @@ export const subtitleSync = {
 };
 
 export const subtitleUrl = (fileId: number, trackId: string) => `/api/play/${fileId}/subtitle/${trackId}.vtt`;
+
+export const extraUrl = (id: number) => `/api/extras/${id}/stream`;
+export const extraThumb = (id: number) => `/api/extras/${id}/thumb`;

@@ -493,7 +493,11 @@ export default function Player() {
 
   // The button only offers itself while you are actually inside the segment,
   // and stops a couple of seconds early so it never covers the first shot.
-  const activeSkip = skip?.ranges.find((r) => virtual >= r.start_s && virtual < r.end_s - 2);
+  // Los episodios piden sus rangos aparte; una película no tiene `episodeId`, así
+  // que los toma de la información de reproducción.
+  const activeSkip = (skip?.ranges ?? info?.skip)?.find((r) => virtual >= r.start_s && virtual < r.end_s - 2);
+  // Con metraje detrás de los créditos (escena post-créditos), el botón lleva a ella.
+  const escenaFinal = activeSkip?.kind === 'credits' && duration - activeSkip.end_s > 20;
 
   const scrub = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -555,7 +559,7 @@ export default function Player() {
             onClick={() => seek(activeSkip.end_s + 0.4)}
             className="glass-strong absolute right-8 bottom-28 z-20 rounded-full px-5 py-2.5 text-[13px] font-semibold transition-transform hover:scale-105 active:scale-95"
           >
-            {activeSkip.kind === 'intro' ? 'Saltar cabecera' : 'Saltar créditos'}
+            {activeSkip.kind === 'intro' ? 'Saltar cabecera' : escenaFinal ? 'Ver escena final' : 'Saltar créditos'}
           </motion.button>
         )}
       </AnimatePresence>

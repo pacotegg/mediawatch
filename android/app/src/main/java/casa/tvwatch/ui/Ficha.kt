@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import casa.tvwatch.datos.Ajustes
 import casa.tvwatch.datos.Api
+import casa.tvwatch.datos.Extra
 import casa.tvwatch.datos.Cache
 import casa.tvwatch.datos.Episodio
 import casa.tvwatch.datos.Ficha
@@ -97,6 +98,9 @@ fun PantallaFicha(
    */
   var esFavorita by remember(itemId) { mutableStateOf(false) }
   var estaVista by remember(itemId) { mutableStateOf(false) }
+  // Los extras se piden aparte para no retrasar la ficha, que es lo que se mira.
+  var extras by remember(itemId) { mutableStateOf<List<Extra>>(emptyList()) }
+  var extrasAbiertos by remember(itemId) { mutableStateOf(false) }
   val ambito = rememberCoroutineScope()
 
   LaunchedEffect(itemId, intento) {
@@ -110,6 +114,14 @@ fun PantallaFicha(
       alPerderSesion()
     } catch (e: Exception) {
       fallo = e.message ?: "No se pudo abrir la ficha."
+    }
+  }
+
+  LaunchedEffect(itemId) {
+    extras = try {
+      withContext(Dispatchers.IO) { Api.extras(itemId) }.extras
+    } catch (e: Exception) {
+      emptyList() // sin extras: la pastilla no sale y ya esta
     }
   }
 
@@ -279,6 +291,11 @@ fun PantallaFicha(
           Modifier.horizontalScroll(rememberScrollState()),
           horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+          // Solo si los hay: 126 titulos de 1.946 tienen extras, y una pastilla
+          // que abre una ventana vacia es peor que no tenerla.
+          if (extras.isNotEmpty()) {
+            Pastilla("Extras (${extras.size})") { extrasAbiertos = true }
+          }
           Pastilla(
             if (esFavorita) "★ Favorita" else "☆ Favorita",
             activa = esFavorita,
@@ -399,6 +416,10 @@ fun PantallaFicha(
         }
       }
     }
+  }
+
+  if (extrasAbiertos) {
+    DialogoDeExtras(extras) { extrasAbiertos = false }
   }
 }
 

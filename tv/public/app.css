@@ -2,7 +2,8 @@
  * Interfaz de televisión de TvWatch.
  *
  * Tizen 6.0 (motor ~Chrome 76): no hay `aspect-ratio`, ni `gap` en flex, ni
- * `:has`, ni `content-visibility`, ni `color-mix`. Medidas fijas sobre un lienzo
+ * `:has`, ni `content-visibility`, ni `color-mix`, ni el atajo `inset` (este se
+ * ignora sin avisar y deja el elemento en 0x0). Medidas fijas sobre un lienzo
  * de 1920x1080, que es lo que la tele escala.
  *
  * Se ve desde el sofá: tipografía grande, contraste alto y el foco siempre
@@ -787,7 +788,19 @@ body.rend-rapido .lamina img {
 
 .temporadas {
   margin-bottom: 20px;
+  /* Mismo margen que el título «Episodios»: sin esto, la primera temporada
+     queda bajo el menú lateral y se ve cortada por la izquierda. */
+  padding-left: 150px;
   white-space: nowrap;
+}
+
+/* Mismo margen que `.temporadas`, para que los episodios no queden bajo el
+   menú y para que su franja empiece donde empiezan las temporadas: si no,
+   el centro de una fila de episodio (casi todo el ancho) cae muy lejos del
+   centro de una píldora de temporada, y bajar desde la temporada saltaba de
+   largo hasta el reparto en vez de entrar en la lista de episodios. */
+[data-lista-episodios] {
+  padding-left: 150px;
 }
 
 .temporada {
@@ -1165,17 +1178,29 @@ body.rend-rapido .lamina img {
  * Subtitulos. AVPlay no los dibuja: entrega el texto y lo pinta la aplicacion,
  * asi que estos son los mismos SRT que van dentro del MKV, sin quemar nada.
  */
+/* `--subir` lo pone el reproductor con la preferencia del usuario. Tiene que
+   entrar en las DOS alturas: la normal y la de mas abajo, cuando los controles
+   estan a la vista y el subtitulo se aparta de ellos. */
 .subtitulos-tv {
   position: absolute;
   left: 0;
-  bottom: 92px;
+  bottom: calc(92px + var(--subir, 0px));
   width: 1920px;
   padding: 0 220px;
   text-align: center;
   font-size: 42px;
   line-height: 1.28;
-  font-weight: 600;
-  text-shadow: 0 2px 6px #000, 0 0 14px #000;
+  font-weight: 700;
+  /* Contorno duro en las ocho direcciones MAS el halo amplio. El difuminado
+     por si solo baja el contraste del fondo pero no traza un limite a la letra,
+     y sobre imagen clara con detalle el blanco se diluia. Nada de
+     `-webkit-text-stroke`: en Chrome 76 el trazo se pinta centrado sobre el
+     glifo y se come el relleno, y `paint-order` para texto no es fiable ahi. */
+  text-shadow:
+    -2px -2px 0 #000, 0 -2px 0 #000, 2px -2px 0 #000,
+    -2px 0 0 #000, 2px 0 0 #000,
+    -2px 2px 0 #000, 0 2px 0 #000, 2px 2px 0 #000,
+    0 3px 12px rgba(0, 0, 0, 0.95), 0 0 24px rgba(0, 0, 0, 0.9);
 }
 
 .subtitulos-tv span {
@@ -1186,6 +1211,16 @@ body.rend-rapido .lamina img {
 .subtitulos-tv.sub-80 { font-size: 34px; }
 .subtitulos-tv.sub-125 { font-size: 52px; }
 .subtitulos-tv.sub-150 { font-size: 62px; }
+
+/* A 52 y 62 px un contorno de 2 px se queda corto en proporcion. */
+.subtitulos-tv.sub-125,
+.subtitulos-tv.sub-150 {
+  text-shadow:
+    -3px -3px 0 #000, 0 -3px 0 #000, 3px -3px 0 #000,
+    -3px 0 0 #000, 3px 0 0 #000,
+    -3px 3px 0 #000, 0 3px 0 #000, 3px 3px 0 #000,
+    0 3px 14px rgba(0, 0, 0, 0.95), 0 0 28px rgba(0, 0, 0, 0.9);
+}
 
 /* Con fondo en caja para peliculas con imagen muy clara; solo tras el texto,
    no una banda entera, que tapa mas de lo que ayuda. */
@@ -1254,7 +1289,7 @@ body.rend-rapido .lamina img {
 
 /* Con los controles a la vista los subtitulos suben para no quedar tapados. */
 .osd.visible ~ .subtitulos-tv {
-  bottom: 420px;
+  bottom: calc(420px + var(--subir, 0px));
 }
 
 .info-repro {
@@ -1320,6 +1355,15 @@ body.rend-rapido .lamina img {
   z-index: 70;
 }
 
+/* Confirmación de un cambio ya visible (pista, subtítulos): más pequeña y
+   discreta que un aviso de error, que necesita leerse con calma. */
+.aviso.rapido {
+  left: 660px;
+  width: 600px;
+  padding: 16px;
+  font-size: 21px;
+}
+
 /* --------------------------------------------------------------------- QR */
 
 .qr {
@@ -1359,7 +1403,8 @@ body.rend-rapido .lamina img {
   border-radius: 24px;
   background: var(--panel);
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.85);
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .panel h3 {
@@ -1388,6 +1433,60 @@ body.rend-rapido .lamina img {
 .linea.enfocado {
   background: #fff;
   color: var(--fondo);
+}
+
+/* Barra del escaneo de la biblioteca. */
+.barra-escaneo {
+  position: relative;
+  height: 16px;
+  margin: 20px 0 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.barra-escaneo i {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 16px;
+  width: 0;
+  background: var(--acento);
+  transition: width 0.3s ease;
+}
+
+/* Ejemplo a pantalla completa para colocar los subtitulos: se ve el fotograma,
+   no un numero de pixeles. */
+.capa-ejemplo {
+  background: #000;
+}
+
+.ejemplo-fondo {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1920px;
+  height: 1080px;
+  object-fit: cover;
+  opacity: 0.92;
+}
+
+.ejemplo-ayuda {
+  position: absolute;
+  top: 64px;
+  left: 0;
+  width: 1920px;
+  text-align: center;
+  font-size: 24px;
+  color: var(--texto-sec);
+  text-shadow: 0 2px 10px #000;
+}
+
+.ejemplo-ayuda b {
+  display: block;
+  margin-top: 10px;
+  font-size: 34px;
+  color: #fff;
 }
 
 /* ------------------------------------------------------- ficha de persona */
@@ -1682,9 +1781,17 @@ body.rend-medio .tarjeta.enfocado .lamina {
  * desvaneciéndose. `object-fit: cover` para que un fanart 1080p o uno 4K
  * llenen igual el panel sin bandas, cada uno a su tamaño real.
  */
+/*
+ * `inset: 0` no existe en Chrome 76 y se ignoraba entero: la capa quedaba sin
+ * top/left/right/bottom, colapsaba a 0x0 y se pintaba en y=1080, justo debajo
+ * del borde de la pantalla. El salvapantallas se creaba y no se veía nunca.
+ */
 .salva {
   position: fixed;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   z-index: 100;
   background: #000;
   overflow: hidden;
@@ -1692,7 +1799,10 @@ body.rend-medio .tarjeta.enfocado .lamina {
 
 .salva-img {
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -1714,7 +1824,10 @@ body.rend-medio .tarjeta.enfocado .lamina {
 /* Un degradado abajo, para que el título se lea sobre cualquier fotograma. */
 .salva-velo {
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   background: linear-gradient(0deg, rgba(0, 0, 0, 0.65) 0%, transparent 30%);
   pointer-events: none;
 }
@@ -1728,4 +1841,71 @@ body.rend-medio .tarjeta.enfocado .lamina {
   font-weight: 600;
   text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
   opacity: 0.85;
+}
+
+/*
+ * Extras: lista a la derecha y miniatura del enfocado a la izquierda. Los
+ * nombres que trae el disco («301 No Mas») no dicen nada por si solos, y desde
+ * el sofa una imagen resuelve en un vistazo lo que el texto no.
+ */
+.panel-extras {
+  width: 1180px;
+  margin-left: -590px;
+}
+
+.extras-cuerpo {
+  display: block;
+  overflow: hidden;
+}
+
+.extras-previa {
+  float: left;
+  width: 460px;
+  margin-right: 30px;
+}
+
+.extras-previa img {
+  width: 460px;
+  height: 259px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.06);
+  object-fit: cover;
+}
+
+.extras-pie {
+  margin: 12px 0 0;
+  font-size: 20px;
+  color: var(--tenue);
+}
+
+.extras-lista {
+  overflow: hidden;
+  max-height: 560px;
+  overflow-y: auto;
+}
+
+/* El extra se ve a pantalla completa, con su nombre arriba unos segundos. */
+.capa-extra {
+  background: #000;
+}
+
+.extra-cabecera {
+  position: absolute;
+  top: 60px;
+  left: 90px;
+  right: 90px;
+  z-index: 2;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.9);
+}
+
+.extra-cabecera h3 {
+  margin: 0;
+  font-size: 34px;
+  font-weight: 600;
+}
+
+.extra-cabecera p {
+  margin: 6px 0 0;
+  font-size: 22px;
+  color: var(--tenue);
 }
