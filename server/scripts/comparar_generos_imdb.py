@@ -28,7 +28,11 @@ import urllib.request
 DB = r"C:\tvwatch\data\tvwatch.db"
 CONFIG = r"C:\tvwatch\data\config.json"
 SALIDA = r"C:\tvwatch\data\comparacion-generos-imdb.jsonl"
-BIBLIOTECAS = ("Películas",)
+# Las cinco bibliotecas de peliculas. Empezo solo con "Peliculas" y eso dejaba
+# 334 titulos sin generos de IMDb -187 de Peques, 96 de Documentales, 39 de
+# Animacion y 12 de Conciertos-, que seguian con los de TMDb sin que se viera
+# por ningun sitio. Las series van aparte: IMDb da los del programa entero.
+BIBLIOTECAS = ("Películas", "Peques", "Documentales", "Animación", "Conciertos")
 
 # IMDb (ingles) -> vocabulario de la biblioteca (TMDb en castellano).
 # None = IMDb lo usa pero aqui no existe equivalente: no cuenta en ningun lado.

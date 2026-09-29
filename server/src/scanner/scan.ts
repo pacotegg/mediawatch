@@ -11,7 +11,15 @@ const VIDEO_EXT = new Set(['.mkv', '.mp4', '.avi', '.m4v', '.mov', '.wmv', '.mpg
 const SUB_EXT = new Set(['.srt', '.ass', '.ssa', '.vtt', '.sub']);
 const SKIP_DIRS = new Set(['.actors', 'extrathumbs', 'extras', 'extra', 'featurettes', 'behind the scenes', 'trailers', '.trickplay']);
 const JUNK = /\b(trailer|sample|muestra|teaser)\b/i;
-const MIN_VIDEO_BYTES = 20 * 1024 * 1024;
+/*
+ * Suelo para no tragarse basura. Estaba en 20 MB y se estaba comiendo contenido
+ * de verdad: los 4 «Specials» cortos de Hotel Fawlty (10-17 MB) y dos monologos.
+ * Medido el 29/09/2026 sobre las 9 bibliotecas: por debajo de 20 MB hay 211
+ * videos, pero 205 estan en carpetas de extras -y esos entran por su propia via,
+ * que no mira el tamano-. En carpetas de CONTENIDO solo caian esos 6, ninguno
+ * basura. Con 5 MB entran los seis y no aparece nada mas.
+ */
+const MIN_VIDEO_BYTES = 5 * 1024 * 1024;
 
 const LANG_MAP: Record<string, string> = {
   es: 'spa', esp: 'spa', spanish: 'spa', castellano: 'spa', español: 'spa', spa: 'spa',
