@@ -29,9 +29,15 @@ Nombres: empezó como **Cineteca** (04/09), se renombró a **TvWatch** (05/09) y
 `tvwatch`/`casa.tvwatch`, y el id de la app de Tizen sigue siendo
 `Cineteca01.Cineteca` **a propósito**: cambiarlo instalaría una segunda app en la tele.
 
-Cifras de la biblioteca (BD real, 16/09): **1.834 títulos** (1.735 películas, 99
-series), 3.808 episodios, **5.566 ficheros de vídeo**, 61.983 personas, 1,32
-millones de frases de diálogo indexadas, 9 bibliotecas.
+Cifras de la biblioteca (BD real, 29/09): **1.946 títulos** (1.850 películas, 96
+series), 3.789 episodios, **5.661 ficheros de vídeo**, 62.324 personas, 1.111
+extras, 1,32 millones de frases de diálogo indexadas, 9 bibliotecas.
+
+El salto desde los 1.834 del 16/09 no es material nuevo: son dos agujeros del
+escáner tapados el 29/09. Solo miraba directorios, así que de los 106 ficheros
+de `E:\Monologos` entraba 1 (ahora 104); y una serie sin carpetas «Season N» se
+borraba entera, que es por lo que «Un siglo de Ciencia Ficción» no existía en
+TvWatch y ahora tiene sus 26 episodios.
 
 ### Lo que la distingue de Plex/Jellyfin (resumen de lo construido)
 
