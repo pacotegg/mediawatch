@@ -1,7 +1,13 @@
 import type { FastifyInstance } from 'fastify';
+import { readFileSync } from 'node:fs';
 import { config } from '../config.ts';
+import { BUZON, ficheroDelBuzon, loDelBuzon } from '../media/buzon.ts';
 import { requireUser } from './auth.ts';
-import { applyProposal, buildCandidates, candidateForItem, imagenesDe, missingCount, ponerArte, search, soltarArte, TmdbError, type Candidate, type Papel } from '../scanner/tmdb.ts';
+import { applyProposal, buildCandidates, candidateForItem, formatoDeImagen, imagenesDe, missingCount, ponerArte, ponerArteDeDatos, search, soltarArte, TmdbError, type Candidate, type Papel } from '../scanner/tmdb.ts';
+
+/** 20 MB: un fondo 4K en PNG pasa de los 2 MB que admite el resto del servidor. */
+const TOPE_SUBIDA = 20 * 1024 * 1024;
+const PAPELES: Papel[] = ['poster', 'fanart', 'clearlogo', 'landscape', 'discart'];
 
 type Job = {
   running: boolean;
@@ -15,6 +21,12 @@ type Job = {
 const job: Job = { running: false, done: 0, total: 0, candidates: [], error: null, finishedAt: null };
 
 export default async function enrichRoutes(app: FastifyInstance) {
+  /*
+   * Fastify solo entiende JSON de serie: sin esto, subir una imagen contesta
+   * 415 antes de entrar en la ruta. `parseAs: 'buffer'` deja los bytes tal cual.
+   */
+  app.addContentTypeParser(/^image\//, { parseAs: 'buffer' }, (_req, cuerpo, hecho) => hecho(null, cuerpo));
+
   app.get('/api/enrich/status', async (req) => {
     requireUser(req);
     return {
@@ -118,6 +130,69 @@ export default async function enrichRoutes(app: FastifyInstance) {
       return url ? await ponerArte(itemId, papel, url) : soltarArte(itemId, papel);
     } catch (err) {
       return reply.code(502).send({ error: (err as Error).message });
+    }
+  });
+
+  /*
+   * Subir una imagen del disco de quien esta mirando la web.
+   *
+   * Llega el fichero crudo, no un formulario: asi no hace falta dependencia de
+   * multipart para mandar UN fichero. El limite de cuerpo se sube solo aqui; el
+   * global son 2 MB y un fondo grande no cabria.
+   */
+  app.post('/api/enrich/arte/subir', { bodyLimit: TOPE_SUBIDA }, async (req, reply) => {
+    const user = requireUser(req);
+    if (!user.is_admin) return reply.code(403).send({ error: 'No autorizado' });
+    const { itemId, papel } = req.query as { itemId?: string; papel?: Papel };
+    const datos = req.body as Buffer | undefined;
+    if (!itemId || !papel || !PAPELES.includes(papel)) {
+      return reply.code(400).send({ error: 'Falta el título o el tipo de imagen' });
+    }
+    if (!Buffer.isBuffer(datos) || datos.length === 0) {
+      return reply.code(400).send({ error: 'No llegó ninguna imagen' });
+    }
+    try {
+      return ponerArteDeDatos(Number(itemId), papel, datos);
+    } catch (err) {
+      return reply.code(400).send({ error: (err as Error).message });
+    }
+  });
+
+  /** Lo que hay ahora mismo en el buzon, para ofrecerlo donde haga falta. */
+  app.get('/api/enrich/arte/buzon', async (req, reply) => {
+    const user = requireUser(req);
+    if (!user.is_admin) return reply.code(403).send({ error: 'No autorizado' });
+    return { carpeta: BUZON, imagenes: loDelBuzon() };
+  });
+
+  /** La imagen del buzon en crudo, para verla antes de elegirla. */
+  app.get('/api/enrich/arte/buzon/:nombre', async (req, reply) => {
+    const user = requireUser(req);
+    if (!user.is_admin) return reply.code(403).send({ error: 'No autorizado' });
+    const { nombre } = req.params as { nombre: string };
+    let datos: Buffer;
+    try {
+      datos = readFileSync(ficheroDelBuzon(decodeURIComponent(nombre)));
+    } catch (err) {
+      return reply.code(404).send({ error: (err as Error).message });
+    }
+    const ext = formatoDeImagen(datos);
+    if (!ext) return reply.code(400).send({ error: 'Eso no es una imagen' });
+    return reply.type(ext === 'jpg' ? 'image/jpeg' : 'image/' + ext).send(datos);
+  });
+
+  /** Poner como arte una imagen del buzon. El fichero del buzon no se toca. */
+  app.post('/api/enrich/arte/buzon', async (req, reply) => {
+    const user = requireUser(req);
+    if (!user.is_admin) return reply.code(403).send({ error: 'No autorizado' });
+    const { itemId, papel, nombre } = req.body as { itemId?: number; papel?: Papel; nombre?: string };
+    if (!itemId || !papel || !PAPELES.includes(papel) || !nombre) {
+      return reply.code(400).send({ error: 'Falta el título, el tipo de imagen o el nombre' });
+    }
+    try {
+      return ponerArteDeDatos(itemId, papel, readFileSync(ficheroDelBuzon(nombre)));
+    } catch (err) {
+      return reply.code(400).send({ error: (err as Error).message });
     }
   });
 

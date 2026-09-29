@@ -10,7 +10,9 @@ import { dialogueDownmix, planPlayback, sessions, startStream, stopSession, type
 import { clearOffset, isMeasuring, measure, offsetFor, saveOffset } from '../media/resync.ts';
 import { ensure, generarLote, isGenerating, lote, pararLote, readManifest, sheetPath } from '../media/trickplay.ts';
 import { marcarActividad } from '../media/ocupado.ts';
+import { extraPorId, extrasDe, miniatura } from '../media/extras.ts';
 import { detectForShow, detectarTodas, job, pararDeteccion, showsWithRanges, skipRangesFor } from '../media/intros.ts';
+import { detectarPeliculas, jobPeliculas, pararPeliculas, resumenPeliculas, skipDePelicula } from '../media/creditos-detector.ts';
 import { currentUser, requireUser, sesionDe } from './auth.ts';
 import type { ServerResponse } from 'node:http';
 
@@ -268,7 +270,9 @@ export default async function playRoutes(app: FastifyInstance) {
       chapters: info.chapters,
       // Cabecera y creditos del episodio, si se han detectado. Van aqui para que
       // el cliente no tenga que hacer una segunda peticion al empezar a ver.
-      skip: row.episode_id ? skipRangesFor(row.episode_id) : [],
+      // En una pelicula no hay huellas que comparar: los creditos salen de los
+      // capitulos del propio fichero o del detector del texto que sube.
+      skip: row.episode_id ? skipRangesFor(row.episode_id) : skipDePelicula(row.item_id ?? 0, info.chapters, info.duration),
       size: bytes,
       bitrate: info.duration > 0 ? Math.round((bytes * 8) / info.duration) : 0,
       video: info.video,
@@ -852,6 +856,26 @@ export default async function playRoutes(app: FastifyInstance) {
     return { parando: pararDeteccion() };
   });
 
+  // Créditos de las películas por el texto que sube; ver creditos-detector.ts.
+  app.get('/api/skip/peliculas', async () => ({ job: jobPeliculas, ...resumenPeliculas() }));
+
+  app.post('/api/skip/peliculas/detectar', async (req, reply) => {
+    const user = requireUser(req);
+    if (!user.is_admin) return reply.code(403).send({ error: 'Solo un administrador puede lanzar la detección' });
+    const { ids } = (req.body ?? {}) as { ids?: number[] };
+    try {
+      return { started: true, total: detectarPeliculas(Array.isArray(ids) ? ids.map(Number).filter(Number.isFinite) : undefined) };
+    } catch (err) {
+      return reply.code(409).send({ error: (err as Error).message });
+    }
+  });
+
+  app.post('/api/skip/peliculas/parar', async (req, reply) => {
+    const user = requireUser(req);
+    if (!user.is_admin) return reply.code(403).send({ error: 'Solo un administrador puede pararla' });
+    return { parando: pararPeliculas() };
+  });
+
   app.get('/api/sessions', async () => {
     return [...sessions.values()].map((s) => ({
       id: s.id,
@@ -868,5 +892,54 @@ export default async function playRoutes(app: FastifyInstance) {
     if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'Solo un administrador' });
     stopSession((req.params as { id: string }).id);
     return { ok: true };
+  });
+
+  app.get('/api/items/:id/extras', async (req) => ({
+    extras: extrasDe(Number((req.params as { id: string }).id)),
+  }));
+
+  app.get('/api/extras/:id/thumb', async (req, reply) => {
+    const ruta = await miniatura(Number((req.params as { id: string }).id));
+    if (!ruta) return reply.code(404).send({ error: 'Sin miniatura' });
+    return reply
+      .header('Content-Type', 'image/jpeg')
+      .header('Cache-Control', 'public, max-age=604800')
+      .send(createReadStream(ruta));
+  });
+
+  /*
+   * Los extras se sirven en crudo y nada mas: son cortos y ya vienen en un
+   * formato que los tres clientes leen. Ni remux, ni cambio de pista, ni
+   * modos de audio -toda esa maquinaria es para la pelicula-.
+   */
+  app.get('/api/extras/:id/stream', async (req, reply) => {
+    const extra = extraPorId(Number((req.params as { id: string }).id));
+    if (!extra) return reply.code(404).send({ error: 'Extra no encontrado' });
+    if (!existsSync(extra.path)) return reply.code(410).send({ error: 'El fichero ya no esta en disco' });
+
+    marcarActividad();
+    const stat = statSync(extra.path);
+    const mime =
+      /\.mkv$/i.test(extra.path) ? 'video/x-matroska' :
+      /\.avi$/i.test(extra.path) ? 'video/x-msvideo' :
+      /\.mov$/i.test(extra.path) ? 'video/quicktime' : 'video/mp4';
+    reply.header('Accept-Ranges', 'bytes').header('Content-Type', mime);
+
+    const range = req.headers.range;
+    if (range) {
+      const match = /bytes=(\d*)-(\d*)/.exec(range);
+      const desde = Number(match?.[1] || 0);
+      const hasta = match?.[2] ? Number(match[2]) : stat.size - 1;
+      const trozo = createReadStream(extra.path, { start: desde, end: hasta });
+      cerrarSiInactivo(trozo, reply.raw);
+      return reply
+        .code(206)
+        .header('Content-Range', `bytes ${desde}-${hasta}/${stat.size}`)
+        .header('Content-Length', hasta - desde + 1)
+        .send(trozo);
+    }
+    const entero = createReadStream(extra.path);
+    cerrarSiInactivo(entero, reply.raw);
+    return reply.header('Content-Length', stat.size).send(entero);
   });
 }

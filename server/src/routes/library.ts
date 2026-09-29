@@ -1,7 +1,10 @@
-import { config } from '../config.ts';
+import { config, DATA_DIR } from '../config.ts';
 import { avanzar } from '../media/historial.ts';
-import { createReadStream, existsSync, rmSync, statSync } from 'node:fs';
-import { extname, resolve, sep } from 'node:path';
+import { createHash } from 'node:crypto';
+import { createReadStream, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { extname, join, resolve, sep } from 'node:path';
+import { ficheroDelBuzon } from '../media/buzon.ts';
+import { formatoDeImagen } from '../scanner/tmdb.ts';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { db, normalize } from '../db.ts';
 import { thumbnail } from '../media/images.ts';
@@ -267,7 +270,8 @@ export default async function libraryRoutes(app: FastifyInstance) {
         ? withProgress(
             db
               .prepare(`SELECT ${ITEM_FIELDS} FROM items i JOIN libraries l ON l.id = i.library_id
-                        WHERE i.collection = ? ORDER BY i.year, i.title`)
+                        WHERE i.collection = ?
+                        ORDER BY COALESCE(i.premiered, printf('%04d-06-30', i.year)), i.title`)
               .all(item.collection),
             user?.id ?? null,
           )
@@ -360,8 +364,13 @@ export default async function libraryRoutes(app: FastifyInstance) {
     const user = currentUser(req);
     const rows = db
       .prepare(`SELECT i.collection AS name, COUNT(*) AS count, MIN(i.year) AS first_year, MAX(i.year) AS last_year,
-                  (SELECT id FROM items WHERE collection = i.collection AND poster IS NOT NULL ORDER BY year LIMIT 1) AS poster_id,
-                  (SELECT id FROM items WHERE collection = i.collection AND fanart IS NOT NULL ORDER BY rating DESC LIMIT 1) AS fanart_id
+                  COALESCE((SELECT ca.item_id FROM coleccion_arte ca JOIN items x ON x.id = ca.item_id
+                              WHERE ca.coleccion = i.collection AND x.collection = i.collection AND x.poster IS NOT NULL),
+                           (SELECT id FROM items WHERE collection = i.collection AND poster IS NOT NULL ORDER BY year LIMIT 1)) AS poster_id,
+                  COALESCE((SELECT ca.item_id FROM coleccion_arte ca JOIN items x ON x.id = ca.item_id
+                              WHERE ca.coleccion = i.collection AND x.collection = i.collection AND x.fanart IS NOT NULL),
+                           (SELECT id FROM items WHERE collection = i.collection AND fanart IS NOT NULL ORDER BY rating DESC LIMIT 1)) AS fanart_id,
+                  EXISTS(SELECT 1 FROM coleccion_imagen ci WHERE ci.coleccion = i.collection) AS imagen_propia
                 FROM items i
                 WHERE i.collection IS NOT NULL AND i.collection != ''
                 GROUP BY i.collection HAVING count > 1
@@ -386,10 +395,94 @@ export default async function libraryRoutes(app: FastifyInstance) {
     const user = currentUser(req);
     const items = db
       .prepare(`SELECT ${ITEM_FIELDS} FROM items i JOIN libraries l ON l.id = i.library_id
-                WHERE i.collection = ? ORDER BY i.year, i.title`)
+                WHERE i.collection = ?
+                ORDER BY COALESCE(i.premiered, printf('%04d-06-30', i.year)), i.title`)
       .all(name);
     if (items.length === 0) return reply.code(404).send({ error: 'Saga no encontrada' });
-    return { name, items: withProgress(items, user?.id ?? null) };
+    const elegida = db.prepare('SELECT item_id FROM coleccion_arte WHERE coleccion = ?').get(name) as
+      | { item_id: number }
+      | undefined;
+    const propia = db.prepare('SELECT ruta FROM coleccion_imagen WHERE coleccion = ?').get(name) as
+      | { ruta: string }
+      | undefined;
+    return {
+      name,
+      items: withProgress(items, user?.id ?? null),
+      arteItemId: elegida?.item_id ?? null,
+      arteImagen: Boolean(propia),
+    };
+  });
+
+  /*
+   * Elegir que pelicula presta la imagen de la saga.
+   *
+   * Es una preferencia de la casa, no de cada perfil -la saga se ve igual en la
+   * tele, en el movil y en la web-, asi que la cambia un administrador. Con
+   * `itemId: null` se vuelve a lo automatico.
+   *
+   * Se exige que la pelicula siga estando EN esa coleccion: los ids se renumeran
+   * en cada escaneo, y una fila vieja podria apuntar a cualquier cosa.
+   */
+  /** La imagen propia de la saga, si la hay. Igual que las de un titulo. */
+  app.get('/api/collections/:name/imagen', async (req, reply) => {
+    const name = decodeURIComponent((req.params as { name: string }).name);
+    const { w } = req.query as { w?: string };
+    const fila = db.prepare('SELECT ruta FROM coleccion_imagen WHERE coleccion = ?').get(name) as
+      | { ruta: string }
+      | undefined;
+    return serveArt(reply, fila?.ruta ?? null, w ? Number(w) : undefined);
+  });
+
+  app.post('/api/collections/:name/arte', async (req, reply) => {
+    const name = decodeURIComponent((req.params as { name: string }).name);
+    const user = requireUser(req);
+    if (!user.is_admin) return reply.code(403).send({ error: 'Solo un administrador puede cambiarla' });
+    const { itemId, buzon } = req.body as { itemId?: number | null; buzon?: string };
+
+    /*
+     * Una imagen del buzon. Se COPIA a data/artwork/sagas/: el fichero que dejo
+     * el usuario es suyo y no se mueve ni se borra. La carpeta va por un hash
+     * del nombre porque una saga puede llamarse «Alien - Coleccion» y eso no
+     * cabe tal cual en un nombre de carpeta.
+     */
+    if (buzon) {
+      let datos: Buffer;
+      try {
+        datos = readFileSync(ficheroDelBuzon(buzon));
+      } catch (err) {
+        return reply.code(400).send({ error: (err as Error).message });
+      }
+      const ext = formatoDeImagen(datos);
+      if (!ext) return reply.code(400).send({ error: 'Eso no es una imagen JPEG, PNG ni WebP' });
+      const dir = join(DATA_DIR, 'artwork', 'sagas', createHash('sha1').update(name).digest('hex').slice(0, 12));
+      mkdirSync(dir, { recursive: true });
+      const destino = join(dir, 'poster.' + ext);
+      writeFileSync(destino, datos);
+      db.prepare(`INSERT INTO coleccion_imagen (coleccion, ruta, actualizado) VALUES (?, ?, ?)
+                  ON CONFLICT(coleccion) DO UPDATE SET ruta = excluded.ruta,
+                    actualizado = excluded.actualizado`)
+        .run(name, destino, new Date().toISOString());
+      return { name, arteItemId: null, arteImagen: true };
+    }
+
+    if (itemId === null || itemId === undefined) {
+      // Volver a lo automatico: se quitan las dos elecciones. El fichero
+      // copiado se queda donde esta; aqui no se borra nada sin pedirlo.
+      db.prepare('DELETE FROM coleccion_arte WHERE coleccion = ?').run(name);
+      db.prepare('DELETE FROM coleccion_imagen WHERE coleccion = ?').run(name);
+      return { name, arteItemId: null, arteImagen: false };
+    }
+    const item = db.prepare('SELECT id FROM items WHERE id = ? AND collection = ?').get(itemId, name) as
+      | { id: number }
+      | undefined;
+    if (!item) return reply.code(400).send({ error: 'Esa película no está en la saga' });
+    db.prepare(`INSERT INTO coleccion_arte (coleccion, item_id, actualizado) VALUES (?, ?, ?)
+                ON CONFLICT(coleccion) DO UPDATE SET item_id = excluded.item_id,
+                  actualizado = excluded.actualizado`)
+      .run(name, itemId, new Date().toISOString());
+    // Elegir una pelicula manda: si habia una imagen propia, deja de usarse.
+    db.prepare('DELETE FROM coleccion_imagen WHERE coleccion = ?').run(name);
+    return { name, arteItemId: itemId, arteImagen: false };
   });
 
   /*

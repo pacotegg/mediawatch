@@ -74,11 +74,37 @@ async function detectSeason(showId: number, season: number, kind: 'cabecera' | '
   writeFileSync(listPath, JSON.stringify(episodes), 'utf8');
 
   try {
-    const { stdout } = await run(config.python, [SCRIPT, '--ficheros', listPath, '--modo', kind], {
-      windowsHide: true,
-      maxBuffer: 8 * 1024 * 1024,
-      timeout: 60 * 60_000,
-    });
+    let stdout: string;
+    try {
+      ({ stdout } = await run(config.python, [SCRIPT, '--ficheros', listPath, '--modo', kind], {
+        windowsHide: true,
+        maxBuffer: 8 * 1024 * 1024,
+        timeout: 60 * 60_000,
+      }));
+    } catch (err) {
+      /*
+       * intros.py sale con codigo 1 en dos casos que no son lo mismo: una
+       * averia, y «aqui no hay nada que medir» -temporadas de dos episodios de
+       * siete minutos, dibujos cortos-. Y el motivo lo escribe en **stdout**,
+       * no en stderr, asi que sin leerlo aqui en `server.err` quedaban 19
+       * lineas de «Command failed» sin razon, que es justo el fichero al que
+       * manda mirar el CLAUDE.md cuando algo falla de verdad. Reproducido el
+       * 29/09/2026 con «Vaca y Pollo» temporada 0: {"error": "no se pudieron
+       * sacar huellas suficientes"}.
+       */
+      const salida = String((err as { stdout?: string }).stdout ?? '').trim();
+      const ultima = salida.split('\n').pop() ?? '';
+      let motivo = '';
+      try {
+        motivo = String((JSON.parse(ultima) as { error?: string }).error ?? '');
+      } catch {
+        motivo = ultima;
+      }
+      // Sin motivo legible es una averia de verdad: que suba y se registre.
+      if (!motivo) throw err;
+      console.log(`[cabeceras] ${kind} sin resultado en temporada ${season}: ${motivo}`);
+      return 0;
+    }
 
     const parsed = JSON.parse(stdout.trim().split('\n').pop() ?? '[]');
     if (!Array.isArray(parsed)) return 0;

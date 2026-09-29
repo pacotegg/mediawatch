@@ -1,10 +1,11 @@
 import { existsSync } from 'node:fs';
 import { readdirSync, statSync } from 'node:fs';
-import { basename, extname, join } from 'node:path';
+import { basename, dirname, extname, join } from 'node:path';
 import { Worker } from 'node:worker_threads';
 import { db, normalize } from '../db.ts';
 import { config, type LibraryConfig } from '../config.ts';
 import { parseNfo, type NfoData } from './nfo.ts';
+import { indexarExtras } from '../media/extras.ts';
 
 const VIDEO_EXT = new Set(['.mkv', '.mp4', '.avi', '.m4v', '.mov', '.wmv', '.mpg', '.mpeg', '.ts', '.webm']);
 const SUB_EXT = new Set(['.srt', '.ass', '.ssa', '.vtt', '.sub']);
@@ -361,22 +362,37 @@ function fileMeta(path: string, nfo: NfoData | null) {
   };
 }
 
-function scanMovieFolder(libId: number, dir: string, files: Entry[], now: string) {
-  const videos = videoFiles(files);
+/**
+ * Quita la coletilla tecnica de los descargados de YouTube, que si no acaba de
+ * titulo: «Dani Rovira; Los ninos (356p_25fps_H264-128kbit_AAC)».
+ */
+const sinColetillaTecnica = (s: string) =>
+  s.replace(/\s*\((?=[^)]*(?:fps|kbit|H26[45]|AAC|x264|x265))[^)]*\)\s*$/i, '').trim();
+
+/**
+ * `suelto` es un video que vive directamente en la raiz de la biblioteca, sin
+ * carpeta propia: asi estan los 105 monologos de `E:\Monologos`, que se
+ * perdian enteros porque `scanLibrary` solo miraba directorios.
+ */
+function scanMovieFolder(libId: number, dir: string, files: Entry[], now: string, suelto?: Entry) {
+  const videos = suelto ? [suelto] : videoFiles(files);
   if (videos.length === 0) return 0;
-  const main = videos.sort((a, b) => statSync(b.path).size - statSync(a.path).size)[0];
+  const main = suelto ?? videos.sort((a, b) => statSync(b.path).size - statSync(a.path).size)[0];
   const base = basename(main.name, extname(main.name));
   const nfoPath =
     files.find((f) => f.name.toLowerCase() === `${base.toLowerCase()}.nfo`)?.path ??
-    files.find((f) => f.name.toLowerCase() === 'movie.nfo')?.path;
+    (suelto ? undefined : files.find((f) => f.name.toLowerCase() === 'movie.nfo')?.path);
   const nfo = nfoPath ? parseNfo(nfoPath) : null;
-  const fromFolder = parseTitleYear(basename(dir));
+  const fromFolder = suelto ? parseTitleYear(sinColetillaTecnica(base)) : parseTitleYear(basename(dir));
   const title = nfo?.title ?? fromFolder.title;
+  // `items.folder` es UNIQUE: 105 sueltos comparten carpeta, asi que la clave
+  // de un suelto es su propia ruta, o se machacarian unos a otros.
+  const clave = suelto ? suelto.path : dir;
   const art = artworkFor(files, base);
   const meta = fileMeta(main.path, nfo);
 
   const item = stmt.upsertItem.get(
-    libId, 'movie', dir, title, normalize(title), nfo?.sortTitle ?? null, nfo?.originalTitle ?? null,
+    libId, 'movie', clave, title, normalize(title), nfo?.sortTitle ?? null, nfo?.originalTitle ?? null,
     nfo?.year ?? fromFolder.year ?? null, nfo?.plot ?? null, nfo?.tagline ?? null, nfo?.runtime ?? null,
     nfo?.rating ?? null, nfo?.votes ?? null, nfo?.mpaa ?? null, nfo?.premiered ?? null, nfo?.studio ?? null,
     nfo?.country ?? null, nfo?.collection ?? null, nfo?.trailer ?? null, nfo?.imdbId ?? null, nfo?.tmdbId ?? null,
@@ -391,6 +407,8 @@ function scanMovieFolder(libId: number, dir: string, files: Entry[], now: string
   saveTracks(file.id, nfo, externalSubs(files, base));
   saveRatings(item.id, nfo);
   saveGenresAndPeople(item.id, nfo, actorThumbs(dir));
+  // Un suelto no tiene carpeta propia: sus vecinos de la raiz no son sus extras.
+  if (!suelto) indexarExtras(item.id, dir, title, now);
   return 1;
 }
 
@@ -405,6 +423,23 @@ function episodeNumbers(name: string): { season: number; episode: number } | nul
   const m = name.match(/s(\d{1,3})[\s._-]*e(\d{1,3})/i) ?? name.match(/(\d{1,2})x(\d{1,3})/i);
   return m ? { season: Number(m[1]), episode: Number(m[2]) } : null;
 }
+
+/**
+ * «02 - Heroes de la Ciencia Ficcion» -> episodio 2. Numeracion de los
+ * episodios que solo traen el numero delante, sin SxxExx. Se exige el guion
+ * para no confundir un ano al principio del nombre con un numero de episodio.
+ */
+function numeroDelantero(base: string): number | null {
+  const m = base.match(/^(\d{1,2})\s*[-.]\s*\S/);
+  return m ? Number(m[1]) : null;
+}
+
+/**
+ * El nombre sin la numeracion de delante, que no es parte del titulo: cae tanto
+ * el «02 - » como el «s01e01 » de «s01e01 Queens of Sci-Fi».
+ */
+const tituloEpisodio = (base: string) =>
+  base.replace(/^s\d{1,3}[\s._-]*e\d{1,3}[\s._-]*/i, '').replace(/^\d{1,2}\s*[-.]\s*/, '').trim() || base;
 
 function scanShowFolder(libId: number, dir: string, files: Entry[], now: string) {
   const nfoPath = files.find((f) => f.name.toLowerCase() === 'tvshow.nfo')?.path;
@@ -423,19 +458,37 @@ function scanShowFolder(libId: number, dir: string, files: Entry[], now: string)
 
   saveRatings(item.id, nfo);
   saveGenresAndPeople(item.id, nfo, actorThumbs(dir));
+  indexarExtras(item.id, dir, title, now);
 
   const seasonDirs = files.filter((f) => f.isDir && seasonNumber(f.name) !== null);
   let episodes = 0;
   let latestAdded: string | undefined;
 
-  for (const sd of seasonDirs) {
-    const seasonFiles = listDir(sd.path);
+  /*
+   * Hay series con los episodios sueltos en su propia carpeta, sin «Season N»:
+   * asi esta «Un siglo de Ciencia Ficcion», 26 episodios que se perdian
+   * ENTEROS -sin `seasonDirs`, `episodes` quedaba a 0 y el item se borraba, asi
+   * que la serie no existia en TvWatch-. Cuando no hay ninguna carpeta de
+   * temporada, la de la serie hace de temporada 1.
+   *
+   * Solo cuando NO hay ninguna: si una serie tiene «Season N» y ademas algun
+   * video suelto, se deja como estaba, para no arriesgar episodios duplicados.
+   */
+  const grupos = seasonDirs.length > 0
+    ? seasonDirs.map((sd) => ({ nombre: sd.name, files: listDir(sd.path) }))
+    : [{ nombre: '', files }];
+
+  for (const grupo of grupos) {
+    const seasonFiles = grupo.files;
     // Numeración de reserva cuando el nombre no trae SxxExx: por temporada, no
     // por serie entera, o la temporada 2 seguía contando donde dejó la 1.
     let episodeEnEstaTemporada = 0;
     for (const video of videoFiles(seasonFiles)) {
       const base = basename(video.name, extname(video.name));
-      const nums = episodeNumbers(video.name) ?? { season: seasonNumber(sd.name) ?? 1, episode: episodeEnEstaTemporada + 1 };
+      const suelto = numeroDelantero(base);
+      const nums = episodeNumbers(video.name)
+        ?? (suelto !== null ? { season: seasonNumber(grupo.nombre) ?? 1, episode: suelto } : null)
+        ?? { season: seasonNumber(grupo.nombre) ?? 1, episode: episodeEnEstaTemporada + 1 };
       const epNfoPath = seasonFiles.find((f) => f.name.toLowerCase() === `${base.toLowerCase()}.nfo`)?.path;
       const epNfo = epNfoPath ? parseNfo(epNfoPath) : null;
       const thumb = findArt(seasonFiles, base, ['-thumb.jpg', '-thumb.png'], []);
@@ -444,7 +497,10 @@ function scanShowFolder(libId: number, dir: string, files: Entry[], now: string)
 
       const ep = stmt.upsertEpisode.get(
         item.id, epNfo?.season ?? nums.season, epNfo?.episode ?? nums.episode,
-        epNfo?.title ?? base, epNfo?.plot ?? null, epNfo?.premiered ?? null,
+        // Tambien al titulo del .nfo: los de «Un siglo de Ciencia Ficcion» los
+        // genero tinyMediaManager desde el nombre del fichero, asi que traen
+        // dentro el mismo «02 - » que se queria quitar.
+        tituloEpisodio(epNfo?.title ?? base), epNfo?.plot ?? null, epNfo?.premiered ?? null,
         epNfo?.runtime ?? null, epNfo?.rating ?? null, thumb ?? null,
       ) as { id: number };
 
@@ -567,9 +623,33 @@ async function retirarFicherosAusentes(libraryId: number): Promise<number> {
 export async function scanLibrary(lib: LibraryConfig, onProgress?: (p: ScanProgress) => void): Promise<number> {
   const now = new Date().toISOString();
   const row = stmt.library.get(lib.name, lib.path, lib.kind) as { id: number };
-  const entries = listDir(lib.path).filter((e) => e.isDir && !SKIP_DIRS.has(e.name.toLowerCase()) && !e.name.startsWith('_'));
+  const todo = listDir(lib.path);
+  const entries = todo.filter((e) => e.isDir && !SKIP_DIRS.has(e.name.toLowerCase()) && !e.name.startsWith('_'));
 
-  const count = await escanearCarpetas(lib, row, entries, now, onProgress);
+  let count = await escanearCarpetas(lib, row, entries, now, onProgress);
+
+  /*
+   * Videos sueltos en la raiz, cada uno una pelicula. Solo en bibliotecas de
+   * peliculas: en una de series un video en la raiz no dice de que serie es.
+   * Medido el 29/09/2026: de 106 ficheros de `E:\Monologos` solo entraba 1, el
+   * unico con carpeta propia.
+   */
+  if (lib.kind === 'movie') {
+    const sueltos = videoFiles(todo);
+    for (let inicio = 0; inicio < sueltos.length; inicio += LOTE) {
+      const lote = sueltos.slice(inicio, inicio + LOTE);
+      db.exec('BEGIN');
+      try {
+        for (const video of lote) count += scanMovieFolder(row.id, lib.path, todo, now, video);
+        db.exec('COMMIT');
+      } catch (err) {
+        db.exec('ROLLBACK');
+        throw err;
+      }
+      if (inicio + LOTE < sueltos.length) await cederElHilo();
+    }
+    if (sueltos.length > 0) console.log(`[escaneo] ${lib.name}: ${sueltos.length} videos sueltos en la raiz`);
+  }
 
   db.exec('BEGIN');
   try {
@@ -598,12 +678,22 @@ export function rescanItem(itemId: number): boolean {
   if (!row) return false;
 
   const now = new Date().toISOString();
-  const files = listDir(row.folder);
+  /*
+   * En un video suelto de la raiz, `folder` es la ruta del PROPIO FICHERO, no
+   * una carpeta (ver `scanMovieFolder`): hay que leer la carpeta que lo
+   * contiene y volver a pasarlo como suelto, o `listDir` no devuelve nada y el
+   * reescaneo borraria el item.
+   */
+  const esFichero = existsSync(row.folder) && !statSync(row.folder).isDirectory();
+  const dir = esFichero ? dirname(row.folder) : row.folder;
+  const files = listDir(dir);
+  const suelto = esFichero ? files.find((f) => f.path === row.folder) : undefined;
+  if (esFichero && !suelto) return false;
   db.exec('BEGIN');
   try {
     const count = row.kind === 'movie'
-      ? scanMovieFolder(row.library_id, row.folder, files, now)
-      : scanShowFolder(row.library_id, row.folder, files, now);
+      ? scanMovieFolder(row.library_id, dir, files, now, suelto)
+      : scanShowFolder(row.library_id, dir, files, now);
     db.exec('COMMIT');
     return count > 0;
   } catch (err) {

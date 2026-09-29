@@ -1,4 +1,4 @@
-import { createWriteStream, mkdirSync } from 'node:fs';
+import { createWriteStream, mkdirSync, writeFileSync } from 'node:fs';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { join } from 'node:path';
@@ -357,21 +357,63 @@ const COLUMNA_DE: Record<Papel, string> = {
  * siguiente pasada, que es lo que hacia que cambiar una caratula no durase nada.
  */
 export async function ponerArte(itemId: number, papel: Papel, url: string) {
-  const item = db.prepare('SELECT id, arte_fijado FROM items WHERE id = ?').get(itemId) as
-    | { id: number; arte_fijado: string | null }
-    | undefined;
-  if (!item) throw new Error('El titulo ya no existe');
+  const dir = carpetaDeArte(itemId);
+  const destino = await descargar(url, join(dir, FICHERO_DE[papel]));
+  fijarArte(itemId, papel, destino);
+  return { papel, ruta: destino };
+}
 
+/**
+ * Lo mismo, pero con los bytes ya en la mano: una imagen subida desde la web o
+ * cogida del buzon. No pasa por `descargar`, que solo sabe de http.
+ *
+ * El formato se decide por el CONTENIDO, no por lo que diga el navegador, y la
+ * extension acompana a ese formato: `thumbnail()` mira la extension del origen
+ * para saber si conserva transparencia, asi que un PNG guardado como .jpg le
+ * habria quitado el canal alfa a un logotipo.
+ */
+export function ponerArteDeDatos(itemId: number, papel: Papel, datos: Buffer) {
+  const ext = formatoDeImagen(datos);
+  if (!ext) throw new Error('Eso no es una imagen JPEG, PNG ni WebP');
+  const dir = carpetaDeArte(itemId);
+  const base = FICHERO_DE[papel].replace(EXTENSION, '');
+  const destino = join(dir, base + '.' + ext);
+  writeFileSync(destino, datos);
+  fijarArte(itemId, papel, destino);
+  return { papel, ruta: destino };
+}
+
+const EXTENSION = /\.[a-z]+$/;
+
+/** Los primeros bytes dicen lo que es; la extension y el Content-Type, no. */
+export function formatoDeImagen(datos: Buffer): 'jpg' | 'png' | 'webp' | null {
+  const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  if (datos.length > 3 && datos[0] === 0xff && datos[1] === 0xd8 && datos[2] === 0xff) return 'jpg';
+  if (datos.length > 8 && datos.subarray(0, 8).equals(PNG)) return 'png';
+  if (datos.length > 12 && datos.subarray(0, 4).toString('latin1') === 'RIFF' &&
+      datos.subarray(8, 12).toString('latin1') === 'WEBP') {
+    return 'webp';
+  }
+  return null;
+}
+
+function carpetaDeArte(itemId: number): string {
+  const item = db.prepare('SELECT id FROM items WHERE id = ?').get(itemId) as { id: number } | undefined;
+  if (!item) throw new Error('El titulo ya no existe');
   const dir = join(ARTWORK_DIR, String(itemId));
   mkdirSync(dir, { recursive: true });
-  const destino = await descargar(url, join(dir, FICHERO_DE[papel]));
+  return dir;
+}
 
-  const papeles = new Set((item.arte_fijado ?? '').split(',').filter(Boolean));
+/** Apunta en la base que este papel lo ha elegido una persona. */
+function fijarArte(itemId: number, papel: Papel, destino: string) {
+  const item = db.prepare('SELECT arte_fijado FROM items WHERE id = ?').get(itemId) as
+    | { arte_fijado: string | null }
+    | undefined;
+  const papeles = new Set((item?.arte_fijado ?? '').split(',').filter(Boolean));
   papeles.add(papel);
   db.prepare(`UPDATE items SET ${COLUMNA_DE[papel]} = ?, arte_fijado = ?, arte_actualizado = ? WHERE id = ?`)
     .run(destino, [...papeles].join(','), new Date().toISOString(), itemId);
-
-  return { papel, ruta: destino };
 }
 
 /**
