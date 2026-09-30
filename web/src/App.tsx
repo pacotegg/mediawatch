@@ -22,6 +22,7 @@ const Settings = lazy(() => import('./pages/Settings.tsx'));
 const Estadisticas = lazy(() => import('./pages/Estadisticas.tsx'));
 const Descargas = lazy(() => import('./pages/Descargas.tsx'));
 const Pair = lazy(() => import('./pages/Pair.tsx'));
+const Plataformas = lazy(() => import('./pages/Plataformas.tsx'));
 const CollectionsIndex = lazy(() => import('./pages/Collections.tsx').then((m) => ({ default: m.CollectionsIndex })));
 const CollectionDetail = lazy(() => import('./pages/Collections.tsx').then((m) => ({ default: m.CollectionDetail })));
 
@@ -82,6 +83,8 @@ export default function App() {
                   <Route path="/sagas" element={<Page><CollectionsIndex /></Page>} />
                   <Route path="/saga/:name" element={<Page><CollectionDetail /></Page>} />
                   <Route path="/favoritos" element={<Page><Favorites /></Page>} />
+                  <Route path="/plataformas" element={<Page><Plataformas /></Page>} />
+                  <Route path="/plataformas/:clave" element={<Page><Plataformas /></Page>} />
                   <Route path="/ajustes" element={<Page><Settings /></Page>} />
                   <Route path="/estadisticas" element={<Page><Estadisticas /></Page>} />
                   <Route path="/descargas" element={<Page><Descargas /></Page>} />

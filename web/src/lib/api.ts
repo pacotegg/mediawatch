@@ -306,6 +306,13 @@ export const api = {
   skipRanges: (episodeId: number) => request<{ ranges: SkipRange[] }>(`/api/episodes/${episodeId}/skip`),
   skipStatus: () => request<{ job: SkipJob; shows: SkipShow[] }>('/api/skip/status'),
   detectSkips: (showId: number, kind: 'cabecera' | 'creditos') => post<{ started: boolean }>('/api/skip/detect', { showId, kind }),
+  plataformas: () => request<{ plataformas: Plataforma[]; total: number; consultados: number; conPlataforma: number; porPlataforma: (Plataforma & { titulos: number })[]; job: { running: boolean; total: number; hechos: number; conPlataforma: number; error: string | null } }>('/api/plataformas'),
+  dondeVer: (itemId: number) => request<DondeVer>(`/api/items/${itemId}/plataformas`),
+  catalogoPlataforma: (clave: string, kind: 'movie' | 'show', orden: string, pagina: number) =>
+    request<{ total: number; paginas: number; items: FichaPlataforma[] }>(
+      `/api/plataformas/${clave}/catalogo?kind=${kind}&orden=${orden}&pagina=${pagina}`,
+    ),
+  refrescarPlataformas: () => post<{ started: boolean; total: number }>('/api/plataformas/refrescar', {}),
   creditosPeliculas: () => request<CreditosPeliculas>('/api/skip/peliculas'),
   detectarCreditosPeliculas: () => post<{ started: boolean; total: number }>('/api/skip/peliculas/detectar', {}),
   pararCreditosPeliculas: () => post<{ parando: boolean }>('/api/skip/peliculas/parar', {}),
@@ -435,6 +442,28 @@ export type SkipJob = {
 };
 
 export type SkipShow = { id: number; title: string; episodes: number; intros: number; credits: number };
+
+export type Plataforma = { clave: string; id: number; nombre: string };
+
+/** Dónde ver un título fuera de la biblioteca. `enlace` es la página de TMDb. */
+export type DondeVer = {
+  suscripcion: { clave: string; nombre: string }[];
+  alquiler: { clave: string; nombre: string }[];
+  enlace: string;
+};
+
+export type FichaPlataforma = {
+  tmdbId: number;
+  kind: 'movie' | 'show';
+  title: string;
+  year: number | null;
+  rating: number | null;
+  overview: string;
+  poster: string | null;
+  backdrop: string | null;
+  /** Id del título en la biblioteca, si ya se tiene: entonces se abre aquí. */
+  enBiblioteca: number | null;
+};
 
 export type CreditosPeliculas = {
   job: {

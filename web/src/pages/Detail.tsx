@@ -187,6 +187,12 @@ export default function Detail() {
   const [avisoDescarga, setAvisoDescarga] = useState<string | null>(null);
 
   const { data: item, isLoading } = useQuery({ queryKey: ['item', itemId], queryFn: () => api.item(itemId) });
+  /*
+   * Dónde verlo fuera de casa. Solo informa: Apple TV+, Prime y Movistar+ van
+   * cifrados y no se pueden reproducir aquí. Sale de una tabla ya rellenada, así
+   * que no hay espera; si el lote aún no ha pasado por este título, no sale nada.
+   */
+  const { data: donde } = useQuery({ queryKey: ['donde-ver', itemId], queryFn: () => api.dondeVer(itemId), staleTime: 3600_000 });
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: api.me, retry: false });
 
   useEffect(() => {
@@ -395,6 +401,24 @@ export default function Detail() {
             )}
 
             {item.genres.length > 0 && <div className="mb-4 text-[14px] text-mist-500">{item.genres.slice(0, 4).join(', ')}</div>}
+
+            {donde && donde.suscripcion.length > 0 && (
+              <div className="mb-4 flex flex-wrap items-center gap-2 text-[13px] text-mist-400">
+                {/* La atribución a JustWatch va en el `title`: TMDb la exige para estos datos. */}
+                <span title="Datos de disponibilidad de JustWatch, vía TMDb">También en tu suscripción:</span>
+                {donde.suscripcion.map((p) => (
+                  <a
+                    key={p.clave}
+                    href={donde.enlace || undefined}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-full border border-white/15 bg-white/6 px-3 py-1 font-medium text-mist-100 hover:bg-white/12"
+                  >
+                    {p.nombre}
+                  </a>
+                ))}
+              </div>
+            )}
 
             {item.plot && (
               <p className={`mb-1 max-w-[820px] text-[15px] leading-relaxed text-mist-300 ${plotAbierta ? '' : 'line-clamp-3'}`}>

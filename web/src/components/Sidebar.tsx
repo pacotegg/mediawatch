@@ -16,6 +16,7 @@ const ICONS = {
   stats: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
   download: 'M12 3v12m0 0 4.5-4.5M12 15l-4.5-4.5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2',
   collapse: 'M15 5 8 12l7 7',
+  plataformas: 'M4 5h16v10H4zM9 19h6M12 15v4',
 } as const;
 
 function Icon({ path }: { path: string }) {
@@ -104,6 +105,7 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
       </nav>
 
       <div className="shrink-0 space-y-0.5 border-t border-white/6 px-2.5 py-2.5">
+        <Item to="/plataformas" icon={ICONS.plataformas} label="Plataformas" collapsed={collapsed} />
         <Item to="/descargas" icon={ICONS.download} label="Descargas" collapsed={collapsed} />
         <Item to="/estadisticas" icon={ICONS.stats} label="Estadísticas" collapsed={collapsed} />
         <Item to="/ajustes" icon={ICONS.settings} label="Ajustes" collapsed={collapsed} />
@@ -266,6 +268,7 @@ export function MobileDrawer({ open, onClose }: { open: boolean; onClose: () => 
             <Item key={lib.id} to={`/biblioteca/${lib.id}`} icon={lib.kind === 'movie' ? ICONS.movie : ICONS.show} label={lib.name} collapsed={false} />
           ))}
           <div className="pt-4">
+            <Item to="/plataformas" icon={ICONS.plataformas} label="Plataformas" collapsed={false} />
             <Item to="/descargas" icon={ICONS.download} label="Descargas" collapsed={false} />
             <Item to="/estadisticas" icon={ICONS.stats} label="Estadísticas" collapsed={false} />
             <Item to="/ajustes" icon={ICONS.settings} label="Ajustes" collapsed={false} />

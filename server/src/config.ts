@@ -34,6 +34,12 @@ export type AppConfig = {
   fanartApiKey: string;
   /** Clave de TheTVDB v4: segunda fuente de logotipos, con el idioma puesto. */
   tvdbApiKey: string;
+  /**
+   * Clave de Watchmode: el enlace directo a un título dentro de Prime, Movistar+ o
+   * Apple TV+. Plan gratuito: 2.500 llamadas al mes, caché de 30 días como máximo
+   * y atribución obligatoria. Sin clave, «Ver» solo abre la app de la plataforma.
+   */
+  watchmodeApiKey: string;
   /*
    * Direccion publica, si la hay: `https://tv.midominio.org`.
    *
@@ -112,6 +118,7 @@ function defaultConfig(): AppConfig {
     omdbApiKey: '',
     fanartApiKey: '',
     tvdbApiKey: '',
+    watchmodeApiKey: '',
   };
 }
 

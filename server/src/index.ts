@@ -16,6 +16,7 @@ import enrichRoutes from './routes/enrich.ts';
 import libraryRoutes from './routes/library.ts';
 import mandoRoutes from './routes/mando.ts';
 import mantenimientoRoutes from './routes/mantenimiento.ts';
+import plataformaRoutes from './routes/plataformas.ts';
 import playRoutes from './routes/play.ts';
 import preferenceRoutes from './routes/preferences.ts';
 import subtitleRoutes from './routes/subtitles.ts';
@@ -342,6 +343,7 @@ await app.register(actividadRoutes);
 await app.register(descargaRoutes);
 await app.register(mandoRoutes);
 await app.register(mantenimientoRoutes);
+await app.register(plataformaRoutes);
 
 let scanning = false;
 
