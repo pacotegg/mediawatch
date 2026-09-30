@@ -31,6 +31,7 @@ import argparse
 import json
 import subprocess
 import sys
+import time
 
 import numpy as np
 
@@ -42,16 +43,31 @@ MIN_ESCENA_RAFAGAS = 2
 MIN_RANGO_S = 20.0
 # Prioridad baja: la biblioteca vive en un disco mecánico compartido con la reproducción.
 BELOW_NORMAL = 0x00004000
+# Una ráfaga sana cuesta 1-4 s. Pasar de aquí no es un disco ocupado: es un fichero
+# en el que ffmpeg no puede saltar. Medido el 30/09/2026 con «El reportero»: el
+# índice de saltos del MKV (`Cues`) trae UN solo punto, en el segundo 0, y cada
+# ráfaga lee el fichero entero hasta su posición: 4 s en el minuto 1, 216 s en el
+# 50 y más de 300 s en el 95. Con unas 40 ráfagas por película son horas, el
+# servidor lo cortaba a los 20 min sin JSON y la película se reintentaba en cada
+# pasada. Mejor decir que no se puede y por qué.
+LENTA_S = 45.0
+
+
+class SaltoLento(Exception):
+    pass
 
 
 def rafaga(ffmpeg, path, t):
+    t0 = time.time()
     try:
         r = subprocess.run(
             [ffmpeg, "-hide_banner", "-v", "error", "-ss", str(int(t)), "-t", str(RAFAGA_S), "-i", path,
              "-an", "-sn", "-vf", f"fps={FPS},scale={W}:{H},format=gray", "-f", "rawvideo", "-"],
-            capture_output=True, timeout=120, creationflags=BELOW_NORMAL)
+            capture_output=True, timeout=LENTA_S, creationflags=BELOW_NORMAL)
     except subprocess.TimeoutExpired:
-        return None
+        raise SaltoLento(f"una ráfaga en el segundo {int(t)} pasó de {LENTA_S:.0f} s")
+    if time.time() - t0 > LENTA_S:
+        raise SaltoLento(f"una ráfaga en el segundo {int(t)} tardó {time.time() - t0:.0f} s")
     n = len(r.stdout) // (W * H)
     if n < 4:
         return None
@@ -208,6 +224,10 @@ def main():
         sys.exit(1)
     try:
         print(json.dumps(analizar(a.ffmpeg, a.fichero, a.duracion, a.desde)))
+    except SaltoLento as e:
+        print(json.dumps({"error": f"no se puede saltar por el fichero ({e}): su índice de saltos no sirve, "
+                                   "hay que rehacerlo con mkvmerge"}))
+        sys.exit(1)
     except Exception as e:  # noqa: BLE001
         print(json.dumps({"error": f"{type(e).__name__}: {e}"}))
         sys.exit(1)

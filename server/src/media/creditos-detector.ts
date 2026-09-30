@@ -146,8 +146,16 @@ async function analizarUna(p: Pendiente): Promise<void> {
     } catch {
       motivo = salida;
     }
-    // Sin motivo legible es una avería de verdad: que suba y se registre.
-    if (!motivo) throw err;
+    /*
+     * Sin motivo legible es una avería de verdad: que suba y se registre. Pero se
+     * anota antes como mirada -'fallo', distinto de 'error'-, o cada pasada volvía
+     * a gastar los 20 min del límite en el mismo fichero: `pendientes()` solo
+     * salta lo que ya tiene fila. Se vuelve a intentar pidiéndolo por id.
+     */
+    if (!motivo) {
+      guardar().run(p.itemId, '[]', '[]', 'fallo', new Date().toISOString());
+      throw err;
+    }
     console.log('[creditos-peliculas] ' + p.title + ': ' + motivo);
     // Se anota como mirada y vacía: sin esto se reanalizaría en cada pasada.
     guardar().run(p.itemId, '[]', '[]', 'error', new Date().toISOString());
