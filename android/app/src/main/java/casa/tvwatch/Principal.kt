@@ -57,6 +57,7 @@ import casa.tvwatch.ui.PantallaConexion
 import casa.tvwatch.ui.PantallaFavoritas
 import casa.tvwatch.ui.PantallaFicha
 import casa.tvwatch.ui.PantallaPersona
+import casa.tvwatch.ui.PantallaPlataformas
 import casa.tvwatch.ui.PantallaPortada
 import casa.tvwatch.ui.PantallaReproductor
 import casa.tvwatch.ui.PantallaSaga
@@ -115,6 +116,7 @@ private object Rutas {
   const val BUSCAR = "buscar"
   const val FAVORITAS = "favoritas"
   const val SAGAS = "sagas"
+  const val PLATAFORMAS = "plataformas"
   const val SAGA = "saga/{nombre}"
   const val PERSONA = "persona/{id}"
 
@@ -167,6 +169,7 @@ private fun Navegacion(nav: NavHostController) {
       Destino.Buscar -> encimaDeLaPortada(Rutas.BUSCAR)
       Destino.Favoritas -> encimaDeLaPortada(Rutas.FAVORITAS)
       Destino.Sagas -> encimaDeLaPortada(Rutas.SAGAS)
+      Destino.Plataformas -> encimaDeLaPortada(Rutas.PLATAFORMAS)
       is Destino.Biblioteca -> encimaDeLaPortada(Rutas.biblioteca(destino.id, destino.nombre))
       Destino.Salir -> aConexion()
     }
@@ -265,6 +268,15 @@ private fun Navegacion(nav: NavHostController) {
       composable(Rutas.FAVORITAS) {
         Pantalla(titulo = "Favoritas", nav = nav, alMenu = ::abrirMenu) {
           PantallaFavoritas(
+            alAbrirFicha = { nav.navigate(Rutas.ficha(it)) },
+            alPerderSesion = { aConexion() },
+          )
+        }
+      }
+
+      composable(Rutas.PLATAFORMAS) {
+        Pantalla(titulo = "Plataformas", nav = nav, alMenu = ::abrirMenu) {
+          PantallaPlataformas(
             alAbrirFicha = { nav.navigate(Rutas.ficha(it)) },
             alPerderSesion = { aConexion() },
           )

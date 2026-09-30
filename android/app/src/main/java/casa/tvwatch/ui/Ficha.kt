@@ -47,6 +47,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import casa.tvwatch.datos.Ajustes
 import casa.tvwatch.datos.Api
+import casa.tvwatch.datos.AppsDePlataforma
+import casa.tvwatch.datos.PlataformaTitulo
 import casa.tvwatch.datos.Extra
 import casa.tvwatch.datos.Cache
 import casa.tvwatch.datos.Episodio
@@ -101,6 +103,12 @@ fun PantallaFicha(
   // Los extras se piden aparte para no retrasar la ficha, que es lo que se mira.
   var extras by remember(itemId) { mutableStateOf<List<Extra>>(emptyList()) }
   var extrasAbiertos by remember(itemId) { mutableStateOf(false) }
+  /*
+   * Dónde verlo fuera de casa. Solo informa y abre la app de la plataforma: van
+   * cifradas y no se pueden reproducir aquí. También aparte, para no retrasar la
+   * ficha por un dato secundario.
+   */
+  var dondeVer by remember(itemId) { mutableStateOf<List<PlataformaTitulo>>(emptyList()) }
   val ambito = rememberCoroutineScope()
 
   LaunchedEffect(itemId, intento) {
@@ -114,6 +122,14 @@ fun PantallaFicha(
       alPerderSesion()
     } catch (e: Exception) {
       fallo = e.message ?: "No se pudo abrir la ficha."
+    }
+  }
+
+  LaunchedEffect(itemId) {
+    dondeVer = try {
+      withContext(Dispatchers.IO) { Api.dondeVer(itemId) }.suscripcion
+    } catch (e: Exception) {
+      emptyList() // sin dato: no sale nada y la ficha sigue igual
     }
   }
 
@@ -295,6 +311,27 @@ fun PantallaFicha(
           // que abre una ventana vacia es peor que no tenerla.
           if (extras.isNotEmpty()) {
             Pastilla("Extras (${extras.size})") { extrasAbiertos = true }
+          }
+          // «También en tu suscripción»: solo las plataformas que este título
+          // tiene de verdad. Abre su app si está instalada; si no, lo dice.
+          for (p in dondeVer) {
+            // La atribución a JustWatch (que TMDb exige) va en el catálogo de
+            // Plataformas; aquí la pastilla se queda corta a propósito.
+            Pastilla("También en ${p.nombre}") {
+              ambito.launch {
+                // El enlace directo sale de Watchmode y puede tardar o faltar: si
+                // no hay, se abre la app a secas, que es lo que se hacía antes.
+                val enlace = try {
+                  withContext(Dispatchers.IO) { Api.enlaceDeTitulo(itemId, p.clave) }
+                } catch (e: Exception) {
+                  null
+                }
+                val fallo = AppsDePlataforma.abrirConRespaldo(contexto, p.clave, p.nombre, enlace) {
+                  Toast.makeText(contexto, it, Toast.LENGTH_LONG).show()
+                }
+                if (fallo != null) Toast.makeText(contexto, fallo, Toast.LENGTH_LONG).show()
+              }
+            }
           }
           Pastilla(
             if (esFavorita) "★ Favorita" else "☆ Favorita",

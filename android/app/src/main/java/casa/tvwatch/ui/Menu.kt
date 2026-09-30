@@ -23,6 +23,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
@@ -57,6 +58,7 @@ sealed class Destino {
   data object Buscar : Destino()
   data object Favoritas : Destino()
   data object Sagas : Destino()
+  data object Plataformas : Destino()
   data class Biblioteca(val id: Int, val nombre: String) : Destino()
   data object Salir : Destino()
 }
@@ -115,6 +117,7 @@ fun Menu(rutaActual: String?, bibliotecaActual: Int?, alIr: (Destino) -> Unit) {
       Entrada("Buscar", Icons.Default.Search, activa = rutaActual == "buscar") { alIr(Destino.Buscar) }
       Entrada("Favoritas", Icons.Default.Star, activa = rutaActual == "favoritas") { alIr(Destino.Favoritas) }
       Entrada("Sagas", Icons.AutoMirrored.Filled.List, activa = rutaActual == "sagas") { alIr(Destino.Sagas) }
+      Entrada("Plataformas", Icons.Default.PlayArrow, activa = rutaActual == "plataformas") { alIr(Destino.Plataformas) }
 
       if (bibliotecas.isNotEmpty()) {
         Seccion("Bibliotecas")

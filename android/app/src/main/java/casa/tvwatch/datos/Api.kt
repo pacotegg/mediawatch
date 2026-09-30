@@ -138,6 +138,27 @@ object Api {
 
   /** Featurettes, «como se hizo» y demas videos que acompanyan a un titulo. */
   fun extras(itemId: Int): RespuestaExtras = pedir("/api/items/$itemId/extras")
+
+  /*
+   * Plataformas del usuario (Movistar+, Prime, Apple TV+). Aquí NO se reproduce
+   * nada: van cifradas y solo las sirve su propia app. Esto dice dónde está cada
+   * título y enseña su catálogo; ver es abrir la app de la plataforma.
+   */
+  fun plataformas(): RespuestaPlataformas = pedir("/api/plataformas")
+  fun dondeVer(itemId: Int): DondeVer = pedir("/api/items/$itemId/plataformas")
+  fun catalogoPlataforma(clave: String, kind: String, orden: String, pagina: Int): CatalogoPlataforma =
+    pedir("/api/plataformas/$clave/catalogo?kind=$kind&orden=$orden&pagina=$pagina")
+
+  /** Enlace directo al título dentro de la plataforma (Watchmode); `url` nulo si no lo hay. */
+  fun enlaceDeTitulo(itemId: Int, clave: String): EnlaceDirecto =
+    pedir("/api/items/$itemId/plataformas/$clave/enlace")
+
+  fun enlaceDeCatalogo(clave: String, kind: String, tmdbId: Int): EnlaceDirecto =
+    pedir("/api/plataformas/$clave/enlace?kind=$kind&tmdbId=$tmdbId")
+
+  /** Carátula de TMDb servida por el propio servidor, con el token puesto. */
+  fun caratulaPlataforma(ruta: String, ancho: Int) =
+    "${Servidor.baseCacheada()}/api/plataformas/caratula/w$ancho$ruta"
   fun urlDeExtra(id: Int) = "${Servidor.baseCacheada()}/api/extras/$id/stream"
   fun miniaturaDeExtra(id: Int) = "${Servidor.baseCacheada()}/api/extras/$id/thumb"
   fun buscar(q: String): Resultados = pedir("/api/search?q=" + java.net.URLEncoder.encode(q, "UTF-8"))
@@ -312,6 +333,49 @@ data class Perfil(
 
 @Serializable
 data class QuienEs(val nombre: String = "Media Watch", val publica: String = "")
+
+@Serializable
+data class Plataforma(val clave: String, val id: Int = 0, val nombre: String)
+
+@Serializable
+data class RespuestaPlataformas(val plataformas: List<Plataforma> = emptyList())
+
+/** Dónde ver un título fuera de casa. `enlace` es la página de TMDb. */
+@Serializable
+data class DondeVer(
+  val suscripcion: List<PlataformaTitulo> = emptyList(),
+  val alquiler: List<PlataformaTitulo> = emptyList(),
+  val enlace: String = "",
+)
+
+@Serializable
+data class PlataformaTitulo(val clave: String, val nombre: String)
+
+@Serializable
+data class EnlaceDirecto(
+  val url: String? = null,
+  val tipo: String? = null,
+  /** Página de disponibilidad de TMDb: plan B cuando Watchmode no tiene el título. */
+  val respaldo: String = "",
+)
+
+@Serializable
+data class FichaPlataforma(
+  val tmdbId: Int,
+  val kind: String = "movie",
+  val title: String,
+  val year: Int? = null,
+  val poster: String? = null,
+  /** Id en la biblioteca si ya se tiene: entonces se abre aquí, no en su app. */
+  val enBiblioteca: Int? = null,
+)
+
+@Serializable
+data class CatalogoPlataforma(
+  val total: Int = 0,
+  val paginas: Int = 1,
+  val items: List<FichaPlataforma> = emptyList(),
+)
 
 /** Lo que guarda el servidor en `sub_offsets` para una pista de subtítulos. */
 @Serializable
