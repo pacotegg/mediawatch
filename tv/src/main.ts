@@ -17,7 +17,7 @@ import {
   type Titulo,
 } from './api.ts';
 import { ajustes, cargarAjustes, guardarAjustes, ordenar, type Rendimiento } from './ajustes.ts';
-import { actual, ajustarListaEpisodios, alPulsar, avisarDeFallos, enfocables, enfocar, indexar, indexarAdemas, iniciarNavegacion, manejadorActual, TECLA } from './nav.ts';
+import { actual, ajustarListaEpisodios, ajustarVentanaRejilla, alEnfocar, alPulsar, anadirPorArriba, situarFila, avisarDeFallos, enfocables, enfocar, indexar, indexarAdemas, iniciarNavegacion, manejadorActual, TECLA } from './nav.ts';
 import { Reproductor } from './player.ts';
 import { abrirApp, cargarAppsInstaladas, idDeApp } from './plataformas.ts';
 
@@ -198,6 +198,7 @@ function ajustarMenu() {
 function pintar(activa: string, contenido: string) {
   window.clearInterval(temporizadorHeroe);
   alPulsar(null);
+  alEnfocar(null);
   // Cualquier pantalla que no sea el reproductor vuelve a tener fondo opaco.
   document.body.classList.remove('viendo');
   marco.innerHTML =
@@ -286,8 +287,8 @@ function tarjeta(t: Titulo): string {
   );
 }
 
-const filaHtml = (titulo: string, items: Titulo[]) =>
-  '<section class="fila" data-bloque><h2>' + esc(titulo) + '</h2>' +
+const filaHtml = (titulo: string, items: Titulo[], clase = '') =>
+  '<section class="fila' + (clase ? ' ' + clase : '') + '" data-bloque><h2>' + esc(titulo) + '</h2>' +
   '<div class="carrusel" data-carrusel><div class="pista">' + items.map(tarjeta).join('') + '</div></div></section>';
 
 /**
@@ -593,15 +594,43 @@ function pantallaRejilla(
 ) {
   const letras = mas && mas.letras && mas.letras.length > 1 ? mas.letras : [];
   const conLetras = letras.length > 0;
+  /*
+   * Cabecera y «Seguir viendo» FIJAS arriba, y debajo una ventana que se desplaza
+   * por dentro. Antes se movia toda la pantalla: «Seguir viendo» se iba y solo
+   * cabian dos filas de caratulas. «Seguir viendo» va mas pequeno para que no se
+   * confunda con la lista, y las tarjetas de la rejilla tambien, para que quepan
+   * mas filas.
+   */
   const cuerpo =
-    '<div class="cabecera" data-bloque><h1>' + esc(titulo) + '</h1><p>' + esc(subtitulo) + '</p></div>' +
-    (aMedias.length ? filaHtml('Seguir viendo', aMedias) : '') +
+    '<div class="cabecera compacta" data-bloque><h1>' + esc(titulo) + '</h1><p data-subtitulo>' + esc(subtitulo) + '</p></div>' +
+    (aMedias.length ? filaHtml('Seguir viendo', aMedias, 'reducida') : '') +
     (items.length
-      ? '<div class="rejilla' + (conLetras ? ' con-alfabeto' : '') + '" data-bloque>' + items.map(tarjeta).join('') + '</div>'
+      ? '<div class="rejilla-ventana" data-ventana><div class="rejilla' + (conLetras ? ' con-alfabeto' : '') + '" data-bloque>' +
+        items.map(tarjeta).join('') + '</div></div>'
       : '<div class="vacio">Aquí no hay nada todavía.</div>');
 
   pintar(activa, cuerpo);
   conectarTarjetas();
+
+  const ventanaRejilla = marco.querySelector<HTMLElement>('[data-ventana]');
+  if (ventanaRejilla) {
+    const lienzoFijo = marco.querySelector<HTMLElement>('[data-lienzo]');
+    if (lienzoFijo) lienzoFijo.setAttribute('data-fijo', '');
+    ajustarVentanaRejilla(ventanaRejilla);
+    indexar();
+  }
+
+  // Con las tarjetas pequenas el titulo no cabe: el de la enfocada sale entero en
+  // la cabecera, con su ano. Vuelve a la cuenta cuando el foco sale de la rejilla.
+  const subtituloEl = marco.querySelector<HTMLElement>('[data-subtitulo]');
+  if (subtituloEl) {
+    alEnfocar((el) => {
+      const nombre = el.classList.contains('tarjeta') ? el.querySelector('.nombre') : null;
+      if (!nombre) { subtituloEl.textContent = subtitulo; return; }
+      const anyo = el.querySelector('.anyo');
+      subtituloEl.textContent = (nombre.textContent || '') + (anyo && anyo.textContent ? ' (' + anyo.textContent + ')' : '');
+    });
+  }
 
   /*
    * El abecedario va en `.contenido`, no en el lienzo: el lienzo se desplaza y
@@ -686,24 +715,64 @@ function pantallaRejilla(
       else el.classList.remove('activa');
     });
   };
+
+  /*
+   * Hacia arriba tambien se pagina: tras saltar a la M hay que poder subir a la L.
+   * Se carga la pagina anterior y se ANADE por encima compensando el
+   * desplazamiento, para que la tarjeta enfocada no se mueva. Sin esto, subir
+   * desde la primera fila iba a «Seguir viendo», que es lo unico que habia encima.
+   */
+  const traerAnteriores = () => {
+    if (cargando || base <= 0) return;
+    cargando = true;
+    const inicio = Math.max(0, base - PAGINA);
+    const cuantos = base - inicio;
+    mas
+      .traer(inicio)
+      .then((nuevos) => {
+        cargando = false;
+        const previos = nuevos.slice(0, cuantos);
+        if (!previos.length || !rejilla.parentElement) return;
+        anadirPorArriba(rejilla, previos.map(tarjeta).join(''));
+        base = inicio;
+        conectarTarjetas();
+        observarImagenes();
+        // Todo lo de debajo ha cambiado de sitio: hay que medir otra vez.
+        indexar();
+        apuntarSitio();
+      })
+      .catch(() => {
+        cargando = false;
+      });
+  };
+
   marco.querySelectorAll<HTMLElement>('[data-alfabeto] .letra').forEach((el) => {
     el.addEventListener('click', () => {
       const l = letras.filter((x) => x.letra === el.getAttribute('data-letra'))[0];
       if (!l || cargando) return;
       cargando = true;
-      mas
-        .traer(l.offset)
-        .then((nuevos) => {
+      // La letra y la pagina anterior a ella: la fila de la letra queda arriba,
+      // pero por encima hay titulos a los que subir.
+      const inicioPrevia = Math.max(0, l.offset - PAGINA);
+      Promise.all([
+        mas.traer(l.offset),
+        l.offset > 0 ? mas.traer(inicioPrevia) : Promise.resolve([] as Titulo[]),
+      ])
+        .then(([nuevos, anterior]) => {
           cargando = false;
           if (!nuevos.length || !rejilla.parentElement) return;
-          base = l.offset;
-          cargados = base + nuevos.length;
-          rejilla.innerHTML = nuevos.map(tarjeta).join('');
+          const previos = anterior.slice(0, l.offset - inicioPrevia);
+          base = l.offset - previos.length;
+          cargados = l.offset + nuevos.length;
+          rejilla.style.transform = '';
+          rejilla.innerHTML = previos.concat(nuevos).map(tarjeta).join('');
           conectarTarjetas();
-          indexar();
           observarImagenes();
+          indexar();
           marcarLetra(l);
-          enfocar(rejilla.firstElementChild as HTMLElement | null);
+          const primera = rejilla.children[previos.length] as HTMLElement | undefined;
+          enfocar(primera);
+          if (primera && ventanaRejilla) situarFila(ventanaRejilla, primera);
           apuntarSitio();
         })
         .catch(() => {
@@ -727,6 +796,18 @@ function pantallaRejilla(
     }
   };
 
+  const cercaDelPrincipio = () => {
+    const foco = actual();
+    if (!foco || !rejilla.contains(foco) || base <= 0) return;
+    const tarjetas = rejilla.children;
+    for (let i = 0; i < Math.min(tarjetas.length, MARGEN_PAGINA); i++) {
+      if (tarjetas[i] === foco) {
+        traerAnteriores();
+        return;
+      }
+    }
+  };
+
   const apuntarSitio = () => {
     const foco = actual();
     if (!foco || !rejilla.contains(foco)) return;
@@ -740,6 +821,7 @@ function pantallaRejilla(
     // comprobacion se hace cuando ya se ha movido.
     window.setTimeout(() => {
       cercaDelFinal();
+      cercaDelPrincipio();
       apuntarSitio();
     }, 0);
     return false;

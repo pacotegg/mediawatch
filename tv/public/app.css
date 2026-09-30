@@ -2054,3 +2054,129 @@ body.rend-medio .tarjeta.enfocado .lamina {
   background: #fff;
   color: var(--fondo);
 }
+
+/*
+ * Rejilla compacta de las bibliotecas: cabecera y «Seguir viendo» fijas arriba y
+ * debajo una ventana que se desplaza por dentro (`ajustarVentanaRejilla`). Con
+ * carátulas de 214x321 cabian dos filas; con 140x210 caben casi tres, o casi
+ * cuatro cuando no hay «Seguir viendo». Mas pequenas seria dificil de ver desde
+ * el sofa: el titulo de la enfocada sale entero en la cabecera.
+ */
+.cabecera.compacta {
+  padding: 24px 0 0 150px;
+  white-space: nowrap;
+}
+
+.cabecera.compacta h1 {
+  display: inline-block;
+  font-size: 38px;
+}
+
+.cabecera.compacta p {
+  display: inline-block;
+  margin: 0 0 0 22px;
+  font-size: 22px;
+  vertical-align: baseline;
+}
+
+.rejilla-ventana {
+  position: relative;
+  overflow: hidden;
+}
+
+.rejilla {
+  position: relative;
+  padding: 24px 90px 30px 150px;
+}
+
+.rejilla .tarjeta {
+  width: 140px;
+  margin-right: 20px;
+  margin-bottom: 14px;
+  font-size: 17px;
+}
+
+.rejilla .lamina {
+  width: 140px;
+  height: 210px;
+  border-radius: 10px;
+}
+
+.rejilla .lamina img {
+  width: 140px;
+  height: 210px;
+}
+
+.rejilla .sin-lamina {
+  padding: 10px;
+  font-size: 15px;
+}
+
+.rejilla .tarjeta .nombre {
+  margin-top: 8px;
+  font-size: 17px;
+  line-height: 22px;
+  max-height: 22px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rejilla .tarjeta .anyo {
+  display: none;
+}
+
+/* «Seguir viendo»: mas pequena que la lista, para que no se confunda con ella. */
+.fila.reducida {
+  padding-top: 4px;
+}
+
+.fila.reducida h2 {
+  margin: 0 0 0 150px;
+  font-size: 22px;
+}
+
+.fila.reducida .carrusel {
+  padding: 10px 0 8px;
+}
+
+.fila.reducida .tarjeta {
+  width: 110px;
+  margin-right: 16px;
+}
+
+.fila.reducida .lamina {
+  width: 110px;
+  height: 165px;
+  border-radius: 8px;
+}
+
+.fila.reducida .lamina img {
+  width: 110px;
+  height: 165px;
+}
+
+.fila.reducida .sin-lamina {
+  padding: 8px;
+  font-size: 13px;
+}
+
+.fila.reducida .tarjeta .nombre {
+  margin-top: 6px;
+  font-size: 14px;
+  line-height: 18px;
+  max-height: 18px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fila.reducida .tarjeta .anyo {
+  display: none;
+}
+
+/* Episodios mas compactos: caben mas filas en la ventana de la lista. */
+.episodio {
+  padding: 12px 24px;
+  margin-bottom: 8px;
+}

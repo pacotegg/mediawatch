@@ -44,6 +44,8 @@ const MARGEN_INFERIOR = 110;
 const MARGEN_LISTA = 40;
 /** Filas que como minimo se ven a la vez en la lista de episodios. */
 const FILAS_MINIMAS = 3;
+/** Donde queda pegada arriba la seccion de episodios al entrar en ella. */
+const MARGEN_SECCION = 28;
 
 type Nodo = { el: HTMLElement; x: number; y: number; ancho: number; alto: number; menu: boolean; alfabeto: boolean };
 
@@ -146,10 +148,19 @@ export function ajustarListaEpisodios(caja: HTMLElement) {
   const arriba = posicion(caja).y;
   const natural = pista.offsetHeight;
 
-  // Si con la pantalla quieta no caben ni las filas minimas, se sube la
-  // pantalla lo justo. Para una ficha normal esto queda en cero.
-  const yLienzo = Math.max(0, arriba - (1080 - MARGEN_LISTA - fila * FILAS_MINIMAS));
+  /*
+   * Al entrar en los episodios, la seccion sube hasta pegarse arriba: asi la
+   * lista gana casi toda la pantalla -con la pantalla quieta cabian cuatro filas
+   * y el usuario pidio mas-. Se queda ahi mientras se recorre la lista, y solo
+   * vuelve a moverse al salir de ella.
+   */
+  const bloque = caja.closest('.episodios') as HTMLElement | null;
+  const yLienzo = Math.max(0, (bloque ? posicion(bloque).y : arriba) - MARGEN_SECCION);
   caja.setAttribute('data-y-lienzo', String(Math.round(yLienzo)));
+  // Que el lienzo llegue hasta ahi aunque debajo no haya casi nada (series sin
+  // reparto ni relacionadas): si no, el desplazamiento se queda corto.
+  const lienzo = document.querySelector<HTMLElement>('[data-lienzo]');
+  if (lienzo) lienzo.style.minHeight = Math.round(yLienzo) + 1080 + 'px';
 
   const ventana = 1080 - MARGEN_LISTA - (arriba - yLienzo);
   if (natural <= ventana) return; // cabe entera: sin recorte ni desplazamiento
@@ -157,7 +168,46 @@ export function ajustarListaEpisodios(caja: HTMLElement) {
   caja.style.height = filas * fila - 10 + 'px';
 }
 
-/** Mueve la lista por dentro lo justo para que el episodio enfocado se vea. */
+/**
+ * La ventana de una rejilla ocupa lo que queda de pantalla bajo la cabecera y
+ * «Seguir viendo», que no se mueven. Hay que llamarla antes de `indexar()`.
+ */
+export function ajustarVentanaRejilla(ventana: HTMLElement) {
+  ventana.style.height = '';
+  const pista = ventana.firstElementChild as HTMLElement | null;
+  if (pista) pista.style.transform = '';
+  ventana.style.height = Math.max(200, 1080 - posicion(ventana).y - 14) + 'px';
+}
+
+/**
+ * Anade tarjetas POR ENCIMA de las que ya hay sin que lo que se mira se mueva:
+ * al crecer la pista por arriba todo baja, asi que se compensa con el mismo
+ * desplazamiento. Sin eso, cargar la pagina anterior empujaba la tarjeta
+ * enfocada una pagina entera hacia abajo.
+ */
+export function anadirPorArriba(pista: HTMLElement, html: string) {
+  const antes = pista.offsetHeight;
+  const y = -(parseFloat((/translateY\((-?[0-9.]+)px\)/.exec(pista.style.transform || '') || ['', '0'])[1]) || 0);
+  pista.insertAdjacentHTML('afterbegin', html);
+  const crecio = pista.offsetHeight - antes;
+  pista.style.transform = 'translateY(' + -Math.round(y + crecio) + 'px)';
+}
+
+/** Coloca la fila de `el` arriba del todo de la ventana, dejando asomar la anterior. */
+export function situarFila(ventana: HTMLElement, el: HTMLElement) {
+  const pista = ventana.firstElementChild as HTMLElement | null;
+  if (!pista) return;
+  const maximo = Math.max(0, pista.offsetHeight - ventana.offsetHeight);
+  const objetivo = Math.max(0, Math.min(el.offsetTop - 56, maximo));
+  pista.style.transform = 'translateY(' + -Math.round(objetivo) + 'px)';
+}
+
+/**
+ * Mueve la lista por dentro lo justo para que el elemento enfocado se vea. Sirve
+ * para la lista de episodios y para la rejilla de una biblioteca; en la rejilla
+ * se deja holgura, porque la tarjeta enfocada crece un 8 % y pegada al borde de
+ * la ventana se recortaba.
+ */
 function desplazarLista(caja: HTMLElement, episodio: HTMLElement) {
   const pista = caja.firstElementChild as HTMLElement | null;
   if (!pista) return;
@@ -165,8 +215,9 @@ function desplazarLista(caja: HTMLElement, episodio: HTMLElement) {
   const maximo = Math.max(0, pista.offsetHeight - ventana);
   const actualY = -(parseFloat((/translateY\((-?[0-9.]+)px\)/.exec(pista.style.transform || '') || ['', '0'])[1]) || 0);
 
-  const arriba = episodio.offsetTop;
-  const abajo = arriba + episodio.offsetHeight;
+  const holgura = caja.hasAttribute('data-ventana') ? 16 : 0;
+  const arriba = episodio.offsetTop - holgura;
+  const abajo = episodio.offsetTop + episodio.offsetHeight + holgura;
   let objetivo = actualY;
   if (arriba < actualY) objetivo = arriba;
   else if (abajo > actualY + ventana) objetivo = abajo - ventana;
@@ -177,6 +228,13 @@ function desplazarLista(caja: HTMLElement, episodio: HTMLElement) {
 function desplazarVertical(el: HTMLElement, nodo: Nodo | undefined) {
   const lienzo = document.querySelector<HTMLElement>('[data-lienzo]');
   if (!lienzo) return;
+
+  // Pantallas con la cabecera fija y una ventana que se desplaza por dentro (las
+  // rejillas de las bibliotecas): el lienzo no se mueve nunca.
+  if (lienzo.hasAttribute('data-fijo')) {
+    lienzo.style.transform = '';
+    return;
+  }
 
   /*
    * Temporadas y episodios: la pantalla se queda donde deja ver la ventana de
@@ -234,9 +292,16 @@ function desplazarVertical(el: HTMLElement, nodo: Nodo | undefined) {
 /** Ultimo elemento del contenido que tuvo el foco: a el se vuelve desde el abecedario. */
 let ultimoDelContenido: HTMLElement | null = null;
 
+/** Quien quiere enterarse de cada cambio de foco: la rejilla pone el titulo entero en la cabecera. */
+let alCambiarFoco: ((el: HTMLElement) => void) | null = null;
+export function alEnfocar(fn: ((el: HTMLElement) => void) | null) {
+  alCambiarFoco = fn;
+}
+
 export function enfocar(el: HTMLElement | null | undefined) {
   if (!el) return;
   if (!el.closest('[data-menu]') && !el.closest('[data-alfabeto]')) ultimoDelContenido = el;
+  if (alCambiarFoco) alCambiarFoco(el);
 
   const previo = actual();
   if (previo) previo.classList.remove('enfocado');
@@ -247,7 +312,7 @@ export function enfocar(el: HTMLElement | null | undefined) {
   const carrusel = el.closest('[data-carrusel]') as HTMLElement | null;
   if (carrusel) desplazarCarrusel(carrusel, el);
 
-  const lista = el.closest('[data-lista-episodios]') as HTMLElement | null;
+  const lista = el.closest('[data-lista-episodios], [data-ventana]') as HTMLElement | null;
   if (lista) desplazarLista(lista, el);
 
   desplazarVertical(el, nodo);
