@@ -242,7 +242,20 @@ const stmt = {
     -- El tamano y el contenedor si se pisan: esos salen del disco, no del .nfo.
     ON CONFLICT(path) DO UPDATE SET
       item_id=excluded.item_id, episode_id=excluded.episode_id, size=excluded.size, container=excluded.container,
-      duration=COALESCE(NULLIF(excluded.duration, 0), media_files.duration),
+      -- Una duracion YA MEDIDA por ffprobe no la pisa la del .nfo. El .nfo es de
+      -- cuando tinyMediaManager scrapeo el titulo, y queda obsoleto si el fichero
+      -- se recodifica o se cambia: «D'Artacan y los Tres Mosqueperros» tenia 2.798 s
+      -- en la BD y son 1.452, porque cada escaneo reescribia la del .nfo encima de
+      -- la medida y probed seguia a 1, asi que nadie volvia a medirla. Medidos el
+      -- 30/09/2026: 134 ficheros con la duracion distinta de la real, 9 de ellos
+      -- muy por encima (uno, «El nombre de la rosa», 4.294.967 s = 2^32/1000).
+      -- Si el tamano cambia es otro fichero: entonces si se toma la del .nfo hasta
+      -- que se vuelva a medir.
+      duration=CASE
+        WHEN media_files.probed = 1 AND COALESCE(media_files.duration, 0) > 0 AND excluded.size = media_files.size
+          THEN media_files.duration
+        ELSE COALESCE(NULLIF(excluded.duration, 0), media_files.duration)
+      END,
       video_codec=COALESCE(excluded.video_codec, media_files.video_codec),
       width=COALESCE(NULLIF(excluded.width, 0), media_files.width),
       height=COALESCE(NULLIF(excluded.height, 0), media_files.height),
