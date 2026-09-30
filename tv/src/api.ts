@@ -114,7 +114,7 @@ export type Ficha = Titulo & {
     audio: { codec: string | null; language: string | null; channels: number | null }[];
     subtitles: { language: string | null; forced: number; is_external: number }[];
   }[];
-  episodes?: { id: number; season: number; episode: number; title: string | null; file_id: number | null; duration: number | null }[];
+  episodes?: { id: number; season: number; episode: number; title: string | null; file_id: number | null; duration: number | null; has_thumb: number }[];
   progress: { episode_id: number | null; position: number; duration: number | null; watched: number }[];
   /** 1 si el perfil actual lo tiene en favoritos. */
   favorite: number;
@@ -319,6 +319,8 @@ export type FichaPlataforma = {
 
 export const imagen = {
   poster: (id: number, w: number) => conToken(servidor() + '/api/items/' + id + '/poster?w=' + w),
+  /** La miniatura de un episodio; `has_thumb` dice si la tiene (un 12 % no). */
+  episodio: (id: number, w: number) => conToken(servidor() + '/api/episodes/' + id + '/thumb?w=' + w),
   fondo: (id: number, w: number) => conToken(servidor() + '/api/items/' + id + '/fanart?w=' + w),
   logo: (id: number, w: number) => conToken(servidor() + '/api/items/' + id + '/logo?w=' + w),
   /*

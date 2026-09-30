@@ -2090,21 +2090,21 @@ body.rend-medio .tarjeta.enfocado .lamina {
 }
 
 .rejilla .tarjeta {
-  width: 140px;
-  margin-right: 20px;
+  width: 184px;
+  margin-right: 22px;
   margin-bottom: 14px;
   font-size: 17px;
 }
 
 .rejilla .lamina {
-  width: 140px;
-  height: 210px;
+  width: 184px;
+  height: 276px;
   border-radius: 10px;
 }
 
 .rejilla .lamina img {
-  width: 140px;
-  height: 210px;
+  width: 184px;
+  height: 276px;
 }
 
 .rejilla .sin-lamina {
@@ -2114,7 +2114,7 @@ body.rend-medio .tarjeta.enfocado .lamina {
 
 .rejilla .tarjeta .nombre {
   margin-top: 8px;
-  font-size: 17px;
+  font-size: 18px;
   line-height: 22px;
   max-height: 22px;
   white-space: nowrap;
@@ -2179,4 +2179,89 @@ body.rend-medio .tarjeta.enfocado .lamina {
 .episodio {
   padding: 12px 24px;
   margin-bottom: 8px;
+}
+
+/*
+ * Episodios como cajas con miniatura y titulo, en rejilla: seis por fila, 250x141
+ * de imagen. Sustituye a las lineas a todo el ancho, que eran casi todo hueco.
+ * Pisa las reglas de `.episodio` de mas arriba (fondo blanco al enfocar, relleno).
+ */
+[data-lista-episodios] {
+  padding-right: 90px;
+}
+
+.pista-episodios {
+  font-size: 0;
+  padding-top: 14px;
+}
+
+.episodio {
+  display: inline-block;
+  vertical-align: top;
+  width: 250px;
+  max-width: none;
+  margin: 0 22px 18px 0;
+  padding: 0;
+  background: none;
+  border-radius: 10px;
+  color: var(--texto-sec);
+  font-size: 19px;
+}
+
+.episodio.enfocado {
+  background: none;
+  color: #fff;
+}
+
+.ep-imagen {
+  position: relative;
+  width: 250px;
+  height: 141px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--superficie);
+  transition: transform 0.13s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+.ep-imagen img {
+  width: 250px;
+  height: 141px;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 0.2s linear;
+}
+
+.ep-imagen img.puesta {
+  opacity: 1;
+}
+
+.episodio.enfocado .ep-imagen {
+  transform: scale(1.06);
+  box-shadow: 0 0 0 4px var(--acento);
+}
+
+.ep-num {
+  position: absolute;
+  left: 8px;
+  bottom: 10px;
+  padding: 2px 9px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.ep-titulo {
+  margin-top: 8px;
+  font-size: 19px;
+  line-height: 24px;
+  max-height: 48px;
+  overflow: hidden;
+}
+
+/* Lo ya visto se apaga un poco, como en las carátulas. */
+.episodio.vista .ep-imagen img {
+  opacity: 0.45;
 }

@@ -1568,13 +1568,31 @@ async function pantallaFicha(id: number) {
 
       // Dentro de una pista propia: la lista se desplaza por dentro, con la
       // pantalla quieta, ver `ajustarListaEpisodios` en nav.ts.
+      /*
+       * Cajas con miniatura y titulo, como Plex, y no lineas a todo el ancho: una
+       * lista de 24 lineas es casi todo hueco, y en una rejilla de cajas 16:9 caben
+       * unos 20 episodios a la vez y se reconocen de un vistazo. Un 12 % de los
+       * episodios no tiene miniatura -Dr. Slump, La Pantera Rosa-: ahi sale el
+       * hueco con el numero.
+       */
       caja.innerHTML = '<div class="pista-episodios">' + deLaTemporada
-        .map(
-          (e) =>
-            '<div class="episodio" data-nav data-file="' + e.file_id + '" data-ep="' + e.id + '">' +
-            '<span class="num">T' + e.season + 'E' + e.episode + '</span>' + esc(e.title || '') + '</div>',
-        )
+        .map((e) => {
+          const p = ficha.progress.filter((x) => x.episode_id === e.id)[0];
+          const total = (p && p.duration) || e.duration || 0;
+          const pct = p && !p.watched && total ? Math.min(100, (p.position / total) * 100) : 0;
+          return (
+            '<div class="episodio' + (p && p.watched ? ' vista' : '') + '" data-nav data-file="' + e.file_id + '" data-ep="' + e.id + '">' +
+            '<div class="ep-imagen">' +
+            (e.has_thumb ? '<img data-src="' + imagen.episodio(e.id, 320) + '" alt="">' : '') +
+            '<span class="ep-num">E' + e.episode + '</span>' +
+            (pct > 1 ? '<div class="progreso"><i style="width:' + pct.toFixed(0) + '%"></i></div>' : '') +
+            '</div>' +
+            '<div class="ep-titulo">' + esc(e.title || 'Episodio ' + e.episode) + '</div>' +
+            '</div>'
+          );
+        })
         .join('') + '</div>';
+      observarImagenes();
 
       caja.querySelectorAll<HTMLElement>('.episodio').forEach((el) => {
         el.addEventListener('click', () => {

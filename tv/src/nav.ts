@@ -144,7 +144,17 @@ export function ajustarListaEpisodios(caja: HTMLElement) {
   pista.style.transform = '';
 
   const primera = pista.firstElementChild as HTMLElement | null;
-  const fila = primera ? primera.offsetHeight + 10 : 73; // 10 = margin-bottom
+  // El paso de una fila a la siguiente se mide: con cajas en rejilla ya no es la
+  // altura de un elemento mas un margen conocido.
+  let fila = primera ? primera.offsetHeight + 10 : 73;
+  let hueco = 10;
+  if (primera) {
+    const siguienteFila = Array.prototype.slice.call(pista.children).filter((c: HTMLElement) => c.offsetTop > primera.offsetTop)[0] as HTMLElement | undefined;
+    if (siguienteFila) {
+      fila = siguienteFila.offsetTop - primera.offsetTop;
+      hueco = fila - primera.offsetHeight;
+    }
+  }
   const arriba = posicion(caja).y;
   const natural = pista.offsetHeight;
 
@@ -164,8 +174,8 @@ export function ajustarListaEpisodios(caja: HTMLElement) {
 
   const ventana = 1080 - MARGEN_LISTA - (arriba - yLienzo);
   if (natural <= ventana) return; // cabe entera: sin recorte ni desplazamiento
-  const filas = Math.max(FILAS_MINIMAS, Math.floor((ventana + 10) / fila));
-  caja.style.height = filas * fila - 10 + 'px';
+  const filas = Math.max(FILAS_MINIMAS, Math.floor((ventana + hueco) / fila));
+  caja.style.height = filas * fila - hueco + 'px';
 }
 
 /**
@@ -215,7 +225,7 @@ function desplazarLista(caja: HTMLElement, episodio: HTMLElement) {
   const maximo = Math.max(0, pista.offsetHeight - ventana);
   const actualY = -(parseFloat((/translateY\((-?[0-9.]+)px\)/.exec(pista.style.transform || '') || ['', '0'])[1]) || 0);
 
-  const holgura = caja.hasAttribute('data-ventana') ? 16 : 0;
+  const holgura = caja.hasAttribute('data-ventana') ? 16 : 10;
   const arriba = episodio.offsetTop - holgura;
   const abajo = episodio.offsetTop + episodio.offsetHeight + holgura;
   let objetivo = actualY;
@@ -337,7 +347,7 @@ function desplazamientoDe(el: HTMLElement): number {
 }
 
 /** Mejor candidato en una dirección, dentro de la misma zona. */
-function mejorEn(desde: Nodo, direccion: number, excluir?: HTMLElement): HTMLElement | null {
+function mejorEn(desde: Nodo, direccion: number, excluir?: HTMLElement, soloDentro?: HTMLElement): HTMLElement | null {
   let mejor: HTMLElement | null = null;
   let mejorCoste = Infinity;
   const vertical = direccion === TECLA.ARRIBA || direccion === TECLA.ABAJO;
@@ -358,6 +368,7 @@ function mejorEn(desde: Nodo, direccion: number, excluir?: HTMLElement): HTMLEle
     const n = indice[i];
     if (n.el === desde.el || n.menu !== desde.menu || n.alfabeto !== desde.alfabeto) continue;
     if (excluir && excluir.contains(n.el)) continue;
+    if (soloDentro && !soloDentro.contains(n.el)) continue;
 
     const dx = xVisible(n) - xDesde;
     const dy = n.y - desde.y;
@@ -431,13 +442,15 @@ export function siguiente(direccion: number): HTMLElement | null {
   const vertical = direccion === TECLA.ARRIBA || direccion === TECLA.ABAJO;
 
   /*
-   * Dentro de la lista se va de episodio en episodio, sin medir distancias: sus
-   * posiciones son las del documento, y la lista se desplaza por dentro, asi que
-   * el ultimo episodio «esta» muy por debajo de donde se ve.
+   * Dentro de la lista solo se miden las de la propia lista: sus posiciones son
+   * las del documento y la lista se desplaza por dentro, asi que el ultimo
+   * episodio «esta» muy por debajo de donde se ve.
    */
   if (lista && vertical) {
-    const hermano = (direccion === TECLA.ABAJO ? foco.nextElementSibling : foco.previousElementSibling) as HTMLElement | null;
-    if (hermano && hermano.hasAttribute('data-nav')) return hermano;
+    // Las cajas estan en rejilla: arriba y abajo van a la fila de al lado, y solo
+    // entre las de la propia lista -las de fuera no comparten coordenadas-.
+    const dentro = mejorEn(desde, direccion, undefined, lista);
+    if (dentro) return dentro;
     if (direccion === TECLA.ABAJO) {
       // Salir por abajo: se parte del borde inferior de la ventana, no de donde
       // estaria el episodio si la lista no estuviera recortada.
