@@ -17,8 +17,9 @@ import {
   type Titulo,
 } from './api.ts';
 import { ajustes, cargarAjustes, guardarAjustes, ordenar, type Rendimiento } from './ajustes.ts';
-import { actual, alPulsar, avisarDeFallos, enfocables, enfocar, indexar, indexarAdemas, iniciarNavegacion, manejadorActual, TECLA } from './nav.ts';
+import { actual, ajustarListaEpisodios, alPulsar, avisarDeFallos, enfocables, enfocar, indexar, indexarAdemas, iniciarNavegacion, manejadorActual, TECLA } from './nav.ts';
 import { Reproductor } from './player.ts';
+import { abrirApp, cargarAppsInstaladas, idDeApp } from './plataformas.ts';
 
 const marco = document.getElementById('app') as HTMLElement;
 
@@ -65,6 +66,7 @@ const ICONOS: Record<string, string> = {
   pelicula: 'M3 5.5h18v13H3zM3 9.5h18M8 5.5v4M16 5.5v4',
   serie: 'M4 8h16v11H4zM9 4l3 4 3-4',
   ajustes: 'M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7M4 12h2M18 12h2M12 4v2M12 18v2',
+  plataformas: 'M4 5h16v10H4zM9 19h6M12 15v4',
 };
 
 const icono = (nombre: string) =>
@@ -133,6 +135,7 @@ function destinosBase(): Destino[] {
     { clave: 'buscar', etiqueta: 'Buscar', icono: 'buscar', ir: () => pantallaBuscar() },
     { clave: 'sagas', etiqueta: 'Sagas', icono: 'saga', ir: () => void pantallaSagas() },
     { clave: 'favoritos', etiqueta: 'Favoritos', icono: 'favorito', ir: () => void pantallaFavoritos() },
+    { clave: 'plataformas', etiqueta: 'Plataformas', icono: 'plataformas', ir: () => void pantallaPlataformas() },
     { clave: 'ajustes', etiqueta: 'Ajustes', icono: 'ajustes', ir: () => pantallaAjustes() },
   ];
   const libs = bibliotecas.map((b) => ({
@@ -695,6 +698,134 @@ async function pantallaBiblioteca(id: number, nombre: string) {
   }
 }
 
+/*
+ * Catálogo de las plataformas del usuario.
+ *
+ * Aquí NO se reproduce: Movistar+, Prime y Apple TV+ van cifradas y solo las
+ * sirve su propia app. Lo que ya está en la biblioteca se marca y abre la copia
+ * de casa; lo demás ofrece abrir la app de la plataforma, sin intentar saltar al
+ * título (los enlaces profundos de esas apps no están documentados).
+ */
+/*
+ * `toLocaleString('es-ES')` no se usa: hay teles con ICU recortado, donde esa
+ * llamada no falla pero devuelve separadores ingleses (8,076 en vez de 8.076).
+ */
+const milesConPunto = (n: number) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+
+let plataformaActiva = '';
+let plataformaKind: 'movie' | 'show' = 'movie';
+let plataformaPagina = 1;
+
+async function pantallaPlataformas(clave?: string, kind?: 'movie' | 'show', pagina = 1) {
+  entrarEn('plataformas', () => void pantallaPlataformas(plataformaActiva, plataformaKind, plataformaPagina));
+  pintar('plataformas', '<div class="vacio">Cargando…</div>');
+
+  let lista: { clave: string; nombre: string }[];
+  try {
+    lista = (await api.plataformas()).plataformas;
+  } catch (e) {
+    pintar('plataformas', '<div class="vacio">No se pudieron cargar las plataformas.</div>');
+    return;
+  }
+  if (!lista.length) {
+    pintar('plataformas', '<div class="vacio">No hay ninguna plataforma configurada.</div>');
+    return;
+  }
+
+  plataformaActiva = clave && lista.some((p) => p.clave === clave) ? clave : plataformaActiva || lista[0].clave;
+  plataformaKind = kind || plataformaKind;
+  plataformaPagina = Math.max(1, pagina);
+  const nombre = (lista.filter((p) => p.clave === plataformaActiva)[0] || lista[0]).nombre;
+
+  let datos;
+  try {
+    datos = await api.catalogoPlataforma(plataformaActiva, plataformaKind, 'popular', plataformaPagina);
+  } catch (e) {
+    // El catálogo sale de internet (TMDb) y puede fallar de vez en cuando: se
+    // dice y se deja reintentar, en vez de quedarse en «Cargando…».
+    pintar(
+      'plataformas',
+      '<div class="vacio">No se pudo pedir el catálogo de ' + esc(nombre) + '.' +
+        '<div class="acciones" data-bloque><button class="boton" data-nav data-reintentar>Reintentar</button></div></div>',
+    );
+    const otra = marco.querySelector<HTMLElement>('[data-reintentar]');
+    if (otra) otra.addEventListener('click', () => void pantallaPlataformas(plataformaActiva, plataformaKind, plataformaPagina));
+    enfocar(otra);
+    alPulsar((tecla) => (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE ? atrasHaciaMenu() : false));
+    return;
+  }
+
+  const pestanyas =
+    '<div class="plat-barra" data-bloque>' +
+    lista
+      .map((p) => '<button class="plat-pestanya' + (p.clave === plataformaActiva ? ' activa' : '') + '" data-nav data-plat="' + p.clave + '">' + esc(p.nombre) + '</button>')
+      .join('') +
+    '<span class="plat-separador"></span>' +
+    (['movie', 'show'] as const)
+      .map((k) => '<button class="plat-pestanya' + (k === plataformaKind ? ' activa' : '') + '" data-nav data-plat-kind="' + k + '">' + (k === 'movie' ? 'Películas' : 'Series') + '</button>')
+      .join('') +
+    '</div>';
+
+  const tarjetas = datos.items
+    .map((x) => {
+      const marca = x.enBiblioteca !== null ? '<span class="plat-marca">En tu biblioteca</span>' : '';
+      // `data-src`, no `src`: el observador de imágenes (observarImagenes) es
+      // quien les pone la clase `puesta`, y sin ella `.lamina img` se queda a
+      // opacidad 0. Con `src` directo la imagen se descarga pero no se ve nunca.
+      const lamina = x.poster
+        ? '<img data-src="' + imagen.plataforma(x.poster, 342) + '" alt="">'
+        : '<span class="sin-lamina">' + esc(x.title) + '</span>';
+      return (
+        '<div class="tarjeta" data-nav data-plat-item="' + x.tmdbId + '"' +
+        (x.enBiblioteca !== null ? ' data-en-casa="' + x.enBiblioteca + '"' : '') + '>' +
+        '<div class="lamina">' + lamina + marca + '</div>' +
+        '<div class="nombre">' + esc(x.title) + '</div>' +
+        '<div class="anyo">' + (x.year || '') + '</div>' +
+        '</div>'
+      );
+    })
+    .join('');
+
+  const paginacion =
+    '<div class="plat-paginas" data-bloque>' +
+    (plataformaPagina > 1 ? '<button class="boton" data-nav data-plat-antes>Anterior</button>' : '') +
+    '<span class="dato">Página ' + plataformaPagina + ' de ' + datos.paginas + '</span>' +
+    (plataformaPagina < datos.paginas ? '<button class="boton" data-nav data-plat-despues>Siguiente</button>' : '') +
+    '</div>';
+
+  pintar(
+    'plataformas',
+    '<div class="cabecera" data-bloque><h1>' + esc(nombre) + '</h1><p>' +
+      milesConPunto(datos.total) + ' ' + (plataformaKind === 'movie' ? 'películas' : 'series') +
+      ' · no se reproducen aquí: se abren en su aplicación · datos de JustWatch</p></div>' +
+      pestanyas +
+      (tarjetas ? '<div class="rejilla" data-bloque>' + tarjetas + '</div>' : '<div class="vacio">Sin resultados.</div>') +
+      paginacion,
+  );
+
+  marco.querySelectorAll<HTMLElement>('[data-plat]').forEach((el) => {
+    el.addEventListener('click', () => void pantallaPlataformas(el.getAttribute('data-plat') || '', plataformaKind, 1));
+  });
+  marco.querySelectorAll<HTMLElement>('[data-plat-kind]').forEach((el) => {
+    el.addEventListener('click', () => void pantallaPlataformas(plataformaActiva, el.getAttribute('data-plat-kind') as 'movie' | 'show', 1));
+  });
+  const antes = marco.querySelector<HTMLElement>('[data-plat-antes]');
+  if (antes) antes.addEventListener('click', () => void pantallaPlataformas(plataformaActiva, plataformaKind, plataformaPagina - 1));
+  const despues = marco.querySelector<HTMLElement>('[data-plat-despues]');
+  if (despues) despues.addEventListener('click', () => void pantallaPlataformas(plataformaActiva, plataformaKind, plataformaPagina + 1));
+
+  marco.querySelectorAll<HTMLElement>('[data-plat-item]').forEach((el) => {
+    el.addEventListener('click', () => {
+      const enCasa = el.getAttribute('data-en-casa');
+      if (enCasa) { void pantallaFicha(Number(enCasa)); return; }
+      if (!abrirApp(plataformaActiva)) aviso('Para verla, abre ' + nombre + ' en la tele');
+    });
+  });
+
+  enfocar(marco.querySelector<HTMLElement>('.rejilla [data-nav]') || marco.querySelector<HTMLElement>('.plat-barra [data-nav]'));
+  alPulsar((tecla) => (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE ? atrasHaciaMenu() : false));
+}
+
 async function pantallaFavoritos() {
   entrarEn('favoritos', () => void pantallaFavoritos());
   pintar('favoritos', '<div class="vacio">Cargando…</div>');
@@ -1101,6 +1232,9 @@ async function pantallaFicha(id: number) {
       : '') +
 
     '<div class="acciones">' + acciones + '</div>' +
+    // Hueco para «también está en tu suscripción»; se rellena cuando conteste
+    // el servidor, para no retrasar la ficha por un dato secundario.
+    '<div data-donde-ver></div>' +
     '</div>' +
     '</div>';
 
@@ -1276,13 +1410,15 @@ async function pantallaFicha(id: number) {
       if (!caja) return;
       const deLaTemporada = ficha.episodes!.filter((e) => e.season === temporada && e.file_id);
 
-      caja.innerHTML = deLaTemporada
+      // Dentro de una pista propia: la lista se desplaza por dentro, con la
+      // pantalla quieta, ver `ajustarListaEpisodios` en nav.ts.
+      caja.innerHTML = '<div class="pista-episodios">' + deLaTemporada
         .map(
           (e) =>
             '<div class="episodio" data-nav data-file="' + e.file_id + '" data-ep="' + e.id + '">' +
             '<span class="num">T' + e.season + 'E' + e.episode + '</span>' + esc(e.title || '') + '</div>',
         )
-        .join('');
+        .join('') + '</div>';
 
       caja.querySelectorAll<HTMLElement>('.episodio').forEach((el) => {
         el.addEventListener('click', () => {
@@ -1296,8 +1432,20 @@ async function pantallaFicha(id: number) {
         if (Number(el.getAttribute('data-temporada')) === temporada) el.classList.add('activa');
         else el.classList.remove('activa');
       });
+      ajustarListaEpisodios(caja);
       indexar();
     };
+
+    // El logo carga despues de pintar y empuja todo lo de debajo: la ventana de
+    // la lista y las posiciones del indice se tomaron con la ficha mas corta.
+    const logo = marco.querySelector<HTMLImageElement>('.ficha-logo');
+    if (logo && !logo.complete) {
+      logo.addEventListener('load', () => {
+        const caja = marco.querySelector<HTMLElement>('[data-lista-episodios]');
+        if (caja) ajustarListaEpisodios(caja);
+        indexar();
+      });
+    }
 
     marco.querySelectorAll<HTMLElement>('[data-temporada]').forEach((el) => {
       el.addEventListener('click', () => pintarEpisodios(Number(el.getAttribute('data-temporada'))));
@@ -1310,6 +1458,37 @@ async function pantallaFicha(id: number) {
    * episodio que toca ver. Antes apuntaba a una clase que no existía y caía
    * en la primera cosa navegable de la página: el «Inicio» del menú.
    */
+  /*
+   * «También en tu suscripción», sin bloquear la ficha: si el lote todavía no
+   * ha pasado por este título no sale nada, y ya está. El botón abre la app de
+   * la plataforma —no se puede reproducir aquí, va cifrada— y solo se ofrece si
+   * esa app está instalada de verdad, según `getAppsInfo()`.
+   */
+  void api
+    .dondeVer(id)
+    .then((d) => {
+      const hueco = marco.querySelector<HTMLElement>('[data-donde-ver]');
+      if (!hueco || !d.suscripcion.length) return;
+      hueco.innerHTML =
+        '<div class="donde-ver"><span class="donde-ver-texto">También en tu suscripción (JustWatch):</span>' +
+        d.suscripcion
+          .map((p) => {
+            const app = idDeApp(p.clave);
+            return app
+              ? '<button class="boton donde-ver-app" data-nav data-abrir-app="' + p.clave + '">' + esc(p.nombre) + '</button>'
+              : '<span class="donde-ver-chip">' + esc(p.nombre) + '</span>';
+          })
+          .join('') +
+        '</div>';
+      hueco.querySelectorAll<HTMLElement>('[data-abrir-app]').forEach((el) => {
+        el.addEventListener('click', () => {
+          if (!abrirApp(el.getAttribute('data-abrir-app') || '')) aviso('No se pudo abrir la aplicación');
+        });
+      });
+      indexar();
+    })
+    .catch(() => undefined);
+
   const episodioQueToca = ficha.nextUp
     ? marco.querySelector<HTMLElement>('[data-ep="' + ficha.nextUp.id + '"]')
     : null;
@@ -3534,6 +3713,9 @@ window.setInterval(() => {
 
 cargarAjustes();
 iniciarNavegacion();
+// Qué apps hay instaladas: hace falta para ofrecer «abrir Movistar+» solo
+// cuando esa app existe de verdad. La tele tarda un momento en contestar.
+cargarAppsInstaladas();
 
 /*
  * En una tele no hay consola que abrir. Un fallo suelto se traduce en que algo

@@ -40,6 +40,10 @@ const MARGEN_LATERAL = 150;
 /** Holgura que se deja al traer un elemento a la vista fuera de las filas. */
 const MARGEN_SUPERIOR = 60;
 const MARGEN_INFERIOR = 110;
+/** Holgura bajo la lista de episodios: es a lo que se viene, se le da casi todo. */
+const MARGEN_LISTA = 40;
+/** Filas que como minimo se ven a la vez en la lista de episodios. */
+const FILAS_MINIMAS = 3;
 
 type Nodo = { el: HTMLElement; x: number; y: number; ancho: number; alto: number; menu: boolean };
 
@@ -116,9 +120,75 @@ function desplazarCarrusel(carrusel: HTMLElement, tarjeta: HTMLElement) {
   pista.style.transform = 'translateX(' + -Math.round(objetivo) + 'px)';
 }
 
+/**
+ * Deja la lista de episodios con una ventana propia.
+ *
+ * Los episodios estaban fuera de todo `data-bloque`, y `desplazarVertical`
+ * salia sin hacer nada en cuanto el elemento enfocado no estaba dentro de uno:
+ * al bajar por la lista el foco se iba por debajo de la pantalla y no se veia
+ * el cursor. Ahora la lista tiene una altura fija -lo que queda de pantalla- y
+ * se desplaza por dentro; la pantalla no se mueve hasta que se sale de ella.
+ *
+ * La altura es de filas enteras, para que nunca quede una cortada a medias.
+ * Hay que llamarla antes de `indexar()`: recorta la lista y todo lo que va
+ * detras cambia de sitio.
+ */
+export function ajustarListaEpisodios(caja: HTMLElement) {
+  const pista = caja.firstElementChild as HTMLElement | null;
+  if (!pista) return;
+  caja.style.height = '';
+  pista.style.transform = '';
+
+  const primera = pista.firstElementChild as HTMLElement | null;
+  const fila = primera ? primera.offsetHeight + 10 : 73; // 10 = margin-bottom
+  const arriba = posicion(caja).y;
+  const natural = pista.offsetHeight;
+
+  // Si con la pantalla quieta no caben ni las filas minimas, se sube la
+  // pantalla lo justo. Para una ficha normal esto queda en cero.
+  const yLienzo = Math.max(0, arriba - (1080 - MARGEN_LISTA - fila * FILAS_MINIMAS));
+  caja.setAttribute('data-y-lienzo', String(Math.round(yLienzo)));
+
+  const ventana = 1080 - MARGEN_LISTA - (arriba - yLienzo);
+  if (natural <= ventana) return; // cabe entera: sin recorte ni desplazamiento
+  const filas = Math.max(FILAS_MINIMAS, Math.floor((ventana + 10) / fila));
+  caja.style.height = filas * fila - 10 + 'px';
+}
+
+/** Mueve la lista por dentro lo justo para que el episodio enfocado se vea. */
+function desplazarLista(caja: HTMLElement, episodio: HTMLElement) {
+  const pista = caja.firstElementChild as HTMLElement | null;
+  if (!pista) return;
+  const ventana = caja.offsetHeight;
+  const maximo = Math.max(0, pista.offsetHeight - ventana);
+  const actualY = -(parseFloat((/translateY\((-?[0-9.]+)px\)/.exec(pista.style.transform || '') || ['', '0'])[1]) || 0);
+
+  const arriba = episodio.offsetTop;
+  const abajo = arriba + episodio.offsetHeight;
+  let objetivo = actualY;
+  if (arriba < actualY) objetivo = arriba;
+  else if (abajo > actualY + ventana) objetivo = abajo - ventana;
+
+  pista.style.transform = 'translateY(' + -Math.round(Math.max(0, Math.min(objetivo, maximo))) + 'px)';
+}
+
 function desplazarVertical(el: HTMLElement, nodo: Nodo | undefined) {
   const lienzo = document.querySelector<HTMLElement>('[data-lienzo]');
   if (!lienzo) return;
+
+  /*
+   * Temporadas y episodios: la pantalla se queda donde deja ver la ventana de
+   * la lista (casi siempre, en su sitio). Sin esta rama caian en el
+   * `if (!bloque) return` de abajo y la pantalla no se movia nunca, ni siquiera
+   * al volver a la lista desde el reparto, que la dejaba por encima.
+   */
+  if (el.closest('.episodios')) {
+    const caja = document.querySelector<HTMLElement>('[data-lista-episodios]');
+    const y = caja ? Number(caja.getAttribute('data-y-lienzo') || 0) : 0;
+    const tope = Math.max(0, lienzo.offsetHeight - 1080 + 80);
+    lienzo.style.transform = 'translateY(' + -Math.round(Math.max(0, Math.min(y, tope))) + 'px)';
+    return;
+  }
 
   const bloque = el.closest('[data-bloque]') as HTMLElement | null;
   if (!bloque) return;
@@ -171,6 +241,9 @@ export function enfocar(el: HTMLElement | null | undefined) {
   const carrusel = el.closest('[data-carrusel]') as HTMLElement | null;
   if (carrusel) desplazarCarrusel(carrusel, el);
 
+  const lista = el.closest('[data-lista-episodios]') as HTMLElement | null;
+  if (lista) desplazarLista(lista, el);
+
   desplazarVertical(el, nodo);
 }
 
@@ -193,7 +266,7 @@ function desplazamientoDe(el: HTMLElement): number {
 }
 
 /** Mejor candidato en una dirección, dentro de la misma zona. */
-function mejorEn(desde: Nodo, direccion: number): HTMLElement | null {
+function mejorEn(desde: Nodo, direccion: number, excluir?: HTMLElement): HTMLElement | null {
   let mejor: HTMLElement | null = null;
   let mejorCoste = Infinity;
   const vertical = direccion === TECLA.ARRIBA || direccion === TECLA.ABAJO;
@@ -213,6 +286,7 @@ function mejorEn(desde: Nodo, direccion: number): HTMLElement | null {
   for (let i = 0; i < indice.length; i++) {
     const n = indice[i];
     if (n.el === desde.el || n.menu !== desde.menu) continue;
+    if (excluir && excluir.contains(n.el)) continue;
 
     const dx = xVisible(n) - xDesde;
     const dy = n.y - desde.y;
@@ -266,7 +340,49 @@ export function siguiente(direccion: number): HTMLElement | null {
     if (contenido) return contenido.el;
   }
 
-  return mejorEn(desde, direccion);
+  const lista = foco.closest('[data-lista-episodios]') as HTMLElement | null;
+  const vertical = direccion === TECLA.ARRIBA || direccion === TECLA.ABAJO;
+
+  /*
+   * Dentro de la lista se va de episodio en episodio, sin medir distancias: sus
+   * posiciones son las del documento, y la lista se desplaza por dentro, asi que
+   * el ultimo episodio «esta» muy por debajo de donde se ve.
+   */
+  if (lista && vertical) {
+    const hermano = (direccion === TECLA.ABAJO ? foco.nextElementSibling : foco.previousElementSibling) as HTMLElement | null;
+    if (hermano && hermano.hasAttribute('data-nav')) return hermano;
+    if (direccion === TECLA.ABAJO) {
+      // Salir por abajo: se parte del borde inferior de la ventana, no de donde
+      // estaria el episodio si la lista no estuviera recortada.
+      const borde = posicion(lista).y + lista.offsetHeight - desde.alto / 2;
+      return mejorEn({ el: desde.el, x: desde.x, y: borde, ancho: desde.ancho, alto: desde.alto, menu: desde.menu }, direccion, lista);
+    }
+  }
+
+  /*
+   * Desde algo que esta POR DEBAJO de la lista, bajar no puede entrar en ella.
+   * Los episodios profundos tienen, en el documento, coordenadas mas abajo que
+   * el reparto -la lista esta recortada, pero sus filas no-, y bajar desde el
+   * ultimo bloque los elegia como destino: se saltaba al primer episodio.
+   */
+  const cajaLista = document.querySelector<HTMLElement>('[data-lista-episodios]');
+  const bajoLaLista = !!cajaLista && !lista && direccion === TECLA.ABAJO
+    && desde.y > posicion(cajaLista).y + cajaLista.offsetHeight;
+  const candidato = mejorEn(desde, direccion, bajoLaLista ? cajaLista! : undefined);
+
+  /*
+   * Entrar en la lista desde fuera: por arriba se cae en el primer episodio, y
+   * por abajo -volviendo del reparto- en el ultimo. Medido por distancia se
+   * caia en uno cualquiera del medio.
+   */
+  if (candidato && !lista && vertical) {
+    const destino = candidato.closest('[data-lista-episodios]') as HTMLElement | null;
+    if (destino) {
+      const elegido = (direccion === TECLA.ABAJO ? destino.firstElementChild!.firstElementChild : destino.firstElementChild!.lastElementChild) as HTMLElement | null;
+      if (elegido) return elegido;
+    }
+  }
+  return candidato;
 }
 
 type Manejador = (tecla: number, evento: KeyboardEvent) => boolean | void;

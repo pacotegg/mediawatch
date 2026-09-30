@@ -19,6 +19,11 @@
   <tizen:privilege name="http://tizen.org/privilege/internet"/>
   <tizen:privilege name="http://developer.samsung.com/privilege/avplay"/>
   <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice"/>
+  <!-- application.launch: abrir Movistar+, Prime o Apple TV+ desde una ficha.
+       Su contenido va cifrado y no se puede reproducir aquí; lo único que se
+       puede hacer es lanzar su app. Sin este privilegio, `launch()` lanza
+       excepción y el botón no haría nada. -->
+  <tizen:privilege name="http://tizen.org/privilege/application.launch"/>
 
   <!-- El servidor va por HTTP en la red local, no por HTTPS. -->
   <access origin="*" subdomains="true"/>

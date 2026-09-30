@@ -1909,3 +1909,103 @@ body.rend-medio .tarjeta.enfocado .lamina {
   font-size: 22px;
   color: var(--tenue);
 }
+
+/* ------------------------------------------------ plataformas (Movistar+, Prime, Apple TV+) */
+
+/* «También en tu suscripción», bajo las acciones de la ficha. */
+.donde-ver {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
+
+.donde-ver-texto {
+  font-size: 22px;
+  color: var(--tenue);
+  margin-right: 14px;
+}
+
+.donde-ver-chip,
+.donde-ver-app {
+  margin-right: 10px;
+}
+
+.donde-ver-chip {
+  display: inline-block;
+  padding: 8px 18px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 22px;
+}
+
+.plat-barra {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 0 150px 18px;
+}
+
+.plat-pestanya {
+  margin-right: 12px;
+  padding: 10px 24px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--texto);
+  font-size: 24px;
+  font-family: inherit;
+}
+
+.plat-pestanya.activa {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+/* El aro del foco no se anima: en la tele se ve ir por detrás del mando. */
+.plat-pestanya.enfocado {
+  box-shadow: 0 0 0 4px var(--acento);
+}
+
+.plat-separador {
+  width: 2px;
+  height: 30px;
+  margin: 0 16px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* Sobre la carátula, no debajo: en una rejilla el hueco de texto ya está lleno. */
+.plat-marca {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: var(--acento);
+  color: #12100c;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.plat-paginas {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 26px 150px 60px;
+}
+
+.plat-paginas .dato {
+  margin: 0 20px;
+}
+
+/*
+ * La lista de episodios se desplaza por dentro: `ajustarListaEpisodios` le pone
+ * la altura -filas enteras- y `desplazarLista` mueve la pista. Sin el recorte la
+ * pantalla tenia que hacerlo, y no lo hacia: el cursor se perdia por debajo.
+ */
+[data-lista-episodios] {
+  overflow: hidden;
+}
+
+.pista-episodios {
+  position: relative;
+}

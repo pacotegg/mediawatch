@@ -198,6 +198,18 @@ export const api = {
 
   /** Featurettes, «como se hizo» y demas videos que acompanyan a un titulo. */
   extras: (itemId: number) => pedir<{ extras: Extra[] }>('/api/items/' + itemId + '/extras'),
+
+  /*
+   * Plataformas del usuario (Movistar+, Prime, Apple TV+). Aqui NO se reproduce
+   * nada: van cifradas y solo las sirve su propia app. Esto dice donde esta cada
+   * titulo y ensenya su catalogo; reproducir es abrir su app con la del sistema.
+   */
+  dondeVer: (itemId: number) => pedir<DondeVer>('/api/items/' + itemId + '/plataformas'),
+  plataformas: () => pedir<{ plataformas: Plataforma[] }>('/api/plataformas'),
+  catalogoPlataforma: (clave: string, kind: 'movie' | 'show', orden: string, pagina: number) =>
+    pedir<{ total: number; paginas: number; items: FichaPlataforma[] }>(
+      '/api/plataformas/' + clave + '/catalogo?kind=' + kind + '&orden=' + orden + '&pagina=' + pagina,
+    ),
   favoritos: () => pedir<Titulo[]>('/api/favorites'),
   continuarEn: (biblioteca: number) => pedir<Titulo[]>('/api/libraries/' + biblioteca + '/continuar'),
   borrar: (itemId: number, confirmar: string) =>
@@ -280,10 +292,38 @@ export type Extra = {
   grupo: string | null;
 };
 
+export type Plataforma = { clave: string; id: number; nombre: string };
+
+/** Donde ver un titulo fuera de casa. `enlace` es la pagina de TMDb. */
+export type DondeVer = {
+  suscripcion: { clave: string; nombre: string }[];
+  alquiler: { clave: string; nombre: string }[];
+  enlace: string;
+};
+
+export type FichaPlataforma = {
+  tmdbId: number;
+  kind: 'movie' | 'show';
+  title: string;
+  year: number | null;
+  rating: number | null;
+  overview: string;
+  poster: string | null;
+  backdrop: string | null;
+  /** Id en la biblioteca si ya se tiene: entonces se abre aqui, no en su app. */
+  enBiblioteca: number | null;
+};
+
 export const imagen = {
   poster: (id: number, w: number) => conToken(servidor() + '/api/items/' + id + '/poster?w=' + w),
   fondo: (id: number, w: number) => conToken(servidor() + '/api/items/' + id + '/fanart?w=' + w),
   logo: (id: number, w: number) => conToken(servidor() + '/api/items/' + id + '/logo?w=' + w),
+  /*
+   * Caratula de una plataforma. Va por el servidor propio, NO por
+   * image.tmdb.org: el `img-src` del config.xml no lleva `https:` y la tele la
+   * bloquearia en silencio (la misma trampa que dejo el salvapantallas invisible).
+   */
+  plataforma: (ruta: string, w: number) => conToken(servidor() + '/api/plataformas/caratula/w' + w + ruta),
   disco: (id: number, w: number) => conToken(servidor() + '/api/items/' + id + '/discart?w=' + w),
   persona: (id: number, w: number) => conToken(servidor() + '/api/people/' + id + '/thumb?w=' + w),
   tira: (fileId: number, hoja: number) => conToken(servidor() + '/api/play/' + fileId + '/trickplay/' + hoja),
