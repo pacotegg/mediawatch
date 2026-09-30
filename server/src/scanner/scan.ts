@@ -377,6 +377,54 @@ function fileMeta(path: string, nfo: NfoData | null) {
 const sinColetillaTecnica = (s: string) =>
   s.replace(/\s*\((?=[^)]*(?:fps|kbit|H26[45]|AAC|x264|x265))[^)]*\)\s*$/i, '').trim();
 
+const capitalizar = (p: string) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase();
+/** ¿Palabra de tres letras o mas y sin una sola minuscula? Esta gritando. */
+const esGrito = (p: string) => /^\p{Lu}{3,}$/u.test(p.replace(/[^\p{L}]/gu, '')) && /^[^\p{Ll}]*$/u.test(p);
+const sinMinusculas = (p: string) => /^[^\p{Ll}]*$/u.test(p) && /\p{L}/u.test(p);
+
+/**
+ * «DANI ROVIRA» -> «Dani Rovira», pero «5 DIFERENCIAS DE PROGRAMAS ESPANOLES Y
+ * AMERICANOS» -> «5 Diferencias de programas espanoles y americanos».
+ *
+ * La diferencia la marca cuantas palabras seguidas vienen en mayusculas: hasta
+ * tres es un nombre propio y lleva todas con inicial; mas es una frase a gritos
+ * y solo la primera. Las palabras de una o dos letras (JJ, WC, el «I» que
+ * algunos usan de separador) no cuentan como grito, pero si continuan una racha
+ * que ya venia, para que un «DE» no la parta en dos.
+ */
+function sinGritos(titulo: string): string {
+  const palabras = titulo.split(' ');
+  const salida = palabras.slice();
+  let i = 0;
+  while (i < palabras.length) {
+    if (!esGrito(palabras[i])) { i++; continue; }
+    let j = i;
+    while (j + 1 < palabras.length && sinMinusculas(palabras[j + 1])) j++;
+    const cuantas = j - i + 1;
+    for (let k = i; k <= j; k++) {
+      salida[k] = cuantas <= 3 || k === i ? capitalizar(palabras[k]) : palabras[k].toLowerCase();
+    }
+    i = j + 1;
+  }
+  return salida.join(' ');
+}
+
+/**
+ * El nombre de un fichero suelto, presentable.
+ *
+ * Windows no deja poner `? / | : " * < >` en un nombre, y quien guardo estos
+ * los cambio por caracteres parecidos: se deshace el cambio. El caso que mas se
+ * nota es la `?` final, que aparece como `¿` -«¿Deporte¿»-.
+ */
+function tituloDeSuelto(base: string): string {
+  let n = sinColetillaTecnica(base);
+  n = n.replace(/⁄/g, '/').replace(/¦/g, '|').replace(/∶/g, ':');
+  n = n.replace(/([^\s¿])¿(?=\s|$)/g, '$1?');
+  // Parentesis de cierre huerfano de haber quitado la coletilla tecnica.
+  if (!n.includes('(') && n.includes(')')) n = n.replace(/\s*\)/g, '');
+  return sinGritos(n).replace(/\s{2,}/g, ' ').trim();
+}
+
 /**
  * `suelto` es un video que vive directamente en la raiz de la biblioteca, sin
  * carpeta propia: asi estan los 105 monologos de `E:\Monologos`, que se
@@ -391,7 +439,7 @@ function scanMovieFolder(libId: number, dir: string, files: Entry[], now: string
     files.find((f) => f.name.toLowerCase() === `${base.toLowerCase()}.nfo`)?.path ??
     (suelto ? undefined : files.find((f) => f.name.toLowerCase() === 'movie.nfo')?.path);
   const nfo = nfoPath ? parseNfo(nfoPath) : null;
-  const fromFolder = suelto ? parseTitleYear(sinColetillaTecnica(base)) : parseTitleYear(basename(dir));
+  const fromFolder = suelto ? parseTitleYear(tituloDeSuelto(base)) : parseTitleYear(basename(dir));
   const title = nfo?.title ?? fromFolder.title;
   // `items.folder` es UNIQUE: 105 sueltos comparten carpeta, asi que la clave
   // de un suelto es su propia ruta, o se machacarian unos a otros.
