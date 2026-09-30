@@ -261,7 +261,7 @@ function entrarEn(id: string, comoVolverAqui: () => void) {
   reabrirActual = comoVolverAqui;
 }
 
-type PosicionRejilla = { cargados: number; foco: number };
+type PosicionRejilla = { cargados: number; foco: number; base?: number };
 const posiciones: Record<string, PosicionRejilla> = {};
 
 /** El servidor no sirve más de 500 de una vez; de ahí en adelante se pagina. */
@@ -575,7 +575,13 @@ function montarHeroe(heroes: Titulo[]) {
 /** Cuantos titulos se piden de una vez. Peliculas tiene 1372. */
 const PAGINA = 120;
 
-type MasTitulos = { total: number; traer: (offset: number) => Promise<Titulo[]> };
+type Letra = { letra: string; offset: number };
+
+/**
+ * `base` es el offset de la primera tarjeta pintada: 0 salvo tras saltar a una
+ * letra, que la lista empieza ahi. `letras` es el abecedario del borde derecho.
+ */
+type MasTitulos = { total: number; traer: (offset: number) => Promise<Titulo[]>; base?: number; letras?: Letra[] };
 
 function pantallaRejilla(
   activa: string,
@@ -585,15 +591,39 @@ function pantallaRejilla(
   aMedias: Titulo[] = [],
   mas?: MasTitulos,
 ) {
+  const letras = mas && mas.letras && mas.letras.length > 1 ? mas.letras : [];
+  const conLetras = letras.length > 0;
   const cuerpo =
     '<div class="cabecera" data-bloque><h1>' + esc(titulo) + '</h1><p>' + esc(subtitulo) + '</p></div>' +
     (aMedias.length ? filaHtml('Seguir viendo', aMedias) : '') +
     (items.length
-      ? '<div class="rejilla" data-bloque>' + items.map(tarjeta).join('') + '</div>'
+      ? '<div class="rejilla' + (conLetras ? ' con-alfabeto' : '') + '" data-bloque>' + items.map(tarjeta).join('') + '</div>'
       : '<div class="vacio">Aquí no hay nada todavía.</div>');
 
   pintar(activa, cuerpo);
   conectarTarjetas();
+
+  /*
+   * El abecedario va en `.contenido`, no en el lienzo: el lienzo se desplaza y
+   * la franja tiene que quedarse quieta en el borde. Solo salen las letras que
+   * existen, que en una biblioteca de 55 series son 18 y no 27.
+   */
+  const base0 = mas && mas.base ? mas.base : 0;
+  const letraActiva = letras.filter((l) => l.offset <= base0).pop() || letras[0];
+  if (conLetras) {
+    const contenido = marco.querySelector<HTMLElement>('.contenido');
+    if (contenido) {
+      contenido.insertAdjacentHTML(
+        'beforeend',
+        '<div class="alfabeto" data-alfabeto>' +
+          letras
+            .map((l) => '<div class="letra' + (l === letraActiva ? ' activa' : '') + '" data-nav data-letra="' + esc(l.letra) + '">' + esc(l.letra) + '</div>')
+            .join('') +
+          '</div>',
+      );
+      indexar();
+    }
+  }
 
   // Si ya se había estado aquí, se vuelve a la misma tarjeta.
   const guardado = posiciones[activa];
@@ -616,7 +646,8 @@ function pantallaRejilla(
     return;
   }
 
-  let cargados = items.length;
+  let base = mas.base || 0;
+  let cargados = base + items.length;
   let cargando = false;
 
   const traerMas = () => {
@@ -643,6 +674,44 @@ function pantallaRejilla(
       });
   };
 
+  /*
+   * Saltar a una letra: la lista se rehace desde el offset de esa letra. Pintar
+   * desde el principio hasta ahi seria pintar 1.000 tarjetas para llegar a la M,
+   * y la tele no las mueve bien; asi el DOM sigue siendo de una pagina. Para ir
+   * a lo anterior se vuelve a usar el abecedario.
+   */
+  const marcarLetra = (l: Letra) => {
+    marco.querySelectorAll<HTMLElement>('[data-alfabeto] .letra').forEach((el) => {
+      if (el.getAttribute('data-letra') === l.letra) el.classList.add('activa');
+      else el.classList.remove('activa');
+    });
+  };
+  marco.querySelectorAll<HTMLElement>('[data-alfabeto] .letra').forEach((el) => {
+    el.addEventListener('click', () => {
+      const l = letras.filter((x) => x.letra === el.getAttribute('data-letra'))[0];
+      if (!l || cargando) return;
+      cargando = true;
+      mas
+        .traer(l.offset)
+        .then((nuevos) => {
+          cargando = false;
+          if (!nuevos.length || !rejilla.parentElement) return;
+          base = l.offset;
+          cargados = base + nuevos.length;
+          rejilla.innerHTML = nuevos.map(tarjeta).join('');
+          conectarTarjetas();
+          indexar();
+          observarImagenes();
+          marcarLetra(l);
+          enfocar(rejilla.firstElementChild as HTMLElement | null);
+          apuntarSitio();
+        })
+        .catch(() => {
+          cargando = false;
+        });
+    });
+  });
+
   // Media pagina de margen: pedir con 30 de antelacion llegaba justo y se veia
   // el hueco; con 60, la peticion (113 ms) termina antes de que se llegue.
   const MARGEN_PAGINA = 60;
@@ -662,7 +731,7 @@ function pantallaRejilla(
     const foco = actual();
     if (!foco || !rejilla.contains(foco)) return;
     const id = Number(foco.getAttribute('data-id'));
-    if (id) posiciones[activa] = { cargados, foco: id };
+    if (id) posiciones[activa] = { cargados, foco: id, base };
   };
 
   alPulsar((tecla) => {
@@ -684,14 +753,19 @@ async function pantallaBiblioteca(id: number, nombre: string) {
     // Se piden de golpe todos los que estaban cargados la última vez: volver a
     // la biblioteca debe dejarte donde estabas, no al principio.
     const guardado = posiciones['lib-' + id];
-    const cuantos = Math.min(MAXIMO_RESTAURADO, Math.max(PAGINA, guardado ? guardado.cargados : 0));
-    const datos = await api.titulos(id, 0, cuantos);
+    const base = guardado && guardado.base ? guardado.base : 0;
+    const cuantos = Math.min(MAXIMO_RESTAURADO, Math.max(PAGINA, guardado ? guardado.cargados - base : 0));
+    const datos = await api.titulos(id, base, cuantos);
+    // Sin abecedario si el servidor no lo tiene (uno anterior): la lista sigue igual.
+    const letras = await api.letras(id).then((r) => r.letras).catch(() => [] as Letra[]);
     // Lo que se estaba viendo de ESTA biblioteca: en Peliculas solo peliculas,
     // en Series solo series. La fila de la portada sigue englobando todo.
     const aMedias = await api.continuarEn(id).catch(() => [] as Titulo[]);
     pantallaRejilla('lib-' + id, nombre, datos.total + ' títulos', datos.items, aMedias, {
       total: datos.total,
       traer: (offset) => api.titulos(id, offset, PAGINA).then((d) => d.items),
+      base,
+      letras,
     });
   } catch (e) {
     pintar('lib-' + id, '<div class="vacio">No se pudo cargar la biblioteca.</div>');

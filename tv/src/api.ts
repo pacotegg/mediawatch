@@ -172,6 +172,9 @@ export const api = {
   yo: () => pedir<{ id: number; name: string; is_admin: number }>('/api/me'),
   bibliotecas: () => pedir<{ id: number; name: string; kind: string; count: number }[]>('/api/libraries'),
   portada: () => pedir<{ hero: Titulo[]; rows: { key: string; title: string; kind: string; items: Titulo[] }[] }>('/api/home'),
+  /** Donde empieza cada letra en la lista ordenada por titulo de una biblioteca. */
+  letras: (biblioteca: number) =>
+    pedir<{ total: number; letras: { letra: string; offset: number }[] }>('/api/items/letras?library=' + biblioteca),
   titulos: (biblioteca: number, offset: number, limite: number) =>
     pedir<{ total: number; items: Titulo[] }>(`/api/items?library=${biblioteca}&limit=${limite}&offset=${offset}&sort=title`),
   ficha: (id: number) => pedir<Ficha>('/api/items/' + id),

@@ -45,7 +45,7 @@ const MARGEN_LISTA = 40;
 /** Filas que como minimo se ven a la vez en la lista de episodios. */
 const FILAS_MINIMAS = 3;
 
-type Nodo = { el: HTMLElement; x: number; y: number; ancho: number; alto: number; menu: boolean };
+type Nodo = { el: HTMLElement; x: number; y: number; ancho: number; alto: number; menu: boolean; alfabeto: boolean };
 
 let indice: Nodo[] = [];
 
@@ -75,6 +75,7 @@ export function indexar() {
       ancho: el.offsetWidth,
       alto: el.offsetHeight,
       menu: !!el.closest('[data-menu]'),
+      alfabeto: !!el.closest('[data-alfabeto]'),
     });
   });
 }
@@ -98,6 +99,7 @@ export function indexarAdemas(nuevos: HTMLElement[]) {
       ancho: el.offsetWidth,
       alto: el.offsetHeight,
       menu: !!el.closest('[data-menu]'),
+      alfabeto: !!el.closest('[data-alfabeto]'),
     });
   });
 }
@@ -229,8 +231,12 @@ function desplazarVertical(el: HTMLElement, nodo: Nodo | undefined) {
   lienzo.style.transform = 'translateY(' + -Math.round(Math.max(0, Math.min(objetivo, maximo))) + 'px)';
 }
 
+/** Ultimo elemento del contenido que tuvo el foco: a el se vuelve desde el abecedario. */
+let ultimoDelContenido: HTMLElement | null = null;
+
 export function enfocar(el: HTMLElement | null | undefined) {
   if (!el) return;
+  if (!el.closest('[data-menu]') && !el.closest('[data-alfabeto]')) ultimoDelContenido = el;
 
   const previo = actual();
   if (previo) previo.classList.remove('enfocado');
@@ -285,7 +291,7 @@ function mejorEn(desde: Nodo, direccion: number, excluir?: HTMLElement): HTMLEle
 
   for (let i = 0; i < indice.length; i++) {
     const n = indice[i];
-    if (n.el === desde.el || n.menu !== desde.menu) continue;
+    if (n.el === desde.el || n.menu !== desde.menu || n.alfabeto !== desde.alfabeto) continue;
     if (excluir && excluir.contains(n.el)) continue;
 
     const dx = xVisible(n) - xDesde;
@@ -329,14 +335,30 @@ export function siguiente(direccion: number): HTMLElement | null {
   const desde = indice.filter((n) => n.el === foco)[0];
   if (!desde) return indice.length ? indice[0].el : null;
 
+  /*
+   * El abecedario del borde derecho es otra zona, como el menu: esta fijo y el
+   * lienzo se mueve, asi que sus coordenadas no se pueden comparar. Se entra
+   * yendo a la derecha desde lo ultimo de una fila y se sale yendo a la izquierda.
+   */
+  if (desde.alfabeto) {
+    if (direccion === TECLA.IZQUIERDA) {
+      const vuelta = ultimoDelContenido && document.body.contains(ultimoDelContenido) ? ultimoDelContenido : null;
+      return vuelta || (indice.filter((n) => !n.menu && !n.alfabeto)[0] || { el: null }).el;
+    }
+    if (direccion === TECLA.DERECHA) return null;
+  } else if (!desde.menu && direccion === TECLA.DERECHA && !mejorEn(desde, direccion)) {
+    const activa = document.querySelector<HTMLElement>('[data-alfabeto] .activa') || document.querySelector<HTMLElement>('[data-alfabeto] [data-nav]');
+    if (activa) return activa;
+  }
+
   // Cambio de zona: directo, sin medir distancias entre dos sistemas de
   // coordenadas que no se pueden comparar (el menú es fijo, el lienzo se mueve).
-  if (!desde.menu && direccion === TECLA.IZQUIERDA && !mejorEn(desde, direccion)) {
+  if (!desde.menu && !desde.alfabeto && direccion === TECLA.IZQUIERDA && !mejorEn(desde, direccion)) {
     const activa = document.querySelector<HTMLElement>('.opcion.activa') || document.querySelector<HTMLElement>('.opcion');
     if (activa) return activa;
   }
   if (desde.menu && direccion === TECLA.DERECHA) {
-    const contenido = indice.filter((n) => !n.menu)[0];
+    const contenido = indice.filter((n) => !n.menu && !n.alfabeto)[0];
     if (contenido) return contenido.el;
   }
 
@@ -355,7 +377,7 @@ export function siguiente(direccion: number): HTMLElement | null {
       // Salir por abajo: se parte del borde inferior de la ventana, no de donde
       // estaria el episodio si la lista no estuviera recortada.
       const borde = posicion(lista).y + lista.offsetHeight - desde.alto / 2;
-      return mejorEn({ el: desde.el, x: desde.x, y: borde, ancho: desde.ancho, alto: desde.alto, menu: desde.menu }, direccion, lista);
+      return mejorEn({ el: desde.el, x: desde.x, y: borde, ancho: desde.ancho, alto: desde.alto, menu: desde.menu, alfabeto: desde.alfabeto }, direccion, lista);
     }
   }
 

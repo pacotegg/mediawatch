@@ -2009,3 +2009,48 @@ body.rend-medio .tarjeta.enfocado .lamina {
 .pista-episodios {
   position: relative;
 }
+
+/*
+ * Abecedario del borde derecho de las bibliotecas. Va fuera del lienzo, que se
+ * desplaza, para quedarse quieto. Las tarjetas acaban en 1804 px con 7 columnas,
+ * asi que la franja (1836-1896) no las pisa: `.con-alfabeto` reserva ese hueco
+ * a la derecha para que, si alguna vez cambia el ancho de tarjeta, la rejilla
+ * se recoloque en vez de meterse debajo.
+ */
+.rejilla.con-alfabeto {
+  padding-right: 90px;
+}
+
+.alfabeto {
+  position: absolute;
+  top: 50%;
+  right: 24px;
+  width: 60px;
+  padding: 10px 0;
+  border-radius: 30px;
+  background: rgba(255, 255, 255, 0.06);
+  transform: translateY(-50%);
+  z-index: 5;
+  text-align: center;
+}
+
+.letra {
+  height: 33px;
+  margin: 0 8px;
+  border-radius: 16px;
+  color: var(--texto-ter);
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 33px;
+  cursor: pointer;
+}
+
+/* La letra de la que se viene: se ve dónde se está sin tenerla enfocada. */
+.letra.activa {
+  color: var(--acento-claro);
+}
+
+.letra.enfocado {
+  background: #fff;
+  color: var(--fondo);
+}

@@ -13,6 +13,7 @@ import { detallePersona } from '../scanner/people.ts';
 import { currentUser, deFuera, requireUser, sesionDe } from './auth.ts';
 import { marcarActividad } from '../media/ocupado.ts';
 import { loteOmdb, pararOmdb, rellenarConOmdb } from '../media/omdb.ts';
+import { letrasDe } from '../media/letras.ts';
 
 const MIME: Record<string, string> = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp' };
 
@@ -147,6 +148,22 @@ export default async function libraryRoutes(app: FastifyInstance) {
       .all(...params, limit, offset);
     const total = (db.prepare(`SELECT COUNT(*) AS n FROM items i ${clause}`).get(...params) as { n: number }).n;
     return { total, items: withProgress(rows, user?.id ?? null) };
+  });
+
+  /*
+   * Donde empieza cada letra en la lista ordenada por titulo, para el abecedario
+   * de la tele. Se calcula sobre los mismos titulos y en el mismo orden que sirve
+   * `/api/items?sort=title`; ver media/letras.ts para lo que pasa con los que
+   * empiezan por algo que no es A-Z.
+   */
+  app.get('/api/items/letras', async (req) => {
+    requireUser(req);
+    const library = Number((req.query as { library?: string }).library);
+    if (!library) return { total: 0, letras: [] };
+    const filas = db
+      .prepare(`SELECT COALESCE(i.sort_title, i.title) AS k FROM items i WHERE i.library_id = ? ORDER BY ${SORTS.title}`)
+      .all(library) as { k: string }[];
+    return { total: filas.length, letras: letrasDe(filas.map((f) => f.k)) };
   });
 
   app.get('/api/items/:id', async (req, reply) => {
