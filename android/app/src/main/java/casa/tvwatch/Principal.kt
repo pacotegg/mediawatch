@@ -52,6 +52,7 @@ import casa.tvwatch.ui.Destino
 import casa.tvwatch.ui.Fondo
 import casa.tvwatch.ui.Menu
 import casa.tvwatch.ui.Movimiento
+import casa.tvwatch.ui.NovedadesDialogo
 import casa.tvwatch.ui.PantallaAjustes
 import casa.tvwatch.ui.PantallaBiblioteca
 import casa.tvwatch.ui.PantallaBuscar
@@ -105,6 +106,7 @@ class Principal : AppCompatActivity() {
       TemaTvWatch {
         val nav = rememberNavController()
         Navegacion(nav)
+        NovedadesDialogo()
       }
     }
   }

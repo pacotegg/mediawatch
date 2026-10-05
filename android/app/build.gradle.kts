@@ -56,6 +56,14 @@ android {
   kotlinOptions { jvmTarget = "17" }
 }
 
+// CHANGELOG.md (raíz del repo) se copia a los assets: la ventana de novedades lo lee de ahí.
+val copiarNovedades by tasks.registering(Copy::class) {
+  from(rootProject.file("../CHANGELOG.md"))
+  into(layout.buildDirectory.dir("generated/novedades"))
+}
+android.sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/novedades"))
+tasks.named("preBuild") { dependsOn(copiarNovedades) }
+
 dependencies {
   implementation("androidx.core:core-ktx:1.15.0")
   // AppCompat solo por Chromecast: el diálogo de elegir aparato es un fragmento
