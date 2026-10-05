@@ -349,7 +349,8 @@ await app.register(plataformaRoutes);
 
 let scanning = false;
 
-app.post('/api/scan', async () => {
+app.post('/api/scan', async (req, reply) => {
+  if (!currentUser(req)?.is_admin) return reply.code(403).send({ error: 'Solo un administrador puede escanear' });
   if (scanning) return { started: false, reason: 'Ya hay un escaneo en curso' };
   scanning = true;
   // Sin esperar: la petición contesta ya, y el escaneo (ahora por lotes, cede
@@ -368,6 +369,7 @@ app.post('/api/scan', async () => {
 });
 
 app.get('/api/scan/stream', async (req, reply) => {
+  if (!currentUser(req)?.is_admin) return reply.code(403).send({ error: 'Solo un administrador' });
   reply.raw.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',

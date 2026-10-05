@@ -363,14 +363,25 @@ function UsuariosTab() {
   const { data: usersData, isLoading } = useQuery({ queryKey: ['users'], queryFn: api.users });
   const { data: yo } = useQuery({ queryKey: ['me'], queryFn: api.me });
 
+  const FRANJAS_EDAD = [
+    { key: 'TP', label: 'Todos los públicos (TP / Apta)' },
+    { key: '7', label: 'Infantil (+7)' },
+    { key: '12', label: 'Juvenil (+12)' },
+    { key: '16', label: 'Adolescentes (+16)' },
+  ] as const;
+
   const [editing, setEditing] = useState<User | null>(null);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const [newPin, setNewPin] = useState('');
+  const [newIsKid, setNewIsKid] = useState(false);
+  const [newKidRatings, setNewKidRatings] = useState<string[]>(['TP', '7']);
 
   const [editName, setEditName] = useState('');
   const [editColor, setEditColor] = useState('#e8b64c');
   const [editIsAdmin, setEditIsAdmin] = useState(false);
+  const [editIsKid, setEditIsKid] = useState(false);
+  const [editKidRatings, setEditKidRatings] = useState<string[]>([]);
   const [editPin, setEditPin] = useState('');
   const [quitarPin, setQuitarPin] = useState(false);
   const [aviso, setAviso] = useState('');
@@ -384,15 +395,25 @@ function UsuariosTab() {
     setEditIsAdmin(u.is_admin === 1);
     setEditPin('');
     setQuitarPin(false);
+    const tieneKid = Array.isArray(u.kid_ratings) && u.kid_ratings.length > 0;
+    setEditIsKid(tieneKid);
+    setEditKidRatings(tieneKid ? [...u.kid_ratings!] : ['TP', '7']);
     setAviso('');
   };
 
   const createMutation = useMutation({
-    mutationFn: () => api.createUser(newName.trim(), newPin ? newPin.trim() : undefined),
+    mutationFn: () =>
+      api.createUser(
+        newName.trim(),
+        newPin ? newPin.trim() : undefined,
+        newIsKid && newKidRatings.length > 0 ? newKidRatings : null,
+      ),
     onSuccess: () => {
       setCreating(false);
       setNewName('');
       setNewPin('');
+      setNewIsKid(false);
+      setNewKidRatings(['TP', '7']);
       setAviso('Usuario creado con éxito');
       queryClient.invalidateQueries({ queryKey: ['users'] });
     },
@@ -402,10 +423,11 @@ function UsuariosTab() {
   const updateMutation = useMutation({
     mutationFn: async () => {
       if (!editing) return;
-      const data: { name?: string; color?: string; isAdmin?: boolean; pin?: string | null } = {
+      const data: { name?: string; color?: string; isAdmin?: boolean; pin?: string | null; kidRatings?: string[] | null } = {
         name: editName.trim(),
         color: editColor,
-        isAdmin: editIsAdmin,
+        isAdmin: editIsKid ? false : editIsAdmin,
+        kidRatings: editIsKid && editKidRatings.length > 0 ? editKidRatings : null,
       };
       if (quitarPin) {
         data.pin = null;
@@ -503,6 +525,37 @@ function UsuariosTab() {
               className="rounded-xl border border-white/8 bg-white/6 px-3 py-2 text-[13px] outline-none placeholder:text-mist-600 focus:border-accent/40"
             />
           </Field>
+          <Field
+            label="Perfil infantil (Control parental)"
+            hint="Restringe el catálogo visible a las franjas de edad autorizadas."
+          >
+            <div className="space-y-3 pt-1">
+              <Toggle checked={newIsKid} onChange={setNewIsKid} />
+              {newIsKid && (
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {FRANJAS_EDAD.map((f) => {
+                    const sel = newKidRatings.includes(f.key);
+                    return (
+                      <button
+                        key={f.key}
+                        type="button"
+                        onClick={() => {
+                          setNewKidRatings((prev) =>
+                            sel ? prev.filter((k) => k !== f.key) : [...prev, f.key]
+                          );
+                        }}
+                        className={`rounded-xl px-3 py-1.5 text-xs font-medium transition ${
+                          sel ? 'bg-accent font-semibold text-ink-950' : 'bg-white/8 text-mist-400 hover:text-mist-200'
+                        }`}
+                      >
+                        {sel ? '✓ ' : ''}{f.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </Field>
           <div className="flex gap-2 pt-2">
             <Button onClick={() => createMutation.mutate()} disabled={!newName.trim() || createMutation.isPending}>
               Crear perfil
@@ -581,11 +634,43 @@ function UsuariosTab() {
             </div>
           </Field>
 
-          {yo?.is_admin === 1 && (
+          {!editIsKid && yo?.is_admin === 1 && (
             <Field label="Administrador" hint="Permite escanear bibliotecas, editar títulos y gestionar usuarios.">
               <Toggle checked={editIsAdmin} onChange={setEditIsAdmin} />
             </Field>
           )}
+
+          <Field
+            label="Perfil infantil (Control parental)"
+            hint="Restringe el catálogo visible a las franjas de edad autorizadas."
+          >
+            <div className="space-y-3 pt-1">
+              <Toggle checked={editIsKid} onChange={setEditIsKid} />
+              {editIsKid && (
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {FRANJAS_EDAD.map((f) => {
+                    const sel = editKidRatings.includes(f.key);
+                    return (
+                      <button
+                        key={f.key}
+                        type="button"
+                        onClick={() => {
+                          setEditKidRatings((prev) =>
+                            sel ? prev.filter((k) => k !== f.key) : [...prev, f.key]
+                          );
+                        }}
+                        className={`rounded-xl px-3 py-1.5 text-xs font-medium transition ${
+                          sel ? 'bg-accent font-semibold text-ink-950' : 'bg-white/8 text-mist-400 hover:text-mist-200'
+                        }`}
+                      >
+                        {sel ? '✓ ' : ''}{f.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </Field>
 
           <div className="border-b border-white/5 pb-4">
             <div className="text-[13.5px] text-mist-200">PIN de acceso</div>
@@ -685,6 +770,11 @@ function UsuariosTab() {
                         Admin
                       </span>
                     )}
+                    {Array.isArray(u.kid_ratings) && u.kid_ratings.length > 0 && (
+                      <span className="rounded-md bg-amber-400/15 px-1.5 py-0.5 text-[10.5px] font-medium text-amber-300">
+                        🧒 {u.kid_ratings.map((k) => k === 'TP' ? 'TP' : `+${k}`).join(' ')}
+                      </span>
+                    )}
                   </div>
                   <div className="mt-0.5 flex items-center gap-1.5 text-[11.5px]">
                     {tienePin ? (
@@ -722,6 +812,7 @@ function UsuariosTab() {
  */
 function PinTab() {
   const { data: yo } = useQuery({ queryKey: ['me'], queryFn: api.me });
+  const queryClient = useQueryClient();
   const [actual, setActual] = useState('');
   const [nuevo, setNuevo] = useState('');
   const [repetido, setRepetido] = useState('');
@@ -730,6 +821,7 @@ function PinTab() {
   const guardar = useMutation({
     mutationFn: () => api.cambiarPin(yo!.id, nuevo, actual),
     onSuccess: (r) => {
+      queryClient.invalidateQueries({ queryKey: ['me'] });
       setActual('');
       setNuevo('');
       setRepetido('');
@@ -744,7 +836,7 @@ function PinTab() {
 
   const tienePin = yo?.has_pin === 1;
   const puedeGuardar =
-    nuevo === repetido && (nuevo.length === 0 || nuevo.length >= 4) && (!tienePin || actual.length > 0);
+    nuevo === repetido && (nuevo.length === 0 || nuevo.length >= 6) && (!tienePin || actual.length > 0);
 
   return (
     <div className="space-y-5">
@@ -1090,15 +1182,16 @@ function TabsBar({
 export default function Settings() {
   const [tab, setTab] = useState<Tab>('playback');
   const { data: yo } = useQuery({ queryKey: ['me'], queryFn: api.me, staleTime: Infinity });
-  // «Actividad» y «Usuarios» son cosa del administrador. Los demás ven «PIN» para su propio perfil.
+  // Solo el administrador ve gestión, escaneo, análisis y servidor. Los demás solo ven sus preferencias personales y PIN.
   const pestanas = TABS.filter((t) => {
-    if (t.key === 'usuarios' || t.key === 'actividad') return yo?.is_admin === 1;
+    const soloAdmin = ['usuarios', 'actividad', 'server', 'library', 'analysis', 'metadata'];
+    if (soloAdmin.includes(t.key)) return yo?.is_admin === 1;
     if (t.key === 'pin') return yo?.is_admin !== 1;
     return true;
   });
 
   return (
-    <div className="mx-auto max-w-3xl px-4 pt-24 pb-24 sm:px-8">
+    <div className="mx-auto max-w-3xl px-4 page-pt page-pb sm:px-8">
       <h1 className="mb-6 text-2xl font-semibold tracking-tight">Ajustes</h1>
 
       <TabsBar tabs={pestanas} activeTab={tab} onSelectTab={setTab} />

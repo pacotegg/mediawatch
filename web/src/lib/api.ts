@@ -65,6 +65,22 @@ export type Extra = {
   grupo: string | null;
 };
 
+export type MovieVersion = {
+  itemId: number;
+  fileId: number;
+  name: string;
+  label: string;
+  width: number | null;
+  height: number | null;
+  hdr: string | null;
+  video_codec: string | null;
+  duration: number | null;
+  size: number | null;
+  audio: { codec: string; language: string | null; channels: number | null }[];
+  subtitles: { language: string | null; forced: number; is_external: number }[];
+  isCurrent: boolean;
+};
+
 export type ItemDetail = ItemSummary & {
   /** El disco redondo del Blu-ray, si lo hay: gira en la pausa del reproductor. */
   has_discart?: number;
@@ -81,6 +97,7 @@ export type ItemDetail = ItemSummary & {
   cast: { id: number; name: string; character: string | null; role: string; has_thumb: number }[];
   files: MediaFile[];
   episodes?: Episode[];
+  versions?: MovieVersion[];
   similar?: ItemSummary[];
   collectionItems?: ItemSummary[];
   progress: { episode_id: number | null; position: number; duration: number | null; watched: number }[];
@@ -114,7 +131,15 @@ export type ImagenDisponible = {
   voto: number;
 };
 
-export type User = { id: number; name: string; color: string | null; is_admin: number; has_pin?: number; has_avatar?: number };
+export type User = {
+  id: number;
+  name: string;
+  color: string | null;
+  is_admin: number;
+  has_pin?: number;
+  has_avatar?: number;
+  kid_ratings?: string[] | null;
+};
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   /*
@@ -245,8 +270,9 @@ export const api = {
   cambiarPin: (userId: number, pin: string, actual: string) =>
     post<{ ok: true; tienePin: boolean; sesionesCerradas: number }>(`/api/users/${userId}/pin`, { pin, actual }),
   users: () => request<{ users: User[]; setupNeeded: boolean }>('/api/users'),
-  createUser: (name: string, pin?: string) => post<{ id: number }>('/api/users', { name, pin: pin || undefined }),
-  updateUser: (userId: number, data: { name?: string; color?: string; isAdmin?: boolean; pin?: string | null }) =>
+  createUser: (name: string, pin?: string, kidRatings?: string[] | null) =>
+    post<{ id: number }>('/api/users', { name, pin: pin || undefined, kidRatings: kidRatings || undefined }),
+  updateUser: (userId: number, data: { name?: string; color?: string; isAdmin?: boolean; pin?: string | null; kidRatings?: string[] | null }) =>
     request<{ ok: true }>(`/api/users/${userId}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteUser: (userId: number) =>
     request<{ ok: true }>(`/api/users/${userId}`, { method: 'DELETE' }),

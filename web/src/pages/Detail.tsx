@@ -14,13 +14,17 @@ import { audioLabel, certification, clock, codecLabel, fileSize, languageName, r
 import { usePreferences } from '../lib/preferences.tsx';
 import { tintFrom } from '../lib/tint.ts';
 
-const OPCIONES_DESCARGA: [PerfilDescarga, string, string][] = [
-  ['baja', '360p (Muy ligera)', '~300 MB película · ~100 MB ep.'],
-  ['movil', '480p (Móvil)', '~600 MB película · ~200 MB ep.'],
-  ['tablet', '720p (HD)', '~1.3 GB película · ~400 MB ep.'],
-  ['fhd', '1080p (Full HD)', '~2.8 GB película · ~800 MB ep.'],
-  ['original', 'Original', 'el fichero intacto'],
-];
+function opcionesDescarga(duracionSegundos?: number | null, bytesOriginal?: number | null): [PerfilDescarga, string, string][] {
+  const d = duracionSegundos && duracionSegundos > 0 ? duracionSegundos : 5400;
+  const fmt = (kbps: number) => fileSize(Math.round(((kbps * 1000) / 8) * d));
+  return [
+    ['baja', '360p (Muy ligera)', `Aprox. ${fmt(400)}`],
+    ['movil', '480p (Móvil)', `Aprox. ${fmt(750)}`],
+    ['tablet', '720p (HD)', `Aprox. ${fmt(1500)}`],
+    ['fhd', '1080p (Full HD)', `Aprox. ${fmt(3000)}`],
+    ['original', 'Original', bytesOriginal ? `${fileSize(bytesOriginal)} (sin recodificar)` : 'Archivo original intacto'],
+  ];
+}
 
 function MetadataFixer({ itemId, item, onClose }: { itemId: number; item: ItemDetail; onClose: () => void }) {
   const queryClient = useQueryClient();
@@ -202,8 +206,8 @@ function EpisodeList({
                   </button>
 
                   {downloadEpId === ep.id && (
-                    <div className="glass-strong absolute right-0 top-11 z-50 w-60 rounded-xl p-1.5 shadow-[var(--shadow-3)]">
-                      {OPCIONES_DESCARGA.map(([valor, titulo, pie]) => (
+                    <div className="glass-strong absolute right-0 top-11 z-50 w-64 rounded-xl p-1.5 shadow-[var(--shadow-3)]">
+                      {opcionesDescarga(ep.duration ?? (ep.runtime ? ep.runtime * 60 : null)).map(([valor, titulo, pie]) => (
                         <button
                           key={valor}
                           onClick={(e) => {
@@ -309,7 +313,7 @@ export default function Detail() {
 
   if (isLoading || !item) {
     return (
-      <div className="pt-24">
+      <div className="page-pt">
         <div className="skeleton mx-auto h-[52vh] max-w-[1800px] rounded-3xl" />
       </div>
     );
@@ -488,6 +492,35 @@ export default function Detail() {
             )}
             {directores && <div className="mb-5 text-[13.5px] text-mist-500">Dirigida por {directores}</div>}
 
+            {item.versions && item.versions.length > 1 && (
+              <div className="mb-5 flex flex-wrap items-center gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wider text-mist-400">Versión:</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {item.versions.map((v) => {
+                    const activa = v.itemId === item.id;
+                    return (
+                      <button
+                        key={v.fileId}
+                        onClick={() => {
+                          if (v.itemId !== item.id) {
+                            navigate(`/item/${v.itemId}`, { replace: true });
+                          }
+                        }}
+                        className={`rounded-full px-3.5 py-1.5 text-xs font-medium transition-all ${
+                          activa
+                            ? 'bg-mist-100 font-semibold text-ink-950 shadow-sm'
+                            : 'bg-white/6 text-mist-300 hover:bg-white/12'
+                        }`}
+                      >
+                        <span>{v.name}</span>
+                        <span className="ml-1.5 opacity-70">({v.label})</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <div className="flex flex-wrap items-center gap-2.5">
               <button
                 onClick={play}
@@ -547,8 +580,8 @@ export default function Detail() {
                     </svg>
                   </button>
                   {descargando && (
-                    <div className="glass-strong absolute bottom-12 left-0 z-50 w-60 rounded-xl p-1.5 shadow-[var(--shadow-3)]">
-                      {OPCIONES_DESCARGA.map(([valor, titulo, pie]) => (
+                    <div className="glass-strong absolute bottom-12 left-0 z-50 w-64 rounded-xl p-1.5 shadow-[var(--shadow-3)]">
+                      {opcionesDescarga(movieFile.duration, movieFile.bytes).map(([valor, titulo, pie]) => (
                         <button
                           key={valor}
                           onClick={() => pedirDescarga(movieFile.id, valor)}

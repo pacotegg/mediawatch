@@ -104,7 +104,7 @@ export default function Search() {
   });
 
   return (
-    <div className="mx-auto max-w-[1800px] px-4 pt-24 pb-24 sm:px-8">
+    <div className="mx-auto max-w-[1800px] px-4 page-pt page-pb sm:px-8">
       <h1 className="mb-1 text-2xl font-semibold tracking-tight">
         {term ? <>Resultados para «{term}»</> : 'Buscar'}
       </h1>

@@ -11,6 +11,20 @@ mkdirSync(DATA_DIR, { recursive: true });
 // con «database is locked». Son escrituras cortas: diez segundos sobran.
 export const db = new DatabaseSync(join(DATA_DIR, 'tvwatch.db'), { timeout: 10_000 });
 
+export function parseRatingCategoria(mpaa: string | null, libraryId: number): string {
+  if (libraryId === 3 || libraryId === 9) return 'TP';
+  if (!mpaa) return '18';
+  const m = mpaa.toUpperCase();
+  if (m.includes('18') || m.includes('NC-17') || m.includes('R ') || m.endsWith(' R') || m.includes('TV-MA')) return '18';
+  if (m.includes('16')) return '16';
+  if (m.includes('12') || m.includes('13') || m.includes('PG-13') || m.includes('TV-14')) return '12';
+  if (m.includes('7') || m.includes('PG') || m.includes('TV-Y7') || m.includes('TV-PG')) return '7';
+  if (m.includes('APTA') || m.includes(':A') || m.includes('TP') || m.includes(' G') || m.startsWith('G') || m.includes('TV-Y') || m.includes('TV-G')) return 'TP';
+  return '18';
+}
+
+db.function('rating_categoria', parseRatingCategoria);
+
 db.exec(`
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
@@ -394,6 +408,8 @@ anadirColumna('extras', 'grupo', 'TEXT');
 anadirColumna('coleccion_imagen', 'fondo', 'TEXT');
 // Imagen de perfil / avatar del usuario.
 anadirColumna('users', 'avatar', 'TEXT');
+// Franjas de edad permitidas para perfiles infantiles (JSON array ["TP", "7", ...]). Null = adulto.
+anadirColumna('users', 'kid_ratings', 'TEXT');
 db.exec("UPDATE sessions SET last_seen = created_at WHERE last_seen IS NULL");
 
 /*

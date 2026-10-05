@@ -60,12 +60,13 @@ function Item({ to, icon, label, collapsed, end }: { to: string; icon: string; l
 
 export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
   const { data: libraries } = useQuery({ queryKey: ['libraries'], queryFn: api.libraries });
+  const { data: yo } = useQuery({ queryKey: ['me'], queryFn: api.me, staleTime: Infinity });
   const movieLibs = libraries?.filter((l) => l.kind === 'movie') ?? [];
   const showLibs = libraries?.filter((l) => l.kind === 'show') ?? [];
 
   return (
     <aside
-      className="glass-strong layer-promote fixed inset-y-0 left-0 z-50 hidden flex-col border-r border-white/6 transition-[width] duration-300 ease-[var(--ease-out)] md:flex"
+      className="glass-strong layer-promote fixed inset-y-0 left-0 z-50 hidden flex-col border-r border-white/6 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] transition-[width] duration-300 ease-[var(--ease-out)] md:flex"
       style={{ width: collapsed ? 68 : 232 }}
     >
       <div className={`flex h-14 shrink-0 items-center ${collapsed ? 'justify-center' : 'px-4'}`}>
@@ -78,49 +79,51 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
         </NavLink>
       </div>
 
-      <nav className="no-scrollbar flex-1 space-y-0.5 overflow-y-auto px-2.5 pb-3">
-        <Item to="/" icon={ICONS.home} label="Inicio" collapsed={collapsed} end />
-        <Item to="/sagas" icon={ICONS.saga} label="Sagas" collapsed={collapsed} />
-        <Item to="/favoritos" icon={ICONS.heart} label="Favoritos" collapsed={collapsed} />
+      <div className="flex flex-1 min-h-0 flex-col overflow-y-auto overscroll-contain px-2.5 pb-3">
+        <nav className="space-y-0.5">
+          <Item to="/" icon={ICONS.home} label="Inicio" collapsed={collapsed} end />
+          <Item to="/sagas" icon={ICONS.saga} label="Sagas" collapsed={collapsed} />
+          <Item to="/favoritos" icon={ICONS.heart} label="Favoritos" collapsed={collapsed} />
 
-        {movieLibs.length > 0 && (
-          <>
-            {!collapsed && <div className="px-3 pt-5 pb-1.5 text-[10.5px] font-semibold tracking-wider text-mist-600 uppercase">Películas</div>}
-            {collapsed && <div className="my-3 h-px bg-white/8" />}
-            {movieLibs.map((lib) => (
-              <Item key={lib.id} to={`/biblioteca/${lib.id}`} icon={ICONS.movie} label={lib.name} collapsed={collapsed} />
-            ))}
-          </>
-        )}
+          {movieLibs.length > 0 && (
+            <>
+              {!collapsed && <div className="px-3 pt-5 pb-1.5 text-[10.5px] font-semibold tracking-wider text-mist-600 uppercase">Películas</div>}
+              {collapsed && <div className="my-3 h-px bg-white/8" />}
+              {movieLibs.map((lib) => (
+                <Item key={lib.id} to={`/biblioteca/${lib.id}`} icon={ICONS.movie} label={lib.name} collapsed={collapsed} />
+              ))}
+            </>
+          )}
 
-        {showLibs.length > 0 && (
-          <>
-            {!collapsed && <div className="px-3 pt-5 pb-1.5 text-[10.5px] font-semibold tracking-wider text-mist-600 uppercase">Series</div>}
-            {collapsed && <div className="my-3 h-px bg-white/8" />}
-            {showLibs.map((lib) => (
-              <Item key={lib.id} to={`/biblioteca/${lib.id}`} icon={ICONS.show} label={lib.name} collapsed={collapsed} />
-            ))}
-          </>
-        )}
-      </nav>
+          {showLibs.length > 0 && (
+            <>
+              {!collapsed && <div className="px-3 pt-5 pb-1.5 text-[10.5px] font-semibold tracking-wider text-mist-600 uppercase">Series</div>}
+              {collapsed && <div className="my-3 h-px bg-white/8" />}
+              {showLibs.map((lib) => (
+                <Item key={lib.id} to={`/biblioteca/${lib.id}`} icon={ICONS.show} label={lib.name} collapsed={collapsed} />
+              ))}
+            </>
+          )}
+        </nav>
 
-      <div className="shrink-0 space-y-0.5 border-t border-white/6 px-2.5 py-2.5">
-        <Item to="/plataformas" icon={ICONS.plataformas} label="Plataformas" collapsed={collapsed} />
-        <Item to="/descargas" icon={ICONS.download} label="Descargas" collapsed={collapsed} />
-        <Item to="/estadisticas" icon={ICONS.stats} label="Estadísticas" collapsed={collapsed} />
-        <Item to="/ajustes" icon={ICONS.settings} label="Ajustes" collapsed={collapsed} />
-        <button
-          onClick={onToggle}
-          title={collapsed ? 'Desplegar menú' : 'Plegar menú'}
-          className={`flex w-full items-center gap-3 rounded-xl py-2 text-[13.5px] text-mist-500 transition-colors hover:bg-white/6 hover:text-mist-100 ${
-            collapsed ? 'justify-center px-2' : 'px-3'
-          }`}
-        >
-          <span className={`transition-transform duration-300 ${collapsed ? 'rotate-180' : ''}`}>
-            <Icon path={ICONS.collapse} />
-          </span>
-          {!collapsed && <span>Plegar</span>}
-        </button>
+        <div className="mt-auto shrink-0 space-y-0.5 border-t border-white/6 pt-2.5">
+          <Item to="/plataformas" icon={ICONS.plataformas} label="Plataformas" collapsed={collapsed} />
+          <Item to="/descargas" icon={ICONS.download} label="Descargas" collapsed={collapsed} />
+          {yo?.is_admin === 1 && <Item to="/estadisticas" icon={ICONS.stats} label="Estadísticas" collapsed={collapsed} />}
+          <Item to="/ajustes" icon={ICONS.settings} label="Ajustes" collapsed={collapsed} />
+          <button
+            onClick={onToggle}
+            title={collapsed ? 'Desplegar menú' : 'Plegar menú'}
+            className={`flex w-full items-center gap-3 rounded-xl py-2 text-[13.5px] text-mist-500 transition-colors hover:bg-white/6 hover:text-mist-100 ${
+              collapsed ? 'justify-center px-2' : 'px-3'
+            }`}
+          >
+            <span className={`transition-transform duration-300 ${collapsed ? 'rotate-180' : ''}`}>
+              <Icon path={ICONS.collapse} />
+            </span>
+            {!collapsed && <span>Plegar</span>}
+          </button>
+        </div>
       </div>
     </aside>
   );
@@ -163,7 +166,7 @@ function SearchField() {
           }
         }}
         placeholder="Buscar títulos o frases de diálogo"
-        className="w-52 rounded-full border border-white/8 bg-white/6 py-1.5 pr-3 pl-9 text-sm text-mist-100 outline-none transition-[width,background] duration-300 ease-[var(--ease-out)] placeholder:text-mist-600 focus:w-80 focus:bg-white/10"
+        className="w-36 sm:w-52 rounded-full border border-white/8 bg-white/6 py-1.5 pr-3 pl-9 text-sm text-mist-100 outline-none transition-[width,background] duration-300 ease-[var(--ease-out)] placeholder:text-mist-600 focus:w-48 sm:focus:w-80 focus:bg-white/10"
       />
     </div>
   );
@@ -225,14 +228,18 @@ export function TopBar({ user, left, onOpenMenu }: { user: User; left: number; o
 
   return (
     <header
-      className={`layer-promote fixed top-0 right-0 z-40 transition-colors duration-300 ${
+      className={`layer-promote fixed top-0 right-0 left-0 z-40 pt-[env(safe-area-inset-top)] transition-[left,background-color,border-color] duration-300 md:left-(--sidebar) ${
         scrolled ? 'glass-strong border-b border-white/6' : 'bg-linear-to-b from-ink-950/85 to-transparent'
       }`}
-      style={{ left }}
+      style={{ ['--sidebar' as string]: `${left}px` }}
     >
-      <div className="flex h-14 items-center gap-3 px-4 sm:px-8">
-        <button onClick={onOpenMenu} className="grid h-9 w-9 place-items-center rounded-xl text-mist-300 hover:bg-white/8 md:hidden">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+      <div className="flex h-14 items-center gap-3 px-3 sm:px-6 md:px-8">
+        <button
+          onClick={onOpenMenu}
+          aria-label="Abrir menú"
+          className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-mist-300 hover:bg-white/8 active:bg-white/12 md:hidden"
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
             <path d="M4 7h16M4 12h16M4 17h16" />
           </svg>
         </button>
@@ -246,6 +253,7 @@ export function TopBar({ user, left, onOpenMenu }: { user: User; left: number; o
 
 export function MobileDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { data: libraries } = useQuery({ queryKey: ['libraries'], queryFn: api.libraries });
+  const { data: yo } = useQuery({ queryKey: ['me'], queryFn: api.me, staleTime: Infinity });
   if (!open) return null;
 
   return (
@@ -254,9 +262,10 @@ export function MobileDrawer({ open, onClose }: { open: boolean; onClose: () => 
       <motion.div
         initial={{ x: -260 }}
         animate={{ x: 0 }}
+        exit={{ x: -260 }}
         transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
         onClick={(e) => e.stopPropagation()}
-        className="glass-strong absolute inset-y-0 left-0 w-64 overflow-y-auto p-3"
+        className="glass-strong absolute inset-y-0 left-0 w-64 overflow-y-auto overscroll-contain p-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))]"
       >
         <div className="mb-3 px-2 py-2 text-[15px] font-semibold">Media Watch</div>
         <div className="space-y-0.5" onClick={onClose}>
@@ -270,7 +279,7 @@ export function MobileDrawer({ open, onClose }: { open: boolean; onClose: () => 
           <div className="pt-4">
             <Item to="/plataformas" icon={ICONS.plataformas} label="Plataformas" collapsed={false} />
             <Item to="/descargas" icon={ICONS.download} label="Descargas" collapsed={false} />
-            <Item to="/estadisticas" icon={ICONS.stats} label="Estadísticas" collapsed={false} />
+            {yo?.is_admin === 1 && <Item to="/estadisticas" icon={ICONS.stats} label="Estadísticas" collapsed={false} />}
             <Item to="/ajustes" icon={ICONS.settings} label="Ajustes" collapsed={false} />
           </div>
         </div>

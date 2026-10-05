@@ -76,7 +76,7 @@ export default function Plataformas() {
   const cambiar = (fn: () => void) => { fn(); setPagina(1); };
 
   return (
-    <div className="px-6 py-6 sm:px-10">
+    <div className="mx-auto max-w-[1800px] px-4 page-pt page-pb sm:px-8">
       <h1 className="mb-1 text-2xl font-semibold">Plataformas</h1>
       <p className="mb-5 max-w-[720px] text-[13px] text-mist-500">
         Lo que hay en tus suscripciones. No se reproduce aquí: estos servicios van cifrados y solo

@@ -119,6 +119,7 @@ const VIGENCIA_PORTADA_MS = 5 * 60_000;
 
 /** Quién es el perfil de esta sesión; lo que decide si sale «Eliminar». */
 let soyAdmin = false;
+let perfilInfantil = false;
 
 /** El reproductor de la película que se está viendo ahora, si hay alguna. */
 let reproductorActivo: Reproductor | null = null;
@@ -3891,7 +3892,10 @@ async function arrancar() {
     bibliotecas = [];
   }
   // Solo el administrador borra: a los demás no se les enseña el botón.
-  api.yo().then((u) => { soyAdmin = u.is_admin === 1; }).catch(() => undefined);
+  api.yo().then((u) => {
+    soyAdmin = u.is_admin === 1;
+    perfilInfantil = Boolean(u.kid_ratings && u.kid_ratings.length > 0);
+  }).catch(() => undefined);
   void pantallaPortada();
   escucharAlMovil();
 }
@@ -3914,20 +3918,24 @@ async function arrancar() {
 let capaSalva: HTMLElement | null = null;
 let cicloSalva = 0;
 let ultimaActividad = Date.now();
-let fondosSalva: { id: number; title: string }[] = [];
+let fondosSalva: { id: number; title: string; usePoster?: boolean }[] = [];
 let indiceSalva = -1;
 let ladoASalva = true;
 const INTERVALO_SALVA_MS = 14_000;
 
-function fondosParaSalva(): { id: number; title: string }[] {
+function fondosParaSalva(): { id: number; title: string; usePoster?: boolean }[] {
   if (!portadaGuardada) return [];
   const vistos = new Set<number>();
-  const salida: { id: number; title: string }[] = [];
+  const salida: { id: number; title: string; usePoster?: boolean }[] = [];
   const candidatos = portadaGuardada.datos.hero.concat(...portadaGuardada.datos.rows.map((r) => r.items));
   for (const t of candidatos) {
+    if (perfilInfantil && t.kind !== 'movie') continue;
     if (t.has_fanart && !vistos.has(t.id)) {
       vistos.add(t.id);
       salida.push({ id: t.id, title: t.title });
+    } else if (perfilInfantil && t.has_poster && !vistos.has(t.id)) {
+      vistos.add(t.id);
+      salida.push({ id: t.id, title: t.title, usePoster: true });
     }
   }
   // Al azar, no el orden de la portada: si no, cada sesión larga ve la misma secuencia.
@@ -3954,7 +3962,7 @@ function avanzarSalva() {
     sale.classList.remove('activa');
     titulo.textContent = t.title;
   };
-  entra.src = imagen.fondo(t.id, 1920);
+  entra.src = t.usePoster ? imagen.poster(t.id, 600) : imagen.fondo(t.id, 1920);
 }
 
 function mostrarSalvapantallas() {

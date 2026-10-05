@@ -500,19 +500,16 @@ fun PantallaFicha(
 
   if (fileIdDescargaDialogo != null) {
     val targetFileId = fileIdDescargaDialogo!!
+    val ficheroElegido = f.files.firstOrNull { it.id == targetFileId }
+    val duracionSegundos = ficheroElegido?.duration ?: (f.runtime?.times(60) ?: 5400.0)
+    val opciones = estimarDescargas(duracionSegundos, ficheroElegido?.size)
     androidx.compose.material3.AlertDialog(
       onDismissRequest = { fileIdDescargaDialogo = null },
       containerColor = FondoTarjeta,
       title = { Text("Elegir calidad de descarga", color = Texto, fontWeight = FontWeight.Bold) },
       text = {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-          listOf(
-            Triple("baja", "360p (Muy ligera)", "~300 MB peli / ~100 MB ep."),
-            Triple("movil", "480p (Móvil)", "~600 MB peli / ~200 MB ep."),
-            Triple("tablet", "720p (HD)", "~1.3 GB peli / ~400 MB ep."),
-            Triple("fhd", "1080p (Full HD)", "~2.8 GB peli / ~800 MB ep."),
-            Triple("original", "Original", "el fichero intacto")
-          ).forEach { (perfil, titulo, pie) ->
+          opciones.forEach { (perfil, titulo, pie) ->
             OutlinedButton(
               onClick = {
                 fileIdDescargaDialogo = null
@@ -751,4 +748,30 @@ private fun TarjetaResena(res: Resena) {
       overflow = TextOverflow.Ellipsis,
     )
   }
+}
+
+private fun estimarDescargas(duracionSegundos: Double, bytesOriginal: Long?): List<Triple<String, String, String>> {
+  val d = if (duracionSegundos > 0) duracionSegundos else 5400.0
+  fun fmt(kbps: Int): String {
+    val bytes = (kbps * 1000L / 8L * d.toLong())
+    return if (bytes < 1024L * 1024 * 1024) {
+      "${bytes / (1024 * 1024)} MB"
+    } else {
+      String.format(java.util.Locale.US, "%.1f GB", bytes.toDouble() / (1024.0 * 1024 * 1024))
+    }
+  }
+  fun fmtOriginal(b: Long): String {
+    return if (b < 1024L * 1024 * 1024) {
+      "${b / (1024 * 1024)} MB"
+    } else {
+      String.format(java.util.Locale.US, "%.1f GB", b.toDouble() / (1024.0 * 1024 * 1024))
+    }
+  }
+  return listOf(
+    Triple("baja", "360p (Muy ligera)", "Aprox. ${fmt(400)}"),
+    Triple("movil", "480p (Móvil)", "Aprox. ${fmt(750)}"),
+    Triple("tablet", "720p (HD)", "Aprox. ${fmt(1500)}"),
+    Triple("fhd", "1080p (Full HD)", "Aprox. ${fmt(3000)}"),
+    Triple("original", "Original", if (bytesOriginal != null && bytesOriginal > 0) "${fmtOriginal(bytesOriginal)} (intacto)" else "el fichero intacto")
+  )
 }

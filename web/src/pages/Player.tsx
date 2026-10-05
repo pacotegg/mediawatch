@@ -590,7 +590,7 @@ export default function Player() {
             transition={{ duration: 0.25 }}
             className="absolute inset-0 flex flex-col justify-between bg-linear-to-b from-black/75 via-transparent to-black/85"
           >
-            <div className="flex items-start gap-4 p-5">
+            <div className="flex items-start gap-4 p-5 pt-[max(1.25rem,env(safe-area-inset-top))] pl-[max(1.25rem,env(safe-area-inset-left))] pr-[max(1.25rem,env(safe-area-inset-right))]">
               <button onClick={() => navigate(-1)} className="glass grid h-10 w-10 shrink-0 place-items-center rounded-full transition-transform hover:scale-110">
                 <Icon path="M15 5 8 12l7 7" size={18} />
               </button>
@@ -605,7 +605,7 @@ export default function Player() {
               </div>
             </div>
 
-            <div className="px-5 pb-5">
+            <div className="pb-[max(1.25rem,env(safe-area-inset-bottom))] pl-[max(1.25rem,env(safe-area-inset-left))] pr-[max(1.25rem,env(safe-area-inset-right))]">
               {/* El disco, quieto, justo encima de la barra: va con los controles y en pausa se queda con ellos. */}
               {ficha?.has_discart === 1 && !buffering && (
                 <img src={img.discart(itemId, 600)} alt="" className="pointer-events-none mb-3 w-28 md:w-40 drop-shadow-[0_18px_30px_rgba(0,0,0,0.6)]" />
@@ -614,28 +614,30 @@ export default function Player() {
                 onClick={scrub}
                 onMouseDown={() => setScrubbing(true)}
                 onMouseUp={() => setScrubbing(false)}
+                onTouchStart={() => setScrubbing(true)}
+                onTouchEnd={() => setScrubbing(false)}
                 onMouseMove={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
                   const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
                   setHover({ time: (x / rect.width) * duration, x });
                 }}
                 onMouseLeave={() => setHover(null)}
-                className="group/bar relative mb-3 cursor-pointer py-2"
+                className="group/bar relative mb-3 cursor-pointer py-3 touch-none select-none"
               >
                 {hover && trickplay && trickplay.times.length > 0 && (
                   <ScrubPreview trickplay={trickplay} fileId={fileId} time={hover.time} x={hover.x} />
                 )}
-                <div className="h-1 overflow-hidden rounded-full bg-white/25 transition-[height] duration-200 group-hover/bar:h-1.5">
+                <div className="h-2 sm:h-1.5 overflow-hidden rounded-full bg-white/25 transition-[height] duration-200 group-hover/bar:h-2.5">
                   <div className="h-full w-full origin-left rounded-full bg-accent" style={{ transform: `scaleX(${progressPct / 100})` }} />
                 </div>
                 {/* Translating a full-width wrapper keeps the handle on the compositor:
                     a percentage transform resolves against the track's own width. */}
                 <div className="pointer-events-none absolute inset-x-0 top-1/2" style={{ transform: `translate3d(${progressPct}%, -50%, 0)` }}>
-                  <div className="h-3.5 w-3.5 -translate-x-1/2 rounded-full bg-white opacity-0 shadow-lg transition-opacity duration-200 group-hover/bar:opacity-100" />
+                  <div className="h-4 w-4 -translate-x-1/2 rounded-full bg-white opacity-90 sm:opacity-0 shadow-lg transition-opacity duration-200 group-hover/bar:opacity-100" />
                 </div>
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2.5 sm:gap-3">
                 <button onClick={togglePlay} className="grid h-11 w-11 place-items-center rounded-full bg-white/95 text-ink-950 transition-transform hover:scale-110 active:scale-95">
                   {playing ? (
                     <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5h3.5v15H7v-15Zm6.5 0H17v15h-3.5v-15Z" /></svg>
@@ -651,8 +653,8 @@ export default function Player() {
                   <Icon path="M13 8l5 4-5 4M6 8l5 4-5 4" size={20} />
                 </button>
 
-                <div className="group/vol flex items-center gap-2">
-                  <button onClick={() => setMuted((m) => !m)} className="text-mist-200 hover:text-white">
+                <div className="group/vol flex items-center gap-1.5 shrink-0">
+                  <button onClick={() => setMuted((m) => !m)} className="text-mist-200 hover:text-white p-1">
                     <Icon path={muted || volume === 0 ? 'M11 5 6 9H3v6h3l5 4V5ZM17 9l4 6M21 9l-4 6' : 'M11 5 6 9H3v6h3l5 4V5ZM16 8.5a5 5 0 0 1 0 7'} size={19} />
                   </button>
                   <input
@@ -665,11 +667,11 @@ export default function Player() {
                       setVolume(Number(e.target.value));
                       setMuted(false);
                     }}
-                    className="h-1 w-0 cursor-pointer accent-accent transition-all duration-300 group-hover/vol:w-20"
+                    className="hidden sm:block h-1 w-0 cursor-pointer accent-accent transition-all duration-300 group-hover/vol:w-20 overflow-hidden"
                   />
                 </div>
 
-                <div className="ml-1 font-mono text-[12.5px] text-mist-300 tabular-nums">
+                <div className="ml-1 shrink-0 font-mono text-[12px] sm:text-[12.5px] text-mist-300 tabular-nums">
                   {clock(virtual)} <span className="text-mist-600">/ {clock(duration)}</span>
                 </div>
 

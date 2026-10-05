@@ -73,8 +73,8 @@ export default function Library() {
   };
 
   return (
-    <div className="pt-20 pb-24">
-      <div className="glass-strong layer-promote sticky top-14 z-30 border-b border-white/6">
+    <div className="page-pt page-pb">
+      <div className="glass-strong layer-promote sticky top-[calc(env(safe-area-inset-top,0px)+3.5rem)] z-30 border-b border-white/6">
         <div className="mx-auto max-w-[1800px] px-4 py-3 sm:px-8">
           <div className="mb-3 flex items-baseline gap-3">
             <h1 className="text-2xl font-semibold tracking-tight">{library?.name ?? 'Biblioteca'}</h1>

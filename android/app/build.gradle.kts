@@ -24,8 +24,8 @@ android {
      * `versionCode` sube siempre en uno: es lo que Android mira para instalar
      * encima. El nombre se ve al pie del menú lateral.
      */
-    versionCode = 25
-    versionName = "3.22"
+    versionCode = 26
+    versionName = "3.23"
   }
 
   buildFeatures { compose = true }

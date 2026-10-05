@@ -7,7 +7,15 @@ import { config, DATA_DIR } from '../config.ts';
 import { db } from '../db.ts';
 import { formatoDeImagen } from '../scanner/tmdb.ts';
 
-export type User = { id: number; name: string; color: string | null; is_admin: number; has_pin?: number; has_avatar?: number };
+export type User = {
+  id: number;
+  name: string;
+  color: string | null;
+  is_admin: number;
+  has_pin?: number;
+  has_avatar?: number;
+  kid_ratings?: string[] | null;
+};
 
 const COOKIE = 'cineteca_session';
 const PAIRING_TTL_MS = 10 * 60_000;
@@ -41,8 +49,19 @@ function verifyPin(pin: string, stored: string): boolean {
  * falsificarlas, pero eso solo le haria pasar por «de fuera», que es el lado
  * estricto: no hay nada que ganar.
  */
+function esIpLocalOTailscale(ip: string): boolean {
+  const clean = ip.replace(/^::ffff:/, '');
+  if (clean === '127.0.0.1' || clean === '::1' || clean === 'localhost') return true;
+  if (/^10\./.test(clean)) return true;
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(clean)) return true;
+  if (/^192\.168\./.test(clean)) return true;
+  if (/^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(clean)) return true;
+  return false;
+}
+
 export function deFuera(req: FastifyRequest): boolean {
-  return Boolean(req.headers['x-forwarded-for'] || req.headers['x-forwarded-proto']);
+  if (req.headers['x-forwarded-for'] || req.headers['x-forwarded-proto']) return true;
+  return !esIpLocalOTailscale(req.ip);
 }
 
 /**
@@ -153,11 +172,16 @@ export function currentUser(req: FastifyRequest): User | null {
    * caducaba nunca. `strftime` con el mismo formato sí compara bien.
    */
   const row = db
-    .prepare(`SELECT u.id, u.name, u.color, u.is_admin FROM sessions s JOIN users u ON u.id = s.user_id
+    .prepare(`SELECT u.id, u.name, u.color, u.is_admin, (u.pin IS NOT NULL) AS has_pin, u.kid_ratings FROM sessions s JOIN users u ON u.id = s.user_id
                WHERE s.token = ? AND COALESCE(s.last_seen, s.created_at) >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)`)
-    .get(token, `-${CADUCIDAD_DIAS} days`) as User | undefined;
+    .get(token, `-${CADUCIDAD_DIAS} days`) as any;
 
-  if (row) marcarUso(token, req);
+  if (row) {
+    if (typeof row.kid_ratings === 'string') {
+      try { row.kid_ratings = JSON.parse(row.kid_ratings); } catch { row.kid_ratings = null; }
+    }
+    marcarUso(token, req);
+  }
   return row ?? null;
 }
 
@@ -209,8 +233,13 @@ export default async function authRoutes(app: FastifyInstance) {
 
   app.get('/api/users', async (req) => {
     const users = db
-      .prepare('SELECT id, name, color, is_admin, pin IS NOT NULL AS has_pin, avatar IS NOT NULL AS has_avatar FROM users ORDER BY id')
-      .all() as { id: number; name: string; color: string | null; is_admin: number; has_pin: number; has_avatar: number }[];
+      .prepare('SELECT id, name, color, is_admin, pin IS NOT NULL AS has_pin, avatar IS NOT NULL AS has_avatar, kid_ratings FROM users ORDER BY id')
+      .all() as any[];
+    for (const u of users) {
+      if (typeof u.kid_ratings === 'string') {
+        try { u.kid_ratings = JSON.parse(u.kid_ratings); } catch { u.kid_ratings = null; }
+      }
+    }
     /*
      * Desde internet solo se ensenan los perfiles que piden PIN. Ensenar uno
      * que no lo pide seria ensenar la llave puesta: cualquiera que de con la
@@ -221,23 +250,28 @@ export default async function authRoutes(app: FastifyInstance) {
   });
 
   app.post('/api/users', async (req, reply) => {
-    const { name, pin, isAdmin } = req.body as { name?: string; pin?: string; isAdmin?: boolean };
+    const { name, pin, isAdmin, kidRatings } = req.body as { name?: string; pin?: string; isAdmin?: boolean; kidRatings?: string[] };
     if (!name?.trim()) return reply.code(400).send({ error: 'Falta el nombre' });
     // Seis cifras: un millón de combinaciones, que con el freno de cinco
     // intentos por cuarto de hora no se sacan ni en una vida.
     if (pin && !/^\d{6,}$/.test(String(pin))) return reply.code(400).send({ error: 'El PIN tiene que ser de seis cifras o más, solo números' });
 
     const first = userCount() === 0;
+    const esInfantil = Array.isArray(kidRatings) && kidRatings.length > 0;
     if (!first) {
       const me = requireUser(req);
-      if (!me.is_admin) return reply.code(403).send({ error: 'Solo un administrador puede crear perfiles' });
+      if (!me.is_admin && (!esInfantil || me.kid_ratings)) {
+        return reply.code(403).send({ error: 'Solo un administrador puede crear perfiles estándar' });
+      }
     }
 
     const color = AVATAR_COLORS[userCount() % AVATAR_COLORS.length];
+    const finalAdmin = esInfantil ? 0 : (first || isAdmin ? 1 : 0);
+    const kidRatingsJson = esInfantil ? JSON.stringify(kidRatings) : null;
     try {
       const row = db
-        .prepare('INSERT INTO users (name, color, pin, is_admin, created_at) VALUES (?,?,?,?,?) RETURNING id')
-        .get(name.trim(), color, pin ? hashPin(pin) : null, first || isAdmin ? 1 : 0, new Date().toISOString()) as { id: number };
+        .prepare('INSERT INTO users (name, color, pin, is_admin, kid_ratings, created_at) VALUES (?,?,?,?,?,?) RETURNING id')
+        .get(name.trim(), color, pin ? hashPin(pin) : null, finalAdmin, kidRatingsJson, new Date().toISOString()) as { id: number };
       return { id: row.id };
     } catch {
       return reply.code(409).send({ error: 'Ya existe un perfil con ese nombre' });
@@ -305,11 +339,16 @@ export default async function authRoutes(app: FastifyInstance) {
     const yo = requireUser(req);
     const id = Number((req.params as { id: string }).id);
     if (yo.id !== id && !yo.is_admin) return reply.code(403).send({ error: 'Ese perfil no es tuyo' });
-    if (deFuera(req)) return reply.code(403).send({ error: 'El PIN se cambia desde la red de casa' });
 
     const { pin, actual } = req.body as { pin?: string; actual?: string };
     const fila = db.prepare('SELECT pin FROM users WHERE id = ?').get(id) as { pin: string | null } | undefined;
     if (!fila) return reply.code(404).send({ error: 'Perfil no encontrado' });
+
+    if (deFuera(req)) {
+      if (!fila.pin) return reply.code(403).send({ error: 'El primer PIN se configura desde la red de casa' });
+      if (!pin || String(pin).trim().length === 0) return reply.code(403).send({ error: 'No se puede quitar el PIN desde fuera de casa' });
+    }
+
     if (fila.pin && !(actual && verifyPin(actual, fila.pin))) {
       return reply.code(401).send({ error: 'El PIN actual no es correcto' });
     }
@@ -342,7 +381,7 @@ export default async function authRoutes(app: FastifyInstance) {
       | undefined;
     if (!user) return reply.code(404).send({ error: 'Perfil no encontrado' });
 
-    const body = req.body as { name?: string; color?: string; isAdmin?: boolean; pin?: string | null };
+    const body = req.body as { name?: string; color?: string; isAdmin?: boolean; pin?: string | null; kidRatings?: string[] | null };
 
     if (body.name !== undefined) {
       const nuevoNombre = body.name.trim();
@@ -364,6 +403,16 @@ export default async function authRoutes(app: FastifyInstance) {
         if (otrosAdmins === 0) return reply.code(400).send({ error: 'No puedes quitarte el rol de admin si eres el único' });
       }
       db.prepare('UPDATE users SET is_admin = ? WHERE id = ?').run(body.isAdmin ? 1 : 0, id);
+    }
+
+    if (body.kidRatings !== undefined) {
+      if (!yo.is_admin && yo.id === id) return reply.code(403).send({ error: 'No puedes modificar tu propio control parental' });
+      if (!yo.is_admin && yo.kid_ratings) return reply.code(403).send({ error: 'Solo un adulto puede configurar perfiles infantiles' });
+      const kr = Array.isArray(body.kidRatings) && body.kidRatings.length > 0 ? JSON.stringify(body.kidRatings) : null;
+      db.prepare('UPDATE users SET kid_ratings = ? WHERE id = ?').run(kr, id);
+      if (kr) {
+        db.prepare('UPDATE users SET is_admin = 0 WHERE id = ?').run(id);
+      }
     }
 
     if (body.pin !== undefined) {

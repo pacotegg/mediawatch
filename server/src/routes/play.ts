@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process';
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { config } from '../config.ts';
-import { db } from '../db.ts';
+import { db, parseRatingCategoria } from '../db.ts';
 import { mediaInfo, type MediaInfo } from '../media/probe.ts';
 import { dialogueDownmix, planPlayback, sessions, startStream, stopSession, type AudioMode, type ClientCaps } from '../media/transcode.ts';
 import { clearOffset, isMeasuring, measure, offsetFor, saveOffset } from '../media/resync.ts';
@@ -112,13 +112,21 @@ function cerrarSiInactivo(stream: ReturnType<typeof createReadStream>, res: Serv
 function fileRow(fileId: number) {
   return db
     .prepare(`SELECT f.id, f.path, f.item_id, f.episode_id,
-                COALESCE(i.title, s.title) AS title, COALESCE(f.item_id, e.show_id) AS parent_id
+                COALESCE(i.title, s.title) AS title, COALESCE(f.item_id, e.show_id) AS parent_id,
+                COALESCE(i.mpaa, s.mpaa) AS mpaa, COALESCE(i.library_id, s.library_id) AS library_id
               FROM media_files f
               LEFT JOIN items i ON i.id = f.item_id
               LEFT JOIN episodes e ON e.id = f.episode_id
               LEFT JOIN items s ON s.id = e.show_id
               WHERE f.id = ?`)
-    .get(fileId) as { id: number; path: string; item_id: number | null; episode_id: number | null; title: string; parent_id: number } | undefined;
+    .get(fileId) as { id: number; path: string; item_id: number | null; episode_id: number | null; title: string; parent_id: number; mpaa?: string; library_id?: number } | undefined;
+}
+
+function permitidoParaUsuario(row: ReturnType<typeof fileRow>, user: any): boolean {
+  if (!user?.kid_ratings || !Array.isArray(user.kid_ratings) || user.kid_ratings.length === 0) return true;
+  if (!row) return false;
+  const cat = parseRatingCategoria(row.mpaa ?? null, row.library_id ?? 0);
+  return user.kid_ratings.includes(cat);
 }
 
 function decodeText(buf: Buffer): string {
@@ -248,6 +256,10 @@ export default async function playRoutes(app: FastifyInstance) {
     const fileId = Number((req.params as { fileId: string }).fileId);
     const row = fileRow(fileId);
     if (!row) return reply.code(404).send({ error: 'Fichero no encontrado' });
+    const user = currentUser(req);
+    if (!permitidoParaUsuario(row, user)) {
+      return reply.code(403).send({ error: 'Contenido no disponible para este perfil' });
+    }
     if (!existsSync(row.path)) return reply.code(410).send({ error: 'El fichero ya no está en disco; se retirará en el próximo escaneo' });
 
     const info = await mediaInfo(fileId);
@@ -321,6 +333,10 @@ export default async function playRoutes(app: FastifyInstance) {
     const q = req.query as Record<string, string | undefined>;
     const row = fileRow(fileId);
     if (!row) return reply.code(404).send({ error: 'Fichero no encontrado' });
+    const user = currentUser(req);
+    if (!permitidoParaUsuario(row, user)) {
+      return reply.code(403).send({ error: 'Contenido no disponible para este perfil' });
+    }
     if (!existsSync(row.path)) return reply.code(410).send({ error: 'El fichero ya no está en disco' });
 
     // Alguien está viendo algo: los trabajos de fondo se apartan del disco.
@@ -341,10 +357,9 @@ export default async function playRoutes(app: FastifyInstance) {
 
     // El historial se anota aquí, no en `/api/progress`: un fichero servido en
     // crudo puede reproducirse entero sin que el cliente informe ni una vez.
-    const quienVe = currentUser(req);
-    if (quienVe) {
+    if (user) {
       comenzar({
-        userId: quienVe.id,
+        userId: user.id,
         // En un episodio `item_id` viene vacío: el título es la serie.
         itemId: row.parent_id,
         episodeId: row.episode_id ?? null,
@@ -550,7 +565,6 @@ export default async function playRoutes(app: FastifyInstance) {
       return reply.header('Content-Length', stat.size).send(streamCompleto);
     }
 
-    const user = quienVe;
     const session = startStream({
       sesion: sesionDe(req),
       path: row.path,
@@ -608,6 +622,10 @@ export default async function playRoutes(app: FastifyInstance) {
     const fileId = Number((req.params as { fileId: string }).fileId);
     const row = fileRow(fileId);
     if (!row) return reply.code(404).send({ error: 'Fichero no encontrado' });
+    const user = currentUser(req);
+    if (!permitidoParaUsuario(row, user)) {
+      return reply.code(403).send({ error: 'Contenido no disponible para este perfil' });
+    }
     const info = await mediaInfo(fileId);
     const q = req.query as Record<string, string | undefined>;
     const audioIndexMaestro = q.audio !== undefined ? Number(q.audio) : info.audio.find((a) => a.default)?.streamIndex ?? info.audio[0]?.streamIndex ?? 0;
@@ -868,7 +886,8 @@ export default async function playRoutes(app: FastifyInstance) {
     return { parando: pararPeliculas() };
   });
 
-  app.get('/api/sessions', async () => {
+  app.get('/api/sessions', async (req, reply) => {
+    if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'Solo un administrador' });
     return [...sessions.values()].map((s) => ({
       id: s.id,
       title: s.title,

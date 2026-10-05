@@ -9,10 +9,10 @@ export default function Person() {
   const personId = Number(id);
   const { data } = useQuery({ queryKey: ['person', personId], queryFn: () => api.person(personId) });
 
-  if (!data) return <div className="pt-32 text-center text-mist-500">Cargando…</div>;
+  if (!data) return <div className="page-pt text-center text-mist-500">Cargando…</div>;
 
   return (
-    <div className="mx-auto max-w-[1800px] px-4 pt-24 pb-24 sm:px-8">
+    <div className="mx-auto max-w-[1800px] px-4 page-pt page-pb sm:px-8">
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}

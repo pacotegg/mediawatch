@@ -21,6 +21,9 @@ import { db } from '../db.ts';
 const DIR = join(config.transcodeDir, 'descargas');
 mkdirSync(DIR, { recursive: true });
 
+// Limpiar descargas interrumpidas de ejecuciones anteriores
+db.prepare("UPDATE descargas SET estado = 'error', error = 'Interrumpida al reiniciar el servidor' WHERE estado = 'preparando'").run();
+
 export type Perfil = 'baja' | 'movil' | 'tablet' | 'fhd' | 'original';
 
 /*
@@ -30,10 +33,10 @@ export type Perfil = 'baja' | 'movil' | 'tablet' | 'fhd' | 'original';
  * complicadas.
  */
 export const PERFILES: Record<Exclude<Perfil, 'original'>, { alto: number; crf: number; techo: string; audio: string; nombre: string; estimacion: string }> = {
-  baja: { alto: 360, crf: 26, techo: '800k', audio: '96k', nombre: '360p', estimacion: 'Muy ligera (~300 MB)' },
-  movil: { alto: 480, crf: 24, techo: '1500k', audio: '128k', nombre: '480p', estimacion: 'Móvil (~600 MB)' },
-  tablet: { alto: 720, crf: 22, techo: '3000k', audio: '160k', nombre: '720p', estimacion: 'HD (~1.3 GB)' },
-  fhd: { alto: 1080, crf: 21, techo: '6000k', audio: '192k', nombre: '1080p', estimacion: 'Full HD (~2.8 GB)' },
+  baja: { alto: 360, crf: 28, techo: '500k', audio: '96k', nombre: '360p HEVC', estimacion: 'Muy ligera (~150 MB)' },
+  movil: { alto: 480, crf: 26, techo: '900k', audio: '128k', nombre: '480p HEVC', estimacion: 'Móvil (~300 MB)' },
+  tablet: { alto: 720, crf: 24, techo: '1800k', audio: '160k', nombre: '720p HEVC', estimacion: 'HD (~650 MB)' },
+  fhd: { alto: 1080, crf: 22, techo: '3500k', audio: '192k', nombre: '1080p HEVC', estimacion: 'Full HD (~1.4 GB)' },
 };
 
 export type Descarga = {
@@ -72,7 +75,7 @@ export function una(id: number) {
 export function pedir(userId: number, fileId: number, perfil: Perfil): Descarga {
   const origen = db
     .prepare(
-      `SELECT f.id, f.path, f.duration, COALESCE(i.title, s.title) AS titulo,
+      `SELECT f.id, f.path, f.duration, f.hdr, COALESCE(i.title, s.title) AS titulo,
               e.season, e.episode
          FROM media_files f
          LEFT JOIN items i ON i.id = f.item_id
@@ -80,7 +83,7 @@ export function pedir(userId: number, fileId: number, perfil: Perfil): Descarga 
          LEFT JOIN items s ON s.id = e.show_id
         WHERE f.id = ?`,
     )
-    .get(fileId) as { id: number; path: string; duration: number | null; titulo: string; season: number | null; episode: number | null } | undefined;
+    .get(fileId) as { id: number; path: string; duration: number | null; hdr: string | null; titulo: string; season: number | null; episode: number | null } | undefined;
 
   if (!origen) throw new Error('Fichero no encontrado');
   if (!existsSync(origen.path)) throw new Error('El fichero ya no está en disco');
@@ -123,11 +126,11 @@ export function pedir(userId: number, fileId: number, perfil: Perfil): Descarga 
     .run(fileId, userId, perfil, titulo, new Date().toISOString());
 
   const id = Number(res.lastInsertRowid);
-  preparar(id, origen.path, origen.duration ?? 0, perfil);
+  preparar(id, origen.path, origen.duration ?? 0, perfil, Boolean(origen.hdr));
   return fila(id) as Descarga;
 }
 
-function preparar(id: number, origen: string, duracion: number, perfil: Exclude<Perfil, 'original'>) {
+function preparar(id: number, origen: string, duracion: number, perfil: Exclude<Perfil, 'original'>, esHdr: boolean) {
   const ajustes = PERFILES[perfil];
   const destino = join(DIR, `${id}-${perfil}.mp4`);
 
@@ -139,10 +142,18 @@ function preparar(id: number, origen: string, duracion: number, perfil: Exclude<
    */
   const args = [
     '-hide_banner', '-loglevel', 'error', '-nostdin', '-y',
+    '-init_hw_device', 'qsv=qsv:hw,child_device_type=d3d11va,child_device=0',
+    '-hwaccel', 'qsv', '-hwaccel_output_format', 'qsv',
     '-i', origen,
     '-map', '0:v:0', '-map', '0:a:0?',
-    '-vf', `scale=-2:'min(${ajustes.alto},ih)':flags=bicubic,format=yuv420p`,
-    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', String(ajustes.crf), '-maxrate', ajustes.techo, '-bufsize', '4M',
+    '-vf', `vpp_qsv=h=${ajustes.alto}:w=-1:format=nv12${esHdr ? ':tonemap=1' : ''}:async_depth=4`,
+    '-c:v', 'hevc_qsv',
+    '-preset', 'veryfast',
+    '-profile:v', 'main',
+    '-tag:v', 'hvc1',
+    '-global_quality', String(ajustes.crf),
+    '-maxrate', ajustes.techo,
+    '-bufsize', '4M',
     '-c:a', 'aac', '-b:a', ajustes.audio, '-ac', '2',
     '-movflags', '+faststart',
     '-progress', 'pipe:1',
@@ -162,12 +173,20 @@ function preparar(id: number, origen: string, duracion: number, perfil: Exclude<
   });
 
   // `-progress` escribe pares clave=valor; el que interesa es el tiempo ya
-  // codificado, que dividido por la duración da el porcentaje.
+  // codificado, que dividido por la duración da el porcentaje. Throttling de 1 s
+  // para no saturar SQLite con escrituras en cada chunk de stdout.
+  let ultimoProgreso = -1;
+  let ultimoGuardado = 0;
   proc.stdout.on('data', (d) => {
     const m = /out_time_ms=(\d+)/.exec(d.toString());
     if (m && duracion > 0) {
+      const ahora = Date.now();
       const progreso = Math.min(99, Math.round((Number(m[1]) / 1e6 / duracion) * 100));
-      db.prepare('UPDATE descargas SET progreso = ? WHERE id = ?').run(progreso, id);
+      if (progreso !== ultimoProgreso && (ahora - ultimoGuardado >= 1000 || progreso === 99)) {
+        ultimoProgreso = progreso;
+        ultimoGuardado = ahora;
+        db.prepare('UPDATE descargas SET progreso = ? WHERE id = ?').run(progreso, id);
+      }
     }
   });
 

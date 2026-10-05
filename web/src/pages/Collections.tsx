@@ -65,7 +65,7 @@ export function CollectionsIndex() {
   const { data, isLoading } = useQuery({ queryKey: ['collections'], queryFn: api.collections });
 
   return (
-    <div className="mx-auto max-w-[1800px] px-4 pt-24 pb-24 sm:px-8">
+    <div className="mx-auto max-w-[1800px] px-4 page-pt page-pb sm:px-8">
       <h1 className="mb-1 text-2xl font-semibold tracking-tight">Sagas</h1>
       <p className="mb-8 text-sm text-mist-500">
         {data ? `${data.length} colecciones con más de un título` : 'Cargando…'}
@@ -398,7 +398,7 @@ export function CollectionDetail() {
   return (
     <div>
       {/* Cabecera cinematográfica */}
-      <div className="relative mb-8 min-h-[340px] w-full overflow-hidden bg-ink-950 pt-24 pb-12 shadow-md">
+      <div className="relative mb-8 min-h-[340px] w-full overflow-hidden bg-ink-950 pt-[calc(max(6rem,env(safe-area-inset-top,0px)+4.5rem))] pb-12 shadow-md">
         {fanartSrc && (
           <img
             src={fanartSrc}

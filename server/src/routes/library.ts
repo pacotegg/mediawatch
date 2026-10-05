@@ -57,6 +57,26 @@ const ITEM_FIELDS = `
   i.clearlogo IS NOT NULL AS has_logo, i.landscape IS NOT NULL AS has_landscape,
   i.arte_actualizado, i.library_id, l.name AS library_name`;
 
+function detectarEdicion(folder: string | null, filename: string | null, width: number | null, height: number | null): string {
+  const texto = `${folder ?? ''} ${filename ?? ''}`.toLowerCase();
+  if (texto.includes('fan edit') || texto.includes('fan-edit')) return 'Fan Edit';
+  if (texto.includes('extended') || texto.includes('extendida')) return 'Versión Extendida';
+  if (texto.includes('director')) return "Director's Cut";
+  if (texto.includes('theatrical') || texto.includes('cine')) return 'Versión Cine';
+  if (texto.includes('unrated') || texto.includes('uncut')) return 'Sin Censura';
+  if (texto.includes('imax')) return 'Versión IMAX';
+  if (texto.includes('remaster')) return 'Remasterizada';
+  if (texto.includes('final cut')) return 'Final Cut';
+  if (texto.includes('ultimate')) return 'Ultimate Edition';
+  if (texto.includes('special edition') || texto.includes('edicion especial')) return 'Edición Especial';
+  const h = height || 0;
+  const w = width || 0;
+  if (h >= 1400 || w >= 3000) return 'Versión 4K';
+  if (h >= 900 || w >= 1800) return 'Versión 1080p';
+  if (h >= 650 || w >= 1200) return 'Versión 720p';
+  return 'Versión Original';
+}
+
 function withProgress(rows: any[], userId: number | null) {
   if (!userId || rows.length === 0) return rows;
   const ids = rows.map((r) => r.id);
@@ -70,6 +90,13 @@ function withProgress(rows: any[], userId: number | null) {
     const p = map.get(r.id);
     return p ? { ...r, position: p.position, progressDuration: p.duration, watched: p.watched } : r;
   });
+}
+
+export function clausulaRating(user: any): { sql: string; params: string[] } {
+  const ratings = user?.kid_ratings;
+  if (!Array.isArray(ratings) || ratings.length === 0) return { sql: '', params: [] };
+  const placeholders = ratings.map(() => '?').join(',');
+  return { sql: `rating_categoria(i.mpaa, i.library_id) IN (${placeholders})`, params: ratings };
 }
 
 function nextEpisode(showId: number, userId: number | null) {
@@ -141,6 +168,14 @@ export default async function libraryRoutes(app: FastifyInstance) {
       where.push('NOT EXISTS (SELECT 1 FROM progress p WHERE p.user_id = ? AND p.item_id = i.id AND p.watched = 1)');
       params.push(user.id);
     }
+    const cr = clausulaRating(user);
+    if (cr.sql) {
+      where.push(cr.sql);
+      params.push(...cr.params);
+    }
+    where.push(`(i.kind != 'movie' OR NOT EXISTS (
+      SELECT 1 FROM items i2 WHERE i2.kind = 'movie' AND i2.tmdb_id IS NOT NULL AND i2.tmdb_id = i.tmdb_id AND i2.id < i.id
+    ))`);
     const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
     const rows = db
@@ -170,14 +205,16 @@ export default async function libraryRoutes(app: FastifyInstance) {
   app.get('/api/items/:id', async (req, reply) => {
     const id = Number((req.params as { id: string }).id);
     const user = currentUser(req);
+    const cr = clausulaRating(user);
+    const crClause = cr.sql ? `AND ${cr.sql}` : '';
     const item = db
       .prepare(`SELECT i.*, l.name AS library_name, l.kind AS library_kind,
                   i.poster IS NOT NULL AS has_poster, i.fanart IS NOT NULL AS has_fanart,
                   i.clearlogo IS NOT NULL AS has_logo, i.landscape IS NOT NULL AS has_landscape,
                   i.discart IS NOT NULL AS has_discart,
                   (SELECT COUNT(*) FROM extras WHERE item_id = i.id) AS extras_count
-                FROM items i JOIN libraries l ON l.id = i.library_id WHERE i.id = ?`)
-      .get(id) as any;
+                FROM items i JOIN libraries l ON l.id = i.library_id WHERE i.id = ? ${crClause}`)
+      .get(id, ...cr.params) as any;
     if (!item) return reply.code(404).send({ error: 'No encontrado' });
 
     for (const k of ['poster', 'fanart', 'clearlogo', 'landscape', 'folder', 'search_title']) delete item[k];
@@ -279,11 +316,55 @@ export default async function libraryRoutes(app: FastifyInstance) {
       return { ...item, genres: genres.map((g) => g.name), cast, files, episodes, progress, nextUp: nextEpisode(id, user?.id ?? null) };
     }
 
+    let versions: any[] = [];
+    if (item.kind === 'movie') {
+      const siblingItems = item.tmdb_id
+        ? (db.prepare("SELECT id, folder, title FROM items WHERE kind = 'movie' AND tmdb_id = ?").all(item.tmdb_id) as any[])
+        : [{ id: item.id, folder: '', title: item.title }];
+      const siblingIds = siblingItems.map((s) => s.id);
+      const sibPlaceholders = siblingIds.map(() => '?').join(',');
+      const siblingFiles = db
+        .prepare(`SELECT f.id, f.item_id, f.path, f.size, f.container, f.duration, f.video_codec, f.width, f.height, f.hdr, i.folder
+                  FROM media_files f JOIN items i ON i.id = f.item_id
+                  WHERE f.item_id IN (${sibPlaceholders})`)
+        .all(...siblingIds) as any[];
+
+      const sibTrackRows = siblingFiles.length
+        ? (db.prepare(`SELECT file_id, codec, language, channels FROM audio_tracks WHERE file_id IN (${siblingFiles.map(() => '?').join(',')})`)
+            .all(...siblingFiles.map((f) => f.id)) as any[])
+        : [];
+      const sibSubRows = siblingFiles.length
+        ? (db.prepare(`SELECT file_id, language, forced, external IS NOT NULL AS is_external FROM sub_tracks WHERE file_id IN (${siblingFiles.map(() => '?').join(',')})`)
+            .all(...siblingFiles.map((f) => f.id)) as any[])
+        : [];
+
+      versions = siblingFiles.map((f) => {
+        const fname = f.path.split(/[\\/]/).pop();
+        const resLabel = (f.height ?? 0) >= 1400 || (f.width ?? 0) >= 3000 ? '4K' : (f.height ?? 0) >= 900 ? '1080p' : (f.height ?? 0) >= 650 ? '720p' : 'SD';
+        return {
+          itemId: f.item_id,
+          fileId: f.id,
+          name: detectarEdicion(f.folder, fname, f.width, f.height),
+          label: `${resLabel}${f.hdr ? ` ${f.hdr}` : ''}`,
+          width: f.width,
+          height: f.height,
+          hdr: f.hdr,
+          video_codec: f.video_codec,
+          duration: f.duration,
+          size: f.size,
+          audio: sibTrackRows.filter((t) => t.file_id === f.id),
+          subtitles: sibSubRows.filter((s) => s.file_id === f.id),
+          isCurrent: f.item_id === item.id,
+        };
+      }).sort((a, b) => (b.width ?? 0) - (a.width ?? 0));
+    }
+
     return {
       ...item,
       genres: genres.map((g) => g.name),
       cast,
       files,
+      versions,
       progress,
       collectionItems: item.collection
         ? withProgress(
@@ -312,6 +393,8 @@ export default async function libraryRoutes(app: FastifyInstance) {
 
   app.get('/api/home', async (req) => {
     const user = currentUser(req);
+    const cr = clausulaRating(user);
+    const crAnd = cr.sql ? `AND ${cr.sql}` : '';
     const rows: { key: string; title: string; kind: string; items: any[] }[] = [];
 
     if (user) {
@@ -328,9 +411,10 @@ export default async function libraryRoutes(app: FastifyInstance) {
                   FROM progress p JOIN items i ON i.id = p.item_id JOIN libraries l ON l.id = i.library_id
                   WHERE p.user_id = ? AND p.watched = 0 AND p.position > 60
                     AND (p.duration IS NULL OR p.position < p.duration * 0.95)
+                    ${crAnd}
                   GROUP BY i.id
                   ORDER BY updated_at DESC LIMIT 20`)
-        .all(user.id) as any[];
+        .all(user.id, ...cr.params) as any[];
       if (continueItems.length) rows.push({ key: 'continue', title: 'Continuar viendo', kind: 'progress', items: continueItems });
     }
 
@@ -346,41 +430,45 @@ export default async function libraryRoutes(app: FastifyInstance) {
      * su primer capítulo, de hace veinte años en muchas— y nunca fechas por
      * venir, que las hay en las fichas y encabezarían la fila sin poder verse.
      */
+    const noDupMovie = `AND (i.kind != 'movie' OR NOT EXISTS (SELECT 1 FROM items i2 WHERE i2.kind = 'movie' AND i2.tmdb_id IS NOT NULL AND i2.tmdb_id = i.tmdb_id AND i2.id < i.id))`;
+
     const estrenos = db
       .prepare(`SELECT ${ITEM_FIELDS} FROM items i JOIN libraries l ON l.id = i.library_id
                 WHERE i.kind = 'movie' AND i.premiered IS NOT NULL AND i.premiered != ''
-                  AND i.premiered <= date('now')
+                  AND i.premiered <= date('now') ${crAnd} ${noDupMovie}
                 ORDER BY i.premiered DESC LIMIT 24`)
-      .all();
+      .all(...cr.params);
     if (estrenos.length) {
       rows.push({ key: 'estrenos', title: 'Estrenadas recientemente', kind: 'poster', items: withProgress(estrenos, user?.id ?? null) });
     }
 
     const recent = db
       .prepare(`SELECT ${ITEM_FIELDS} FROM items i JOIN libraries l ON l.id = i.library_id
-                WHERE i.added_at IS NOT NULL ORDER BY i.added_at DESC LIMIT 24`)
-      .all();
+                WHERE i.added_at IS NOT NULL ${crAnd} ${noDupMovie} ORDER BY i.added_at DESC LIMIT 24`)
+      .all(...cr.params);
     rows.push({ key: 'recent', title: 'Añadido recientemente', kind: 'poster', items: withProgress(recent, user?.id ?? null) });
 
     for (const lib of db.prepare('SELECT id, name, kind FROM libraries ORDER BY id').all() as any[]) {
       const items = db
         .prepare(`SELECT ${ITEM_FIELDS} FROM items i JOIN libraries l ON l.id = i.library_id
-                  WHERE i.library_id = ? ORDER BY RANDOM() LIMIT 20`)
-        .all(lib.id);
+                  WHERE i.library_id = ? ${crAnd} ${noDupMovie} ORDER BY RANDOM() LIMIT 20`)
+        .all(lib.id, ...cr.params);
       if (items.length) rows.push({ key: `lib-${lib.id}`, title: lib.name, kind: 'poster', items: withProgress(items, user?.id ?? null) });
     }
 
     const hero = db
       .prepare(`SELECT ${ITEM_FIELDS}, i.plot FROM items i JOIN libraries l ON l.id = i.library_id
-                WHERE i.fanart IS NOT NULL AND i.clearlogo IS NOT NULL AND i.rating >= 7.4
+                WHERE i.fanart IS NOT NULL AND i.clearlogo IS NOT NULL AND i.rating >= 7.4 ${crAnd}
                 ORDER BY RANDOM() LIMIT 6`)
-      .all();
+      .all(...cr.params);
 
     return { hero, rows };
   });
 
   app.get('/api/collections', async (req) => {
     const user = currentUser(req);
+    const cr = clausulaRating(user);
+    const crAnd = cr.sql ? `AND ${cr.sql}` : '';
     const rows = db
       .prepare(`SELECT i.collection AS name, COUNT(*) AS count, MIN(i.year) AS first_year, MAX(i.year) AS last_year,
                   COALESCE((SELECT ca.item_id FROM coleccion_arte ca JOIN items x ON x.id = ca.item_id
@@ -393,18 +481,18 @@ export default async function libraryRoutes(app: FastifyInstance) {
                   EXISTS(SELECT 1 FROM coleccion_imagen ci WHERE ci.coleccion = i.collection AND ci.fondo IS NOT NULL AND ci.fondo != '') AS fondo_propio,
                   (SELECT ci.actualizado FROM coleccion_imagen ci WHERE ci.coleccion = i.collection) AS arte_actualizado
                 FROM items i
-                WHERE i.collection IS NOT NULL AND i.collection != ''
+                WHERE i.collection IS NOT NULL AND i.collection != '' ${crAnd}
                 GROUP BY i.collection HAVING count > 1
                 ORDER BY count DESC, name`)
-      .all() as any[];
+      .all(...cr.params) as any[];
 
     if (user) {
       const watched = db
         .prepare(`SELECT i.collection AS name, COUNT(*) AS seen
                   FROM progress p JOIN items i ON i.id = p.item_id
-                  WHERE p.user_id = ? AND p.watched = 1 AND i.collection IS NOT NULL
+                  WHERE p.user_id = ? AND p.watched = 1 AND i.collection IS NOT NULL ${crAnd}
                   GROUP BY i.collection`)
-        .all(user.id) as { name: string; seen: number }[];
+        .all(user.id, ...cr.params) as { name: string; seen: number }[];
       const map = new Map(watched.map((w) => [w.name, w.seen]));
       for (const row of rows) row.seen = map.get(row.name) ?? 0;
     }
@@ -414,11 +502,13 @@ export default async function libraryRoutes(app: FastifyInstance) {
   app.get('/api/collections/:name', async (req, reply) => {
     const name = decodeURIComponent((req.params as { name: string }).name);
     const user = currentUser(req);
+    const cr = clausulaRating(user);
+    const crAnd = cr.sql ? `AND ${cr.sql}` : '';
     const items = db
       .prepare(`SELECT ${ITEM_FIELDS} FROM items i JOIN libraries l ON l.id = i.library_id
-                WHERE i.collection = ?
+                WHERE i.collection = ? ${crAnd}
                 ORDER BY COALESCE(i.premiered, printf('%04d-06-30', i.year)), i.title`)
-      .all(name);
+      .all(name, ...cr.params);
     if (items.length === 0) return reply.code(404).send({ error: 'Saga no encontrada' });
     const elegida = db.prepare('SELECT item_id FROM coleccion_arte WHERE coleccion = ?').get(name) as
       | { item_id: number }
@@ -595,13 +685,16 @@ export default async function libraryRoutes(app: FastifyInstance) {
     if (!q || q.trim().length < 2) return { items: [], people: [] };
     const limpio = normalize(q);
     if (!limpio) return { items: [], people: [] };
+    const user = currentUser(req);
+    const cr = clausulaRating(user);
+    const crAnd = cr.sql ? `AND ${cr.sql}` : '';
     const term = `%${limpio}%`;
     const crudo = `%${q.toLowerCase().trim()}%`;
     const items = db
       .prepare(`SELECT ${ITEM_FIELDS} FROM items i JOIN libraries l ON l.id = i.library_id
-                WHERE i.search_title LIKE ? OR LOWER(i.original_title) LIKE ? OR LOWER(i.original_title) LIKE ?
+                WHERE (i.search_title LIKE ? OR LOWER(i.original_title) LIKE ? OR LOWER(i.original_title) LIKE ?) ${crAnd}
                 ORDER BY (i.search_title LIKE ?) DESC, i.rating DESC NULLS LAST LIMIT 40`)
-      .all(term, term, crudo, `${limpio}%`);
+      .all(term, term, crudo, ...cr.params, `${limpio}%`);
     const people = db
       .prepare(`SELECT p.id, p.name, p.thumb IS NOT NULL AS has_thumb, COUNT(ip.item_id) AS count
                 FROM people p JOIN item_people ip ON ip.person_id = p.id
