@@ -591,10 +591,8 @@ Hechos desde los commits (`git log`). El detalle de cada cambio está en el mens
   3.8 (`7714c1e`), 3.13 (`2daee24`), 3.17 (`dfb72f8`), 3.23 (`5b036d3`), 3.25 (`e83a2e2`).
   El APK no entra en git: `*.apk` está en `.gitignore` y el repo es público. Los 367 MB de
   APK no caben en el historial.
-- **Versiones sin registro** (ni commit ni dosier dicen qué traían): 3.3–3.6, 3.9–3.12,
-  3.15–3.16, 3.18–3.21 y 3.24. Algunas tienen APK en disco; no se han subido. La 3.22 y la 3.2
-  no tienen APK en disco. Una búsqueda en las transcripciones (05/10) no encontró su contenido.
-- `CHANGELOG.md` (raíz) es la fuente de la ventana de novedades de la app.
+- **Versiones documentadas en CHANGELOG.md**: 3.2, 3.7, 3.8, 3.13, 3.14, 3.17, 3.22, 3.23, 3.24, 3.25, así como los bloques de iteración intermedia (3.3–3.6, 3.9–3.12, 3.15–3.16, 3.18–3.21).
+- `CHANGELOG.md` (raíz) es la fuente que lee la app Android para alimentar el diálogo de novedades la primera vez que se abre cada versión.
 - `.gitignore`: `node_modules/`, `data/` (claves, BD, arte, cachés), `web/dist/`,
   `tv/dist/`, `tv/*.wgt`, `android/app/build/`, `android/.gradle/`, `android/.kotlin/`,
   `android/local.properties`, `*.apk`, `__pycache__/`.
