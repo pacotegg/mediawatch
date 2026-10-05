@@ -99,6 +99,8 @@ app.addHook('onRequest', async (req, reply) => {
   const ruta = req.url.split('?')[0];
   if (!ruta.startsWith('/api/')) return; // la web y la app de la tele son ficheros
   if (ABIERTAS.has(`${req.method} ${ruta}`)) return;
+  // Los avatares de los usuarios se ven en la pantalla de entrada antes de tener sesión
+  if (req.method === 'GET' && /^\/api\/users\/\d+\/avatar$/.test(ruta)) return;
 
   if (!currentUser(req)) {
     return reply.code(401).send({ error: 'No autenticado' });

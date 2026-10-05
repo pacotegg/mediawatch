@@ -118,6 +118,7 @@ export type Ficha = Titulo & {
   progress: { episode_id: number | null; position: number; duration: number | null; watched: number }[];
   /** 1 si el perfil actual lo tiene en favoritos. */
   favorite: number;
+  extras_count?: number;
   /** Valoración de cada sitio, cada una con su escala (10 o 100). */
   ratings?: { fuente: string; etiqueta: string; valor: number; maximo: number; votos: number }[];
   nextUp?: { id: number; season: number; episode: number };
@@ -201,6 +202,7 @@ export const api = {
 
   /** Featurettes, «como se hizo» y demas videos que acompanyan a un titulo. */
   extras: (itemId: number) => pedir<{ extras: Extra[] }>('/api/items/' + itemId + '/extras'),
+  resenas: (itemId: number) => pedir<{ items: { fuente: string; autor: string; contenido: string; valor: number | null; url: string | null }[] }>('/api/items/' + itemId + '/reviews'),
 
   /*
    * Plataformas del usuario (Movistar+, Prime, Apple TV+). Aqui NO se reproduce

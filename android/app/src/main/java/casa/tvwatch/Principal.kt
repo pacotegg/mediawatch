@@ -51,9 +51,11 @@ import casa.tvwatch.ui.Destino
 import casa.tvwatch.ui.Fondo
 import casa.tvwatch.ui.Menu
 import casa.tvwatch.ui.Movimiento
+import casa.tvwatch.ui.PantallaAjustes
 import casa.tvwatch.ui.PantallaBiblioteca
 import casa.tvwatch.ui.PantallaBuscar
 import casa.tvwatch.ui.PantallaConexion
+import casa.tvwatch.ui.PantallaDescargas
 import casa.tvwatch.ui.PantallaFavoritas
 import casa.tvwatch.ui.PantallaFicha
 import casa.tvwatch.ui.PantallaPersona
@@ -115,10 +117,12 @@ private object Rutas {
   const val ARTE = "arte/{id}/{kind}/{titulo}/{anio}"
   const val BUSCAR = "buscar"
   const val FAVORITAS = "favoritas"
+  const val DESCARGAS = "descargas"
   const val SAGAS = "sagas"
   const val PLATAFORMAS = "plataformas"
   const val SAGA = "saga/{nombre}"
   const val PERSONA = "persona/{id}"
+  const val AJUSTES = "ajustes"
 
   fun saga(nombre: String) = "saga/" + URLEncoder.encode(nombre, "UTF-8")
 
@@ -168,9 +172,11 @@ private fun Navegacion(nav: NavHostController) {
       Destino.Inicio -> nav.popBackStack(Rutas.PORTADA, inclusive = false)
       Destino.Buscar -> encimaDeLaPortada(Rutas.BUSCAR)
       Destino.Favoritas -> encimaDeLaPortada(Rutas.FAVORITAS)
+      Destino.Descargas -> encimaDeLaPortada(Rutas.DESCARGAS)
       Destino.Sagas -> encimaDeLaPortada(Rutas.SAGAS)
       Destino.Plataformas -> encimaDeLaPortada(Rutas.PLATAFORMAS)
       is Destino.Biblioteca -> encimaDeLaPortada(Rutas.biblioteca(destino.id, destino.nombre))
+      Destino.Ajustes -> encimaDeLaPortada(Rutas.AJUSTES)
       Destino.Salir -> aConexion()
     }
   }
@@ -270,6 +276,23 @@ private fun Navegacion(nav: NavHostController) {
           PantallaFavoritas(
             alAbrirFicha = { nav.navigate(Rutas.ficha(it)) },
             alPerderSesion = { aConexion() },
+          )
+        }
+      }
+
+      composable(Rutas.DESCARGAS) {
+        Pantalla(titulo = "Descargas", nav = nav, alMenu = ::abrirMenu) {
+          PantallaDescargas(
+            alPerderSesion = { aConexion() },
+          )
+        }
+      }
+
+      composable(Rutas.AJUSTES) {
+        Pantalla(titulo = "Opciones", nav = nav, alMenu = ::abrirMenu) {
+          PantallaAjustes(
+            alIrADescargas = { nav.navigate(Rutas.DESCARGAS) },
+            alCerrarSesion = { aConexion() },
           )
         }
       }

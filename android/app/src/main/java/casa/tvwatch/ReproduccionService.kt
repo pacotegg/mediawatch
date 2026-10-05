@@ -9,9 +9,11 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSourceBitmapLoader
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import casa.tvwatch.datos.Ajustes
@@ -57,7 +59,28 @@ class ReproduccionService : MediaSessionService() {
         .createDataSource()
     }
 
+    /*
+     * Buffer de 2 minutos máximo con protección para 4K:
+     * - minBufferMs = 60_000: si el colchón baja de 1 minuto, empieza a precargar.
+     * - maxBufferMs = 120_000: precarga hasta 2 minutos máximo.
+     * - setTargetBufferBytes(150 MB): en 4K frena al llegar a 150 MB para blindar la RAM.
+     * - prioritizeTimeOverSizeThresholds(false): el tope de 150 MB manda sobre el tiempo.
+     */
+    val controlBuffer = DefaultLoadControl.Builder()
+      .setBufferDurationsMs(
+        /* minBufferMs = */ 60_000,
+        /* maxBufferMs = */ 120_000,
+        /* bufferForPlaybackMs = */ 2_500,
+        /* bufferForPlaybackAfterRebufferMs = */ 5_000,
+      )
+      .setTargetBufferBytes(150 * 1024 * 1024)
+      .setPrioritizeTimeOverSizeThresholds(false)
+      .build()
+
+    val politicaReintentos = DefaultLoadErrorHandlingPolicy(/* minLoadableRetryCount = */ 10)
+
     val reproductor = ExoPlayer.Builder(this)
+      .setLoadControl(controlBuffer)
       /*
        * Los decodificadores propios por delante de los del sistema.
        *
@@ -71,7 +94,10 @@ class ReproduccionService : MediaSessionService() {
         DefaultRenderersFactory(this)
           .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER),
       )
-      .setMediaSourceFactory(DefaultMediaSourceFactory(fuente))
+      .setMediaSourceFactory(
+        DefaultMediaSourceFactory(fuente)
+          .setLoadErrorHandlingPolicy(politicaReintentos),
+      )
       .setSeekBackIncrementMs(10_000)
       .setSeekForwardIncrementMs(30_000)
       // Que pare cuando suena una llamada o se quitan los auriculares, y que

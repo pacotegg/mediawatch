@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'motion/react';
 import { Button, Field, Panel, Select, Slider, TextInput, Toggle } from '../components/Controls.tsx';
 import AnalysisPanels from '../components/AnalysisPanels.tsx';
 import MetadataReview from '../components/MetadataReview.tsx';
 import Actividad from '../components/Actividad.tsx';
-import { api } from '../lib/api.ts';
+import { api, type User } from '../lib/api.ts';
 import { fileSize } from '../lib/format.ts';
 import { usePreferences } from '../lib/preferences.tsx';
 
@@ -16,6 +16,7 @@ const TABS = [
   { key: 'library', label: 'Biblioteca' },
   { key: 'analysis', label: 'Análisis' },
   { key: 'metadata', label: 'Metadatos' },
+  { key: 'usuarios', label: 'Usuarios' },
   { key: 'pin', label: 'PIN' },
   { key: 'actividad', label: 'Actividad' },
   { key: 'server', label: 'Servidor' },
@@ -355,6 +356,362 @@ function LibraryTab() {
   );
 }
 
+const AVATAR_COLORS = ['#e8b64c', '#5ac8fa', '#ff6b6b', '#8e7cff', '#3ddc97', '#ff9f43', '#f368e0', '#54a0ff'];
+
+function UsuariosTab() {
+  const queryClient = useQueryClient();
+  const { data: usersData, isLoading } = useQuery({ queryKey: ['users'], queryFn: api.users });
+  const { data: yo } = useQuery({ queryKey: ['me'], queryFn: api.me });
+
+  const [editing, setEditing] = useState<User | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newPin, setNewPin] = useState('');
+
+  const [editName, setEditName] = useState('');
+  const [editColor, setEditColor] = useState('#e8b64c');
+  const [editIsAdmin, setEditIsAdmin] = useState(false);
+  const [editPin, setEditPin] = useState('');
+  const [quitarPin, setQuitarPin] = useState(false);
+  const [aviso, setAviso] = useState('');
+  const [subiendoAvatar, setSubiendoAvatar] = useState(false);
+
+  const startEdit = (u: User) => {
+    setEditing(u);
+    setCreating(false);
+    setEditName(u.name);
+    setEditColor(u.color ?? '#e8b64c');
+    setEditIsAdmin(u.is_admin === 1);
+    setEditPin('');
+    setQuitarPin(false);
+    setAviso('');
+  };
+
+  const createMutation = useMutation({
+    mutationFn: () => api.createUser(newName.trim(), newPin ? newPin.trim() : undefined),
+    onSuccess: () => {
+      setCreating(false);
+      setNewName('');
+      setNewPin('');
+      setAviso('Usuario creado con éxito');
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+    },
+    onError: (err: Error) => setAviso(err.message),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async () => {
+      if (!editing) return;
+      const data: { name?: string; color?: string; isAdmin?: boolean; pin?: string | null } = {
+        name: editName.trim(),
+        color: editColor,
+        isAdmin: editIsAdmin,
+      };
+      if (quitarPin) {
+        data.pin = null;
+      } else if (editPin.length > 0) {
+        data.pin = editPin;
+      }
+      await api.updateUser(editing.id, data);
+    },
+    onSuccess: () => {
+      setEditing(null);
+      setAviso('Usuario actualizado');
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: ['me'] });
+    },
+    onError: (err: Error) => setAviso(err.message),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => api.deleteUser(id),
+    onSuccess: () => {
+      setEditing(null);
+      setAviso('Usuario eliminado');
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+    },
+    onError: (err: Error) => setAviso(err.message),
+  });
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !editing) return;
+    setSubiendoAvatar(true);
+    setAviso('');
+    try {
+      await api.uploadAvatar(editing.id, file);
+      setAviso('Foto de perfil actualizada');
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: ['me'] });
+      setEditing({ ...editing, has_avatar: 1 });
+    } catch (err: any) {
+      setAviso(err.message ?? 'Error subiendo la imagen');
+    } finally {
+      setSubiendoAvatar(false);
+    }
+  };
+
+  const handleAvatarDelete = async () => {
+    if (!editing) return;
+    setSubiendoAvatar(true);
+    try {
+      await api.deleteAvatar(editing.id);
+      setAviso('Foto de perfil retirada');
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: ['me'] });
+      setEditing({ ...editing, has_avatar: 0 });
+    } catch (err: any) {
+      setAviso(err.message ?? 'Error retirando el avatar');
+    } finally {
+      setSubiendoAvatar(false);
+    }
+  };
+
+  if (isLoading) return <div className="text-sm text-mist-500">Cargando usuarios…</div>;
+
+  return (
+    <Panel
+      title="Usuarios y perfiles"
+      subtitle="Gestiona los perfiles del servidor, sus avatares, permisos de administrador y acceso por PIN."
+      action={
+        !creating && !editing ? (
+          <Button onClick={() => { setCreating(true); setEditing(null); setNewName(''); setNewPin(''); setAviso(''); }}>
+            + Nuevo usuario
+          </Button>
+        ) : undefined
+      }
+    >
+      <div className="rounded-2xl border border-white/8 bg-white/4 p-4 text-[13px] leading-relaxed text-mist-300">
+        <strong className="text-mist-100">💡 Acceso desde fuera de casa:</strong> Por seguridad, al conectarse desde internet
+        solo se muestran y se permite entrar a los perfiles que tienen un <strong className="text-mist-100">PIN</strong> de 6 dígitos.
+        Los perfiles sin PIN solo son visibles dentro de la red local de casa.
+      </div>
+
+      {creating && (
+        <div className="space-y-4 rounded-2xl border border-white/10 bg-white/6 p-5">
+          <h3 className="text-[14px] font-semibold text-mist-100">Crear nuevo perfil</h3>
+          <Field label="Nombre" hint="Identificador visible en el menú de perfiles.">
+            <TextInput value={newName} onChange={setNewName} placeholder="Nombre" />
+          </Field>
+          <Field label="PIN (opcional)" hint="Mínimo 6 dígitos. Requerido para acceder desde fuera de casa.">
+            <input
+              type="password"
+              inputMode="numeric"
+              value={newPin}
+              onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
+              placeholder="6 dígitos o vacío"
+              className="rounded-xl border border-white/8 bg-white/6 px-3 py-2 text-[13px] outline-none placeholder:text-mist-600 focus:border-accent/40"
+            />
+          </Field>
+          <div className="flex gap-2 pt-2">
+            <Button onClick={() => createMutation.mutate()} disabled={!newName.trim() || createMutation.isPending}>
+              Crear perfil
+            </Button>
+            <Button variant="ghost" onClick={() => setCreating(false)}>
+              Cancelar
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {editing && (
+        <div className="space-y-5 rounded-2xl border border-white/10 bg-white/6 p-5">
+          <div className="flex items-center justify-between">
+            <h3 className="text-[14px] font-semibold text-mist-100">Editar perfil: {editing.name}</h3>
+            <button onClick={() => setEditing(null)} className="text-xs text-mist-400 hover:text-mist-200">
+              ✕ Cerrar
+            </button>
+          </div>
+
+          <div className="flex items-center gap-5 border-b border-white/5 pb-4">
+            <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl shadow-lg ring-1 ring-white/15">
+              {editing.has_avatar ? (
+                <img
+                  src={`${api.userAvatarUrl(editing.id)}?t=${Date.now()}`}
+                  alt={editing.name}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div
+                  className="grid h-full w-full place-items-center text-2xl font-bold text-ink-950"
+                  style={{ background: `linear-gradient(140deg, ${editColor}, ${editColor}bb)` }}
+                >
+                  {editName.charAt(0).toUpperCase() || '?'}
+                </div>
+              )}
+            </div>
+            <div className="space-y-2">
+              <div className="text-[13px] text-mist-200">Foto de perfil</div>
+              <div className="flex flex-wrap gap-2">
+                <label className="cursor-pointer rounded-full bg-mist-100 px-3.5 py-1.5 text-xs font-semibold text-ink-950 transition hover:bg-white">
+                  <span>{subiendoAvatar ? 'Subiendo…' : 'Subir foto'}</span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    onChange={handleAvatarUpload}
+                    disabled={subiendoAvatar}
+                  />
+                </label>
+                {editing.has_avatar === 1 && (
+                  <Button variant="danger" onClick={handleAvatarDelete} disabled={subiendoAvatar}>
+                    Quitar foto
+                  </Button>
+                )}
+              </div>
+              <p className="text-[11.5px] text-mist-500">Admite JPEG, PNG y WebP. Se muestra en web, TV y móvil.</p>
+            </div>
+          </div>
+
+          <Field label="Nombre del perfil">
+            <TextInput value={editName} onChange={setEditName} placeholder="Nombre" />
+          </Field>
+
+          <Field label="Color del perfil" hint="Fondo cuando no hay foto de perfil.">
+            <div className="flex flex-wrap gap-2">
+              {AVATAR_COLORS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setEditColor(c)}
+                  className={`h-7 w-7 rounded-full transition-transform ${editColor === c ? 'scale-125 ring-2 ring-white ring-offset-2 ring-offset-ink-900' : 'hover:scale-110'}`}
+                  style={{ backgroundColor: c }}
+                />
+              ))}
+            </div>
+          </Field>
+
+          {yo?.is_admin === 1 && (
+            <Field label="Administrador" hint="Permite escanear bibliotecas, editar títulos y gestionar usuarios.">
+              <Toggle checked={editIsAdmin} onChange={setEditIsAdmin} />
+            </Field>
+          )}
+
+          <div className="border-b border-white/5 pb-4">
+            <div className="text-[13.5px] text-mist-200">PIN de acceso</div>
+            <div className="mt-1 text-[12px] text-mist-500">
+              {editing.has_pin
+                ? 'Este perfil tiene PIN actualmente (visible dentro y fuera de casa).'
+                : 'Este perfil NO tiene PIN (solo se muestra en la red local de casa).'}
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <input
+                type="password"
+                inputMode="numeric"
+                value={editPin}
+                onChange={(e) => {
+                  setEditPin(e.target.value.replace(/\D/g, ''));
+                  setQuitarPin(false);
+                }}
+                placeholder="Nuevo PIN (6 cifras)"
+                disabled={quitarPin}
+                className="w-48 rounded-xl border border-white/8 bg-white/6 px-3 py-2 text-[13px] outline-none placeholder:text-mist-600 focus:border-accent/40 disabled:opacity-40"
+              />
+              {editing.has_pin === 1 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuitarPin(!quitarPin);
+                    setEditPin('');
+                  }}
+                  className={`rounded-xl px-3 py-2 text-xs font-medium transition ${quitarPin ? 'bg-red-500/20 text-red-300' : 'bg-white/8 text-mist-400 hover:text-mist-200'}`}
+                >
+                  {quitarPin ? '✓ Quitar PIN al guardar' : 'Quitar PIN'}
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between pt-2">
+            <div className="flex gap-2">
+              <Button
+                onClick={() => updateMutation.mutate()}
+                disabled={!editName.trim() || updateMutation.isPending || (editPin.length > 0 && editPin.length < 6)}
+              >
+                Guardar cambios
+              </Button>
+              <Button variant="ghost" onClick={() => setEditing(null)}>
+                Cancelar
+              </Button>
+            </div>
+
+            {yo?.id !== editing.id && (
+              <Button
+                variant="danger"
+                onClick={() => {
+                  if (confirm(`¿Eliminar el perfil de ${editing.name}? Se borrarán sus datos de reproducción.`)) {
+                    deleteMutation.mutate(editing.id);
+                  }
+                }}
+                disabled={deleteMutation.isPending}
+              >
+                Eliminar perfil
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        {usersData?.users.map((u) => {
+          const tienePin = u.has_pin === 1;
+          return (
+            <div
+              key={u.id}
+              className="flex items-center justify-between gap-4 rounded-2xl border border-white/8 bg-white/4 p-4 transition-colors hover:border-white/15"
+            >
+              <div className="flex min-w-0 items-center gap-3.5">
+                <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl shadow-md ring-1 ring-white/10">
+                  {u.has_avatar ? (
+                    <img
+                      src={api.userAvatarUrl(u.id)}
+                      alt={u.name}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div
+                      className="grid h-full w-full place-items-center text-lg font-semibold text-ink-950"
+                      style={{ background: `linear-gradient(140deg, ${u.color ?? '#f0a54a'}, ${u.color ?? '#f0a54a'}bb)` }}
+                    >
+                      {u.name.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="truncate text-[14px] font-medium text-mist-100">{u.name}</span>
+                    {u.is_admin === 1 && (
+                      <span className="rounded-md bg-accent/15 px-1.5 py-0.5 text-[10.5px] font-medium text-accent">
+                        Admin
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-0.5 flex items-center gap-1.5 text-[11.5px]">
+                    {tienePin ? (
+                      <span className="text-emerald-400">🟢 Con PIN (visible fuera)</span>
+                    ) : (
+                      <span className="text-amber-400">🟡 Sin PIN (solo casa)</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={() => startEdit(u)}
+                className="shrink-0 rounded-full bg-white/8 px-3 py-1.5 text-xs font-semibold text-mist-200 transition hover:bg-white/15"
+              >
+                Editar
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      {aviso && <p className="text-[13px] text-accent">{aviso}</p>}
+    </Panel>
+  );
+}
+
 /**
  * El PIN del perfil.
  *
@@ -622,30 +979,129 @@ function ServerTab() {
   );
 }
 
+function TabsBar({
+  tabs,
+  activeTab,
+  onSelectTab,
+}: {
+  tabs: readonly { key: string; label: string }[];
+  activeTab: string;
+  onSelectTab: (k: Tab) => void;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const checkScroll = () => {
+    const el = containerRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 4);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 6);
+  };
+
+  useEffect(() => {
+    checkScroll();
+    const handleResize = () => checkScroll();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [tabs]);
+
+  const scroll = (direction: 'left' | 'right') => {
+    const el = containerRef.current;
+    if (!el) return;
+    el.scrollBy({ left: direction === 'left' ? -220 : 220, behavior: 'smooth' });
+    setTimeout(checkScroll, 250);
+  };
+
+  const handleWheel = (e: React.WheelEvent) => {
+    const el = containerRef.current;
+    if (!el) return;
+    if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+      el.scrollLeft += e.deltaY;
+      checkScroll();
+    }
+  };
+
+  return (
+    <div className="relative mb-6 flex items-center">
+      {canScrollLeft && (
+        <button
+          type="button"
+          onClick={() => scroll('left')}
+          className="absolute left-0 z-20 flex h-7 w-7 -translate-x-1 items-center justify-center rounded-full bg-ink-900/95 text-mist-200 shadow-md ring-1 ring-white/20 backdrop-blur-md transition hover:bg-ink-800 hover:text-white"
+          aria-label="Anterior"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="15 18 9 12 15 6" />
+          </svg>
+        </button>
+      )}
+
+      {canScrollLeft && (
+        <div className="pointer-events-none absolute left-0 top-0 bottom-0 z-10 w-8 bg-gradient-to-r from-ink-950 to-transparent" />
+      )}
+
+      <div
+        ref={containerRef}
+        onScroll={checkScroll}
+        onWheel={handleWheel}
+        className="no-scrollbar flex flex-1 gap-1 overflow-x-auto scroll-smooth py-1 px-1"
+      >
+        {tabs.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => onSelectTab(t.key as Tab)}
+            className={`relative shrink-0 rounded-full px-4 py-1.5 text-[13px] transition-colors duration-200 ${
+              activeTab === t.key ? 'text-ink-950' : 'text-mist-400 hover:text-mist-100'
+            }`}
+          >
+            {activeTab === t.key && (
+              <motion.span
+                layoutId="settings-tab"
+                className="absolute inset-0 rounded-full bg-mist-100"
+                transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+              />
+            )}
+            <span className="relative z-10">{t.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {canScrollRight && (
+        <div className="pointer-events-none absolute right-0 top-0 bottom-0 z-10 w-8 bg-gradient-to-l from-ink-950 to-transparent" />
+      )}
+
+      {canScrollRight && (
+        <button
+          type="button"
+          onClick={() => scroll('right')}
+          className="absolute right-0 z-20 flex h-7 w-7 translate-x-1 items-center justify-center rounded-full bg-ink-900/95 text-mist-200 shadow-md ring-1 ring-white/20 backdrop-blur-md transition hover:bg-ink-800 hover:text-white"
+          aria-label="Siguiente"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+        </button>
+      )}
+    </div>
+  );
+}
+
 export default function Settings() {
   const [tab, setTab] = useState<Tab>('playback');
   const { data: yo } = useQuery({ queryKey: ['me'], queryFn: api.me, staleTime: Infinity });
-  // «Actividad» es cosa del administrador: quién ve qué, mensajes, parar.
-  const pestanas = TABS.filter((t) => t.key !== 'actividad' || yo?.is_admin === 1);
+  // «Actividad» y «Usuarios» son cosa del administrador. Los demás ven «PIN» para su propio perfil.
+  const pestanas = TABS.filter((t) => {
+    if (t.key === 'usuarios' || t.key === 'actividad') return yo?.is_admin === 1;
+    if (t.key === 'pin') return yo?.is_admin !== 1;
+    return true;
+  });
 
   return (
     <div className="mx-auto max-w-3xl px-4 pt-24 pb-24 sm:px-8">
       <h1 className="mb-6 text-2xl font-semibold tracking-tight">Ajustes</h1>
 
-      <div className="no-scrollbar mb-6 flex gap-1 overflow-x-auto">
-        {pestanas.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={`relative shrink-0 rounded-full px-4 py-1.5 text-[13px] transition-colors duration-200 ${
-              tab === t.key ? 'text-ink-950' : 'text-mist-400 hover:text-mist-100'
-            }`}
-          >
-            {tab === t.key && <motion.span layoutId="settings-tab" className="absolute inset-0 rounded-full bg-mist-100" transition={{ type: 'spring', stiffness: 420, damping: 34 }} />}
-            <span className="relative z-10">{t.label}</span>
-          </button>
-        ))}
-      </div>
+      <TabsBar tabs={pestanas} activeTab={tab} onSelectTab={setTab} />
 
       {tab === 'playback' && <PlaybackTab />}
       {tab === 'audio' && <AudioTab />}
@@ -653,6 +1109,7 @@ export default function Settings() {
       {tab === 'library' && <LibraryTab />}
       {tab === 'analysis' && <AnalysisPanels />}
       {tab === 'metadata' && <MetadataReview />}
+      {tab === 'usuarios' && <UsuariosTab />}
       {tab === 'pin' && <PinTab />}
       {tab === 'actividad' && <Actividad />}
       {tab === 'server' && <ServerTab />}

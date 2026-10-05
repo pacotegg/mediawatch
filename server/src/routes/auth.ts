@@ -1,10 +1,13 @@
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { createReadStream, existsSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
+import { extname, join } from 'node:path';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { toString } from 'qrcode';
-import { config } from '../config.ts';
+import { config, DATA_DIR } from '../config.ts';
 import { db } from '../db.ts';
+import { formatoDeImagen } from '../scanner/tmdb.ts';
 
-export type User = { id: number; name: string; color: string | null; is_admin: number };
+export type User = { id: number; name: string; color: string | null; is_admin: number; has_pin?: number; has_avatar?: number };
 
 const COOKIE = 'cineteca_session';
 const PAIRING_TTL_MS = 10 * 60_000;
@@ -206,8 +209,8 @@ export default async function authRoutes(app: FastifyInstance) {
 
   app.get('/api/users', async (req) => {
     const users = db
-      .prepare('SELECT id, name, color, is_admin, pin IS NOT NULL AS has_pin FROM users ORDER BY id')
-      .all() as { has_pin: number }[];
+      .prepare('SELECT id, name, color, is_admin, pin IS NOT NULL AS has_pin, avatar IS NOT NULL AS has_avatar FROM users ORDER BY id')
+      .all() as { id: number; name: string; color: string | null; is_admin: number; has_pin: number; has_avatar: number }[];
     /*
      * Desde internet solo se ensenan los perfiles que piden PIN. Ensenar uno
      * que no lo pide seria ensenar la llave puesta: cualquiera que de con la
@@ -327,6 +330,120 @@ export default async function authRoutes(app: FastifyInstance) {
     const miToken = (req.headers.authorization ?? '').replace(/^Bearer /i, '') || req.cookies[COOKIE] || '';
     const cerradas = db.prepare('DELETE FROM sessions WHERE user_id = ? AND token != ?').run(id, miToken);
     return { ok: true, tienePin: Boolean(nuevo), sesionesCerradas: cerradas.changes };
+  });
+
+  app.put('/api/users/:id', async (req, reply) => {
+    const yo = requireUser(req);
+    const id = Number((req.params as { id: string }).id);
+    if (yo.id !== id && !yo.is_admin) return reply.code(403).send({ error: 'Solo un administrador puede editar otros perfiles' });
+
+    const user = db.prepare('SELECT id, name, color, is_admin, pin FROM users WHERE id = ?').get(id) as
+      | (User & { pin: string | null })
+      | undefined;
+    if (!user) return reply.code(404).send({ error: 'Perfil no encontrado' });
+
+    const body = req.body as { name?: string; color?: string; isAdmin?: boolean; pin?: string | null };
+
+    if (body.name !== undefined) {
+      const nuevoNombre = body.name.trim();
+      if (!nuevoNombre) return reply.code(400).send({ error: 'El nombre no puede estar vacío' });
+      try {
+        db.prepare('UPDATE users SET name = ? WHERE id = ?').run(nuevoNombre, id);
+      } catch {
+        return reply.code(409).send({ error: 'Ya existe otro perfil con ese nombre' });
+      }
+    }
+
+    if (body.color !== undefined) {
+      db.prepare('UPDATE users SET color = ? WHERE id = ?').run(body.color, id);
+    }
+
+    if (body.isAdmin !== undefined && yo.is_admin) {
+      if (id === yo.id && !body.isAdmin) {
+        const otrosAdmins = (db.prepare('SELECT COUNT(*) as n FROM users WHERE is_admin = 1 AND id != ?').get(id) as { n: number }).n;
+        if (otrosAdmins === 0) return reply.code(400).send({ error: 'No puedes quitarte el rol de admin si eres el único' });
+      }
+      db.prepare('UPDATE users SET is_admin = ? WHERE id = ?').run(body.isAdmin ? 1 : 0, id);
+    }
+
+    if (body.pin !== undefined) {
+      if (yo.id !== id && !yo.is_admin) return reply.code(403).send({ error: 'No puedes cambiar el PIN de otro usuario' });
+      const pinStr = body.pin === null || body.pin === '' ? '' : String(body.pin);
+      if (pinStr.length > 0 && !/^\d{6,}$/.test(pinStr)) {
+        return reply.code(400).send({ error: 'El PIN tiene que ser de seis cifras o más, solo números' });
+      }
+      const nuevoHash = pinStr.length > 0 ? hashPin(pinStr) : null;
+      db.prepare('UPDATE users SET pin = ? WHERE id = ?').run(nuevoHash, id);
+      const miToken = (req.headers.authorization ?? '').replace(/^Bearer /i, '') || req.cookies[COOKIE] || '';
+      db.prepare('DELETE FROM sessions WHERE user_id = ? AND token != ?').run(id, miToken);
+    }
+
+    return { ok: true };
+  });
+
+  app.delete('/api/users/:id', async (req, reply) => {
+    const yo = requireUser(req);
+    const id = Number((req.params as { id: string }).id);
+    if (!yo.is_admin) return reply.code(403).send({ error: 'Solo un administrador puede borrar perfiles' });
+    if (id === yo.id) return reply.code(400).send({ error: 'No puedes borrar tu propio perfil' });
+
+    const total = (db.prepare('SELECT COUNT(*) as n FROM users').get() as { n: number }).n;
+    if (total <= 1) return reply.code(400).send({ error: 'No se puede borrar el único usuario del sistema' });
+
+    const user = db.prepare('SELECT avatar FROM users WHERE id = ?').get(id) as { avatar: string | null } | undefined;
+    if (user?.avatar && existsSync(user.avatar)) {
+      try { unlinkSync(user.avatar); } catch {}
+    }
+
+    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id);
+    db.prepare('DELETE FROM users WHERE id = ?').run(id);
+    return { ok: true };
+  });
+
+  app.get('/api/users/:id/avatar', async (req, reply) => {
+    const id = Number((req.params as { id: string }).id);
+    const row = db.prepare('SELECT avatar FROM users WHERE id = ?').get(id) as { avatar: string | null } | undefined;
+    if (!row?.avatar || !existsSync(row.avatar)) return reply.code(404).send({ error: 'Sin avatar' });
+    const ext = extname(row.avatar).toLowerCase();
+    const mime = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+    return reply.header('Content-Type', mime).header('Cache-Control', 'public, max-age=86400').send(createReadStream(row.avatar));
+  });
+
+  app.post('/api/users/:id/avatar', { bodyLimit: 10 * 1024 * 1024 }, async (req, reply) => {
+    const yo = requireUser(req);
+    const id = Number((req.params as { id: string }).id);
+    if (yo.id !== id && !yo.is_admin) return reply.code(403).send({ error: 'No autorizado' });
+
+    const user = db.prepare('SELECT id, avatar FROM users WHERE id = ?').get(id) as { id: number; avatar: string | null } | undefined;
+    if (!user) return reply.code(404).send({ error: 'Usuario no encontrado' });
+
+    const datos = req.body as Buffer | undefined;
+    if (!Buffer.isBuffer(datos) || datos.length === 0) return reply.code(400).send({ error: 'No llegó ninguna imagen' });
+    const ext = formatoDeImagen(datos);
+    if (!ext) return reply.code(400).send({ error: 'Eso no es una imagen JPEG, PNG ni WebP' });
+
+    const dir = join(DATA_DIR, 'avatars');
+    mkdirSync(dir, { recursive: true });
+    const dest = join(dir, `${id}.${ext}`);
+    if (user.avatar && user.avatar !== dest && existsSync(user.avatar)) {
+      try { unlinkSync(user.avatar); } catch {}
+    }
+    writeFileSync(dest, datos);
+    db.prepare('UPDATE users SET avatar = ? WHERE id = ?').run(dest, id);
+    return { ok: true };
+  });
+
+  app.delete('/api/users/:id/avatar', async (req, reply) => {
+    const yo = requireUser(req);
+    const id = Number((req.params as { id: string }).id);
+    if (yo.id !== id && !yo.is_admin) return reply.code(403).send({ error: 'No autorizado' });
+
+    const user = db.prepare('SELECT avatar FROM users WHERE id = ?').get(id) as { avatar: string | null } | undefined;
+    if (user?.avatar && existsSync(user.avatar)) {
+      try { unlinkSync(user.avatar); } catch {}
+    }
+    db.prepare('UPDATE users SET avatar = NULL WHERE id = ?').run(id);
+    return { ok: true };
   });
 
   /**

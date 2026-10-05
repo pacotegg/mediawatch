@@ -18,3 +18,6 @@ __pycache__/
 # -solo lleva comandos y la IP de la LAN-, pero es local por definicion: lo que
 # se aprueba aqui no tiene por que valer en otro equipo.
 .claude/settings.local.json
+
+# QR generado para el host local/remoto
+web/public/qr.svg

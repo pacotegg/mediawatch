@@ -9,10 +9,18 @@ import NumeracionFixer from '../components/NumeracionFixer.tsx';
 import SelectorDeArte from '../components/SelectorDeArte.tsx';
 import Extras from '../components/Extras.tsx';
 import Row from '../components/Row.tsx';
-import { api, img, type Episode, type ItemDetail } from '../lib/api.ts';
+import { api, img, type Episode, type ItemDetail, type PerfilDescarga } from '../lib/api.ts';
 import { audioLabel, certification, clock, codecLabel, fileSize, languageName, resolutionLabel, runtime } from '../lib/format.ts';
 import { usePreferences } from '../lib/preferences.tsx';
 import { tintFrom } from '../lib/tint.ts';
+
+const OPCIONES_DESCARGA: [PerfilDescarga, string, string][] = [
+  ['baja', '360p (Muy ligera)', '~300 MB película · ~100 MB ep.'],
+  ['movil', '480p (Móvil)', '~600 MB película · ~200 MB ep.'],
+  ['tablet', '720p (HD)', '~1.3 GB película · ~400 MB ep.'],
+  ['fhd', '1080p (Full HD)', '~2.8 GB película · ~800 MB ep.'],
+  ['original', 'Original', 'el fichero intacto'],
+];
 
 function MetadataFixer({ itemId, item, onClose }: { itemId: number; item: ItemDetail; onClose: () => void }) {
   const queryClient = useQueryClient();
@@ -95,10 +103,19 @@ function PlayIcon({ size = 15 }: { size?: number }) {
   );
 }
 
-function EpisodeList({ item, seasons }: { item: ItemDetail; seasons: Map<number, Episode[]> }) {
+function EpisodeList({
+  item,
+  seasons,
+  onDescargar,
+}: {
+  item: ItemDetail;
+  seasons: Map<number, Episode[]>;
+  onDescargar: (fileId: number, perfil: PerfilDescarga) => void;
+}) {
   const navigate = useNavigate();
   const numbers = [...seasons.keys()].sort((a, b) => a - b);
   const [season, setSeason] = useState(() => item.nextUp?.season ?? numbers[0] ?? 1);
+  const [downloadEpId, setDownloadEpId] = useState<number | null>(null);
   const episodes = seasons.get(season) ?? [];
   const progressFor = (id: number) => item.progress.find((p) => p.episode_id === id);
 
@@ -123,48 +140,88 @@ function EpisodeList({ item, seasons }: { item: ItemDetail; seasons: Map<number,
           const progress = progressFor(ep.id);
           const pct = progress?.duration ? (progress.position / progress.duration) * 100 : 0;
           return (
-            <motion.button
+            <motion.div
               key={ep.id}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3, delay: Math.min(i * 0.02, 0.3) }}
-              disabled={!ep.file_id}
-              onClick={() => navigate(`/ver/${ep.file_id}?item=${item.id}&ep=${ep.id}&t=${progress?.watched ? 0 : Math.floor(progress?.position ?? 0)}`)}
-              className="group flex w-full gap-4 rounded-2xl p-2.5 text-left transition-colors duration-200 hover:bg-white/6 disabled:opacity-40"
+              className="group relative flex w-full items-center gap-4 rounded-2xl p-2.5 transition-colors duration-200 hover:bg-white/6"
             >
-              <div className="relative aspect-16/9 w-40 shrink-0 overflow-hidden rounded-lg bg-ink-800 ring-1 ring-white/8">
-                {ep.has_thumb ? (
-                  <img src={img.episode(ep.id, 320)} alt="" loading="lazy" className="h-full w-full object-cover" />
-                ) : (
-                  <div className="grid h-full place-items-center text-xs text-mist-600">{ep.episode}</div>
-                )}
-                <div className="absolute inset-0 grid place-items-center bg-black/40 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-                  <PlayIcon size={20} />
-                </div>
-                {progress && progress.watched === 0 && pct > 1 && (
-                  <div className="absolute inset-x-0 bottom-0 h-[3px] bg-black/60">
-                    <div className="h-full bg-accent" style={{ width: `${pct}%` }} />
+              <button
+                disabled={!ep.file_id}
+                onClick={() => navigate(`/ver/${ep.file_id}?item=${item.id}&ep=${ep.id}&t=${progress?.watched ? 0 : Math.floor(progress?.position ?? 0)}`)}
+                className="flex flex-1 items-center gap-4 text-left disabled:opacity-40 min-w-0"
+              >
+                <div className="relative aspect-16/9 w-40 shrink-0 overflow-hidden rounded-lg bg-ink-800 ring-1 ring-white/8">
+                  {ep.has_thumb ? (
+                    <img src={img.episode(ep.id, 320)} alt="" loading="lazy" className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="grid h-full place-items-center text-xs text-mist-600">{ep.episode}</div>
+                  )}
+                  <div className="absolute inset-0 grid place-items-center bg-black/40 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                    <PlayIcon size={20} />
                   </div>
-                )}
-              </div>
-
-              <div className="min-w-0 flex-1 py-0.5">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-xs text-mist-500">{ep.episode}.</span>
-                  <span className="truncate text-sm font-medium">{ep.title}</span>
-                  {progress?.watched === 1 && (
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="shrink-0 text-accent">
-                      <path d="M4 12.5 9.5 18 20 6.5" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
+                  {progress && progress.watched === 0 && pct > 1 && (
+                    <div className="absolute inset-x-0 bottom-0 h-[3px] bg-black/60">
+                      <div className="h-full bg-accent" style={{ width: `${pct}%` }} />
+                    </div>
                   )}
                 </div>
-                {ep.plot && <p className="mt-1 line-clamp-2 text-[12.5px] leading-relaxed text-mist-500">{ep.plot}</p>}
-                <div className="mt-1.5 flex gap-2 text-[11px] text-mist-600">
-                  {ep.runtime ? <span>{runtime(ep.runtime)}</span> : ep.duration ? <span>{clock(ep.duration)}</span> : null}
-                  {ep.aired && <span>{new Date(ep.aired).getFullYear()}</span>}
+
+                <div className="min-w-0 flex-1 py-0.5">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-xs text-mist-500">{ep.episode}.</span>
+                    <span className="truncate text-sm font-medium">{ep.title}</span>
+                    {progress?.watched === 1 && (
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="shrink-0 text-accent">
+                        <path d="M4 12.5 9.5 18 20 6.5" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    )}
+                  </div>
+                  {ep.plot && <p className="mt-1 line-clamp-2 text-[12.5px] leading-relaxed text-mist-500">{ep.plot}</p>}
+                  <div className="mt-1.5 flex gap-2 text-[11px] text-mist-600">
+                    {ep.runtime ? <span>{runtime(ep.runtime)}</span> : ep.duration ? <span>{clock(ep.duration)}</span> : null}
+                    {ep.aired && <span>{new Date(ep.aired).getFullYear()}</span>}
+                  </div>
                 </div>
-              </div>
-            </motion.button>
+              </button>
+
+              {ep.file_id && (
+                <div className="relative shrink-0 pr-2">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDownloadEpId((prev) => (prev === ep.id ? null : ep.id));
+                    }}
+                    title="Descargar episodio"
+                    className="glass grid h-9 w-9 place-items-center rounded-full opacity-70 transition-all hover:scale-110 hover:opacity-100 active:scale-95"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 3v12m0 0 4.5-4.5M12 15l-4.5-4.5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
+                    </svg>
+                  </button>
+
+                  {downloadEpId === ep.id && (
+                    <div className="glass-strong absolute right-0 top-11 z-50 w-60 rounded-xl p-1.5 shadow-[var(--shadow-3)]">
+                      {OPCIONES_DESCARGA.map(([valor, titulo, pie]) => (
+                        <button
+                          key={valor}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDownloadEpId(null);
+                            onDescargar(ep.file_id!, valor);
+                          }}
+                          className="block w-full rounded-lg px-3 py-2 text-left text-[13px] hover:bg-white/10"
+                        >
+                          {titulo}
+                          <span className="block text-[11.5px] text-mist-600">{pie}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </motion.div>
           );
         })}
       </div>
@@ -284,11 +341,10 @@ export default function Detail() {
 
   // Descargar prepara una copia en el servidor; el fichero se recoge después
   // desde la página de descargas, para no dejar la pestaña colgada esperando.
-  const pedirDescarga = async (perfil: 'movil' | 'tablet' | 'original') => {
-    if (!movieFile) return;
+  const pedirDescarga = async (fileId: number, perfil: PerfilDescarga) => {
     setDescargando(false);
     try {
-      const d = await api.descargaPedir(movieFile.id, perfil);
+      const d = await api.descargaPedir(fileId, perfil);
       setAvisoDescarga(d.estado === 'lista' ? 'Lista para descargar' : 'Preparando la copia…');
     } catch (err) {
       setAvisoDescarga((err as Error).message);
@@ -491,17 +547,11 @@ export default function Detail() {
                     </svg>
                   </button>
                   {descargando && (
-                    <div className="glass-strong absolute bottom-12 left-0 z-50 w-56 rounded-xl p-1.5 shadow-[var(--shadow-3)]">
-                      {(
-                        [
-                          ['movil', 'Móvil', '480p, ocupa poco'],
-                          ['tablet', 'Tablet', '720p'],
-                          ['original', 'Original', 'el fichero tal cual'],
-                        ] as const
-                      ).map(([valor, titulo, pie]) => (
+                    <div className="glass-strong absolute bottom-12 left-0 z-50 w-60 rounded-xl p-1.5 shadow-[var(--shadow-3)]">
+                      {OPCIONES_DESCARGA.map(([valor, titulo, pie]) => (
                         <button
                           key={valor}
-                          onClick={() => pedirDescarga(valor)}
+                          onClick={() => pedirDescarga(movieFile.id, valor)}
                           className="block w-full rounded-lg px-3 py-2 text-left text-[13px] hover:bg-white/10"
                         >
                           {titulo}
@@ -612,7 +662,7 @@ export default function Detail() {
             </div>
           )}
 
-          {item.kind === 'show' && seasons.size > 0 && <EpisodeList item={item} seasons={seasons} />}
+          {item.kind === 'show' && seasons.size > 0 && <EpisodeList item={item} seasons={seasons} onDescargar={pedirDescarga} />}
 
           {movieFile && (
             <div className="glass mt-12 rounded-[var(--radius-panel)] p-5">

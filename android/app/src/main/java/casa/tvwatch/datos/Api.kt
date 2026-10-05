@@ -135,6 +135,11 @@ object Api {
   fun fotoDeEpisodio(id: Int, ancho: Int) = "${Servidor.baseCacheada()}/api/episodes/$id/thumb?w=$ancho"
   fun saga(nombre: String): ContenidoDeSaga = pedir("/api/collections/" + java.net.URLEncoder.encode(nombre, "UTF-8").replace("+", "%20"))
   fun ficha(id: Int): Ficha = pedir("/api/items/$id")
+  fun resenas(itemId: Int): List<Resena> = try {
+    pedir<RespuestaResenas>("/api/items/$itemId/reviews").items
+  } catch (_: Exception) {
+    emptyList()
+  }
 
   /** Featurettes, «como se hizo» y demas videos que acompanyan a un titulo. */
   fun extras(itemId: Int): RespuestaExtras = pedir("/api/items/$itemId/extras")
@@ -318,6 +323,26 @@ object Api {
     }
     texto("/api/progress", cuerpo)
   }
+
+  fun descargas(): List<Descarga> = pedir<RespuestaDescargas>("/api/descargas").descargas
+
+  fun pedirDescarga(fileId: Int, perfil: String): Descarga {
+    val cuerpo = "{\"fileId\":$fileId,\"perfil\":\"$perfil\"}"
+    return json.decodeFromString(texto("/api/descargas", cuerpo))
+  }
+
+  fun borrarDescarga(id: Int) {
+    val req = okhttp3.Request.Builder()
+      .url(Servidor.base() + "/api/descargas/$id")
+      .delete()
+      .apply { Ajustes.token?.let { header("Authorization", "Bearer $it") } }
+      .build()
+    http.newCall(req).execute().use { }
+  }
+
+  fun urlFicheroDescarga(id: Int): String {
+    return Servidor.base() + "/api/descargas/$id/fichero"
+  }
 }
 
 /* ------------------------------------------------------------- los datos */
@@ -445,6 +470,18 @@ data class Portada(val hero: List<Titulo> = emptyList(), val rows: List<FilaPort
 data class Nota(val fuente: String, val valor: Double, val maximo: Int, val etiqueta: String)
 
 @Serializable
+data class Resena(
+  val fuente: String = "tmdb",
+  val autor: String,
+  val contenido: String,
+  val valor: Double? = null,
+  val url: String? = null,
+)
+
+@Serializable
+data class RespuestaResenas(val items: List<Resena> = emptyList())
+
+@Serializable
 data class Fichero(
   val id: Int,
   @SerialName("episode_id") val episodioId: Int? = null,
@@ -511,6 +548,7 @@ data class Ficha(
   val episodes: List<Episodio> = emptyList(),
   val progress: List<Progreso> = emptyList(),
   val favorite: Int = 0,
+  @SerialName("extras_count") val extrasCount: Int = 0,
   @SerialName("has_fanart") val tieneFondo: Int = 0,
   @SerialName("has_logo") val tieneLogo: Int = 0,
   @SerialName("has_poster") val tienePoster: Int = 0,
@@ -649,3 +687,22 @@ data class FichaDePersona(
 
 @Serializable
 data class Resultados(val items: List<Titulo> = emptyList(), val people: List<PersonaBusqueda> = emptyList())
+
+@Serializable
+data class Descarga(
+  val id: Int,
+  val file_id: Int,
+  val user_id: Int,
+  val perfil: String,
+  val estado: String,
+  val bytes: Long? = null,
+  val progreso: Int = 0,
+  val error: String? = null,
+  val titulo: String,
+  val creado: String
+)
+
+@Serializable
+data class RespuestaDescargas(
+  val descargas: List<Descarga>
+)

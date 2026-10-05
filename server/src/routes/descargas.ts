@@ -20,7 +20,7 @@ export default async function descargaRoutes(app: FastifyInstance) {
     const user = requireUser(req);
     const { fileId, perfil } = req.body as { fileId?: number; perfil?: Perfil };
     if (!fileId) return reply.code(400).send({ error: 'Falta el fichero' });
-    if (perfil !== 'movil' && perfil !== 'tablet' && perfil !== 'original') {
+    if (perfil !== 'baja' && perfil !== 'movil' && perfil !== 'tablet' && perfil !== 'fhd' && perfil !== 'original') {
       return reply.code(400).send({ error: 'Perfil desconocido' });
     }
     try {

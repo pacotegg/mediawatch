@@ -782,8 +782,8 @@ En `C:\Users\HTPC\.claude\projects\C--cineteca\memory\`: `tvwatch-servidor-media
 `como-trabaja-el-usuario-tvwatch`, `mirar-las-skills-antes-de-decir-que-no`,
 `versionado-app-android`, `servicio-coworkvmservice-bloqueo-claude`.
 
-Skills en `C:\Users\HTPC\.claude\skills\`: `instalar-app-tizen`,
-`probar-app-android`, `acceso-externo-tvwatch`, `auditar-tvwatch`,
+Skills en `C:\Users\HTPC\.claude\skills\` (sincronizadas en `~/.gemini/config/skills/`): `instalar-app-tizen`,
+`probar-app-android`, `acceso-externo-tvwatch`, `auditar-tvwatch`, `security-reviewer`,
 `editar-webpanel-sin-romperlo`, `operacion-en-lote-biblioteca`, y las del
 pipeline (`arc-qsv-facts`, `verificar-transcodificacion-en-lote`, etc.).
 

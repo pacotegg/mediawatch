@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -59,7 +60,9 @@ sealed class Destino {
   data object Favoritas : Destino()
   data object Sagas : Destino()
   data object Plataformas : Destino()
+  data object Descargas : Destino()
   data class Biblioteca(val id: Int, val nombre: String) : Destino()
+  data object Ajustes : Destino()
   data object Salir : Destino()
 }
 
@@ -116,8 +119,10 @@ fun Menu(rutaActual: String?, bibliotecaActual: Int?, alIr: (Destino) -> Unit) {
       Entrada("Inicio", Icons.Default.Home, activa = rutaActual == "portada") { alIr(Destino.Inicio) }
       Entrada("Buscar", Icons.Default.Search, activa = rutaActual == "buscar") { alIr(Destino.Buscar) }
       Entrada("Favoritas", Icons.Default.Star, activa = rutaActual == "favoritas") { alIr(Destino.Favoritas) }
+      Entrada("Descargas", Icons.Default.Star, activa = rutaActual == "descargas") { alIr(Destino.Descargas) }
       Entrada("Sagas", Icons.AutoMirrored.Filled.List, activa = rutaActual == "sagas") { alIr(Destino.Sagas) }
       Entrada("Plataformas", Icons.Default.PlayArrow, activa = rutaActual == "plataformas") { alIr(Destino.Plataformas) }
+      Entrada("Ajustes", Icons.Default.Settings, activa = rutaActual == "ajustes") { alIr(Destino.Ajustes) }
 
       if (bibliotecas.isNotEmpty()) {
         Seccion("Bibliotecas")
@@ -149,22 +154,6 @@ fun Menu(rutaActual: String?, bibliotecaActual: Int?, alIr: (Destino) -> Unit) {
         )
       }
       Spacer(Modifier.height(10.dp))
-      var cincoUno by remember { mutableStateOf(Ajustes.castCincoUno) }
-      Entrada(
-        "Chromecast: sonido 5.1",
-        icono = null,
-        detalle = if (cincoUno) "sí" else "no",
-        activa = cincoUno,
-      ) {
-        cincoUno = !cincoUno
-        Ajustes.castCincoUno = cincoUno
-      }
-      Text(
-        "Solo si la tele o la barra descodifican Dolby; si no, no sonará.",
-        color = TextoTenue,
-        style = MaterialTheme.typography.labelSmall,
-        modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 6.dp),
-      )
       Entrada("Cambiar de perfil o servidor", Icons.AutoMirrored.Filled.ExitToApp, activa = false) { alIr(Destino.Salir) }
       val contexto = LocalContext.current
       val version = remember {

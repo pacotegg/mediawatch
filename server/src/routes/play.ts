@@ -727,17 +727,9 @@ export default async function playRoutes(app: FastifyInstance) {
   app.get('/api/play/:fileId/trickplay', async (req, reply) => {
     const fileId = Number((req.params as { fileId: string }).fileId);
 
-    /*
-     * `solo=1`: mirar sin fabricar. Lo usa el reproductor, porque generar la
-     * tira de una película obliga a recorrerla entera leyendo fotogramas clave
-     * y eso, en el disco del que se está sirviendo el vídeo, deja la
-     * reproducción sin datos. Las tiras se hacen por lotes, cuando no hay nadie
-     * viendo nada.
-     */
-    const soloLeer = (req.query as { solo?: string }).solo === '1';
-    const manifest = soloLeer ? readManifest(fileId) : ensure(fileId);
+    const manifest = readManifest(fileId);
     if (manifest) return reply.header('Cache-Control', 'public, max-age=86400').send(manifest);
-    return reply.code(202).send({ generating: isGenerating(fileId) });
+    return reply.code(404).send({ error: 'Sin miniaturas' });
   });
 
   app.get('/api/play/:fileId/trickplay/:index', async (req, reply) => {

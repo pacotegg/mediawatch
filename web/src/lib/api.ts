@@ -114,7 +114,7 @@ export type ImagenDisponible = {
   voto: number;
 };
 
-export type User = { id: number; name: string; color: string | null; is_admin: number; has_pin?: number };
+export type User = { id: number; name: string; color: string | null; is_admin: number; has_pin?: number; has_avatar?: number };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   /*
@@ -175,10 +175,12 @@ export type CandidatoAnime = {
   alternativas: AspiranteAnime[];
 };
 
+export type PerfilDescarga = 'baja' | 'movil' | 'tablet' | 'fhd' | 'original';
+
 export type DescargaItem = {
   id: number;
   file_id: number;
-  perfil: 'movil' | 'tablet' | 'original';
+  perfil: PerfilDescarga;
   estado: 'preparando' | 'lista' | 'error';
   bytes: number | null;
   progreso: number;
@@ -244,6 +246,26 @@ export const api = {
     post<{ ok: true; tienePin: boolean; sesionesCerradas: number }>(`/api/users/${userId}/pin`, { pin, actual }),
   users: () => request<{ users: User[]; setupNeeded: boolean }>('/api/users'),
   createUser: (name: string, pin?: string) => post<{ id: number }>('/api/users', { name, pin: pin || undefined }),
+  updateUser: (userId: number, data: { name?: string; color?: string; isAdmin?: boolean; pin?: string | null }) =>
+    request<{ ok: true }>(`/api/users/${userId}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteUser: (userId: number) =>
+    request<{ ok: true }>(`/api/users/${userId}`, { method: 'DELETE' }),
+  userAvatarUrl: (userId: number) => `/api/users/${userId}/avatar`,
+  uploadAvatar: async (userId: number, file: Blob) => {
+    const res = await fetch(`/api/users/${userId}/avatar`, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: file,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(body.error ?? 'Error subiendo avatar');
+    }
+    return res.json() as Promise<{ ok: true }>;
+  },
+  deleteAvatar: (userId: number) =>
+    request<{ ok: true }>(`/api/users/${userId}/avatar`, { method: 'DELETE' }),
   login: (userId: number, pin?: string) => post<User>('/api/auth/login', { userId, pin }),
   logout: () => post<{ ok: true }>('/api/auth/logout'),
 
@@ -328,7 +350,32 @@ export const api = {
   collections: () => request<CollectionSummary[]>('/api/collections'),
   /** La imagen propia de una saga; solo sirve si `imagen_propia` viene a 1. */
   imagenSaga: (nombre: string, w: number) => `/api/collections/${encodeURIComponent(nombre)}/imagen?w=${w}`,
-  collection: (name: string) => request<{ name: string; items: ItemSummary[] }>(`/api/collections/${encodeURIComponent(name)}`),
+  /** El fondo propio (fanart) de una saga; solo sirve si `fondo_propio` viene a 1. */
+  fondoSaga: (nombre: string, w: number) => `/api/collections/${encodeURIComponent(nombre)}/fondo?w=${w}`,
+  collection: (name: string) =>
+    request<{
+      name: string;
+      items: ItemSummary[];
+      arteItemId: number | null;
+      arteImagen: boolean;
+      arteFondo: boolean;
+      actualizado?: string | null;
+      poster_id: number | null;
+      fanart_id: number | null;
+    }>(`/api/collections/${encodeURIComponent(name)}`),
+  collectionImagenes: (name: string, q?: string) =>
+    request<{ posters: ImagenDisponible[]; fanarts: ImagenDisponible[] }>(
+      `/api/collections/${encodeURIComponent(name)}/imagenes${q ? `?q=${encodeURIComponent(q)}` : ''}`,
+    ),
+  ponerArteSaga: (
+    name: string,
+    body: { itemId?: number | null; buzon?: string; url?: string; papel?: 'poster' | 'fanart' },
+  ) => post<{ ok: boolean }>(`/api/collections/${encodeURIComponent(name)}/arte`, body),
+  subirArteSaga: (name: string, papel: 'poster' | 'fanart', fichero: File) =>
+    request<{ ok: boolean }>(`/api/collections/${encodeURIComponent(name)}/arte/subir?papel=${papel}`, {
+      method: 'POST',
+      body: fichero,
+    }),
 
   trickplay: async (fileId: number): Promise<Trickplay | null> => {
     const res = await fetch(`/api/play/${fileId}/trickplay`, { credentials: 'same-origin' });
@@ -364,8 +411,8 @@ export const api = {
   animeApply: (body: { itemId: number; animeId: string; campos: string[]; overwrite?: boolean }) =>
     post<{ aplicado: string[]; titulo: string; fuente: string }>('/api/anime/apply', body),
 
-  descargas: () => request<{ perfiles: Record<string, { nombre: string }>; descargas: DescargaItem[] }>('/api/descargas'),
-  descargaPedir: (fileId: number, perfil: 'movil' | 'tablet' | 'original') =>
+  descargas: () => request<{ perfiles: Record<string, { nombre: string; estimacion?: string }>; descargas: DescargaItem[] }>('/api/descargas'),
+  descargaPedir: (fileId: number, perfil: PerfilDescarga) =>
     post<DescargaItem>('/api/descargas', { fileId, perfil }),
   descargaBorrar: (id: number) => request<{ borrado: true }>(`/api/descargas/${id}`, { method: 'DELETE' }),
   descargaUrl: (id: number) => `/api/descargas/${id}/fichero`,
@@ -543,6 +590,8 @@ export type CollectionSummary = {
   poster_id: number | null;
   /** 1 si la saga tiene una imagen propia, elegida a mano. */
   imagen_propia?: number;
+  /** 1 si la saga tiene un fondo propio, elegido a mano. */
+  fondo_propio?: number;
   fanart_id: number | null;
   seen?: number;
 };

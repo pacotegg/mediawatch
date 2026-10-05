@@ -837,12 +837,12 @@ async function pantallaBiblioteca(id: number, nombre: string) {
     const guardado = posiciones['lib-' + id];
     const base = guardado && guardado.base ? guardado.base : 0;
     const cuantos = Math.min(MAXIMO_RESTAURADO, Math.max(PAGINA, guardado ? guardado.cargados - base : 0));
-    const datos = await api.titulos(id, base, cuantos);
-    // Sin abecedario si el servidor no lo tiene (uno anterior): la lista sigue igual.
-    const letras = await api.letras(id).then((r) => r.letras).catch(() => [] as Letra[]);
-    // Lo que se estaba viendo de ESTA biblioteca: en Peliculas solo peliculas,
-    // en Series solo series. La fila de la portada sigue englobando todo.
-    const aMedias = await api.continuarEn(id).catch(() => [] as Titulo[]);
+    // Carga paralela: títulos, abecedario y en progreso se piden a la vez
+    const [datos, letras, aMedias] = await Promise.all([
+      api.titulos(id, base, cuantos),
+      api.letras(id).then((r) => r.letras).catch(() => [] as Letra[]),
+      api.continuarEn(id).catch(() => [] as Titulo[]),
+    ]);
     pantallaRejilla('lib-' + id, nombre, datos.total + ' títulos', datos.items, aMedias, {
       total: datos.total,
       traer: (offset) => api.titulos(id, offset, PAGINA).then((d) => d.items),
@@ -1232,6 +1232,16 @@ function pantallaBuscar(inicial = '') {
  * no coinciden con los que se ven en ningún sitio. Si no hay ninguna, se cae a
  * la nota suelta de siempre.
  */
+const LOGOS_NOTAS: Record<string, string> = {
+  imdb: '<svg class="logo-nota" width="40" height="20" viewBox="0 0 48 24"><rect width="48" height="24" rx="4" fill="#f5c518"/><text x="24" y="17" font-family="sans-serif" font-size="14" font-weight="900" fill="#000" text-anchor="middle">IMDb</text></svg>',
+  tomatometerallcritics: '<svg class="logo-nota" width="22" height="22" viewBox="0 0 24 24"><circle cx="12" cy="13" r="9" fill="#fa320a"/><path d="M12 4 C11 1, 13 1, 12 4 M8 7 C11 4, 13 4, 16 7" stroke="#00d000" stroke-width="2.5" fill="none" stroke-linecap="round"/></svg>',
+  tmdb: '<svg class="logo-nota" width="42" height="20" viewBox="0 0 50 24"><rect width="50" height="24" rx="4" fill="#01b4e4"/><text x="25" y="17" font-family="sans-serif" font-size="13" font-weight="800" fill="#fff" text-anchor="middle">TMDb</text></svg>',
+  themoviedb: '<svg class="logo-nota" width="42" height="20" viewBox="0 0 50 24"><rect width="50" height="24" rx="4" fill="#01b4e4"/><text x="25" y="17" font-family="sans-serif" font-size="13" font-weight="800" fill="#fff" text-anchor="middle">TMDb</text></svg>',
+  tvdb: '<svg class="logo-nota" width="42" height="20" viewBox="0 0 50 24"><rect width="50" height="24" rx="4" fill="#20b26c"/><text x="25" y="17" font-family="sans-serif" font-size="13" font-weight="800" fill="#fff" text-anchor="middle">TVDB</text></svg>',
+  thetvdb: '<svg class="logo-nota" width="42" height="20" viewBox="0 0 50 24"><rect width="50" height="24" rx="4" fill="#20b26c"/><text x="25" y="17" font-family="sans-serif" font-size="13" font-weight="800" fill="#fff" text-anchor="middle">TVDB</text></svg>',
+  metacritic: '<svg class="logo-nota" width="22" height="22" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#333"/><text x="12" y="16" font-family="sans-serif" font-size="11" font-weight="700" fill="#6c3" text-anchor="middle">mc</text></svg>',
+};
+
 function notasHtml(ficha: Ficha): string {
   const notas = ficha.ratings || [];
   if (!notas.length) {
@@ -1240,12 +1250,19 @@ function notasHtml(ficha: Ficha): string {
   return (
     '<div class="linea-nota">' +
     notas
-      .map(
-        (n) =>
-          '<span class="nota-fuente"><b>' +
-          (n.maximo === 100 ? Math.round(n.valor) + '%' : (Math.round(n.valor * 10) / 10).toFixed(1)) +
-          '</b>' + esc(n.etiqueta) + '</span>',
-      )
+      .map((n) => {
+        const logo = LOGOS_NOTAS[n.fuente] || '';
+        const valor = n.maximo === 100 ? Math.round(n.valor) + '%' : (Math.round(n.valor * 10) / 10).toFixed(1);
+        return (
+          '<span class="nota-fuente">' +
+          logo +
+          '<b>' +
+          valor +
+          '</b>' +
+          (!logo ? esc(n.etiqueta) : '') +
+          '</span>'
+        );
+      })
       .join('') +
     '</div>'
   );
@@ -1329,8 +1346,10 @@ async function pantallaFicha(id: number) {
   }
   // «Eliminar» va el último a propósito: es lo único que no se puede deshacer,
   // y no debe quedar de paso entre los botones que se usan todos los días.
+  if (ficha.extras_count && ficha.extras_count > 0) {
+    acciones += '<button class="boton" data-nav data-extras>Extras (' + ficha.extras_count + ')</button>';
+  }
   acciones +=
-    '<button class="boton" data-nav data-extras hidden>Extras</button>' +
     '<button class="boton" data-nav data-vista>' + (vista ? 'Marcar no vista' : 'Marcar vista') + '</button>' +
     '<button class="boton' + (esFavorita ? ' activo' : '') + '" data-nav data-favorito>' +
     (esFavorita ? 'Quitar de favoritos' : 'Añadir a favoritos') + '</button>' +
@@ -1442,6 +1461,8 @@ async function pantallaFicha(id: number) {
       '</div></div></div>';
   }
 
+  cuerpo += '<div data-bloque-resenas></div>';
+
   if (ficha.similar && ficha.similar.length) cuerpo += filaHtml('Relacionadas', ficha.similar);
 
   cuerpo += '</div>';
@@ -1482,31 +1503,31 @@ async function pantallaFicha(id: number) {
   }
 
   /*
-   * El boton de extras nace oculto y solo aparece si los hay: la mayoria de los
-   * titulos no tienen ninguno -126 de 1.946-, y un boton que abre una ventana
-   * vacia es peor que no tenerlo. La lista se pide aparte para no retrasar la
-   * ficha, que es lo que se esta mirando.
+   * El botón de extras solo existe en el DOM si el título tiene extras (ficha.extras_count > 0).
+   * Al pulsarlo se piden los extras y se abre el menú.
    */
   const bExtras = marco.querySelector<HTMLElement>('[data-extras]');
   if (bExtras) {
     let losExtras: Extra[] = [];
-    api
-      .extras(ficha.id)
-      .then((r) => {
-        losExtras = r.extras || [];
-        if (losExtras.length === 0) return;
-        bExtras.textContent = 'Extras (' + losExtras.length + ')';
-        bExtras.removeAttribute('hidden');
-        // El boton no estaba cuando se indexo la navegacion.
-        indexar();
-      })
-      .catch(() => { /* sin extras: el boton se queda escondido */ });
     bExtras.addEventListener('click', () => {
-      if (losExtras.length === 0) return;
-      menuExtras(ficha, losExtras, () => {
-        indexar();
-        enfocar(bExtras);
-      });
+      if (losExtras.length > 0) {
+        menuExtras(ficha, losExtras, () => {
+          indexar();
+          enfocar(bExtras);
+        });
+        return;
+      }
+      api
+        .extras(ficha.id)
+        .then((r) => {
+          losExtras = r.extras || [];
+          if (losExtras.length === 0) return;
+          menuExtras(ficha, losExtras, () => {
+            indexar();
+            enfocar(bExtras);
+          });
+        })
+        .catch(() => { /* sin conexión */ });
     });
   }
 
@@ -1657,6 +1678,36 @@ async function pantallaFicha(id: number) {
       hueco.querySelectorAll<HTMLElement>('[data-abrir-app]').forEach((el) => {
         el.addEventListener('click', () => {
           if (!abrirApp(el.getAttribute('data-abrir-app') || '')) aviso('No se pudo abrir la aplicación');
+        });
+      });
+      indexar();
+    })
+    .catch(() => undefined);
+
+  void api
+    .resenas(id)
+    .then((r) => {
+      const hueco = marco.querySelector<HTMLElement>('[data-bloque-resenas]');
+      if (!hueco || !r.items || !r.items.length) return;
+      hueco.innerHTML =
+        '<div class="resenas fila" data-bloque><h3>Reseñas</h3><div class="carrusel" data-carrusel><div class="pista">' +
+        r.items
+          .map(
+            (res) =>
+              '<div class="tarjeta-resena" data-nav data-resena>' +
+              '<div class="resena-cabecera"><span class="resena-autor">' +
+              esc(res.autor) +
+              '</span>' +
+              (res.valor ? '<span class="nota">★ ' + res.valor.toFixed(1) + '</span>' : '') +
+              '</div><div class="resena-cuerpo">' +
+              esc(res.contenido) +
+              '</div></div>',
+          )
+          .join('') +
+      hueco.querySelectorAll<HTMLElement>('[data-resena]').forEach((el, idx) => {
+        el.addEventListener('click', () => {
+          const res = r.items[idx];
+          if (res) dialogoResena(res.autor, res.fuente, res.contenido);
         });
       });
       indexar();
@@ -1920,9 +1971,46 @@ type OpcionLista = { valor: number; texto: string; nota?: string };
  * A diferencia de `menuLista`, este pinta la miniatura del video enfocado: son
  * nombres como «301 No Mas» que no dicen nada por si solos.
  */
+/** Modal para leer una reseña completa con el mando. */
+function dialogoResena(autor: string, fuente: string, contenido: string) {
+  const teclasAntes = manejadorActual();
+  const focoAntes = actual();
+
+  const capa = document.createElement('div');
+  capa.className = 'capa';
+  capa.innerHTML =
+    '<div class="panel panel-resena">' +
+    '<h3>' + esc(autor) + (fuente ? '<span class="nota-linea">' + esc(fuente) + '</span>' : '') + '</h3>' +
+    '<div class="resena-modal-cuerpo">' + esc(contenido) + '</div>' +
+    '<p class="pista-ayuda">Enter o Volver para cerrar</p>' +
+    '</div>';
+  marco.appendChild(capa);
+
+  const panel = capa.querySelector<HTMLElement>('.panel')!;
+  panel.scrollTop = 0;
+
+  const cerrar = () => {
+    if (capa.parentElement) capa.parentElement.removeChild(capa);
+    alPulsar(teclasAntes);
+    if (focoAntes) enfocar(focoAntes);
+  };
+
+  alPulsar((tecla) => {
+    if (tecla === TECLA.ABAJO) { panel.scrollTop += 80; return true; }
+    if (tecla === TECLA.ARRIBA) { panel.scrollTop -= 80; return true; }
+    if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE || tecla === TECLA.ENTRAR) {
+      cerrar();
+      return true;
+    }
+    return true;
+  });
+}
+
 const EXTRAS_DIRECTO = 10;
 
 function menuExtras(ficha: Ficha, extras: Extra[], alCerrar: () => void) {
+  const teclasAntes = manejadorActual();
+  const focoAntes = actual();
   const seccionDe = (e: Extra) => (e.grupo ? e.tipo + ' · ' + e.grupo : e.tipo);
   const secciones: string[] = [];
   for (let n = 0; n < extras.length; n++) {
@@ -1931,6 +2019,12 @@ function menuExtras(ficha: Ficha, extras: Extra[], alCerrar: () => void) {
   }
 
   const porSecciones = extras.length > EXTRAS_DIRECTO && secciones.length > 1;
+
+  const cerrarTodo = () => {
+    alPulsar(teclasAntes);
+    alCerrar();
+    if (focoAntes) enfocar(focoAntes);
+  };
 
   const verLista = (titulo: string, lista: Extra[], alVolver: () => void) => {
     const capa = document.createElement('div');
@@ -1953,16 +2047,19 @@ function menuExtras(ficha: Ficha, extras: Extra[], alCerrar: () => void) {
     const pie = capa.querySelector<HTMLElement>('.extras-pie')!;
     let i = 0;
 
+    const prev = actual();
+    if (prev) prev.classList.remove('enfocado');
+
     const pintarFoco = () => {
       for (let n = 0; n < lineas.length; n++) {
         if (n === i) lineas[n].classList.add('enfocado');
         else lineas[n].classList.remove('enfocado');
       }
-      lineas[i].scrollIntoView({ block: 'nearest' });
-      // La miniatura la genera el servidor la primera vez que se pide, asi que
-      // puede tardar un segundo: mientras, se deja la anterior en vez de un hueco.
-      previa.src = imagen.extra(lista[i].id);
-      pie.textContent = lista[i].tipo + (lista[i].grupo ? ' · ' + lista[i].grupo : '');
+      if (lineas[i]) lineas[i].scrollIntoView({ block: 'nearest' });
+      if (lista[i]) {
+        previa.src = imagen.extra(lista[i].id);
+        pie.textContent = lista[i].tipo + (lista[i].grupo ? ' · ' + lista[i].grupo : '');
+      }
     };
     pintarFoco();
 
@@ -1970,17 +2067,28 @@ function menuExtras(ficha: Ficha, extras: Extra[], alCerrar: () => void) {
       if (capa.parentElement) capa.parentElement.removeChild(capa);
     };
 
+    const elegir = (n: number) => {
+      const e = lista[n];
+      if (!e) return;
+      cerrar();
+      verExtra(ficha, e, cerrarTodo);
+    };
+
+    lineas.forEach((b, n) => {
+      b.addEventListener('click', () => elegir(n));
+    });
+
     alPulsar((tecla) => {
       if (tecla === TECLA.ABAJO) { i = Math.min(lineas.length - 1, i + 1); pintarFoco(); return true; }
       if (tecla === TECLA.ARRIBA) { i = Math.max(0, i - 1); pintarFoco(); return true; }
-      if (tecla === TECLA.ENTRAR) { const e = lista[i]; cerrar(); verExtra(ficha, e, alCerrar); return true; }
+      if (tecla === TECLA.ENTRAR) { elegir(i); return true; }
       if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE) { cerrar(); alVolver(); return true; }
       return true;
     });
   };
 
   if (!porSecciones) {
-    verLista('Extras', extras, alCerrar);
+    verLista('Extras', extras, cerrarTodo);
     return;
   }
 
@@ -1990,11 +2098,17 @@ function menuExtras(ficha: Ficha, extras: Extra[], alCerrar: () => void) {
       for (let k = 0; k < extras.length; k++) if (seccionDe(extras[k]) === nom) cuantos++;
       return { texto: nom, nota: String(cuantos), valor: n };
     });
-    menuLista('Extras', opciones, -1, (v) => {
-      const lista: Extra[] = [];
-      for (let k = 0; k < extras.length; k++) if (seccionDe(extras[k]) === secciones[v]) lista.push(extras[k]);
-      verLista(secciones[v], lista, verSecciones);
-    }, alCerrar);
+    menuLista(
+      'Extras',
+      opciones,
+      -1,
+      (v) => {
+        const lista: Extra[] = [];
+        for (let k = 0; k < extras.length; k++) if (seccionDe(extras[k]) === secciones[v]) lista.push(extras[k]);
+        verLista(secciones[v], lista, verSecciones);
+      },
+      cerrarTodo,
+    );
   };
   verSecciones();
 }
@@ -2081,25 +2195,31 @@ function menuLista(
       if (n === i) lineas[n].classList.add('enfocado');
       else lineas[n].classList.remove('enfocado');
     }
-    // Con muchas pistas (o notas largas: "la tele no la lee...") la lista
-    // pasa de los 760px del panel; sin esto, la opción enfocada podía quedar
-    // fuera de la vista, sin scroll y sin ninguna forma de verla ni elegirla.
-    lineas[i].scrollIntoView({ block: 'nearest' });
+    if (lineas[i]) lineas[i].scrollIntoView({ block: 'nearest' });
   };
   pintarFoco();
 
-  const cerrar = () => {
+  const quitar = () => {
     if (capa.parentElement) capa.parentElement.removeChild(capa);
-    alCerrar();
   };
+
+  const seleccionar = (idx: number) => {
+    const v = opciones[idx]?.valor;
+    if (v !== undefined) {
+      quitar();
+      alElegir(v);
+    }
+  };
+
+  lineas.forEach((b, n) => {
+    b.addEventListener('click', () => seleccionar(n));
+  });
 
   alPulsar((tecla) => {
     if (tecla === TECLA.ABAJO) { i = Math.min(lineas.length - 1, i + 1); pintarFoco(); return true; }
     if (tecla === TECLA.ARRIBA) { i = Math.max(0, i - 1); pintarFoco(); return true; }
-    if (tecla === TECLA.ENTRAR) { const v = opciones[i].valor; cerrar(); alElegir(v); return true; }
-    if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE) { cerrar(); return true; }
-    // Dentro del menú no se escapa ninguna tecla: si no, el reproductor de
-    // detrás se pondría a saltar mientras se elige el audio.
+    if (tecla === TECLA.ENTRAR) { seleccionar(i); return true; }
+    if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE) { quitar(); alCerrar(); return true; }
     return true;
   });
 }

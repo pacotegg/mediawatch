@@ -99,6 +99,36 @@ object Ajustes {
     get() = prefs.getBoolean("castCincoUno", false)
     set(v) = prefs.edit().putBoolean("castCincoUno", v).apply()
 
+  /** Descargar únicamente cuando el dispositivo esté conectado a una red Wi-Fi. */
+  var descargasSoloWifi: Boolean
+    get() = prefs.getBoolean("descargasSoloWifi", true)
+    set(v) = prefs.edit().putBoolean("descargasSoloWifi", v).apply()
+
+  /** Perfil de descarga preferido ("preguntar", "original", "fhd", "tablet", "movil", "baja"). */
+  var calidadDescargaDefecto: String
+    get() = prefs.getString("calidadDescargaDefecto", "preguntar") ?: "preguntar"
+    set(v) = prefs.edit().putString("calidadDescargaDefecto", v).apply()
+
+  /** Idioma de audio preferido ("spa" = Español, "orig" = Versión original, "cualquiera"). */
+  var idiomaAudioPreferido: String
+    get() = prefs.getString("idiomaAudioPreferido", "spa") ?: "spa"
+    set(v) = prefs.edit().putString("idiomaAudioPreferido", v).apply()
+
+  /** Modo de audio ("normal", "dialogue", "night"). */
+  var modoAudio: String
+    get() = prefs.getString("modoAudio", "normal") ?: "normal"
+    set(v) = prefs.edit().putString("modoAudio", v).apply()
+
+  /** Subtítulos automáticos ("auto", "always", "never"). */
+  var modoSubtitulos: String
+    get() = prefs.getString("modoSubtitulos", "auto") ?: "auto"
+    set(v) = prefs.edit().putString("modoSubtitulos", v).apply()
+
+  /** Idioma de subtítulos preferido ("spa", "eng"). */
+  var idiomaSubtitulosPreferido: String
+    get() = prefs.getString("idiomaSubtitulosPreferido", "spa") ?: "spa"
+    set(v) = prefs.edit().putString("idiomaSubtitulosPreferido", v).apply()
+
   val configurado: Boolean get() = servidor.isNotEmpty() && !token.isNullOrEmpty()
 
   fun olvidarSesion() {

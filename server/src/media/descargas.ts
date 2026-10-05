@@ -21,7 +21,7 @@ import { db } from '../db.ts';
 const DIR = join(config.transcodeDir, 'descargas');
 mkdirSync(DIR, { recursive: true });
 
-export type Perfil = 'movil' | 'tablet' | 'original';
+export type Perfil = 'baja' | 'movil' | 'tablet' | 'fhd' | 'original';
 
 /*
  * Calidad constante con un techo, no bitrate fijo. Con bitrate fijo un corto de
@@ -29,9 +29,11 @@ export type Perfil = 'movil' | 'tablet' | 'original';
  * moderno; con CRF ocupa lo que necesite y el techo solo actúa en las escenas
  * complicadas.
  */
-export const PERFILES: Record<Exclude<Perfil, 'original'>, { alto: number; crf: number; techo: string; audio: string; nombre: string }> = {
-  movil: { alto: 480, crf: 24, techo: '1500k', audio: '128k', nombre: '480p' },
-  tablet: { alto: 720, crf: 22, techo: '3000k', audio: '160k', nombre: '720p' },
+export const PERFILES: Record<Exclude<Perfil, 'original'>, { alto: number; crf: number; techo: string; audio: string; nombre: string; estimacion: string }> = {
+  baja: { alto: 360, crf: 26, techo: '800k', audio: '96k', nombre: '360p', estimacion: 'Muy ligera (~300 MB)' },
+  movil: { alto: 480, crf: 24, techo: '1500k', audio: '128k', nombre: '480p', estimacion: 'Móvil (~600 MB)' },
+  tablet: { alto: 720, crf: 22, techo: '3000k', audio: '160k', nombre: '720p', estimacion: 'HD (~1.3 GB)' },
+  fhd: { alto: 1080, crf: 21, techo: '6000k', audio: '192k', nombre: '1080p', estimacion: 'Full HD (~2.8 GB)' },
 };
 
 export type Descarga = {
@@ -206,5 +208,6 @@ export function borrar(userId: number, id: number) {
 export function nombreFichero(d: Descarga) {
   const limpio = d.titulo.replace(/[\\/:*?"<>|]/g, '-').trim();
   const extension = d.perfil === 'original' ? (d.ruta?.match(/\.[a-z0-9]+$/i)?.[0] ?? '.mkv') : '.mp4';
-  return `${limpio}${d.perfil === 'original' ? '' : ` - ${PERFILES[d.perfil as 'movil' | 'tablet'].nombre}`}${extension}`;
+  const sufijo = d.perfil === 'original' ? '' : ` - ${PERFILES[d.perfil as Exclude<Perfil, 'original'>]?.nombre ?? d.perfil}`;
+  return `${limpio}${sufijo}${extension}`;
 }

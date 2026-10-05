@@ -17,6 +17,14 @@ function tamano(bytes: number | null) {
   return `${Math.round(bytes / 1e6)} MB`;
 }
 
+const ETIQUETA_PERFIL: Record<string, string> = {
+  baja: 'Muy ligera · 360p',
+  movil: 'Móvil · 480p',
+  tablet: 'HD · 720p',
+  fhd: 'Full HD · 1080p',
+  original: 'Fichero original',
+};
+
 export default function Descargas() {
   const queryClient = useQueryClient();
   const { data, isLoading, error } = useQuery({
@@ -54,7 +62,7 @@ export default function Descargas() {
 
       {descargas.length === 0 ? (
         <div className="glass rounded-[var(--radius-panel)] p-6 text-[13px] text-mist-500">
-          Todavía no has pedido ninguna. Se piden desde la ficha de cada película, con el botón de descargar.
+          Todavía no has pedido ninguna. Se piden desde la ficha de cada película o episodio de serie, con el botón de descargar.
         </div>
       ) : (
         <div className="space-y-2">
@@ -63,7 +71,7 @@ export default function Descargas() {
               <div className="min-w-0 flex-1">
                 <div className="truncate text-[13.5px] font-medium">{d.titulo}</div>
                 <div className="mt-0.5 text-[12px] text-mist-500">
-                  {d.perfil === 'original' ? 'Fichero original' : d.perfil === 'movil' ? 'Móvil · 480p' : 'Tablet · 720p'}
+                  {ETIQUETA_PERFIL[d.perfil] ?? d.perfil}
                   {d.bytes ? ` · ${tamano(d.bytes)}` : ''}
                   {d.estado === 'preparando' ? ` · preparando ${d.progreso}%` : ''}
                 </div>

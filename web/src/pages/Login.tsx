@@ -12,12 +12,22 @@ function Avatar({ user, onClick }: { user: User; onClick: () => void }) {
       onClick={onClick}
       className="group flex flex-col items-center gap-3"
     >
-      <div
-        className="grid h-24 w-24 place-items-center rounded-3xl text-3xl font-semibold text-ink-950 shadow-[0_18px_40px_-16px_rgba(0,0,0,0.9)] ring-1 ring-white/15 transition-shadow duration-300 group-hover:shadow-[0_26px_60px_-18px_rgba(0,0,0,0.95)]"
-        style={{ background: `linear-gradient(140deg, ${user.color ?? '#f0a54a'}, ${user.color ?? '#f0a54a'}bb)` }}
-      >
-        {user.name.charAt(0).toUpperCase()}
-      </div>
+      {user.has_avatar ? (
+        <div className="relative h-24 w-24 overflow-hidden rounded-3xl shadow-[0_18px_40px_-16px_rgba(0,0,0,0.9)] ring-1 ring-white/15 transition-shadow duration-300 group-hover:shadow-[0_26px_60px_-18px_rgba(0,0,0,0.95)]">
+          <img
+            src={api.userAvatarUrl(user.id)}
+            alt={user.name}
+            className="h-full w-full object-cover"
+          />
+        </div>
+      ) : (
+        <div
+          className="grid h-24 w-24 place-items-center rounded-3xl text-3xl font-semibold text-ink-950 shadow-[0_18px_40px_-16px_rgba(0,0,0,0.9)] ring-1 ring-white/15 transition-shadow duration-300 group-hover:shadow-[0_26px_60px_-18px_rgba(0,0,0,0.95)]"
+          style={{ background: `linear-gradient(140deg, ${user.color ?? '#f0a54a'}, ${user.color ?? '#f0a54a'}bb)` }}
+        >
+          {user.name.charAt(0).toUpperCase()}
+        </div>
+      )}
       <span className="text-sm text-mist-300 transition-colors group-hover:text-mist-100">{user.name}</span>
     </motion.button>
   );
@@ -89,24 +99,70 @@ export default function Login() {
             </div>
           </>
         ) : selected ? (
-          <>
-            <p className="mb-6 text-sm text-mist-500">Introduce el PIN de {selected.name}</p>
-            <div className="glass mx-auto flex max-w-xs gap-2 rounded-2xl p-2">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (pin) login.mutate({ userId: selected.id, pin });
+            }}
+            className="mx-auto max-w-xs"
+          >
+            <div className="mb-4 flex flex-col items-center gap-2">
+              {selected.has_avatar ? (
+                <img
+                  src={api.userAvatarUrl(selected.id)}
+                  alt={selected.name}
+                  className="h-16 w-16 rounded-2xl object-cover ring-1 ring-white/15"
+                />
+              ) : (
+                <div
+                  className="grid h-16 w-16 place-items-center rounded-2xl text-2xl font-semibold text-ink-950 ring-1 ring-white/15"
+                  style={{ background: `linear-gradient(140deg, ${selected.color ?? '#f0a54a'}, ${selected.color ?? '#f0a54a'}bb)` }}
+                >
+                  {selected.name.charAt(0).toUpperCase()}
+                </div>
+              )}
+              <p className="text-sm text-mist-400">
+                Introduce el PIN de <strong className="text-mist-100">{selected.name}</strong>
+              </p>
+            </div>
+            <div className="glass flex gap-2 rounded-2xl p-2">
               <input
                 autoFocus
                 type="password"
                 inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={8}
                 value={pin}
-                onChange={(e) => setPin(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && login.mutate({ userId: selected.id, pin })}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/\D/g, '');
+                  setPin(val);
+                  if (val.length === 6) {
+                    login.mutate({ userId: selected.id, pin: val });
+                  }
+                }}
                 placeholder="PIN"
                 className="flex-1 bg-transparent px-3 py-2 text-center text-lg tracking-[0.4em] outline-none placeholder:tracking-normal placeholder:text-mist-600"
               />
+              <button
+                type="submit"
+                disabled={login.isPending || !pin}
+                className="rounded-xl bg-mist-100 px-4 py-2 text-sm font-semibold text-ink-950 disabled:opacity-40"
+              >
+                Entrar
+              </button>
             </div>
-            <button onClick={() => { setSelected(null); setPin(''); setError(''); }} className="mt-4 text-xs text-mist-500 hover:text-mist-100">
+            <button
+              type="button"
+              onClick={() => {
+                setSelected(null);
+                setPin('');
+                setError('');
+              }}
+              className="mt-4 text-xs text-mist-500 hover:text-mist-100"
+            >
               ← Volver
             </button>
-          </>
+          </form>
         ) : (
           <>
             <p className="mb-10 text-sm text-mist-500">¿Quién está viendo?</p>

@@ -225,13 +225,22 @@ export default function Player() {
 
     const spokenLanguage = info.audio.find((a) => a.id === audioTrack)?.language;
     const audioIsPreferred = spokenLanguage === prefs.audio.preferredLanguage;
-    if (mode === 'auto' && audioIsPreferred && !prefs.subtitles.preferForced) return;
-
     const wanted = info.subtitles.filter((s) => s.language === prefs.subtitles.preferredLanguage);
-    const pick = prefs.subtitles.preferForced
-      ? (wanted.find((s) => s.forced) ?? wanted[0])
-      : (wanted.find((s) => !s.forced) ?? wanted[0]);
-    if (pick) setSubtitle(pick.id);
+    const forcedSub = wanted.find((s) => s.forced);
+    const completeSub = wanted.find((s) => !s.forced) ?? wanted[0];
+
+    if (mode === 'auto') {
+      if (audioIsPreferred) {
+        // En idioma preferido: SOLO activar si hay pista forzada; si no, nada
+        if (forcedSub) setSubtitle(forcedSub.id);
+      } else {
+        // En idioma extranjero: activar completos en el idioma preferido
+        if (completeSub) setSubtitle(completeSub.id);
+      }
+    } else if (mode === 'always') {
+      const pick = prefs.subtitles.preferForced ? (forcedSub ?? completeSub) : (completeSub ?? forcedSub);
+      if (pick) setSubtitle(pick.id);
+    }
   }, [info, audioTrack, autoSubApplied, prefs.audio.preferredLanguage, prefs.subtitles]);
 
   const src =

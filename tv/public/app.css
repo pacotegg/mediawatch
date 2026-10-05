@@ -15,6 +15,10 @@
  * colores de la «W». El azul manda (foco y acciones), el verde dice «visto» y
  * el rojo se reserva para lo que borra o desconecta.
  */
+[hidden] {
+  display: none !important;
+}
+
 :root {
   --fondo: #16171c;
   --menu-fondo: #1b1c22;
@@ -107,8 +111,8 @@ button {
 .lienzo {
   position: relative;
   width: 1920px;
-  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: transform;
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s ease-out;
+  will-change: transform, opacity;
 }
 
 /* ------------------------------------------------------------ menú lateral */
@@ -239,7 +243,7 @@ button {
 .heroe {
   position: relative;
   width: 1920px;
-  height: 700px;
+  height: 500px;
   overflow: hidden;
 }
 
@@ -248,7 +252,7 @@ button {
   top: 0;
   left: 0;
   width: 1920px;
-  height: 700px;
+  height: 500px;
   opacity: 0;
   transition: opacity 0.9s ease-in-out;
 }
@@ -267,7 +271,7 @@ button {
   left: 0;
   bottom: 0;
   width: 1920px;
-  height: 420px;
+  height: 300px;
   background: linear-gradient(to top, #16171c 4%, rgba(22, 23, 28, 0.85) 34%, rgba(22, 23, 28, 0));
 }
 
@@ -276,35 +280,35 @@ button {
   top: 0;
   left: 0;
   width: 1300px;
-  height: 700px;
+  height: 500px;
   background: linear-gradient(to right, rgba(22, 23, 28, 0.94) 6%, rgba(22, 23, 28, 0.7) 38%, rgba(22, 23, 28, 0));
 }
 
 .heroe-texto {
   position: absolute;
   left: 150px;
-  bottom: 74px;
+  bottom: 36px;
   width: 900px;
 }
 
 .heroe-logo {
-  max-width: 460px;
-  max-height: 140px;
-  margin-bottom: 18px;
+  max-width: 380px;
+  max-height: 105px;
+  margin-bottom: 12px;
 }
 
 .heroe-titulo {
-  font-size: 60px;
+  font-size: 46px;
   font-weight: 700;
-  margin: 0 0 14px;
+  margin: 0 0 10px;
   letter-spacing: -1px;
   text-shadow: 0 2px 18px rgba(0, 0, 0, 0.9);
 }
 
 .heroe-meta {
-  font-size: 23px;
+  font-size: 20px;
   color: var(--texto-sec);
-  margin-bottom: 14px;
+  margin-bottom: 10px;
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.9);
 }
 
@@ -314,19 +318,19 @@ button {
 }
 
 .heroe-sinopsis {
-  font-size: 22px;
-  line-height: 1.5;
+  font-size: 19px;
+  line-height: 1.4;
   color: var(--texto-sec);
-  max-height: 100px;
+  max-height: 76px;
   overflow: hidden;
-  margin-bottom: 24px;
+  margin-bottom: 18px;
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.95);
 }
 
 .puntos {
   position: absolute;
   right: 90px;
-  bottom: 96px;
+  bottom: 46px;
 }
 
 .punto {
@@ -637,15 +641,23 @@ body.rend-rapido .lamina img {
    cual es cual sin tener que recordar de quien es cada numero. */
 .nota-fuente {
   display: inline-block;
-  margin-right: 30px;
+  margin-right: 32px;
   font-size: 17px;
   font-weight: 500;
   color: var(--texto-sec);
   text-align: center;
+  vertical-align: middle;
+}
+
+.nota-fuente .logo-nota {
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 8px;
 }
 
 .nota-fuente b {
-  display: block;
+  display: inline-block;
+  vertical-align: middle;
   font-size: 28px;
   font-weight: 700;
   color: var(--texto);
@@ -920,35 +932,36 @@ body.rend-rapido .lamina img {
   left: 0;
   width: 1920px;
   height: 1080px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   text-align: center;
 }
 
 .centrado .interior {
-  position: absolute;
-  top: 50%;
-  left: 0;
+  position: relative;
   width: 1920px;
-  margin-top: -220px;
+  margin: 0 auto;
 }
 
 .marca {
-  font-size: 62px;
+  font-size: 56px;
   font-weight: 700;
-  margin: 0 0 18px;
+  margin: 0 0 12px;
   color: var(--acento);
 }
 
 .sub {
-  font-size: 27px;
+  font-size: 24px;
   color: var(--texto-sec);
-  line-height: 1.55;
-  margin: 0 0 30px;
+  line-height: 1.45;
+  margin: 0 0 16px;
 }
 
 .pie {
-  font-size: 20px;
+  font-size: 19px;
   color: var(--texto-ter);
-  margin-top: 40px;
+  margin-top: 24px;
 }
 
 .codigo {
@@ -1368,16 +1381,16 @@ body.rend-rapido .lamina img {
 
 .qr {
   display: inline-block;
-  padding: 18px;
-  margin: 10px 0 4px;
-  border-radius: 20px;
+  padding: 14px;
+  margin: 6px 0 2px;
+  border-radius: 18px;
   background: #fff;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
 }
 
 .qr img {
-  width: 300px;
-  height: 300px;
+  width: 260px;
+  height: 260px;
 }
 
 /* ---------------------------------------------------------- capa de menú */
@@ -1884,9 +1897,25 @@ body.rend-medio .tarjeta.enfocado .lamina {
   overflow-y: auto;
 }
 
-/* El extra se ve a pantalla completa, con su nombre arriba unos segundos. */
+/* Modal para leer reseñas completas */
+.panel-resena {
+  width: 1040px;
+  max-height: 820px;
+  margin: -410px 0 0 -520px;
+}
+
+.resena-modal-cuerpo {
+  font-size: 24px;
+  line-height: 1.55;
+  color: var(--texto);
+  white-space: pre-wrap;
+  margin-bottom: 24px;
+}
+
+/* El extra se ve a pantalla completa, con su nombre arriba unos segundos.
+   En Tizen, AVPlay reproduce por hardware debajo de la capa web; el fondo DEBE ser transparente. */
 .capa-extra {
-  background: #000;
+  background: transparent;
 }
 
 .extra-cabecera {
@@ -2024,12 +2053,12 @@ body.rend-medio .tarjeta.enfocado .lamina {
 .alfabeto {
   position: absolute;
   top: 50%;
+  transform: translateY(-50%);
   right: 24px;
   width: 60px;
   padding: 10px 0;
   border-radius: 30px;
   background: rgba(255, 255, 255, 0.06);
-  transform: translateY(-50%);
   z-index: 5;
   text-align: center;
 }
@@ -2090,21 +2119,21 @@ body.rend-medio .tarjeta.enfocado .lamina {
 }
 
 .rejilla .tarjeta {
-  width: 184px;
-  margin-right: 22px;
-  margin-bottom: 14px;
-  font-size: 17px;
+  width: 216px;
+  margin-right: 24px;
+  margin-bottom: 16px;
+  font-size: 18px;
 }
 
 .rejilla .lamina {
-  width: 184px;
-  height: 276px;
-  border-radius: 10px;
+  width: 216px;
+  height: 324px;
+  border-radius: 12px;
 }
 
 .rejilla .lamina img {
-  width: 184px;
-  height: 276px;
+  width: 216px;
+  height: 324px;
 }
 
 .rejilla .sin-lamina {
@@ -2114,9 +2143,9 @@ body.rend-medio .tarjeta.enfocado .lamina {
 
 .rejilla .tarjeta .nombre {
   margin-top: 8px;
-  font-size: 18px;
-  line-height: 22px;
-  max-height: 22px;
+  font-size: 19px;
+  line-height: 23px;
+  max-height: 23px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2138,22 +2167,23 @@ body.rend-medio .tarjeta.enfocado .lamina {
 
 .fila.reducida .carrusel {
   padding: 10px 0 8px;
+  max-width: 1810px;
 }
 
 .fila.reducida .tarjeta {
-  width: 150px;
-  margin-right: 18px;
+  width: 176px;
+  margin-right: 20px;
 }
 
 .fila.reducida .lamina {
-  width: 150px;
-  height: 225px;
+  width: 176px;
+  height: 264px;
   border-radius: 10px;
 }
 
 .fila.reducida .lamina img {
-  width: 150px;
-  height: 225px;
+  width: 176px;
+  height: 264px;
 }
 
 .fila.reducida .sin-lamina {
@@ -2162,10 +2192,10 @@ body.rend-medio .tarjeta.enfocado .lamina {
 }
 
 .fila.reducida .tarjeta .nombre {
-  margin-top: 8px;
-  font-size: 16px;
-  line-height: 20px;
-  max-height: 20px;
+  margin-top: 9px;
+  font-size: 17px;
+  line-height: 21px;
+  max-height: 21px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2173,6 +2203,61 @@ body.rend-medio .tarjeta.enfocado .lamina {
 
 .fila.reducida .tarjeta .anyo {
   display: none;
+}
+
+/* ------------------------------------------------------------- reseñas */
+
+.resenas.fila {
+  padding-top: 36px;
+}
+
+.tarjeta-resena {
+  display: inline-block;
+  vertical-align: top;
+  width: 520px;
+  margin-right: 24px;
+  padding: 22px 26px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  white-space: normal;
+  transition: transform 0.13s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+.tarjeta-resena.enfocado {
+  background: rgba(255, 255, 255, 0.16);
+  transform: scale(1.04);
+  box-shadow: 0 0 0 4px var(--acento);
+}
+
+.tarjeta-resena .resena-cabecera {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.tarjeta-resena .resena-autor {
+  font-size: 21px;
+  font-weight: 700;
+  color: var(--texto);
+}
+
+.tarjeta-resena .resena-cabecera .nota {
+  color: var(--acento);
+  font-size: 19px;
+  font-weight: 700;
+}
+
+.tarjeta-resena .resena-cuerpo {
+  font-size: 19px;
+  line-height: 1.45;
+  color: var(--texto-sec);
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 /* Episodios mas compactos: caben mas filas en la ventana de la lista. */

@@ -89,28 +89,29 @@ CREATE TABLE IF NOT EXISTS imdb_generos (
   actualizado TEXT NOT NULL
 );
 
---- Que pelicula presta su caratula y su fondo a una saga.
----
---- Sin fila, la saga usa lo automatico: el poster de la mas antigua y el fondo
---- de la mejor valorada, que muchas veces no es la imagen por la que reconoces
---- la saga. Se guarda por NOMBRE de coleccion, que es lo que agrupa a las
---- peliculas, y con el item_id como valor: al reescanear los ids se renumeran,
---- asi que se comprueba que la pelicula siga en la coleccion antes de usarla.
+-- Que pelicula presta su caratula y su fondo a una saga.
+--
+-- Sin fila, la saga usa lo automatico: el poster de la mas antigua y el fondo
+-- de la mejor valorada, que muchas veces no es la imagen por la que reconoces
+-- la saga. Se guarda por NOMBRE de coleccion, que es lo que agrupa a las
+-- peliculas, y con el item_id como valor: al reescanear los ids se renumeran,
+-- asi que se comprueba que la pelicula siga en la coleccion antes de usarla.
 CREATE TABLE IF NOT EXISTS coleccion_arte (
   coleccion   TEXT PRIMARY KEY,
   item_id     INTEGER NOT NULL,
   actualizado TEXT NOT NULL
 );
 
---- Una imagen PROPIA para la saga, puesta por el usuario desde el buzon.
----
---- Aparte de coleccion_arte a proposito: ahi se guarda QUE PELICULA presta su
---- arte, aqui QUE FICHERO se usa, y son dos cosas distintas. Si hay fila aqui,
---- manda sobre la pelicula elegida. La ruta apunta a data/artwork/sagas/, nunca
---- al fichero original que dejo el usuario: ese es suyo y no se mueve.
+-- Una imagen PROPIA para la saga, puesta por el usuario desde el buzon.
+--
+-- Aparte de coleccion_arte a proposito: ahi se guarda QUE PELICULA presta su
+-- arte, aqui QUE FICHERO se usa, y son dos cosas distintas. Si hay fila aqui,
+-- manda sobre la pelicula elegida. La ruta apunta a data/artwork/sagas/, nunca
+-- al fichero original que dejo el usuario: ese es suyo y no se mueve.
 CREATE TABLE IF NOT EXISTS coleccion_imagen (
   coleccion   TEXT PRIMARY KEY,
   ruta        TEXT NOT NULL,
+  fondo       TEXT,
   actualizado TEXT NOT NULL
 );
 
@@ -253,14 +254,14 @@ CREATE TABLE IF NOT EXISTS sub_offsets (
   PRIMARY KEY (file_id, track_id)
 );
 
---- Extras de un titulo: los «Featurettes», «Behind the scenes» y «Other» que
---- el escaner venia ignorando. 1.111 ficheros en 126 titulos, contados el
---- 29/09/2026.
----
---- Tabla propia, y NO filas de media_files con item_id NULL: hay 58 consultas
---- sobre media_files, y una docena cuenta sin unir con items -estadisticas,
---- trickplay, transcripcion-, asi que meterlos ahi inflaba los recuentos y
---- ponia a generar miniaturas de cada trailer.
+-- Extras de un titulo: los «Featurettes», «Behind the scenes» y «Other» que
+-- el escaner venia ignorando. 1.111 ficheros en 126 titulos, contados el
+-- 29/09/2026.
+--
+-- Tabla propia, y NO filas de media_files con item_id NULL: hay 58 consultas
+-- sobre media_files, y una docena cuenta sin unir con items -estadisticas,
+-- trickplay, transcripcion-, asi que meterlos ahi inflaba los recuentos y
+-- ponia a generar miniaturas de cada trailer.
 CREATE TABLE IF NOT EXISTS extras (
   id          INTEGER PRIMARY KEY,
   item_id     INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
@@ -269,8 +270,8 @@ CREATE TABLE IF NOT EXISTS extras (
   tipo        TEXT NOT NULL,
   size        INTEGER,
   duration    REAL,
-  --- Subcarpeta dentro de la de extras, cuando la hay: «Season 3». Breaking Bad
-  --- tiene 143 extras y Fringe 75; sin agrupar no hay ventana que los muestre.
+  -- Subcarpeta dentro de la de extras, cuando la hay: «Season 3». Breaking Bad
+  -- tiene 143 extras y Fringe 75; sin agrupar no hay ventana que los muestre.
   grupo       TEXT,
   scanned_at  TEXT NOT NULL
 );
@@ -389,6 +390,10 @@ anadirColumna('playbacks', 'sesion', 'TEXT');
 anadirColumna('sessions', 'device', 'TEXT');
 // Subcarpeta del extra dentro de la carpeta de extras, para agruparlos en la ficha.
 anadirColumna('extras', 'grupo', 'TEXT');
+// Fondo propio de una saga (además de la carátula).
+anadirColumna('coleccion_imagen', 'fondo', 'TEXT');
+// Imagen de perfil / avatar del usuario.
+anadirColumna('users', 'avatar', 'TEXT');
 db.exec("UPDATE sessions SET last_seen = created_at WHERE last_seen IS NULL");
 
 /*

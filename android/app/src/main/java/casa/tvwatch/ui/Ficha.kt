@@ -23,7 +23,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.MaterialTheme
@@ -53,6 +55,7 @@ import casa.tvwatch.datos.Extra
 import casa.tvwatch.datos.Cache
 import casa.tvwatch.datos.Episodio
 import casa.tvwatch.datos.Ficha
+import casa.tvwatch.datos.Resena
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -103,12 +106,14 @@ fun PantallaFicha(
   // Los extras se piden aparte para no retrasar la ficha, que es lo que se mira.
   var extras by remember(itemId) { mutableStateOf<List<Extra>>(emptyList()) }
   var extrasAbiertos by remember(itemId) { mutableStateOf(false) }
+  var resenas by remember(itemId) { mutableStateOf<List<Resena>>(emptyList()) }
   /*
    * Dónde verlo fuera de casa. Solo informa y abre la app de la plataforma: van
    * cifradas y no se pueden reproducir aquí. También aparte, para no retrasar la
    * ficha por un dato secundario.
    */
   var dondeVer by remember(itemId) { mutableStateOf<List<PlataformaTitulo>>(emptyList()) }
+  var fileIdDescargaDialogo by remember(itemId) { mutableStateOf<Int?>(null) }
   val ambito = rememberCoroutineScope()
 
   LaunchedEffect(itemId, intento) {
@@ -133,11 +138,23 @@ fun PantallaFicha(
     }
   }
 
-  LaunchedEffect(itemId) {
+  LaunchedEffect(itemId, ficha?.extrasCount) {
+    if (ficha != null && ficha?.extrasCount == 0) {
+      extras = emptyList()
+      return@LaunchedEffect
+    }
     extras = try {
       withContext(Dispatchers.IO) { Api.extras(itemId) }.extras
     } catch (e: Exception) {
       emptyList() // sin extras: la pastilla no sale y ya esta
+    }
+  }
+
+  LaunchedEffect(itemId) {
+    resenas = try {
+      withContext(Dispatchers.IO) { Api.resenas(itemId) }
+    } catch (_: Exception) {
+      emptyList()
     }
   }
 
@@ -226,17 +243,20 @@ fun PantallaFicha(
 
         if (f.ratings.isNotEmpty()) {
           Spacer(Modifier.height(8.dp))
-          LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+          LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+          ) {
             items(f.ratings) { n ->
-              Row(verticalAlignment = Alignment.Bottom) {
+              Row(verticalAlignment = Alignment.CenterVertically) {
+                BadgeNota(n.fuente, n.etiqueta)
+                Spacer(Modifier.width(5.dp))
                 Text(
                   if (n.maximo == 100) "${n.valor.toInt()}%" else "%.1f".format(n.valor),
                   color = Texto,
                   fontSize = 15.sp,
                   fontWeight = FontWeight.SemiBold,
                 )
-                Spacer(Modifier.width(4.dp))
-                Text(n.etiqueta, color = TextoTenue, fontSize = 11.sp)
               }
             }
           }
@@ -376,6 +396,9 @@ fun PantallaFicha(
             Pastilla("Ver en la tele", icono = { IconoCast(it) }) {
               mandarALaTele(ficheroPelicula.id, null, reanudarEn)
             }
+            Pastilla("Descargar") {
+              fileIdDescargaDialogo = ficheroPelicula.id
+            }
           }
           // Cambiar las imágenes se guarda para todos: solo el administrador.
           if (Ajustes.esAdmin) Pastilla("Imágenes") { alCambiarImagenes(f.kind, f.title, f.year) }
@@ -416,6 +439,7 @@ fun PantallaFicha(
           alPulsar = { alReproducir(e.ficheroId!!, e.id, posicionDe(f, e.id)) },
           // Mantener pulsado un episodio lo manda a la tele.
           alMantener = { mandarALaTele(e.ficheroId!!, e.id, posicionDe(f, e.id)) },
+          alPedirDescarga = { fileIdDescargaDialogo = it },
         )
       }
     }
@@ -453,10 +477,77 @@ fun PantallaFicha(
         }
       }
     }
+
+    if (resenas.isNotEmpty()) {
+      item {
+        Spacer(Modifier.height(18.dp))
+        Text("Reseñas", color = Texto, fontSize = 16.sp, modifier = Modifier.padding(start = 16.dp, bottom = 10.dp))
+        LazyRow(
+          contentPadding = PaddingValues(horizontal = 16.dp),
+          horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+          items(resenas) { res ->
+            TarjetaResena(res)
+          }
+        }
+      }
+    }
   }
 
   if (extrasAbiertos) {
     DialogoDeExtras(extras) { extrasAbiertos = false }
+  }
+
+  if (fileIdDescargaDialogo != null) {
+    val targetFileId = fileIdDescargaDialogo!!
+    androidx.compose.material3.AlertDialog(
+      onDismissRequest = { fileIdDescargaDialogo = null },
+      containerColor = FondoTarjeta,
+      title = { Text("Elegir calidad de descarga", color = Texto, fontWeight = FontWeight.Bold) },
+      text = {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+          listOf(
+            Triple("baja", "360p (Muy ligera)", "~300 MB peli / ~100 MB ep."),
+            Triple("movil", "480p (Móvil)", "~600 MB peli / ~200 MB ep."),
+            Triple("tablet", "720p (HD)", "~1.3 GB peli / ~400 MB ep."),
+            Triple("fhd", "1080p (Full HD)", "~2.8 GB peli / ~800 MB ep."),
+            Triple("original", "Original", "el fichero intacto")
+          ).forEach { (perfil, titulo, pie) ->
+            OutlinedButton(
+              onClick = {
+                fileIdDescargaDialogo = null
+                ambito.launch {
+                  try {
+                    val d = withContext(Dispatchers.IO) { Api.pedirDescarga(targetFileId, perfil) }
+                    Toast.makeText(contexto, if (d.estado == "lista") "Descarga lista" else "Preparando copia en el servidor...", Toast.LENGTH_SHORT).show()
+                    if (d.estado == "lista") {
+                      val url = "${Api.urlFicheroDescarga(d.id)}?token=${Ajustes.token ?: ""}"
+                      val ext = if (d.perfil == "original") ".mkv" else ".mp4"
+                      val nombreFichero = "${d.titulo.replace(Regex("[^a-zA-Z0-9.-]"), "_")}_${d.perfil}$ext"
+                      iniciarDescargaEnAndroid(contexto, url, d.titulo, nombreFichero)
+                    }
+                  } catch (e: Exception) {
+                    Toast.makeText(contexto, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                  }
+                }
+              },
+              modifier = Modifier.fillMaxWidth()
+            ) {
+              Column(horizontalAlignment = Alignment.Start, modifier = Modifier.fillMaxWidth()) {
+                Text(titulo, color = Texto, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text(pie, color = TextoTenue, fontSize = 11.sp)
+              }
+            }
+          }
+        }
+      },
+      confirmButton = {},
+      dismissButton = {
+        OutlinedButton(onClick = { fileIdDescargaDialogo = null }) {
+          Text("Cancelar", color = TextoSuave)
+        }
+      }
+    )
   }
 }
 
@@ -468,7 +559,13 @@ private fun posicionDe(f: Ficha, episodioId: Int): Double {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun FilaEpisodio(f: Ficha, e: Episodio, alPulsar: () -> Unit, alMantener: () -> Unit = {}) {
+private fun FilaEpisodio(
+  f: Ficha,
+  e: Episodio,
+  alPulsar: () -> Unit,
+  alMantener: () -> Unit = {},
+  alPedirDescarga: (Int) -> Unit = {}
+) {
   val avance = run {
     val p = f.progress.firstOrNull { it.episodioId == e.id }
     val total = p?.duration ?: (e.runtime?.times(60) ?: 0.0)
@@ -480,6 +577,7 @@ private fun FilaEpisodio(f: Ficha, e: Episodio, alPulsar: () -> Unit, alMantener
       .fillMaxWidth()
       .combinedClickable(onClick = alPulsar, onLongClick = alMantener)
       .padding(horizontal = 16.dp, vertical = 8.dp),
+    verticalAlignment = Alignment.CenterVertically
   ) {
     Box(
       Modifier
@@ -502,12 +600,15 @@ private fun FilaEpisodio(f: Ficha, e: Episodio, alPulsar: () -> Unit, alMantener
       }
     }
     Spacer(Modifier.width(12.dp))
-    Column(Modifier.padding(top = 2.dp)) {
+    Column(Modifier.weight(1f).padding(top = 2.dp)) {
       Text("T${e.season}E${e.episode}", color = TextoTenue, fontSize = 11.sp)
       Text(e.title ?: "Episodio ${e.episode}", color = Texto, fontSize = 14.sp, maxLines = 2, lineHeight = 18.sp)
       duracionLegible(e.runtime).takeIf { it.isNotEmpty() }?.let {
         Text(it, color = TextoTenue, fontSize = 11.sp)
       }
+    }
+    if (e.ficheroId != null) {
+      Pastilla("⬇") { alPedirDescarga(e.ficheroId) }
     }
   }
 }
@@ -542,4 +643,112 @@ private fun etiquetasTecnicas(f: Ficha): List<String> {
   fichero.codec?.let { out += it.uppercase() }
   fichero.hdr?.let { out += it }
   return out
+}
+
+@Composable
+private fun BadgeNota(fuente: String, etiqueta: String) {
+  when (fuente) {
+    "imdb" -> {
+      Box(
+        Modifier
+          .clip(RoundedCornerShape(3.dp))
+          .background(Color(0xFFF5C518))
+          .padding(horizontal = 4.dp, vertical = 1.dp),
+      ) {
+        Text("IMDb", color = Color.Black, fontSize = 10.sp, fontWeight = FontWeight.Black)
+      }
+    }
+    "tomatometerallcritics" -> {
+      Box(
+        Modifier
+          .size(15.dp)
+          .clip(CircleShape)
+          .background(Color(0xFFFA320A)),
+        contentAlignment = Alignment.TopCenter,
+      ) {
+        Box(
+          Modifier
+            .size(4.dp)
+            .clip(RoundedCornerShape(1.dp))
+            .background(Color(0xFF00D000)),
+        )
+      }
+    }
+    "tmdb", "themoviedb" -> {
+      Box(
+        Modifier
+          .clip(RoundedCornerShape(3.dp))
+          .background(Color(0xFF01B4E4))
+          .padding(horizontal = 4.dp, vertical = 1.dp),
+      ) {
+        Text("TMDb", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold)
+      }
+    }
+    "tvdb", "thetvdb" -> {
+      Box(
+        Modifier
+          .clip(RoundedCornerShape(3.dp))
+          .background(Color(0xFF20B26C))
+          .padding(horizontal = 4.dp, vertical = 1.dp),
+      ) {
+        Text("TVDB", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold)
+      }
+    }
+    "metacritic" -> {
+      Box(
+        Modifier
+          .size(16.dp)
+          .clip(CircleShape)
+          .background(Color(0xFF333333)),
+        contentAlignment = Alignment.Center,
+      ) {
+        Text("mc", color = Color(0xFF66CC33), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+      }
+    }
+    else -> {
+      Text(etiqueta, color = TextoTenue, fontSize = 11.sp)
+    }
+  }
+}
+
+@Composable
+private fun TarjetaResena(res: Resena) {
+  var abierta by remember { mutableStateOf(false) }
+  Column(
+    Modifier
+      .width(280.dp)
+      .clip(RoundedCornerShape(14.dp))
+      .background(FondoTarjeta)
+      .clickable { abierta = !abierta }
+      .padding(14.dp),
+  ) {
+    Row(
+      Modifier.fillMaxWidth(),
+      horizontalArrangement = Arrangement.SpaceBetween,
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      Text(
+        res.autor,
+        color = Texto,
+        fontSize = 13.sp,
+        fontWeight = FontWeight.Bold,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.weight(1f, fill = false),
+      )
+      res.valor?.let { v ->
+        Spacer(Modifier.width(6.dp))
+        Text("★ %.1f".format(v), color = Realce, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+      }
+    }
+    Spacer(Modifier.height(8.dp))
+    Text(
+      res.contenido,
+      color = TextoSuave,
+      fontSize = 12.sp,
+      lineHeight = 17.sp,
+      maxLines = if (abierta) Int.MAX_VALUE else 4,
+      overflow = TextOverflow.Ellipsis,
+    )
+  }
 }

@@ -21,14 +21,22 @@ const CARPETAS: Record<string, string> = {
   'featurettes': 'Featurette',
   'featurette': 'Featurette',
   'behind the scenes': 'Cómo se hizo',
+  'behindthescenes': 'Cómo se hizo',
   'deleted scenes': 'Escenas eliminadas',
+  'deleted scene': 'Escenas eliminadas',
+  'deleted': 'Escenas eliminadas',
   'interviews': 'Entrevistas',
+  'interview': 'Entrevistas',
   'scenes': 'Escenas',
+  'scene': 'Escenas',
   'shorts': 'Cortos',
+  'short': 'Cortos',
   'trailers': 'Tráilers',
+  'trailer': 'Tráilers',
   'extras': 'Extra',
   'extra': 'Extra',
   'other': 'Extra',
+  'others': 'Extra',
 };
 
 /** Y los mismos, puestos como sufijo del nombre junto a la pelicula. */

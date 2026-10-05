@@ -311,6 +311,158 @@ export async function imagenesDe(tmdbId: number, kind: 'movie' | 'show') {
   return deTmdb;
 }
 
+/** Imágenes oficiales (posters y fondos) de una colección/saga en TMDb y Fanart.tv. */
+export async function imagenesDeSaga(nombre: string): Promise<{ posters: ImagenDisponible[]; fanarts: ImagenDisponible[] }> {
+  const idioma = config.tmdbLanguage.slice(0, 2);
+  const collectionIds: number[] = [];
+  const normalizado = normalize(nombre);
+
+  // Casos especiales conocidos (Saga del Infinito / Marvel / UCM)
+  if (/infinit|marvel|ucm|mcu/i.test(nombre)) {
+    collectionIds.push(1712635); // The Infinity Saga Collection
+    const pelis = db
+      .prepare('SELECT tmdb_id FROM items WHERE collection = ? AND tmdb_id IS NOT NULL AND length(tmdb_id) > 0')
+      .all(nombre) as { tmdb_id: string }[];
+    for (const p of pelis) {
+      try {
+        const det = await tmdb<any>(`/movie/${p.tmdb_id}`);
+        if (det.belongs_to_collection?.id && !collectionIds.includes(det.belongs_to_collection.id)) {
+          collectionIds.push(det.belongs_to_collection.id);
+        }
+      } catch {}
+    }
+  }
+
+  // 1. Buscar la colección por nombre en TMDb
+  const limpio = nombre
+    .replace(/^(Saga de la|Saga del|Saga de|Saga|Colección)\s+/i, '')
+    .replace(/\s*-\s*Colección$/i, '')
+    .trim();
+  const consultas = Array.from(new Set([nombre, limpio].filter(Boolean)));
+  for (const q of consultas) {
+    try {
+      const searchRes = await tmdb<{ results: any[] }>('/search/collection', { query: q });
+      for (const res of (searchRes.results || []).slice(0, 3)) {
+        if (!collectionIds.includes(res.id)) {
+          const nombreT = normalize(res.name);
+          if (nombreT.includes(normalizado) || normalizado.includes(nombreT) || consultas.length === 1) {
+            collectionIds.push(res.id);
+          }
+        }
+      }
+    } catch {
+      /* continuar */
+    }
+  }
+
+  // 2. Si no hubo coincidencia por nombre, mirar belongs_to_collection de sus películas
+  if (collectionIds.length === 0) {
+    const items = db
+      .prepare('SELECT tmdb_id FROM items WHERE collection = ? AND tmdb_id IS NOT NULL AND length(tmdb_id) > 0 LIMIT 15')
+      .all(nombre) as { tmdb_id: string }[];
+    const vistas = new Map<number, { id: number; name: string; count: number }>();
+    for (const it of items) {
+      const tid = Number(it.tmdb_id);
+      if (!tid) continue;
+      try {
+        const p = await tmdb<any>(`/movie/${tid}`);
+        if (p.belongs_to_collection?.id) {
+          const cid = p.belongs_to_collection.id;
+          const actual = vistas.get(cid) || { id: cid, name: p.belongs_to_collection.name, count: 0 };
+          actual.count++;
+          vistas.set(cid, actual);
+        }
+      } catch {}
+    }
+    for (const col of vistas.values()) {
+      const normCol = normalize(col.name);
+      if (normCol.includes(normalizado) || normalizado.includes(normCol) || col.count === items.length) {
+        collectionIds.push(col.id);
+        break;
+      }
+    }
+  }
+
+  if (collectionIds.length === 0) {
+    return { posters: [], fanarts: [] };
+  }
+
+  const mapa = (lista: any[], anchoVista: number): ImagenDisponible[] =>
+    (lista ?? [])
+      .map((i) => ({
+        url: imageUrl(i.file_path) as string,
+        vista: imageUrl(i.file_path, `w${anchoVista}`) as string,
+        ancho: i.width ?? 0,
+        alto: i.height ?? 0,
+        idioma: i.iso_639_1 ?? '',
+        voto: i.vote_average ?? 0,
+      }))
+      .filter((i) => i.url);
+
+  let todosPosters: ImagenDisponible[] = [];
+  let todosFanarts: ImagenDisponible[] = [];
+
+  for (const cid of collectionIds.slice(0, 10)) {
+    try {
+      const raw = await tmdb<any>(`/collection/${cid}/images`, {
+        include_image_language: `${idioma},en,null`,
+      });
+      if (raw.posters) todosPosters.push(...mapa(raw.posters, 342));
+      if (raw.backdrops) todosFanarts.push(...mapa(raw.backdrops, 300));
+    } catch {}
+
+    if (config.fanartApiKey) {
+      try {
+        const fanartRes = await fetch(`https://webservice.fanart.tv/v3/movies/${cid}?api_key=${config.fanartApiKey}`).then((r) => r.json());
+        if (fanartRes.movieposter) {
+          todosPosters.push(
+            ...fanartRes.movieposter.map((p: any) => ({
+              url: p.url,
+              vista: p.url.replace('/fanart/', '/preview/'),
+              ancho: 1000,
+              alto: 1500,
+              idioma: p.lang === '00' ? '' : p.lang,
+              voto: Number(p.likes || 0),
+            }))
+          );
+        }
+        if (fanartRes.moviebackground) {
+          todosFanarts.push(
+            ...fanartRes.moviebackground.map((b: any) => ({
+              url: b.url,
+              vista: b.url.replace('/fanart/', '/preview/'),
+              ancho: 1920,
+              alto: 1080,
+              idioma: b.lang === '00' ? '' : b.lang,
+              voto: Number(b.likes || 0),
+            }))
+          );
+        }
+      } catch {}
+    }
+  }
+
+  const seenPosters = new Set<string>();
+  const uniquePosters = todosPosters.filter((p) => {
+    if (seenPosters.has(p.url)) return false;
+    seenPosters.add(p.url);
+    return true;
+  });
+
+  const seenFanarts = new Set<string>();
+  const uniqueFanarts = todosFanarts.filter((f) => {
+    if (seenFanarts.has(f.url)) return false;
+    seenFanarts.add(f.url);
+    return true;
+  });
+
+  return {
+    posters: uniquePosters.sort((a, b) => orden(a, idioma) - orden(b, idioma) || b.voto - a.voto),
+    fanarts: uniqueFanarts.sort((a, b) => orden(a, idioma) - orden(b, idioma) || b.voto - a.voto),
+  };
+}
+
+
 /** Solo los logotipos de TMDb con su idioma, para saber de dónde salió uno local. */
 export async function logosDeTmdb(tmdbId: number, kind: 'movie' | 'show'): Promise<{ url: string; vista: string; idioma: string }[]> {
   const raw = await tmdb<any>(`/${endpoint(kind)}/${tmdbId}/images`, { include_image_language: 'null' });
