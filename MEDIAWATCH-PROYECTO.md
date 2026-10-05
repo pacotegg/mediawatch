@@ -266,8 +266,8 @@ fuente Inter variable. `npm run build` deja `web/dist`, que sirve el servidor.
 
 ### 3.5 `android/` (Media Watch)
 
-`app/build.gradle.kts`: `compileSdk 35`, `minSdk 26`, **`versionCode 10`,
-`versionName "3.7"`**; deps: Compose (Material3, navigation 2.8.4), Coil 2.7,
+`app/build.gradle.kts`: `compileSdk 35`, `minSdk 26`, **`versionCode 28`,
+`versionName "3.25"`**; deps: Compose (Material3, navigation 2.8.4), Coil 2.7,
 Media3 1.5.0 (exoplayer, ui, session), OkHttp 4.12, kotlinx-serialization,
 AppCompat 1.7, mediarouter 1.7, play-services-cast-framework 21.5.0.
 Firmada con la clave de depuración a propósito (estable en este equipo).
@@ -292,7 +292,7 @@ Firmada con la clave de depuración a propósito (estable en este equipo).
 | `ui/Menu.kt` | Cajón: Inicio, Buscar, Favoritas, Sagas, bibliotecas, perfil, «Chromecast: sonido 5.1», cambiar perfil/servidor, versión al pie |
 | `ui/Sagas.kt`, `Persona.kt`, `Favoritas.kt`, `SelectorDeArte.kt`, `Conexion.kt`, `Comunes.kt`, `Tema.kt` | Resto de pantallas, selector de arte (+Apaisada), conexión/emparejado, componentes y tema (paleta del icono: fondo `#09090C`, realce ámbar) |
 | `res/mipmap-*`, `mipmap-anydpi-v26/ic_launcher.xml` | Icono adaptativo generado del JPEG de Gemini (`scratchpad/icono.py`) |
-| `MediaWatch-3.7.apk` | APK entregado (última versión). `TvWatch.apk` es la 1.x |
+| `MediaWatch-3.25.apk` | APK entregado e instalado (última versión, generado fuera del repo). `android/` conserva hasta la 3.24. `TvWatch.apk` es la 1.x |
 
 ---
 
@@ -554,6 +554,33 @@ perfil «Casa» (admin) no tiene PIN y **no puede entrar desde fuera** a propós
 - Servidor reiniciado (vigilante) y web reconstruida con todos los cambios;
   memoria de Claude (`gotchas-tvwatch`, `tvwatch-servidor-media`) actualizada.
 
+### 22/09 — 05/10: de Media Watch 3.8 a 3.25
+Hechos desde los commits (`git log`). El detalle de cada cambio está en el mensaje del commit.
+
+- **22/09 (`7714c1e`, Media Watch 3.8)**: saltos que no se atascan (el servidor
+  ya no reextrae subtítulos completos al saltar), descodificación de AC3, DD+,
+  TrueHD y DTS en la app con una extensión de FFmpeg propia (`app/libs`), y
+  logs de ffmpeg sin recortar.
+- **26/09 (≈ 25 commits)**: subtítulos (comparar externos contra incrustados,
+  desfase ajustable, reescritura de externos desincronizados, búsqueda de los que
+  faltan, etiquetado de idioma); escaneo por lotes sin bloquear el servidor;
+  personas con segunda pasada (biografía, IMDb, TVDB); mantenimiento desde
+  Ajustes; latido y cierre de flujos parados; acceso desde fuera más seguro;
+  salvapantallas en la tele; COALESCE en la sonda; Android 3.13 (encaje de vídeo,
+  reanudar, ficha); herramientas para encoger discos y sincronizar Plex.
+- **29/09**: extras en los tres clientes; scripts de mantenimiento de desfase de
+  audio, subtítulos y géneros de Plex; suelo de tamaño a 5 MB; géneros de IMDb en
+  las cinco bibliotecas.
+- **30/09**: títulos para vídeos sueltos; catálogo de Plataformas (Movistar+,
+  Prime, Apple TV+) en servidor, web, tele y Android 3.17; abecedario y rejilla
+  de la tele, episodios con miniatura y carátulas más grandes; créditos de
+  películas más rápidos de detectar; el escáner no pisa una duración medida.
+- **05/10**: descargas configurables con calidad estilo Plex y soporte Android
+  (`ae2b044`); multi-versión de películas, perfiles infantiles, responsive para
+  iOS y salvapantallas infantil (`5b036d3`); **Android 3.25** (`e83a2e2`): descargas
+  unificadas sin duplicados, borrado automático en servidor y modo sin conexión.
+  El modo sin conexión figuraba como descartado en 21/09 (§9); el commit lo implementa.
+
 ---
 
 ## 6. Git
@@ -674,10 +701,13 @@ Herramientas de la sesión
 
 ## 9. Estado actual, pendientes y descartes
 
+**Instalado/entregado a 05/10**: Android **3.25** (`versionCode 28`), instalado
+por el usuario. Commit `e83a2e2`. Ver §5 (22/09 a 05/10) para lo que ha cambiado desde 21/09.
+
 **Instalado/entregado a 21/09**: servidor con todo lo anterior en marcha
 (vigilante, reiniciado tras la auditoría), web compilada y servida con el
 panel de Mantenimiento, tele con la última compilación (disco quieto encima
-del título) instalada y cerrada, `MediaWatch-3.7.apk` entregado — **sin
+del título) instalada y cerrada, `MediaWatch-3.7.apk` entregado (luego superado por 3.8 a 3.25) — **sin
 cambios en Android/Tizen esta vuelta**, porque la auditoría no encontró nada
 que corregir en ninguno de los dos.
 
