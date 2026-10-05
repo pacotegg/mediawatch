@@ -21,9 +21,6 @@ import { db } from '../db.ts';
 const DIR = join(config.transcodeDir, 'descargas');
 mkdirSync(DIR, { recursive: true });
 
-// Limpiar descargas interrumpidas de ejecuciones anteriores
-db.prepare("UPDATE descargas SET estado = 'error', error = 'Interrumpida al reiniciar el servidor' WHERE estado = 'preparando'").run();
-
 export type Perfil = 'baja' | 'movil' | 'tablet' | 'fhd' | 'original';
 export type Codec = 'h265' | 'h264';
 
@@ -74,8 +71,8 @@ export function una(id: number) {
  * tal cual, que para una red local suele ser lo más rápido y lo de mejor
  * calidad; los otros dos existen para caber en el móvil y en los datos.
  */
-export function pedir(userId: number, fileId: number, perfil: Perfil, codec: Codec = 'h265'): Descarga {
-  const origen = db
+function origenDe(fileId: number) {
+  return db
     .prepare(
       `SELECT f.id, f.path, f.duration, f.hdr, f.width, f.height,
               COALESCE(i.title, s.title) AS titulo, e.season, e.episode
@@ -86,6 +83,10 @@ export function pedir(userId: number, fileId: number, perfil: Perfil, codec: Cod
         WHERE f.id = ?`,
     )
     .get(fileId) as { id: number; path: string; duration: number | null; hdr: string | null; width: number | null; height: number | null; titulo: string; season: number | null; episode: number | null } | undefined;
+}
+
+export function pedir(userId: number, fileId: number, perfil: Perfil, codec: Codec = 'h265'): Descarga {
+  const origen = origenDe(fileId);
 
   if (!origen) throw new Error('Fichero no encontrado');
   if (!existsSync(origen.path)) throw new Error('El fichero ya no está en disco');
@@ -243,4 +244,22 @@ export function nombreFichero(d: Descarga) {
   const codecLabel = d.codec === 'h264' ? 'H.264' : 'HEVC';
   const sufijo = d.perfil === 'original' ? '' : ` - ${PERFILES[d.perfil as Exclude<Perfil, 'original'>]?.nombre ?? d.perfil} ${codecLabel}`;
   return `${limpio}${sufijo}${extension}`;
+}
+
+// Un reinicio deja descargas a medias. ffmpeg no puede seguir donde lo dejó:
+// se rehacen desde cero sobre el mismo destino (-y pisa el parcial). Entran
+// también las que la versión anterior ya había dado por perdidas. Va al FINAL
+// del módulo: arriba, PERFILES y enCurso aún no estarían inicializados.
+for (const d of db
+  .prepare(
+    "SELECT * FROM descargas WHERE perfil <> 'original' AND (estado = 'preparando' OR (estado = 'error' AND error = 'Interrumpida al reiniciar el servidor'))",
+  )
+  .all() as Descarga[]) {
+  const o = origenDe(d.file_id);
+  if (!o || !existsSync(o.path)) {
+    db.prepare("UPDATE descargas SET estado = 'error', error = 'El fichero ya no está en disco' WHERE id = ?").run(d.id);
+    continue;
+  }
+  db.prepare("UPDATE descargas SET estado = 'preparando', error = NULL, progreso = 0 WHERE id = ?").run(d.id);
+  preparar(d.id, o.path, o.duration ?? 0, d.perfil as Exclude<Perfil, 'original'>, Boolean(o.hdr), d.codec ?? 'h265', o.width ?? 0, o.height ?? 0);
 }
