@@ -201,11 +201,13 @@ export type CandidatoAnime = {
 };
 
 export type PerfilDescarga = 'baja' | 'movil' | 'tablet' | 'fhd' | 'original';
+export type CodecDescarga = 'h265' | 'h264';
 
 export type DescargaItem = {
   id: number;
   file_id: number;
   perfil: PerfilDescarga;
+  codec: CodecDescarga;
   estado: 'preparando' | 'lista' | 'error';
   bytes: number | null;
   progreso: number;
@@ -437,9 +439,9 @@ export const api = {
   animeApply: (body: { itemId: number; animeId: string; campos: string[]; overwrite?: boolean }) =>
     post<{ aplicado: string[]; titulo: string; fuente: string }>('/api/anime/apply', body),
 
-  descargas: () => request<{ perfiles: Record<string, { nombre: string; estimacion?: string }>; descargas: DescargaItem[] }>('/api/descargas'),
-  descargaPedir: (fileId: number, perfil: PerfilDescarga) =>
-    post<DescargaItem>('/api/descargas', { fileId, perfil }),
+  descargas: () => request<{ perfiles: Record<string, { nombre: string; estimacion?: string; techoKbps?: number }>; descargas: DescargaItem[] }>('/api/descargas'),
+  descargaPedir: (fileId: number, perfil: PerfilDescarga, codec: CodecDescarga = 'h265') =>
+    post<DescargaItem>('/api/descargas', { fileId, perfil, codec }),
   descargaBorrar: (id: number) => request<{ borrado: true }>(`/api/descargas/${id}`, { method: 'DELETE' }),
   descargaUrl: (id: number) => `/api/descargas/${id}/fichero`,
 

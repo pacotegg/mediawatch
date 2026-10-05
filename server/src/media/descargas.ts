@@ -25,6 +25,7 @@ mkdirSync(DIR, { recursive: true });
 db.prepare("UPDATE descargas SET estado = 'error', error = 'Interrumpida al reiniciar el servidor' WHERE estado = 'preparando'").run();
 
 export type Perfil = 'baja' | 'movil' | 'tablet' | 'fhd' | 'original';
+export type Codec = 'h265' | 'h264';
 
 /*
  * Calidad constante con un techo, no bitrate fijo. Con bitrate fijo un corto de
@@ -32,11 +33,11 @@ export type Perfil = 'baja' | 'movil' | 'tablet' | 'fhd' | 'original';
  * moderno; con CRF ocupa lo que necesite y el techo solo actúa en las escenas
  * complicadas.
  */
-export const PERFILES: Record<Exclude<Perfil, 'original'>, { alto: number; crf: number; techo: string; audio: string; nombre: string; estimacion: string }> = {
-  baja: { alto: 360, crf: 28, techo: '500k', audio: '96k', nombre: '360p HEVC', estimacion: 'Muy ligera (~150 MB)' },
-  movil: { alto: 480, crf: 26, techo: '900k', audio: '128k', nombre: '480p HEVC', estimacion: 'Móvil (~300 MB)' },
-  tablet: { alto: 720, crf: 24, techo: '1800k', audio: '160k', nombre: '720p HEVC', estimacion: 'HD (~650 MB)' },
-  fhd: { alto: 1080, crf: 22, techo: '3500k', audio: '192k', nombre: '1080p HEVC', estimacion: 'Full HD (~1.4 GB)' },
+export const PERFILES: Record<Exclude<Perfil, 'original'>, { alto: number; crf: number; techo: string; audio: string; nombre: string; estimacion: string; techoKbps: number }> = {
+  baja: { alto: 360, crf: 28, techo: '500k', audio: '96k', nombre: '360p', estimacion: 'Muy ligera (~150 MB)', techoKbps: 500 },
+  movil: { alto: 480, crf: 26, techo: '900k', audio: '128k', nombre: '480p', estimacion: 'Móvil (~300 MB)', techoKbps: 900 },
+  tablet: { alto: 720, crf: 24, techo: '1800k', audio: '160k', nombre: '720p', estimacion: 'HD (~650 MB)', techoKbps: 1800 },
+  fhd: { alto: 1080, crf: 22, techo: '3500k', audio: '192k', nombre: '1080p', estimacion: 'Full HD (~1.4 GB)', techoKbps: 3500 },
 };
 
 export type Descarga = {
@@ -44,6 +45,7 @@ export type Descarga = {
   file_id: number;
   user_id: number;
   perfil: Perfil;
+  codec: Codec;
   estado: 'preparando' | 'lista' | 'error';
   ruta: string | null;
   bytes: number | null;
@@ -72,18 +74,18 @@ export function una(id: number) {
  * tal cual, que para una red local suele ser lo más rápido y lo de mejor
  * calidad; los otros dos existen para caber en el móvil y en los datos.
  */
-export function pedir(userId: number, fileId: number, perfil: Perfil): Descarga {
+export function pedir(userId: number, fileId: number, perfil: Perfil, codec: Codec = 'h265'): Descarga {
   const origen = db
     .prepare(
-      `SELECT f.id, f.path, f.duration, f.hdr, COALESCE(i.title, s.title) AS titulo,
-              e.season, e.episode
+      `SELECT f.id, f.path, f.duration, f.hdr, f.width, f.height,
+              COALESCE(i.title, s.title) AS titulo, e.season, e.episode
          FROM media_files f
          LEFT JOIN items i ON i.id = f.item_id
          LEFT JOIN episodes e ON e.id = f.episode_id
          LEFT JOIN items s ON s.id = e.show_id
         WHERE f.id = ?`,
     )
-    .get(fileId) as { id: number; path: string; duration: number | null; hdr: string | null; titulo: string; season: number | null; episode: number | null } | undefined;
+    .get(fileId) as { id: number; path: string; duration: number | null; hdr: string | null; width: number | null; height: number | null; titulo: string; season: number | null; episode: number | null } | undefined;
 
   if (!origen) throw new Error('Fichero no encontrado');
   if (!existsSync(origen.path)) throw new Error('El fichero ya no está en disco');
@@ -91,19 +93,17 @@ export function pedir(userId: number, fileId: number, perfil: Perfil): Descarga 
   const titulo =
     origen.season != null ? `${origen.titulo} T${origen.season}E${String(origen.episode).padStart(2, '0')}` : origen.titulo;
 
-  // Si ya hay una copia lista del mismo fichero y perfil, se reutiliza: volver a
-  // transcodificar lo mismo son veinte minutos de CPU tirados.
   const previa = db
-    .prepare("SELECT * FROM descargas WHERE file_id = ? AND perfil = ? AND estado = 'lista' LIMIT 1")
-    .get(fileId, perfil) as Descarga | undefined;
+    .prepare("SELECT * FROM descargas WHERE file_id = ? AND perfil = ? AND codec = ? AND estado = 'lista' LIMIT 1")
+    .get(fileId, perfil, codec) as Descarga | undefined;
   if (previa && previa.ruta && existsSync(previa.ruta)) {
     if (previa.user_id === userId) return previa;
     const res = db
       .prepare(
-        `INSERT INTO descargas (file_id, user_id, perfil, estado, ruta, bytes, progreso, titulo, creado)
-         VALUES (?,?,?,'lista',?,?,100,?,?)`,
+        `INSERT INTO descargas (file_id, user_id, perfil, codec, estado, ruta, bytes, progreso, titulo, creado)
+         VALUES (?,?,?,?,'lista',?,?,100,?,?)`,
       )
-      .run(fileId, userId, perfil, previa.ruta, previa.bytes, titulo, new Date().toISOString());
+      .run(fileId, userId, perfil, codec, previa.ruta, previa.bytes, titulo, new Date().toISOString());
     return fila(Number(res.lastInsertRowid)) as Descarga;
   }
 
@@ -111,49 +111,62 @@ export function pedir(userId: number, fileId: number, perfil: Perfil): Descarga 
     const bytes = statSync(origen.path).size;
     const res = db
       .prepare(
-        `INSERT INTO descargas (file_id, user_id, perfil, estado, ruta, bytes, progreso, titulo, creado)
-         VALUES (?,?,?,'lista',?,?,100,?,?)`,
+        `INSERT INTO descargas (file_id, user_id, perfil, codec, estado, ruta, bytes, progreso, titulo, creado)
+         VALUES (?,?,?,?,'lista',?,?,100,?,?)`,
       )
-      .run(fileId, userId, perfil, origen.path, bytes, titulo, new Date().toISOString());
+      .run(fileId, userId, perfil, codec, origen.path, bytes, titulo, new Date().toISOString());
     return fila(Number(res.lastInsertRowid)) as Descarga;
   }
 
   const res = db
     .prepare(
-      `INSERT INTO descargas (file_id, user_id, perfil, estado, ruta, bytes, progreso, titulo, creado)
-       VALUES (?,?,?,'preparando',NULL,NULL,0,?,?)`,
+      `INSERT INTO descargas (file_id, user_id, perfil, codec, estado, ruta, bytes, progreso, titulo, creado)
+       VALUES (?,?,?,?,'preparando',NULL,NULL,0,?,?)`,
     )
-    .run(fileId, userId, perfil, titulo, new Date().toISOString());
+    .run(fileId, userId, perfil, codec, titulo, new Date().toISOString());
 
   const id = Number(res.lastInsertRowid);
-  preparar(id, origen.path, origen.duration ?? 0, perfil, Boolean(origen.hdr));
+  const w = origen.width ?? 0;
+  const h = origen.height ?? 0;
+  preparar(id, origen.path, origen.duration ?? 0, perfil, Boolean(origen.hdr), codec, w, h);
   return fila(id) as Descarga;
 }
 
-function preparar(id: number, origen: string, duracion: number, perfil: Exclude<Perfil, 'original'>, esHdr: boolean) {
+function preparar(id: number, origen: string, duracion: number, perfil: Exclude<Perfil, 'original'>, esHdr: boolean, codec: Codec, origenW: number, origenH: number) {
   const ajustes = PERFILES[perfil];
-  const destino = join(DIR, `${id}-${perfil}.mp4`);
+  const destino = join(DIR, `${id}-${perfil}-${codec}.mp4`);
 
-  /*
-   * H.264 y AAC porque es lo que reproduce cualquier móvil sin pensar; un HEVC
-   * de 10 bits ahorraría espacio pero se queda en negro en media Android.
-   * `faststart` mueve el índice al principio, para que se pueda empezar a ver
-   * antes de terminar de copiarlo.
-   */
+  const alto = origenH > 0 ? Math.min(ajustes.alto, origenH) : ajustes.alto;
+  const ancho = origenW > 0 && origenH > 0
+    ? Math.round((origenW * alto / origenH) / 2) * 2
+    : -1;
+
+  const vppParts = [
+    ancho > 0 ? `w=${ancho}` : 'w=-1',
+    `h=${alto}`,
+    'format=nv12',
+    ...(esHdr ? ['tonemap=1'] : []),
+    'async_depth=8',
+  ];
+
+  const esH264 = codec === 'h264';
+  const codecArgs = esH264
+    ? ['-c:v', 'h264_qsv', '-preset', 'veryfast', '-profile:v', 'high']
+    : ['-c:v', 'hevc_qsv', '-preset', 'veryfast', '-profile:v', 'main', '-tag:v', 'hvc1'];
+
   const args = [
     '-hide_banner', '-loglevel', 'error', '-nostdin', '-y',
     '-init_hw_device', 'qsv=qsv:hw,child_device_type=d3d11va,child_device=0',
     '-hwaccel', 'qsv', '-hwaccel_output_format', 'qsv',
     '-i', origen,
     '-map', '0:v:0', '-map', '0:a:0?',
-    '-vf', `vpp_qsv=h=${ajustes.alto}:w=-1:format=nv12${esHdr ? ':tonemap=1' : ''}:async_depth=4`,
-    '-c:v', 'hevc_qsv',
-    '-preset', 'veryfast',
-    '-profile:v', 'main',
-    '-tag:v', 'hvc1',
+    '-vf', `vpp_qsv=${vppParts.join(':')}`,
+    ...codecArgs,
+    '-low_power', '1',
+    '-async_depth', '8',
     '-global_quality', String(ajustes.crf),
     '-maxrate', ajustes.techo,
-    '-bufsize', '4M',
+    '-bufsize', `${ajustes.techoKbps * 2}k`,
     '-c:a', 'aac', '-b:a', ajustes.audio, '-ac', '2',
     '-movflags', '+faststart',
     '-progress', 'pipe:1',
@@ -227,6 +240,7 @@ export function borrar(userId: number, id: number) {
 export function nombreFichero(d: Descarga) {
   const limpio = d.titulo.replace(/[\\/:*?"<>|]/g, '-').trim();
   const extension = d.perfil === 'original' ? (d.ruta?.match(/\.[a-z0-9]+$/i)?.[0] ?? '.mkv') : '.mp4';
-  const sufijo = d.perfil === 'original' ? '' : ` - ${PERFILES[d.perfil as Exclude<Perfil, 'original'>]?.nombre ?? d.perfil}`;
+  const codecLabel = d.codec === 'h264' ? 'H.264' : 'HEVC';
+  const sufijo = d.perfil === 'original' ? '' : ` - ${PERFILES[d.perfil as Exclude<Perfil, 'original'>]?.nombre ?? d.perfil} ${codecLabel}`;
   return `${limpio}${sufijo}${extension}`;
 }

@@ -326,8 +326,8 @@ object Api {
 
   fun descargas(): List<Descarga> = pedir<RespuestaDescargas>("/api/descargas").descargas
 
-  fun pedirDescarga(fileId: Int, perfil: String): Descarga {
-    val cuerpo = "{\"fileId\":$fileId,\"perfil\":\"$perfil\"}"
+  fun pedirDescarga(fileId: Int, perfil: String, codec: String = "h265"): Descarga {
+    val cuerpo = "{\"fileId\":$fileId,\"perfil\":\"$perfil\",\"codec\":\"$codec\"}"
     return json.decodeFromString(texto("/api/descargas", cuerpo))
   }
 
@@ -694,6 +694,7 @@ data class Descarga(
   val file_id: Int,
   val user_id: Int,
   val perfil: String,
+  val codec: String = "h265",
   val estado: String,
   val bytes: Long? = null,
   val progreso: Int = 0,

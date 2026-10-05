@@ -120,6 +120,7 @@ fun PantallaFicha(
    */
   var dondeVer by remember(itemId) { mutableStateOf<List<PlataformaTitulo>>(emptyList()) }
   var fileIdDescargaDialogo by remember(itemId) { mutableStateOf<Int?>(null) }
+  var codecDescarga by remember { mutableStateOf("h265") }
   val ambito = rememberCoroutineScope()
 
   LaunchedEffect(itemId, intento) {
@@ -487,7 +488,7 @@ fun PantallaFicha(
     val targetFileId = fileIdDescargaDialogo!!
     val ficheroElegido = f.files.firstOrNull { it.id == targetFileId }
     val duracionSegundos = ficheroElegido?.duration ?: (f.runtime?.times(60) ?: 5400.0)
-    val opciones = estimarDescargas(duracionSegundos, ficheroElegido?.size)
+    val opciones = estimarDescargas(duracionSegundos, ficheroElegido?.size, codecDescarga)
     androidx.compose.material3.AlertDialog(
       onDismissRequest = { fileIdDescargaDialogo = null },
       containerColor = Color(0xFF14141A),
@@ -500,6 +501,26 @@ fun PantallaFicha(
       },
       text = {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .clip(RoundedCornerShape(12.dp))
+              .background(Color(0x0AFFFFFF))
+              .padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+          ) {
+            Text("Codec", color = TextoSuave, fontSize = 12.sp)
+            TextButton(
+              onClick = { codecDescarga = if (codecDescarga == "h265") "h264" else "h265" },
+              contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+            ) {
+              Text(
+                if (codecDescarga == "h265") "H.265 (menor tamaño)" else "H.264 (más rápido)",
+                color = Texto, fontSize = 12.sp,
+              )
+            }
+          }
           opciones.forEach { (perfil, titulo, pie) ->
             val pulsacion = remember { MutableInteractionSource() }
             val pulsada by pulsacion.collectIsPressedAsState()
@@ -519,7 +540,7 @@ fun PantallaFicha(
                   fileIdDescargaDialogo = null
                   ambito.launch {
                     try {
-                      val d = withContext(Dispatchers.IO) { Api.pedirDescarga(targetFileId, perfil) }
+                      val d = withContext(Dispatchers.IO) { Api.pedirDescarga(targetFileId, perfil, codecDescarga) }
                       Toast.makeText(contexto, if (d.estado == "lista") "Descarga lista" else "Preparando copia en el servidor...", Toast.LENGTH_SHORT).show()
                       if (d.estado == "lista") {
                         val url = "${Api.urlFicheroDescarga(d.id)}?token=${Ajustes.token ?: ""}"
@@ -757,10 +778,11 @@ private fun TarjetaResena(res: Resena) {
   }
 }
 
-private fun estimarDescargas(duracionSegundos: Double, bytesOriginal: Long?): List<Triple<String, String, String>> {
+private fun estimarDescargas(duracionSegundos: Double, bytesOriginal: Long?, codec: String = "h265"): List<Triple<String, String, String>> {
   val d = if (duracionSegundos > 0) duracionSegundos else 5400.0
+  val factor = if (codec == "h264") 1.8 else 1.0
   fun fmt(kbps: Int): String {
-    val bytes = (kbps * 1000L / 8L * d.toLong())
+    val bytes = (kbps * factor * 1000.0 / 8.0 * d).toLong()
     return if (bytes < 1024L * 1024 * 1024) {
       "${bytes / (1024 * 1024)} MB"
     } else {

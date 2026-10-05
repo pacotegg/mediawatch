@@ -9,14 +9,15 @@ import NumeracionFixer from '../components/NumeracionFixer.tsx';
 import SelectorDeArte from '../components/SelectorDeArte.tsx';
 import Extras from '../components/Extras.tsx';
 import Row from '../components/Row.tsx';
-import { api, img, type Episode, type ItemDetail, type PerfilDescarga } from '../lib/api.ts';
+import { api, img, type Episode, type ItemDetail, type PerfilDescarga, type CodecDescarga } from '../lib/api.ts';
 import { audioLabel, certification, clock, codecLabel, fileSize, languageName, resolutionLabel, runtime } from '../lib/format.ts';
 import { usePreferences } from '../lib/preferences.tsx';
 import { tintFrom } from '../lib/tint.ts';
 
-function opcionesDescarga(duracionSegundos?: number | null, bytesOriginal?: number | null): [PerfilDescarga, string, string][] {
+function opcionesDescarga(duracionSegundos?: number | null, bytesOriginal?: number | null, codec: CodecDescarga = 'h265'): [PerfilDescarga, string, string][] {
   const d = duracionSegundos && duracionSegundos > 0 ? duracionSegundos : 5400;
-  const fmt = (kbps: number) => fileSize(Math.round(((kbps * 1000) / 8) * d));
+  const factor = codec === 'h264' ? 1.8 : 1;
+  const fmt = (kbps: number) => fileSize(Math.round(((kbps * factor * 1000) / 8) * d));
   return [
     ['baja', '360p (Muy ligera)', `Aprox. ${fmt(400)}`],
     ['movil', '480p (Móvil)', `Aprox. ${fmt(750)}`],
@@ -111,10 +112,14 @@ function EpisodeList({
   item,
   seasons,
   onDescargar,
+  codec,
+  onToggleCodec,
 }: {
   item: ItemDetail;
   seasons: Map<number, Episode[]>;
-  onDescargar: (fileId: number, perfil: PerfilDescarga) => void;
+  onDescargar: (fileId: number, perfil: PerfilDescarga, codec: CodecDescarga) => void;
+  codec: CodecDescarga;
+  onToggleCodec: () => void;
 }) {
   const navigate = useNavigate();
   const numbers = [...seasons.keys()].sort((a, b) => a - b);
@@ -207,13 +212,22 @@ function EpisodeList({
 
                   {downloadEpId === ep.id && (
                     <div className="glass-strong absolute right-0 top-11 z-50 w-64 rounded-xl p-1.5 shadow-[var(--shadow-3)]">
-                      {opcionesDescarga(ep.duration ?? (ep.runtime ? ep.runtime * 60 : null)).map(([valor, titulo, pie]) => (
+                      <div className="mb-1 flex items-center justify-between px-3 py-1.5">
+                        <span className="text-[11.5px] text-mist-500">Codec</span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onToggleCodec(); }}
+                          className="rounded-md border border-white/10 px-2 py-0.5 text-[11.5px] transition-colors hover:bg-white/10"
+                        >
+                          {codec === 'h265' ? 'H.265 (menor tamaño)' : 'H.264 (más rápido)'}
+                        </button>
+                      </div>
+                      {opcionesDescarga(ep.duration ?? (ep.runtime ? ep.runtime * 60 : null), null, codec).map(([valor, titulo, pie]) => (
                         <button
                           key={valor}
                           onClick={(e) => {
                             e.stopPropagation();
                             setDownloadEpId(null);
-                            onDescargar(ep.file_id!, valor);
+                            onDescargar(ep.file_id!, valor, codec);
                           }}
                           className="block w-full rounded-lg px-3 py-2 text-left text-[13px] hover:bg-white/10"
                         >
@@ -246,6 +260,7 @@ export default function Detail() {
   const [anime, setAnime] = useState(false);
   const [descargando, setDescargando] = useState(false);
   const [avisoDescarga, setAvisoDescarga] = useState<string | null>(null);
+  const [codecDescarga, setCodecDescarga] = useState<CodecDescarga>('h265');
 
   const { data: item, isLoading } = useQuery({ queryKey: ['item', itemId], queryFn: () => api.item(itemId) });
   /*
@@ -345,10 +360,10 @@ export default function Detail() {
 
   // Descargar prepara una copia en el servidor; el fichero se recoge después
   // desde la página de descargas, para no dejar la pestaña colgada esperando.
-  const pedirDescarga = async (fileId: number, perfil: PerfilDescarga) => {
+  const pedirDescarga = async (fileId: number, perfil: PerfilDescarga, codec: CodecDescarga = 'h265') => {
     setDescargando(false);
     try {
-      const d = await api.descargaPedir(fileId, perfil);
+      const d = await api.descargaPedir(fileId, perfil, codec);
       setAvisoDescarga(d.estado === 'lista' ? 'Lista para descargar' : 'Preparando la copia…');
     } catch (err) {
       setAvisoDescarga((err as Error).message);
@@ -581,10 +596,19 @@ export default function Detail() {
                   </button>
                   {descargando && (
                     <div className="glass-strong absolute bottom-12 left-0 z-50 w-64 rounded-xl p-1.5 shadow-[var(--shadow-3)]">
-                      {opcionesDescarga(movieFile.duration, movieFile.bytes).map(([valor, titulo, pie]) => (
+                      <div className="mb-1 flex items-center justify-between px-3 py-1.5">
+                        <span className="text-[11.5px] text-mist-500">Codec</span>
+                        <button
+                          onClick={() => setCodecDescarga((c) => (c === 'h265' ? 'h264' : 'h265'))}
+                          className="rounded-md border border-white/10 px-2 py-0.5 text-[11.5px] transition-colors hover:bg-white/10"
+                        >
+                          {codecDescarga === 'h265' ? 'H.265 (menor tamaño)' : 'H.264 (más rápido)'}
+                        </button>
+                      </div>
+                      {opcionesDescarga(movieFile.duration, movieFile.bytes, codecDescarga).map(([valor, titulo, pie]) => (
                         <button
                           key={valor}
-                          onClick={() => pedirDescarga(movieFile.id, valor)}
+                          onClick={() => pedirDescarga(movieFile.id, valor, codecDescarga)}
                           className="block w-full rounded-lg px-3 py-2 text-left text-[13px] hover:bg-white/10"
                         >
                           {titulo}
@@ -695,7 +719,7 @@ export default function Detail() {
             </div>
           )}
 
-          {item.kind === 'show' && seasons.size > 0 && <EpisodeList item={item} seasons={seasons} onDescargar={pedirDescarga} />}
+          {item.kind === 'show' && seasons.size > 0 && <EpisodeList item={item} seasons={seasons} onDescargar={pedirDescarga} codec={codecDescarga} onToggleCodec={() => setCodecDescarga((c) => (c === 'h265' ? 'h264' : 'h265'))} />}
 
           {movieFile && (
             <div className="glass mt-12 rounded-[var(--radius-panel)] p-5">

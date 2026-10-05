@@ -8,7 +8,7 @@
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import type { FastifyInstance } from 'fastify';
 import { requireUser } from './auth.ts';
-import { borrar, listar, nombreFichero, pedir, una, PERFILES, type Perfil } from '../media/descargas.ts';
+import { borrar, listar, nombreFichero, pedir, una, PERFILES, type Perfil, type Codec } from '../media/descargas.ts';
 
 export default async function descargaRoutes(app: FastifyInstance) {
   app.get('/api/descargas', async (req) => {
@@ -18,13 +18,14 @@ export default async function descargaRoutes(app: FastifyInstance) {
 
   app.post('/api/descargas', async (req, reply) => {
     const user = requireUser(req);
-    const { fileId, perfil } = req.body as { fileId?: number; perfil?: Perfil };
+    const { fileId, perfil, codec } = req.body as { fileId?: number; perfil?: Perfil; codec?: Codec };
     if (!fileId) return reply.code(400).send({ error: 'Falta el fichero' });
     if (perfil !== 'baja' && perfil !== 'movil' && perfil !== 'tablet' && perfil !== 'fhd' && perfil !== 'original') {
       return reply.code(400).send({ error: 'Perfil desconocido' });
     }
+    const codecFinal: Codec = codec === 'h264' ? 'h264' : 'h265';
     try {
-      return pedir(user.id, fileId, perfil);
+      return pedir(user.id, fileId, perfil, codecFinal);
     } catch (err) {
       return reply.code(400).send({ error: (err as Error).message });
     }

@@ -410,6 +410,7 @@ anadirColumna('coleccion_imagen', 'fondo', 'TEXT');
 anadirColumna('users', 'avatar', 'TEXT');
 // Franjas de edad permitidas para perfiles infantiles (JSON array ["TP", "7", ...]). Null = adulto.
 anadirColumna('users', 'kid_ratings', 'TEXT');
+anadirColumna('descargas', 'codec', "TEXT NOT NULL DEFAULT 'h265'");
 db.exec("UPDATE sessions SET last_seen = created_at WHERE last_seen IS NULL");
 
 /*
