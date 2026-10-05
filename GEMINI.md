@@ -81,7 +81,11 @@ son obligatorios sin excepción, aunque parezca trivial:
 - **Avisar durante las tandas largas**: qué se está haciendo y qué va saliendo.
 - **Trabajos en lote = script en segundo plano**, no un botón en la web o la app.
 - **Cada APK con número nuevo** (`MediaWatch-<ver>.apk`, 3.x menor / 4.0 mayor), versión visible
-  al pie del menú.
+  al pie del menú. Antes de compilar: subir `versionCode`/`versionName` y añadir su sección
+  `## <ver> — fecha` en `CHANGELOG.md`. La app muestra esa sección la primera vez que se abre
+  cada versión; sin sección, no sale ventana.
+- **El APK no va a git** (`*.apk` está en `.gitignore` y el repo es público). Se sube como asset
+  de una release de GitHub, con tag `v<ver>` apuntando al commit de esa versión.
 - **Mirar las skills y el historial antes de decir "no se puede".**
 - Estética: fluida por encima de bonita. Controles del reproductor a los 5 s; en pausa se quedan.
 - Las claves de API viven en `data/config.json` y **no se registran en logs**.
@@ -108,11 +112,20 @@ Leerlo antes de tocar esas zonas. Los que reaparecen más:
 
 - `MEDIAWATCH-PROYECTO.md` — dosier completo: cada fichero y su función, cronología, entorno de
   red, trampas al detalle, pendientes y descartes. **Consultarlo antes de preguntar.**
+- `CHANGELOG.md` — historial de versiones de la app. Alimenta la ventana de novedades.
 - Skills: `instalar-app-tizen`, `probar-app-android`, `acceso-externo-tvwatch`, `auditar-tvwatch`,
   `editar-webpanel-sin-romperlo`, `operacion-en-lote-biblioteca`.
 
 ## Git
 
-Un único commit (`737dede`, 16/09). Hay cambios sin commitear del 16/09 y del 21/09.
+Desde `737dede` (16/09) hay unos 50 commits. Lo que diga este fichero sobre el estado del repo
+puede estar viejo: mirar `git log` antes de afirmarlo.
+
+Releases con APK: 3.7, 3.8, 3.13, 3.17, 3.23 y 3.25. Las versiones sin registro en `CHANGELOG.md`
+no tienen APK subido.
+
+Antes de cada push: `git status` y `git log origin/main..HEAD`. Puede haber commits ajenos en la
+rama local, y un push los sube (`bb662a7` se subió sin pedirse). Solo se empuja lo de la tarea.
+
 Commits terminados con `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>`.
 `data/` nunca entra: lleva las claves.

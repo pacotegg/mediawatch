@@ -585,25 +585,21 @@ Hechos desde los commits (`git log`). El detalle de cada cambio está en el mens
 
 ## 6. Git
 
-- Repositorio en `C:\tvwatch` (un único repo para servidor, web, tele y Android).
-- **Un solo commit**: `737dede` (16/09/2026) «Commit inicial: Media Watch
-  (servidor, web, Tizen y Android)».
-- **Cambios sin commitear** (16/09 noche, tras el commit): Android
-  (`build.gradle.kts` 3.7, `Api.kt`, `Buscar.kt`, `Reproductor.kt`), servidor
-  (`package.json`, `db.ts`, `index.ts`, `historial.ts`, `transcode.ts`, `auth.ts`,
-  `library.ts`, `mando.ts`, `play.ts`, `people.ts` y nuevos `cli/completar-personas.ts`,
-  `media/avisos.ts`, `routes/actividad.ts`, `scanner/personas.ts`), tele
-  (`app.css`, `ajustes.ts`, `api.ts`, `main.ts`, `nav.ts`, `player.ts`), web
-  (`lib/api.ts`, `Player.tsx`, `Settings.tsx`, `styles.css`, nuevo
-  `components/Actividad.tsx`). Corresponden a: actividad/avisos, PIN de 6 cifras,
-  sesiones con strftime, escritura en vivo desde el móvil, chips de pistas,
-  Ajustes bajo Favoritos, personas por id, disco quieto, versión 3.7.
+- Repositorio en `C:\tvwatch`, público en GitHub (`pacotegg/mediawatch`). Un solo repo para
+  servidor, web, tele y Android. Unos 50 commits desde `737dede` (16/09/2026).
+- **Releases con APK** (`gh release`, tag `v<ver>` en el commit de esa versión): 3.7 (`abea11f`),
+  3.8 (`7714c1e`), 3.13 (`2daee24`), 3.17 (`dfb72f8`), 3.23 (`5b036d3`), 3.25 (`e83a2e2`).
+  El APK no entra en git: `*.apk` está en `.gitignore` y el repo es público. Los 367 MB de
+  APK no caben en el historial.
+- **Versiones sin registro** (ni commit ni dosier dicen qué traían): 3.3–3.6, 3.9–3.12,
+  3.15–3.16, 3.18–3.21 y 3.24. Algunas tienen APK en disco; no se han subido. La 3.22 y la 3.2
+  no tienen APK en disco. Una búsqueda en las transcripciones (05/10) no encontró su contenido.
+- `CHANGELOG.md` (raíz) es la fuente de la ventana de novedades de la app.
 - `.gitignore`: `node_modules/`, `data/` (claves, BD, arte, cachés), `web/dist/`,
-  `tv/dist/`, `tv/*.wgt`, `android/app/build/`, `android/.gradle/`,
+  `tv/dist/`, `tv/*.wgt`, `android/app/build/`, `android/.gradle/`, `android/.kotlin/`,
   `android/local.properties`, `*.apk`, `__pycache__/`.
-- Atribución de commits acordada: terminar con `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>`.
-- Sugerencia pendiente: hacer un segundo commit con lo anterior («Actividad, PIN
-  de 6 cifras, disco quieto, Media Watch 3.7»).
+- Atribución de commits: `CLAUDE.md` pide `Co-Authored-By: Claude Opus 5`. Los commits del
+  05/10 (`f120fe2`, `e688bfd`) salieron con Sonnet 5. Pendiente decidir cuál vale.
 
 ---
 
@@ -703,6 +699,17 @@ Herramientas de la sesión
 
 **Instalado/entregado a 05/10**: Android **3.25** (`versionCode 28`), instalado
 por el usuario. Commit `e83a2e2`. Ver §5 (22/09 a 05/10) para lo que ha cambiado desde 21/09.
+
+**Pendientes a 05/10 (git y publicación)**:
+- Ventana de novedades en Android (`ui/Novedades.kt`, commit `f120fe2`): compila, **sin probar en
+  móvil**. Aparecerá en la próxima versión que tenga sección en `CHANGELOG.md`.
+- `bb662a7` (web: quitar el panel Perfiles de Biblioteca) estaba en la rama local y se subió
+  con el push de `f120fe2` sin que se pidiera. No contiene datos sensibles. No se revirtió.
+- Cambios sin commitear de dueño sin confirmar (no son del 05/10 de Android): `server/src/db.ts`,
+  `server/src/media/descargas.ts`, `server/src/routes/descargas.ts`, `web/src/lib/api.ts`,
+  `web/src/pages/Detail.tsx`, `android/.../datos/Api.kt`, `android/.../ui/Ficha.kt`.
+- Dominio público de la casa: aparece en código público (`Ajustes.kt`) y en varios puntos del
+  dosier (§1, §3, §5). Pendiente decidir si es el real y qué hacer. No repetirlo en nuevos textos.
 
 **Instalado/entregado a 21/09**: servidor con todo lo anterior en marcha
 (vigilante, reiniciado tras la auditoría), web compilada y servida con el
