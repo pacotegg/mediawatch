@@ -10,6 +10,7 @@ tv/dist/
 tv/*.wgt
 android/app/build/
 android/.gradle/
+android/.kotlin/
 android/local.properties
 *.apk
 __pycache__/
