@@ -149,7 +149,7 @@ object Ajustes {
     if (t.isEmpty()) return ""
     /*
      * Una IP es la red de casa: http y el puerto del servidor. Un nombre de
-     * dominio («tv.micasa.duckdns.org») es la dirección de fuera, que va por
+     * dominio («<dominio-de-fuera>») es la dirección de fuera, que va por
      * https y sin puerto, porque delante hay un proxy con certificado. Así
      * quien se conecta desde fuera solo escribe el dominio, sin más.
      */

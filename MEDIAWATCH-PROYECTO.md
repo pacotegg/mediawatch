@@ -89,7 +89,7 @@ TvWatch y ahora tiene sus 26 episodios.
 | Barra de sonido | Hisense AX5125H (5.1.2, Atmos) por eARC; salida de la tele en «sin procesar» |
 | Biblioteca | `E:\` — HDD 12 TB (caja TerraMas TDAS, disco 3). El sistema va en SSD |
 | Temporales de transcodificación | `G:\CinetecaTmp` (clave `transcodeDir`) |
-| Acceso externo | `https://tv.micasa.duckdns.org` → Caddy (`C:\Caddy\Caddyfile`, tarea programada «Caddy - proxy inverso Jellyfin», corre como SYSTEM) → `127.0.0.1:8730`. IP pública `x.x.x.x`. Jellyfin en `https://micasa.duckdns.org` |
+| Acceso externo | `https://<dominio-de-fuera>` → Caddy (`C:\Caddy\Caddyfile`, tarea programada «Caddy - proxy inverso Jellyfin», corre como SYSTEM) → `127.0.0.1:8730`. IP pública `x.x.x.x`. Jellyfin en `https://<dominio-jellyfin>` |
 | Tailscale | activo, HTPC = `100.x.x.x` (Plex no lo necesita; Media Watch tampoco ya) |
 | Ancho de banda | subida **246 Mb/s**, bajada 494 → no hace falta transcodificar para ver desde fuera |
 | Docker Desktop | se usa para instalar en la tele (imagen `ghcr.io/georift/install-jellyfin-tizen`). Se cuelga por sockets AF_UNIX huérfanos: `C:/scripts/WinKlean/docker-arreglar-sockets.ps1` |
@@ -396,7 +396,7 @@ funciona, `Page.captureScreenshot` **no**. Emulador Android: skill `probar-app-a
 
 Acceso externo: Caddy lo reinicia el usuario (`Stop-Process -Name caddy -Force; Start-ScheduledTask -TaskName 'Caddy - proxy inverso Jellyfin'`).
 Para otro perfil desde fuera: crear el perfil con PIN (≥6 cifras) en casa; en
-la app pone `tv.micasa.duckdns.org` (la app lo trata como https), elige el
+la app pone `<dominio-de-fuera>` (la app lo trata como https), elige el
 perfil y el PIN; una sesión abierta ya funciona desde cualquier sitio. El
 perfil «Casa» (admin) no tiene PIN y **no puede entrar desde fuera** a propósito.
 
@@ -480,7 +480,7 @@ perfil «Casa» (admin) no tiene PIN y **no puede entrar desde fuera** a propós
   nativa por fases (Kotlin/Compose, Android 13+): fase 1 (API, portada,
   bibliotecas, fichas), fase 2 (ExoPlayer, progreso, pistas, saltar cabecera),
   fase 3 (buscar, menú, favoritas). Emulador montado; skill `probar-app-android`.
-- **Acceso desde fuera**: Caddy + DuckDNS (`tv.micasa.duckdns.org`), reglas
+- **Acceso desde fuera**: Caddy + DuckDNS (`<dominio-de-fuera>`), reglas
   «desde fuera» por cabeceras del proxy, PIN elegido por el usuario, doble
   dirección automática en la app (`/api/servidor`). Skill `acceso-externo-tvwatch`.
 - Editar metadatos como Plex: **selector de arte** (póster/fondo/logo) web y app;
@@ -708,8 +708,8 @@ por el usuario. Commit `e83a2e2`. Ver §5 (22/09 a 05/10) para lo que ha cambiad
 - Cambios sin commitear de dueño sin confirmar (no son del 05/10 de Android): `server/src/db.ts`,
   `server/src/media/descargas.ts`, `server/src/routes/descargas.ts`, `web/src/lib/api.ts`,
   `web/src/pages/Detail.tsx`, `android/.../datos/Api.kt`, `android/.../ui/Ficha.kt`.
-- Dominio público de la casa: aparece en código público (`Ajustes.kt`) y en varios puntos del
-  dosier (§1, §3, §5). Pendiente decidir si es el real y qué hacer. No repetirlo en nuevos textos.
+- Dominio de acceso externo: retirado de código y dosier el 05/10 (queda `<dominio-de-fuera>`).
+  Sigue en el historial de git (commits anteriores). Pendiente decidir si se reescribe la historia.
 
 **Instalado/entregado a 21/09**: servidor con todo lo anterior en marcha
 (vigilante, reiniciado tras la auditoría), web compilada y servida con el
