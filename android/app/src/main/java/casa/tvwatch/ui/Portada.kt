@@ -23,8 +23,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -65,6 +70,7 @@ fun PantallaPortada(
   alAbrirBiblioteca: (Int, String) -> Unit,
   alBuscar: () -> Unit,
   alPerderSesion: () -> Unit,
+  alAbrirDescargas: () -> Unit,
 ) {
   val guardado = remember { Cache.portadaGuardada() }
   var datos by remember { mutableStateOf(guardado?.first) }
@@ -90,7 +96,41 @@ fun PantallaPortada(
 
   val d = datos
   when {
-    fallo.isNotEmpty() -> Aviso(fallo, "Reintentar") { intento++ }
+    fallo.isNotEmpty() -> {
+      Column(
+        Modifier
+          .fillMaxSize()
+          .background(Fondo)
+          .padding(32.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+      ) {
+        Text(
+          "Sin conexión con el servidor",
+          color = Texto,
+          style = MaterialTheme.typography.headlineSmall,
+          fontWeight = FontWeight.Bold,
+        )
+        Spacer(Modifier.height(10.dp))
+        Text(
+          fallo,
+          color = TextoSuave,
+          style = MaterialTheme.typography.bodyMedium,
+          textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(28.dp))
+        Button(
+          onClick = alAbrirDescargas,
+          colors = ButtonDefaults.buttonColors(containerColor = Realce),
+        ) {
+          Text("Ver descargas en este móvil", color = Color.Black, fontWeight = FontWeight.Bold)
+        }
+        Spacer(Modifier.height(12.dp))
+        OutlinedButton(onClick = { intento++ }) {
+          Text("Reintentar conexión", color = Texto)
+        }
+      }
+    }
     d == null -> EsqueletoDePortada()
     else -> LazyColumn(
       Modifier.fillMaxSize().background(Fondo),

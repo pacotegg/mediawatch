@@ -22,12 +22,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.ui.draw.scale
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -298,49 +304,35 @@ fun PantallaFicha(
 
         Spacer(Modifier.height(18.dp))
         if (!esSerie && ficheroPelicula != null) {
-          Button(
-            onClick = { alReproducir(ficheroPelicula.id, null, reanudarEn) },
-            modifier = Modifier.fillMaxWidth(),
-          ) {
-            Text(if (reanudarEn > 0) "Reanudar ${reloj(reanudarEn)}" else "Reproducir")
-          }
+          BotonReproducirIos(
+            texto = if (reanudarEn > 0) "Reanudar · ${reloj(reanudarEn)}" else "Reproducir",
+            alPulsar = { alReproducir(ficheroPelicula.id, null, reanudarEn) },
+          )
           if (reanudarEn > 0) {
             Spacer(Modifier.height(8.dp))
-            OutlinedButton(
-              onClick = { alReproducir(ficheroPelicula.id, null, 0.0) },
-              modifier = Modifier.fillMaxWidth(),
-            ) { Text("Desde el principio") }
+            BotonSecundarioIos(
+              texto = "Desde el principio",
+              alPulsar = { alReproducir(ficheroPelicula.id, null, 0.0) },
+            )
           }
         }
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(14.dp))
         /*
-         * La fila de siempre: favorito, vista, la tele y las imágenes. Van en
-         * una sola línea de pastillas y no como botones grandes, porque son
-         * cosas que se usan de vez en cuando; el botón grande es para
-         * reproducir, que es a lo que se viene.
-         *
-         * Con desplazamiento lateral: siendo administrador son cuatro y en un
-         * móvil estrecho la última se saldría de la pantalla. Así caben todas
-         * sin partir la fila en dos.
+         * La fila de acciones estilo iOS: botones frosted glass con iconos
+         * vectoriales limpios y respuesta táctil por resorte.
          */
         Row(
           Modifier.horizontalScroll(rememberScrollState()),
           horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-          // Solo si los hay: 126 titulos de 1.946 tienen extras, y una pastilla
-          // que abre una ventana vacia es peor que no tenerla.
+          // Solo si los hay: extras disponibles
           if (extras.isNotEmpty()) {
             Pastilla("Extras (${extras.size})") { extrasAbiertos = true }
           }
-          // «También en tu suscripción»: solo las plataformas que este título
-          // tiene de verdad. Abre su app si está instalada; si no, lo dice.
+          // «También en tu suscripción»
           for (p in dondeVer) {
-            // La atribución a JustWatch (que TMDb exige) va en el catálogo de
-            // Plataformas; aquí la pastilla se queda corta a propósito.
             Pastilla("También en ${p.nombre}") {
               ambito.launch {
-                // El enlace directo sale de Watchmode y puede tardar o faltar: si
-                // no hay, se abre la app a secas, que es lo que se hacía antes.
                 val enlace = try {
                   withContext(Dispatchers.IO) { Api.enlaceDeTitulo(itemId, p.clave) }
                 } catch (e: Exception) {
@@ -354,8 +346,9 @@ fun PantallaFicha(
             }
           }
           Pastilla(
-            if (esFavorita) "★ Favorita" else "☆ Favorita",
+            "Favorita",
             activa = esFavorita,
+            icono = { IconoEstrella(it, rellena = esFavorita) },
           ) {
             val nuevo = !esFavorita
             esFavorita = nuevo
@@ -364,13 +357,14 @@ fun PantallaFicha(
                 withContext(Dispatchers.IO) { Api.favorito(itemId, nuevo) }
                 Cache.olvidarFicha(itemId)
               } catch (e: Exception) {
-                esFavorita = !nuevo // no coló: se deja como estaba
+                esFavorita = !nuevo
               }
             }
           }
           Pastilla(
             if (estaVista) "Vista" else "Marcar vista",
             activa = estaVista,
+            icono = { IconoCheck(it) },
           ) {
             val nuevo = !estaVista
             estaVista = nuevo
@@ -383,24 +377,15 @@ fun PantallaFicha(
               }
             }
           }
-          /*
-           * Lo que hace Chromecast, con la aplicación de la tele de receptor:
-           * la Samsung no tiene Google Cast. La tele lo recoge en dos segundos
-           * si está en cualquier pantalla que no sea el reproductor.
-           *
-           * Sin el «desde 29:11» en la etiqueta: el tiempo sí se manda, pero
-           * puesto ahí alargaba la pastilla hasta sacarla de la fila y no dice
-           * nada que no diga ya el botón de arriba.
-           */
           if (!esSerie && ficheroPelicula != null) {
-            Pastilla("Ver en la tele", icono = { IconoCast(it) }) {
-              mandarALaTele(ficheroPelicula.id, null, reanudarEn)
-            }
-            Pastilla("Descargar") {
+            Pastilla("Descargar", icono = { IconoDescarga(it) }) {
               fileIdDescargaDialogo = ficheroPelicula.id
             }
+            Pastilla("En la tele", icono = { IconoCast(it) }) {
+              mandarALaTele(ficheroPelicula.id, null, reanudarEn)
+            }
           }
-          // Cambiar las imágenes se guarda para todos: solo el administrador.
+          // Cambiar las imágenes: solo administrador
           if (Ajustes.esAdmin) Pastilla("Imágenes") { alCambiarImagenes(f.kind, f.title, f.year) }
         }
 
@@ -505,43 +490,65 @@ fun PantallaFicha(
     val opciones = estimarDescargas(duracionSegundos, ficheroElegido?.size)
     androidx.compose.material3.AlertDialog(
       onDismissRequest = { fileIdDescargaDialogo = null },
-      containerColor = FondoTarjeta,
-      title = { Text("Elegir calidad de descarga", color = Texto, fontWeight = FontWeight.Bold) },
+      containerColor = Color(0xFF14141A),
+      shape = RoundedCornerShape(24.dp),
+      title = {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+          IconoDescarga(color = Realce, tamano = 22.dp)
+          Text("Calidad de descarga", color = Texto, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        }
+      },
       text = {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
           opciones.forEach { (perfil, titulo, pie) ->
-            OutlinedButton(
-              onClick = {
-                fileIdDescargaDialogo = null
-                ambito.launch {
-                  try {
-                    val d = withContext(Dispatchers.IO) { Api.pedirDescarga(targetFileId, perfil) }
-                    Toast.makeText(contexto, if (d.estado == "lista") "Descarga lista" else "Preparando copia en el servidor...", Toast.LENGTH_SHORT).show()
-                    if (d.estado == "lista") {
-                      val url = "${Api.urlFicheroDescarga(d.id)}?token=${Ajustes.token ?: ""}"
-                      val ext = if (d.perfil == "original") ".mkv" else ".mp4"
-                      val nombreFichero = "${d.titulo.replace(Regex("[^a-zA-Z0-9.-]"), "_")}_${d.perfil}$ext"
-                      iniciarDescargaEnAndroid(contexto, url, d.titulo, nombreFichero)
+            val pulsacion = remember { MutableInteractionSource() }
+            val pulsada by pulsacion.collectIsPressedAsState()
+            val escala by animateFloatAsState(
+              targetValue = if (pulsada) 0.97f else 1f,
+              animationSpec = Movimiento.resorte(),
+              label = "escala opcion descarga",
+            )
+            Row(
+              modifier = Modifier
+                .scale(escala)
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color(0x14FFFFFF))
+                .border(1.dp, Color(0x1CFFFFFF), RoundedCornerShape(16.dp))
+                .pulsable(pulsacion) {
+                  fileIdDescargaDialogo = null
+                  ambito.launch {
+                    try {
+                      val d = withContext(Dispatchers.IO) { Api.pedirDescarga(targetFileId, perfil) }
+                      Toast.makeText(contexto, if (d.estado == "lista") "Descarga lista" else "Preparando copia en el servidor...", Toast.LENGTH_SHORT).show()
+                      if (d.estado == "lista") {
+                        val url = "${Api.urlFicheroDescarga(d.id)}?token=${Ajustes.token ?: ""}"
+                        val ext = if (d.perfil == "original") ".mkv" else ".mp4"
+                        val nombreFichero = "${d.titulo.replace(Regex("[^a-zA-Z0-9.-]"), "_")}_${d.perfil}$ext"
+                        iniciarDescargaEnAndroid(contexto, url, d.titulo, nombreFichero)
+                      }
+                    } catch (e: Exception) {
+                      Toast.makeText(contexto, "Error: ${e.message}", Toast.LENGTH_LONG).show()
                     }
-                  } catch (e: Exception) {
-                    Toast.makeText(contexto, "Error: ${e.message}", Toast.LENGTH_LONG).show()
                   }
                 }
-              },
-              modifier = Modifier.fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+              horizontalArrangement = Arrangement.SpaceBetween,
+              verticalAlignment = Alignment.CenterVertically,
             ) {
-              Column(horizontalAlignment = Alignment.Start, modifier = Modifier.fillMaxWidth()) {
+              Column(modifier = Modifier.weight(1f)) {
                 Text(titulo, color = Texto, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                Text(pie, color = TextoTenue, fontSize = 11.sp)
+                Text(pie, color = TextoSuave, fontSize = 12.sp)
               }
+              IconoDescarga(color = TextoTenue, tamano = 16.dp)
             }
           }
         }
       },
       confirmButton = {},
       dismissButton = {
-        OutlinedButton(onClick = { fileIdDescargaDialogo = null }) {
-          Text("Cancelar", color = TextoSuave)
+        TextButton(onClick = { fileIdDescargaDialogo = null }) {
+          Text("Cancelar", color = TextoSuave, fontSize = 14.sp)
         }
       }
     )

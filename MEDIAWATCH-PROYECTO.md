@@ -22,7 +22,7 @@ tinyMediaManager en `E:\`, y la sirve a tres clientes:
 |---|---|---|---|
 | **Web** | `web/` | React 19 + Vite + Tailwind 4 + motion | Cualquier navegador; PWA instalable |
 | **Tele** | `tv/` | TypeScript plano + CSS plano, ES2016/iife | Samsung QN93A (Tizen 6.0 ≈ Chrome 76), reproductor nativo AVPlay |
-| **Android** | `android/` | Kotlin + Jetpack Compose + Media3/ExoPlayer + Cast SDK | Móvil (Android 8+, pensado para 13+). Versión actual **3.7** |
+| **Android** | `android/` | Kotlin + Jetpack Compose + Media3/ExoPlayer + Cast SDK | Móvil (Android 8+, pensado para 13+). Versión actual **3.25** |
 
 Nombres: empezó como **Cineteca** (04/09), se renombró a **TvWatch** (05/09) y a
 **Media Watch** (16/09). El código y el paquete Android siguen llamándose

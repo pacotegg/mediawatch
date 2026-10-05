@@ -9,6 +9,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -42,8 +43,11 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -392,20 +396,32 @@ fun Pastilla(
   )
   val fondo by animateColorAsState(
     targetValue = when {
-      destacada || activa -> Realce
-      else -> FondoTarjeta
+      destacada -> Realce
+      activa -> Realce.copy(alpha = 0.2f)
+      else -> Color(0x18FFFFFF)
     },
     animationSpec = Movimiento.aparecer(180),
     label = "fondo de la pastilla",
   )
 
-  val color = if (destacada || activa) SobreRealce else Texto
+  val color = when {
+    destacada -> SobreRealce
+    activa -> Realce
+    else -> Texto
+  }
+  val borde = when {
+    destacada -> Color.Transparent
+    activa -> Realce.copy(alpha = 0.45f)
+    else -> Color(0x1FFFFFFF)
+  }
+
   val forma = modifier
     .scale(escala)
     .clip(RoundedCornerShape(Esquinas.pastilla))
     .background(fondo)
+    .border(1.dp, borde, RoundedCornerShape(Esquinas.pastilla))
     .pulsable(pulsacion, alPulsar)
-    .padding(horizontal = 16.dp, vertical = 10.dp)
+    .padding(horizontal = 15.dp, vertical = 9.dp)
 
   if (icono == null) {
     Text(texto, color = color, style = MaterialTheme.typography.labelLarge, modifier = forma)
@@ -414,6 +430,184 @@ fun Pastilla(
       icono(color)
       Text(texto, color = color, style = MaterialTheme.typography.labelLarge)
     }
+  }
+}
+
+/**
+ * El dibujo de «descargar en el dispositivo» estilo iOS (flecha hacia abajo con bandeja).
+ */
+@Composable
+fun IconoDescarga(color: Color, tamano: Dp = 15.dp) {
+  Canvas(Modifier.size(tamano)) {
+    val t = size.minDimension
+    val grosor = t * 0.11f
+    // Flecha vertical
+    drawLine(
+      color = color,
+      start = Offset(t * 0.5f, t * 0.15f),
+      end = Offset(t * 0.5f, t * 0.60f),
+      strokeWidth = grosor,
+      cap = StrokeCap.Round,
+    )
+    // Punta de flecha
+    drawLine(
+      color = color,
+      start = Offset(t * 0.28f, t * 0.40f),
+      end = Offset(t * 0.5f, t * 0.62f),
+      strokeWidth = grosor,
+      cap = StrokeCap.Round,
+    )
+    drawLine(
+      color = color,
+      start = Offset(t * 0.72f, t * 0.40f),
+      end = Offset(t * 0.5f, t * 0.62f),
+      strokeWidth = grosor,
+      cap = StrokeCap.Round,
+    )
+    // Bandeja inferior
+    val path = Path().apply {
+      moveTo(t * 0.18f, t * 0.66f)
+      lineTo(t * 0.18f, t * 0.85f)
+      lineTo(t * 0.82f, t * 0.85f)
+      lineTo(t * 0.82f, t * 0.66f)
+    }
+    drawPath(path, color = color, style = Stroke(width = grosor, cap = StrokeCap.Round, join = StrokeJoin.Round))
+  }
+}
+
+/**
+ * El dibujo de «visto» estilo iOS (check).
+ */
+@Composable
+fun IconoCheck(color: Color, tamano: Dp = 15.dp) {
+  Canvas(Modifier.size(tamano)) {
+    val t = size.minDimension
+    val grosor = t * 0.13f
+    val path = Path().apply {
+      moveTo(t * 0.18f, t * 0.50f)
+      lineTo(t * 0.42f, t * 0.76f)
+      lineTo(t * 0.82f, t * 0.26f)
+    }
+    drawPath(path, color = color, style = Stroke(width = grosor, cap = StrokeCap.Round, join = StrokeJoin.Round))
+  }
+}
+
+/**
+ * El dibujo de «favorito» estilo iOS (estrella contorneada o rellena).
+ */
+@Composable
+fun IconoEstrella(color: Color, rellena: Boolean = false, tamano: Dp = 15.dp) {
+  Canvas(Modifier.size(tamano)) {
+    val t = size.minDimension
+    val cx = t * 0.5f
+    val cy = t * 0.5f
+    val rExt = t * 0.46f
+    val rInt = t * 0.20f
+    val path = Path()
+    for (i in 0 until 10) {
+      val r = if (i % 2 == 0) rExt else rInt
+      val angulo = (Math.PI / 5.0 * i - Math.PI / 2.0)
+      val x = cx + (r * Math.cos(angulo)).toFloat()
+      val y = cy + (r * Math.sin(angulo)).toFloat()
+      if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+    }
+    path.close()
+    if (rellena) {
+      drawPath(path, color = color)
+    } else {
+      drawPath(path, color = color, style = Stroke(width = t * 0.09f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+    }
+  }
+}
+
+/**
+ * Icono de reproducir (triángulo Play).
+ */
+@Composable
+fun IconoPlay(color: Color, tamano: Dp = 16.dp) {
+  Canvas(Modifier.size(tamano)) {
+    val t = size.minDimension
+    val path = Path().apply {
+      moveTo(t * 0.26f, t * 0.18f)
+      lineTo(t * 0.84f, t * 0.5f)
+      lineTo(t * 0.26f, t * 0.82f)
+      close()
+    }
+    drawPath(path, color = color)
+  }
+}
+
+/**
+ * Botón principal de reproducción estilo iOS / Apple TV (píldora blanca sólida).
+ */
+@Composable
+fun BotonReproducirIos(
+  texto: String,
+  alPulsar: () -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  val pulsacion = remember { MutableInteractionSource() }
+  val pulsada by pulsacion.collectIsPressedAsState()
+  val escala by animateFloatAsState(
+    targetValue = if (pulsada) 0.97f else 1f,
+    animationSpec = Movimiento.resorte(),
+    label = "escala reproducir",
+  )
+  Row(
+    modifier = modifier
+      .scale(escala)
+      .fillMaxWidth()
+      .height(50.dp)
+      .clip(RoundedCornerShape(25.dp))
+      .background(Color(0xFFF5F6FA))
+      .pulsable(pulsacion, alPulsar),
+    horizontalArrangement = Arrangement.Center,
+    verticalAlignment = Alignment.CenterVertically,
+  ) {
+    IconoPlay(color = Color(0xFF09090C), tamano = 18.dp)
+    Spacer(Modifier.width(8.dp))
+    Text(
+      texto,
+      color = Color(0xFF09090C),
+      fontSize = 15.sp,
+      fontWeight = FontWeight.Bold,
+    )
+  }
+}
+
+/**
+ * Botón secundario estilo iOS frosted glass translúcido.
+ */
+@Composable
+fun BotonSecundarioIos(
+  texto: String,
+  alPulsar: () -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  val pulsacion = remember { MutableInteractionSource() }
+  val pulsada by pulsacion.collectIsPressedAsState()
+  val escala by animateFloatAsState(
+    targetValue = if (pulsada) 0.97f else 1f,
+    animationSpec = Movimiento.resorte(),
+    label = "escala secundario",
+  )
+  Box(
+    modifier = modifier
+      .scale(escala)
+      .fillMaxWidth()
+      .height(44.dp)
+      .clip(RoundedCornerShape(22.dp))
+      .background(Color(0x18FFFFFF))
+      .border(1.dp, Color(0x1FFFFFFF), RoundedCornerShape(22.dp))
+      .pulsable(pulsacion, alPulsar),
+    contentAlignment = Alignment.Center,
+  ) {
+    Text(
+      texto,
+      color = Texto,
+      fontSize = 14.sp,
+      fontWeight = FontWeight.SemiBold,
+    )
   }
 }
 

@@ -47,6 +47,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import casa.tvwatch.datos.Ajustes
+import android.net.Uri
 import casa.tvwatch.ui.Destino
 import casa.tvwatch.ui.Fondo
 import casa.tvwatch.ui.Menu
@@ -62,6 +63,7 @@ import casa.tvwatch.ui.PantallaPersona
 import casa.tvwatch.ui.PantallaPlataformas
 import casa.tvwatch.ui.PantallaPortada
 import casa.tvwatch.ui.PantallaReproductor
+import casa.tvwatch.ui.PantallaReproductorLocal
 import casa.tvwatch.ui.PantallaSaga
 import casa.tvwatch.ui.PantallaSagas
 import casa.tvwatch.ui.nombreDeSaga
@@ -123,6 +125,7 @@ private object Rutas {
   const val SAGA = "saga/{nombre}"
   const val PERSONA = "persona/{id}"
   const val AJUSTES = "ajustes"
+  const val REPRODUCTOR_LOCAL = "ver_local/{uriEncoded}/{tituloEncoded}"
 
   fun saga(nombre: String) = "saga/" + URLEncoder.encode(nombre, "UTF-8")
 
@@ -135,6 +138,9 @@ private object Rutas {
   // pasar nulos por la ruta y un centinela es más claro que un parámetro suelto.
   fun reproductor(fileId: Int, itemId: Int, episodioId: Int?, desde: Double) =
     "ver/$fileId/$itemId/${episodioId ?: -1}/${desde.toInt()}"
+
+  fun reproductorLocal(uri: String, titulo: String) =
+    "ver_local/" + URLEncoder.encode(uri, "UTF-8") + "/" + URLEncoder.encode(titulo, "UTF-8")
 
   fun arte(id: Int, kind: String, titulo: String, anio: Int?) =
     "arte/$id/$kind/" + URLEncoder.encode(titulo, "UTF-8") + "/" + (anio ?: -1)
@@ -206,7 +212,7 @@ private fun Navegacion(nav: NavHostController) {
   ModalNavigationDrawer(
     drawerState = cajon,
     // Ni viendo una película ni antes de entrar: ahí el borde no es un menú.
-    gesturesEnabled = rutaActual != Rutas.REPRODUCTOR && rutaActual != Rutas.CONEXION,
+    gesturesEnabled = rutaActual != Rutas.REPRODUCTOR && rutaActual != Rutas.REPRODUCTOR_LOCAL && rutaActual != Rutas.CONEXION,
     scrimColor = Color(0x99000000),
     drawerContent = { Menu(rutaActual, bibliotecaActual, ::irA) },
   ) {
@@ -248,6 +254,7 @@ private fun Navegacion(nav: NavHostController) {
             alAbrirBiblioteca = { id, nombre -> nav.navigate(Rutas.biblioteca(id, nombre)) },
             alBuscar = { nav.navigate(Rutas.BUSCAR) },
             alPerderSesion = { aConexion() },
+            alAbrirDescargas = { nav.navigate(Rutas.DESCARGAS) },
           )
         }
       }
@@ -284,6 +291,9 @@ private fun Navegacion(nav: NavHostController) {
         Pantalla(titulo = "Descargas", nav = nav, alMenu = ::abrirMenu) {
           PantallaDescargas(
             alPerderSesion = { aConexion() },
+            alReproducirLocal = { uri, titulo ->
+              nav.navigate(Rutas.reproductorLocal(uri.toString(), titulo))
+            },
           )
         }
       }
@@ -410,6 +420,22 @@ private fun Navegacion(nav: NavHostController) {
           itemId = a.getInt("itemId"),
           episodioId = episodio,
           desdeSegundos = a.getInt("desde").toDouble(),
+          alSalir = { nav.popBackStack() },
+        )
+      }
+
+      composable(
+        Rutas.REPRODUCTOR_LOCAL,
+        arguments = listOf(
+          navArgument("uriEncoded") { type = NavType.StringType },
+          navArgument("tituloEncoded") { type = NavType.StringType },
+        ),
+      ) { entrada ->
+        val uriStr = URLDecoder.decode(entrada.arguments?.getString("uriEncoded") ?: "", "UTF-8")
+        val titulo = URLDecoder.decode(entrada.arguments?.getString("tituloEncoded") ?: "", "UTF-8")
+        PantallaReproductorLocal(
+          uri = Uri.parse(uriStr),
+          titulo = titulo,
           alSalir = { nav.popBackStack() },
         )
       }

@@ -40,8 +40,11 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.width
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -1549,5 +1552,85 @@ fun idiomaLegible(codigo: String?): String {
     "chi", "zho", "zh" -> "Chino"
     "kor", "ko" -> "Coreano"
     else -> codigo
+  }
+}
+
+/**
+ * Reproductor local para ver descargas sin conexión a internet ni al servidor.
+ * Usa ExoPlayer directamente contra la URI del fichero descargado en el móvil.
+ */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+@Composable
+fun PantallaReproductorLocal(
+  uri: Uri,
+  titulo: String,
+  alSalir: () -> Unit,
+) {
+  val contexto = LocalContext.current
+  val actividad = contexto as? Activity
+
+  val player = remember {
+    androidx.media3.exoplayer.ExoPlayer.Builder(contexto).build().apply {
+      setMediaItem(MediaItem.fromUri(uri))
+      prepare()
+      playWhenReady = true
+    }
+  }
+
+  DisposableEffect(player) {
+    val ventana = actividad?.window
+    ventana?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    actividad?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+    val controlador = ventana?.let { WindowInsetsControllerCompat(it, it.decorView) }
+    controlador?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+    controlador?.hide(WindowInsetsCompat.Type.systemBars())
+
+    onDispose {
+      ventana?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+      actividad?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+      controlador?.show(WindowInsetsCompat.Type.systemBars())
+      player.release()
+    }
+  }
+
+  androidx.activity.compose.BackHandler {
+    player.stop()
+    alSalir()
+  }
+
+  Box(Modifier.fillMaxSize().background(Color.Black)) {
+    AndroidView(
+      factory = { ctx ->
+        PlayerView(ctx).apply {
+          this.player = player
+          this.useController = true
+        }
+      },
+      modifier = Modifier.fillMaxSize(),
+    )
+    Row(
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(horizontal = 16.dp, vertical = 12.dp)
+        .align(Alignment.TopStart),
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      IconButton(
+        onClick = {
+          player.stop()
+          alSalir()
+        },
+      ) {
+        Text("‹", color = Color.White, fontSize = 34.sp)
+      }
+      Spacer(Modifier.width(8.dp))
+      Text(
+        titulo,
+        color = Color.White,
+        style = MaterialTheme.typography.titleMedium,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+      )
+    }
   }
 }
