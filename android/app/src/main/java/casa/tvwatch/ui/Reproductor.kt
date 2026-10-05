@@ -21,6 +21,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -243,6 +245,8 @@ private fun Reproduciendo(
   var arrastre by remember { mutableStateOf<Double?>(null) }
 
   fun tocar() { ultimoToque = System.currentTimeMillis(); controlesVisibles = true }
+  /** Lado (true = atrás) y segundos acumulados del último doble toque, para el aviso «-10 s». */
+  var indicadorSalto by remember { mutableStateOf<Pair<Boolean, Int>?>(null) }
   val tramosSaltados = remember(fileId) { mutableSetOf<String>() }
 
   /*
@@ -690,6 +694,14 @@ private fun Reproduciendo(
     saltoPendiente = segundos
   }
 
+  /** Doble toque: 10 s atrás o adelante desde la posición que se ve, sin pasar de los extremos. */
+  fun saltar(atras: Boolean) {
+    val tope = if (duracionConocida > 0.0) duracionConocida else Double.MAX_VALUE
+    irA((posicionUi + if (atras) -10.0 else 10.0).coerceIn(0.0, tope))
+    val previo = indicadorSalto?.takeIf { it.first == atras }?.second ?: 0
+    indicadorSalto = atras to previo + 10
+  }
+
   /*
    * Vigilante. Si tras reabrir el flujo se queda cargando más de veinte
    * segundos —el ffmpeg no arrancó, la red se cortó a medias— se reintenta
@@ -831,14 +843,35 @@ private fun Reproduciendo(
       update = { vista -> vista.resizeMode = encaje.modo },
     )
 
-    // Un toque en el vídeo enseña o esconde los controles.
+    // Un toque en el vídeo enseña o esconde los controles; dos seguidos a un lado saltan 10 s.
     Box(
       Modifier
         .fillMaxSize()
-        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-          if (controlesVisibles) controlesVisibles = false else tocar()
+        .pointerInput(duracionConocida) {
+          detectTapGestures(
+            onTap = { if (controlesVisibles) controlesVisibles = false else tocar() },
+            onDoubleTap = { punto -> saltar(atras = punto.x < size.width / 2f) },
+          )
         },
     )
+
+    indicadorSalto?.let { (atras, segundos) ->
+      LaunchedEffect(indicadorSalto) {
+        delay(800)
+        indicadorSalto = null
+      }
+      Text(
+        if (atras) "-$segundos s" else "+$segundos s",
+        color = Color.White,
+        fontWeight = FontWeight.Bold,
+        fontSize = 20.sp,
+        modifier = Modifier
+          .align(if (atras) Alignment.CenterStart else Alignment.CenterEnd)
+          .padding(horizontal = 48.dp)
+          .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(12.dp))
+          .padding(horizontal = 14.dp, vertical = 8.dp),
+      )
+    }
 
     AnimatedVisibility(
       visible = mensajeAdmin.isNotEmpty(),
