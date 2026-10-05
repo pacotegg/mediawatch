@@ -244,10 +244,7 @@ function LibraryTab() {
   const queryClient = useQueryClient();
   const { data: stats } = useQuery({ queryKey: ['stats'], queryFn: api.stats });
   const { data: libraries } = useQuery({ queryKey: ['libraries'], queryFn: api.libraries });
-  const { data: users } = useQuery({ queryKey: ['users'], queryFn: api.users });
   const { data: sessions } = useQuery({ queryKey: ['sessions'], queryFn: api.sessions, refetchInterval: 4000 });
-  const [name, setName] = useState('');
-  const [pin, setPin] = useState('');
   const [message, setMessage] = useState('');
   const [code, setCode] = useState('');
   const [pairResult, setPairResult] = useState('');
@@ -261,16 +258,6 @@ function LibraryTab() {
   });
 
   const scan = useMutation({ mutationFn: api.scan, onSuccess: () => setMessage('Escaneo iniciado. Tarda alrededor de medio minuto.') });
-  const addUser = useMutation({
-    mutationFn: () => api.createUser(name.trim(), pin || undefined),
-    onSuccess: () => {
-      setName('');
-      setPin('');
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-    },
-    onError: (err: Error) => setMessage(err.message),
-  });
-
   return (
     <div className="space-y-5">
       <Panel title="Biblioteca" action={<Button onClick={() => scan.mutate()} disabled={scan.isPending}>Volver a escanear</Button>}>
@@ -313,26 +300,6 @@ function LibraryTab() {
         ) : (
           <p className="text-sm text-mist-500">Nadie está viendo nada ahora mismo.</p>
         )}
-      </Panel>
-
-      <Panel title="Perfiles">
-        <div className="space-y-1.5">
-          {users?.users.map((user) => (
-            <div key={user.id} className="flex items-center gap-3 rounded-xl bg-white/4 px-3 py-2 text-[13px]">
-              <span className="grid h-7 w-7 place-items-center rounded-full text-xs font-semibold text-ink-950" style={{ background: user.color ?? '#f0a54a' }}>
-                {user.name.charAt(0).toUpperCase()}
-              </span>
-              <span className="flex-1">{user.name}</span>
-              {user.is_admin === 1 && <span className="text-[11px] text-mist-500">administrador</span>}
-              {user.has_pin ? <span className="text-[11px] text-mist-600">con PIN</span> : null}
-            </div>
-          ))}
-        </div>
-        <div className="flex flex-wrap gap-2 pt-2">
-          <TextInput value={name} onChange={setName} placeholder="Nombre del nuevo perfil" className="flex-1" />
-          <TextInput value={pin} onChange={setPin} placeholder="PIN (6 cifras o más)" className="w-44" />
-          <Button onClick={() => addUser.mutate()} disabled={!name.trim() || addUser.isPending}>Añadir</Button>
-        </div>
       </Panel>
 
       <Panel
