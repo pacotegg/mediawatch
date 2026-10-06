@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, statSync, unlinkSync, utimesSync } from 'node:fs';
-import { extname, join } from 'node:path';
+import { existsSync, mkdirSync, readdirSync, renameSync, statSync, unlinkSync, utimesSync } from 'node:fs';
+import { join } from 'node:path';
 import { DATA_DIR, config } from '../config.ts';
 
 const CACHE_DIR = join(DATA_DIR, 'cache', 'images');
@@ -37,16 +37,19 @@ export async function thumbnail(source: string, width: number): Promise<string> 
     throw new Error('imagen no encontrada');
   }
 
-  const isPng = extname(source).toLowerCase() === '.png';
   const key = createHash('sha1').update(`${source}|${stat.mtimeMs}|${stat.size}|${width}`).digest('hex');
-  const out = join(CACHE_DIR, `${key}${isPng ? '.png' : '.jpg'}`);
+  const out = join(CACHE_DIR, `${key}.webp`);
   if (existsSync(out)) {
-    // Marca de uso para limpiarCache(): la clave lleva el mtime/tamaño del
-    // origen, así que cuando se elige otra carátula o se rescrapea el título,
-    // el fichero viejo nunca vuelve a pedirse y quedaría huérfano para
-    // siempre si no se distinguiera de uno que sigue en uso.
     try { const ahora = new Date(); utimesSync(out, ahora, ahora); } catch { /* no es crítico */ }
     return out;
+  }
+
+  // Fallback: la caché anterior era jpg/png; servirla mientras exista.
+  // Sin tocar mtime: a los 45 días limpiarCache() la borra y la siguiente
+  // petición genera el webp.
+  for (const ext of ['.jpg', '.png']) {
+    const legacy = join(CACHE_DIR, `${key}${ext}`);
+    if (existsSync(legacy)) return legacy;
   }
 
   const pending = inFlight.get(out);
@@ -54,25 +57,30 @@ export async function thumbnail(source: string, width: number): Promise<string> 
 
   const task = (async () => {
     await acquire();
+    const tmp = `${out}.tmp`;
     try {
       const args = [
         '-hide_banner', '-loglevel', 'error', '-y',
         '-i', source,
         '-frames:v', '1',
         '-vf', `scale=${width}:-1:flags=lanczos`,
-        // Medido sobre un fanart real escalado a 400 px: q4 daba 21.195 bytes y
-        // q6 da 15.917, un 25% menos sin diferencia visible a distancia de
-        // sofá. La clave de caché no lleva la calidad, así que esto solo vale
-        // para las miniaturas nuevas: las ya guardadas se encogerán solas
-        // según vayan caducando y volviéndose a pedir.
-        ...(isPng ? [] : ['-q:v', '6']),
-        out,
+        '-q:v', '60',
+        '-f', 'webp',
+        tmp,
       ];
-      await new Promise<void>((resolve, reject) => {
-        const proc = spawn(config.ffmpeg, args, { windowsHide: true, stdio: 'ignore' });
-        proc.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`ffmpeg ${code}`))));
-        proc.on('error', reject);
-      });
+      // Temporal + renombrado: una salida a medias o vacía de un ffmpeg fallido
+      // se serviría como imagen rota y el navegador la guarda 30 días.
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const proc = spawn(config.ffmpeg, args, { windowsHide: true, stdio: 'ignore' });
+          proc.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`ffmpeg ${code}`))));
+          proc.on('error', reject);
+        });
+        renameSync(tmp, out);
+      } catch (e) {
+        try { unlinkSync(tmp); } catch { /* puede no existir */ }
+        throw e;
+      }
       return out;
     } finally {
       release();
@@ -127,3 +135,4 @@ export async function limpiarCache(diasRetencion = 45): Promise<number> {
   }
   return borradas;
 }
+
