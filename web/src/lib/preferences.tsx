@@ -35,7 +35,7 @@ export type Preferences = {
 export const DEFAULTS: Preferences = {
   playback: { maxHeight: 0, resume: true, autoPlayNext: true, seekStep: 10, seekStepLarge: 60, adaptativo: 'auto' },
   audio: { preferredLanguage: 'spa', downmixStereo: true, normalize: false, defaultVolume: 1, mode: 'normal' },
-  subtitles: { preferredLanguage: 'spa', mode: 'auto', preferForced: false, size: 100, color: '#ffffff', background: 'shadow', offset: 0 },
+  subtitles: { preferredLanguage: 'spa', mode: 'never', preferForced: false, size: 100, color: '#ffffff', background: 'shadow', offset: 0 },
   interface: { reduceMotion: false, showWatched: true },
 };
 

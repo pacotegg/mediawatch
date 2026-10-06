@@ -121,7 +121,7 @@ object Ajustes {
 
   /** Subtítulos automáticos ("auto", "always", "never"). */
   var modoSubtitulos: String
-    get() = prefs.getString("modoSubtitulos", "auto") ?: "auto"
+    get() = prefs.getString("modoSubtitulos", "never") ?: "never"
     set(v) = prefs.edit().putString("modoSubtitulos", v).apply()
 
   /** Idioma de subtítulos preferido ("spa", "eng"). */

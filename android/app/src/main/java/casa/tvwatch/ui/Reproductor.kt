@@ -385,6 +385,10 @@ private fun Reproduciendo(
       } else {
         reproductor.setMediaItem(elemento(url))
       }
+      reproductor.trackSelectionParameters = reproductor.trackSelectionParameters
+        .buildUpon()
+        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+        .build()
       reproductor.prepare()
       reproductor.playWhenReady = true
     } catch (e: Exception) {
