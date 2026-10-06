@@ -580,6 +580,14 @@ Hechos desde los commits (`git log`). El detalle de cada cambio está en el mens
   iOS y salvapantallas infantil (`5b036d3`); **Android 3.25** (`e83a2e2`): descargas
   unificadas sin duplicados, borrado automático en servidor y modo sin conexión.
   El modo sin conexión figuraba como descartado en 21/09 (§9); el commit lo implementa.
+- **06/10**: Android **3.27** (`7fea2bf`: subtítulos apagados por defecto, reproductor
+  local arreglado) y **3.28** (`fc22e16`: controles propios en el reproductor de
+  descargas, `versionCode 31`), publicado desde la rama `claude/cool-panini-d23a0d`
+  y después en `main`. Caché de miniaturas en WebP q60 (`e0e2aa6`): migración de
+  42.443 ficheros, un solo uso, script ya retirado. Tele (`1.0.0` en `config.xml`):
+  emparejado con PIN de perfil sin móvil, «Acerca de» con autor y versiones, y
+  «Cambiar de usuario» en el menú lateral (`702f140`). Ruta nueva
+  `POST /api/auth/device/pin`, que tiene que estar en `ABIERTAS`.
 
 ---
 
@@ -694,6 +702,18 @@ Herramientas de la sesión
 ---
 
 ## 9. Estado actual, pendientes y descartes
+
+**Estado a 06/10**: Android **3.28** (`versionCode 31`) publicado y en `main`. Servidor
+reiniciado con las rutas de emparejado por PIN. Tele: bundle con `702f140` instalado el 06/10
+y lanzado sin errores en el log; **sin verificar en pantalla**: «Acerca de», scroll de Ajustes,
+«Cambiar de usuario» y el PIN con el mando de punta a punta. Las miniaturas se sirven en WebP.
+
+**Pendientes a 06/10**:
+- Verificar en la tele el emparejado con PIN, el scroll de Ajustes y la versión de Tizen (lee
+  `tizen.systeminfo` en runtime; si falla muestra `?`).
+- Decidir si el QR se oculta cuando hay perfiles (la pantalla lo sigue mostrando).
+- Versionado: `main` y las ramas de Android se han desalineado antes; numerar siempre desde
+  `git fetch` y `origin/main`.
 
 **Instalado/entregado a 05/10**: Android **3.25** (`versionCode 28`), instalado
 por el usuario. Commit `e83a2e2`. Ver §5 (22/09 a 05/10) para lo que ha cambiado desde 21/09.
