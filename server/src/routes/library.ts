@@ -37,7 +37,7 @@ async function serveArt(reply: FastifyReply, source: string | null, width: numbe
   if (!source) return reply.code(404).send({ error: 'Sin imagen' });
   if (!width) return sendImage(reply, source);
   try {
-    return sendImage(reply, await thumbnail(source, width));
+    return sendImage(reply, await thumbnail(source, Math.min(Math.round(width), 1920)));
   } catch {
     return sendImage(reply, source);
   }
@@ -614,7 +614,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
       if (papel === 'fanart') {
         db.prepare('UPDATE coleccion_imagen SET fondo = NULL, actualizado = ? WHERE coleccion = ?').run(new Date().toISOString(), name);
       } else {
-        db.prepare('UPDATE coleccion_imagen SET ruta = "", actualizado = ? WHERE coleccion = ?').run(new Date().toISOString(), name);
+        db.prepare("UPDATE coleccion_imagen SET ruta = '', actualizado = ? WHERE coleccion = ?").run(new Date().toISOString(), name);
         db.prepare('DELETE FROM coleccion_arte WHERE coleccion = ?').run(name);
       }
       return { name, arteItemId: null, arteImagen: false };

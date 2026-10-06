@@ -73,6 +73,11 @@ CREATE INDEX IF NOT EXISTS idx_items_library ON items(library_id);
 -- Indice normal y no parcial: con la condicion de no vacio en la definicion,
 -- SQLite no puede demostrar que la subconsulta la cumple y entonces no lo usa.
 CREATE INDEX IF NOT EXISTS idx_items_coleccion ON items(collection);
+-- Filtro de duplicados de peliculas (/api/home, /api/items): sin indice, la
+-- subconsulta correlacionada recorria la tabla por cada fila. Medido: 1,95 s
+-- de CPU sincrona por cada /api/home, 2,5 ms con el indice. Aqui el parcial si
+-- se usa: la subconsulta repite literalmente las dos condiciones.
+CREATE INDEX IF NOT EXISTS idx_items_tmdb ON items(tmdb_id) WHERE kind = 'movie' AND tmdb_id IS NOT NULL;
 
 -- Valoraciones de cada sitio, cada una con su escala. IMDb y TheMovieDb van
 -- sobre 10 y los tomatometros y Metacritic sobre 100: guardar el maximo evita
