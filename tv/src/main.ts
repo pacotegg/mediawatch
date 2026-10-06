@@ -67,7 +67,20 @@ const ICONOS: Record<string, string> = {
   serie: 'M4 8h16v11H4zM9 4l3 4 3-4',
   ajustes: 'M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7M4 12h2M18 12h2M12 4v2M12 18v2',
   plataformas: 'M4 5h16v10H4zM9 19h6M12 15v4',
+  usuario: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8M4.5 20c1.2-3.6 4-5 7.5-5s6.3 1.4 7.5 5',
 };
+
+/* La misma que `version` de public/config.xml: al subirla, subir las dos. */
+const VERSION_APP = '1.0.0';
+
+function versionTizen(): string {
+  try {
+    const sis = (window as unknown as { tizen?: { systeminfo: { getCapability(n: string): string } } }).tizen?.systeminfo;
+    return sis ? sis.getCapability('http://tizen.org/feature/platform.version') : '?';
+  } catch (e) {
+    return '?';
+  }
+}
 
 const icono = (nombre: string) =>
   '<svg class="icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" ' +
@@ -138,6 +151,7 @@ function destinosBase(): Destino[] {
     { clave: 'favoritos', etiqueta: 'Favoritos', icono: 'favorito', ir: () => void pantallaFavoritos() },
     { clave: 'plataformas', etiqueta: 'Plataformas', icono: 'plataformas', ir: () => void pantallaPlataformas() },
     { clave: 'ajustes', etiqueta: 'Ajustes', icono: 'ajustes', ir: () => pantallaAjustes() },
+    { clave: 'usuario', etiqueta: 'Cambiar de usuario', icono: 'usuario', ir: () => { olvidarToken(); void pantallaConexion(); } },
   ];
   const libs = bibliotecas.map((b) => ({
     clave: 'lib-' + b.id,
@@ -3200,7 +3214,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
 
 function grupo(titulo: string, ayuda: string, cuerpo: string): string {
   return (
-    '<div class="grupo"><h2>' + esc(titulo) + '</h2>' +
+    '<div class="grupo" data-bloque><h2>' + esc(titulo) + '</h2>' +
     (ayuda ? '<p class="pista-ayuda">' + esc(ayuda) + '</p>' : '') +
     cuerpo + '</div>'
   );
@@ -3337,7 +3351,8 @@ function pantallaAjustes() {
       '<button class="boton" data-nav data-desemparejar>Desemparejar esta tele</button>') +
 
     grupo('Acerca de', '',
-      '<p class="dato">Media Watch para Samsung Tizen · ' + bibliotecas.length + ' bibliotecas</p>') +
+      '<p class="dato">Media Watch para Samsung Tizen · Creado por Paco Gamiz</p>' +
+      '<p class="dato">App ' + VERSION_APP + ' · Tizen ' + esc(versionTizen()) + ' · ' + bibliotecas.length + ' bibliotecas</p>') +
 
     '</div>';
 
@@ -3761,6 +3776,8 @@ function pantallaSimple(contenido: string) {
 }
 
 async function pantallaConexion() {
+  let perfiles: { id: number; name: string; has_pin: number }[] = [];
+  let codigoActual = '';
   const dibujar = (codigo: string | null, estado: string, url?: string) => {
     pantallaSimple(
       '<h1 class="marca">Media Watch</h1>' +
@@ -3769,12 +3786,23 @@ async function pantallaConexion() {
             (url ? '<div class="qr"><img src="' + esc(imagen.qr(url)) + '" alt=""></div>' : '') +
             '<p class="sub" style="margin-top:22px;font-size:22px">O escribe <b>' + codigo + '</b> en Ajustes → Biblioteca → Emparejar televisión</p>'
           : '<p class="sub">' + esc(estado) + '</p>') +
+        (codigo && perfiles.length
+          ? '<div class="perfiles">' +
+            perfiles.map((p) => '<button class="boton" data-nav data-perfil="' + p.id + '">' + esc(p.name) + (p.has_pin ? ' (PIN)' : '') + '</button>').join('') +
+            '</div>'
+          : '') +
         '<div><button class="boton primario" data-nav data-reintentar>Reintentar</button>' +
         '<button class="boton" data-nav data-cambiar>Cambiar servidor</button></div>' +
         '<p class="pie">Servidor: ' + esc(servidor()) + '</p>',
     );
     const r = marco.querySelector<HTMLElement>('[data-reintentar]');
     if (r) r.addEventListener('click', () => void pantallaConexion());
+    marco.querySelectorAll<HTMLElement>('[data-perfil]').forEach((el) => {
+      el.addEventListener('click', () => {
+        const p = perfiles.find((x) => String(x.id) === el.getAttribute('data-perfil'));
+        if (p) pantallaPinEmparejar(p, codigoActual);
+      });
+    });
     const c = marco.querySelector<HTMLElement>('[data-cambiar]');
     if (c) c.addEventListener('click', () => pantallaServidor());
     enfocar(enfocables()[0]);
@@ -3785,6 +3813,8 @@ async function pantallaConexion() {
 
   try {
     const inicio = await api.iniciarEmparejado();
+    codigoActual = inicio.code;
+    perfiles = await api.perfiles().then((r) => r.users).catch(() => []);
     dibujar(inicio.code, '', inicio.url);
 
     const desde = Date.now();
@@ -3809,6 +3839,63 @@ async function pantallaConexion() {
   } catch (e) {
     dibujar(null, 'No se encuentra el servidor. Comprueba que el HTPC está encendido.');
   }
+}
+
+function pantallaPinEmparejar(perfil: { id: number; name: string; has_pin: number }, codigo: string) {
+  let valor = '';
+  let error = '';
+
+  const enviar = () => {
+    api
+      .emparejarConPin(codigo, perfil.id, valor)
+      .then(() => pantallaSimple('<h1 class="marca">Media Watch</h1><p class="sub">Entrando como ' + esc(perfil.name) + '…</p>'))
+      .catch(() => {
+        valor = '';
+        error = 'PIN incorrecto o código caducado. Vuelve a intentarlo.';
+        dibujar();
+      });
+  };
+
+  const dibujar = () => {
+    pantallaSimple(
+      '<h1 class="marca">' + esc(perfil.name) + '</h1>' +
+        '<p class="sub">Escribe el PIN con los números del mando y pulsa OK.</p>' +
+        '<div class="entrada">' + '•'.repeat(valor.length) + '</div>' +
+        (error ? '<p class="sub">' + esc(error) + '</p>' : '') +
+        '<div><button class="boton" data-nav data-volver>Volver</button></div>',
+    );
+    const v = marco.querySelector<HTMLElement>('[data-volver]');
+    if (v) v.addEventListener('click', () => void pantallaConexion());
+    enfocar(enfocables()[0]);
+    alPulsar((tecla) => {
+      if (tecla >= 48 && tecla <= 57 && valor.length < 12) {
+        valor += String(tecla - 48);
+        error = '';
+        dibujar();
+        return true;
+      }
+      if (tecla === TECLA.ENTRAR && valor.length > 0) {
+        enviar();
+        return true;
+      }
+      if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE) {
+        if (valor.length === 0) {
+          void pantallaConexion();
+        } else {
+          valor = valor.slice(0, -1);
+          dibujar();
+        }
+        return true;
+      }
+      return false;
+    });
+  };
+
+  if (!perfil.has_pin) {
+    enviar();
+    return;
+  }
+  dibujar();
 }
 
 function pantallaServidor() {

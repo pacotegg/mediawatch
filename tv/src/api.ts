@@ -273,6 +273,13 @@ export const api = {
   tira: (fileId: number) => pedir<Tira | { generating: boolean }>('/api/play/' + fileId + '/trickplay?solo=1'),
   comprobarEmparejado: (codigo: string) =>
     pedir<{ paired: boolean; token?: string; user?: { name: string } }>('/api/auth/device/poll?code=' + codigo),
+  perfiles: () =>
+    pedir<{ users: { id: number; name: string; color: string; has_pin: number }[] }>('/api/users'),
+  emparejarConPin: (codigo: string, userId: number, pin: string) =>
+    pedir<{ ok: boolean; user: string }>('/api/auth/device/pin', {
+      method: 'POST',
+      body: JSON.stringify({ code: codigo, userId, pin }),
+    }),
 };
 
 /**

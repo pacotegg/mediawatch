@@ -90,6 +90,7 @@ const ABIERTAS = new Set([
   'POST /api/auth/logout',
   'POST /api/auth/device/start', // la tele pide el código sin tener aún token
   'GET /api/auth/device/poll',
+  'POST /api/auth/device/pin', // la tele manda el PIN del perfil antes de tener token; el handler exige red de casa y frena intentos
   'GET /api/qr.svg', // el QR de emparejamiento se pinta en esa misma pantalla
 ]);
 

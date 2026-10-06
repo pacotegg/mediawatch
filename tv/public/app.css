@@ -1735,6 +1735,14 @@ body.rend-medio .tarjeta.enfocado .lamina {
   color: var(--fondo);
 }
 
+.perfiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  justify-content: center;
+  margin: 22px 0;
+}
+
 .dato {
   font-size: 21px;
   color: var(--texto-ter);

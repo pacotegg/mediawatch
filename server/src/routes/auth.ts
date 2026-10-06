@@ -549,6 +549,34 @@ export default async function authRoutes(app: FastifyInstance) {
     return { ok: true, user: user.name };
   });
 
+  app.post('/api/auth/device/pin', async (req, reply) => {
+    if (deFuera(req)) return reply.code(403).send({ error: 'El emparejado se hace desde la red de casa' });
+    const espera = frenado(req.ip);
+    if (espera > 0) {
+      return reply.code(429).send({ error: 'Demasiados intentos. Prueba dentro de ' + Math.ceil(espera / 60) + ' min.' });
+    }
+
+    const { code, userId, pin } = req.body as { code?: string; userId?: number; pin?: string };
+    const entry = code ? pending.get(code) : undefined;
+    if (!entry || Date.now() - entry.createdAt > PAIRING_TTL_MS) {
+      return reply.code(404).send({ error: 'Ese código no existe o ha caducado' });
+    }
+    const user = db.prepare('SELECT id, name, pin FROM users WHERE id = ?').get(userId ?? -1) as
+      | { id: number; name: string; pin: string | null }
+      | undefined;
+    if (!user) return reply.code(404).send({ error: 'Perfil no encontrado' });
+
+    if (user.pin && !(pin && verifyPin(pin, user.pin))) {
+      apuntarFallo(req.ip);
+      return reply.code(401).send({ error: 'PIN incorrecto' });
+    }
+    olvidarFallos(req.ip);
+
+    entry.userId = user.id;
+    db.prepare('INSERT INTO sessions (token, user_id, created_at) VALUES (?,?,?)').run(entry.token, user.id, new Date().toISOString());
+    return { ok: true, user: user.name };
+  });
+
   app.get('/api/auth/device/poll', async (req, reply) => {
     /*
      * Esta ruta entrega un token de sesión entero al que acierte el código, y
