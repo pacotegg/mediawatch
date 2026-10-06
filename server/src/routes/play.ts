@@ -1,9 +1,11 @@
 import { comenzar, nombreCliente } from '../media/historial.ts';
 import { audioEnvolvente, cerrarSesiones, cerrarSesionesDe, escalera, listaDeCalidad, listaMaestra, segmento, CALIDADES } from '../media/hls.ts';
 import { spawn } from 'node:child_process';
-import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
+import { writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { config } from '../config.ts';
+import { config, DATA_DIR } from '../config.ts';
 import { db, parseRatingCategoria } from '../db.ts';
 import { mediaInfo, type MediaInfo } from '../media/probe.ts';
 import { dialogueDownmix, planPlayback, sessions, startStream, stopSession, type AudioMode, type ClientCaps } from '../media/transcode.ts';
@@ -250,6 +252,9 @@ function salidaDeAudio(perfil: string | undefined): { codec: string; maxCanales:
   }
   return { codec: 'eac3', maxCanales: 6, bitrate: '640k' };
 }
+
+const SUBS_CACHE = join(DATA_DIR, 'subtitles');
+mkdirSync(SUBS_CACHE, { recursive: true });
 
 export default async function playRoutes(app: FastifyInstance) {
   app.get('/api/play/:fileId/info', async (req, reply) => {
@@ -726,6 +731,11 @@ export default async function playRoutes(app: FastifyInstance) {
 
     if (id.startsWith('embedded-')) {
       const streamIndex = Number(id.slice(9));
+      const cachePath = join(SUBS_CACHE, `${fileId}-${streamIndex}.vtt`);
+      if (existsSync(cachePath)) {
+        const vtt = readFileSync(cachePath, 'utf8');
+        return reply.send(ajuste !== 0 ? desplazarVtt(vtt, ajuste) : vtt);
+      }
       const file = db.prepare('SELECT path FROM media_files WHERE id = ?').get(Number(fileId)) as { path: string } | undefined;
       if (!file) return reply.code(404).send('');
       const proc = spawn(
@@ -735,8 +745,9 @@ export default async function playRoutes(app: FastifyInstance) {
       );
       proc.on('error', (e) => console.error('[subtitulos] no arrancó ffmpeg:', e.message));
       req.raw.on('close', () => proc.kill('SIGKILL'));
-      if (ajuste !== 0) return reply.send(desplazarVtt(await recoger(proc), ajuste));
-      return reply.send(proc.stdout);
+      const vtt = await recoger(proc);
+      if (vtt) writeFile(cachePath, vtt).catch(() => {});
+      return reply.send(ajuste !== 0 ? desplazarVtt(vtt, ajuste) : vtt);
     }
 
     return reply.code(400).send('');

@@ -35,18 +35,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
-import androidx.compose.foundation.layout.width
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -1590,7 +1586,13 @@ fun idiomaLegible(codigo: String?): String {
 
 /**
  * Reproductor local para ver descargas sin conexión a internet ni al servidor.
- * Usa ExoPlayer directamente contra la URI del fichero descargado en el móvil.
+ *
+ * Mismos controles que el de red —propios, no los de serie de Media3— para que
+ * ver una descarga no se sienta como otra aplicación. Lo que no está es lo que
+ * depende del servidor: no hay carátula de disco (la ruta solo trae la URI y el
+ * título), ni encadenado de episodios, ni calidad, ni desfase de subtítulos. El
+ * fichero es local, así que buscar es instantáneo y no hay tuberías: la posición
+ * y la duración salen del propio ExoPlayer.
  */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
@@ -1610,6 +1612,33 @@ fun PantallaReproductorLocal(
     }
   }
 
+  var encaje by remember { mutableStateOf(Encaje.guardado()) }
+  var controlesVisibles by remember { mutableStateOf(true) }
+  var ultimoToque by remember { mutableStateOf(0L) }
+  var enMarcha by remember { mutableStateOf(false) }
+  var cargando by remember { mutableStateOf(true) }
+  var posicionUi by remember { mutableStateOf(0.0) }
+  var duracion by remember { mutableStateOf(0.0) }
+  var arrastre by remember { mutableStateOf<Double?>(null) }
+  var menuAbierto by remember { mutableStateOf(false) }
+  var indicadorSalto by remember { mutableStateOf<Pair<Boolean, Int>?>(null) }
+
+  fun tocar() { ultimoToque = System.currentTimeMillis(); controlesVisibles = true }
+
+  /** Ir a un punto. Un fichero local siempre se puede buscar: no hay tubería que reabrir. */
+  fun irA(segundos: Double) {
+    val destino = segundos.coerceIn(0.0, if (duracion > 0) duracion else Double.MAX_VALUE)
+    posicionUi = destino
+    player.seekTo((destino * 1000).toLong())
+  }
+
+  /** Doble toque: 10 s atrás o adelante desde la posición que se ve. */
+  fun saltar(atras: Boolean) {
+    irA(posicionUi + if (atras) -10.0 else 10.0)
+    val previo = indicadorSalto?.takeIf { it.first == atras }?.second ?: 0
+    indicadorSalto = atras to previo + 10
+  }
+
   DisposableEffect(player) {
     val ventana = actividad?.window
     ventana?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -1626,44 +1655,308 @@ fun PantallaReproductorLocal(
     }
   }
 
+  DisposableEffect(player) {
+    val oyente = object : Player.Listener {
+      override fun onPlaybackStateChanged(estado: Int) { cargando = estado == Player.STATE_BUFFERING }
+      override fun onIsPlayingChanged(isPlaying: Boolean) { enMarcha = isPlaying }
+      // Un salto mueve la barra en el acto, sin esperar al siguiente tic del reloj.
+      override fun onPositionDiscontinuity(
+        anterior: Player.PositionInfo,
+        nueva: Player.PositionInfo,
+        motivo: Int,
+      ) {
+        if (arrastre == null) posicionUi = nueva.positionMs / 1000.0
+      }
+    }
+    player.addListener(oyente)
+    onDispose { player.removeListener(oyente) }
+  }
+
+  // El reloj de la barra, y de paso la duración: ExoPlayer no la sabe hasta
+  // haber leído las cabeceras, y `C.TIME_UNSET` mientras tanto.
+  LaunchedEffect(Unit) {
+    while (true) {
+      if (arrastre == null) posicionUi = player.currentPosition / 1000.0
+      val d = player.duration
+      if (d != C.TIME_UNSET && d > 0) duracion = d / 1000.0
+      delay(250)
+    }
+  }
+
+  // Se esconden solos a los 5 s del último toque, y solo si está sonando: en
+  // pausa se quedan, que es cuando uno quiere verlos.
+  LaunchedEffect(controlesVisibles, ultimoToque, enMarcha) {
+    if (!controlesVisibles || !enMarcha) return@LaunchedEffect
+    delay(5_000)
+    if (arrastre == null) controlesVisibles = false
+  }
+
   androidx.activity.compose.BackHandler {
-    player.stop()
-    alSalir()
+    if (menuAbierto) {
+      menuAbierto = false
+    } else {
+      player.stop()
+      alSalir()
+    }
   }
 
   Box(Modifier.fillMaxSize().background(Color.Black)) {
     AndroidView(
+      modifier = Modifier.fillMaxSize(),
       factory = { ctx ->
         PlayerView(ctx).apply {
           this.player = player
-          this.useController = true
+          // Los de serie no: abajo van los propios, iguales que en el de red.
+          useController = false
+          layoutParams = ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT,
+          )
         }
       },
-      modifier = Modifier.fillMaxSize(),
+      update = { vista -> vista.resizeMode = encaje.modo },
     )
-    Row(
-      modifier = Modifier
-        .fillMaxWidth()
-        .padding(horizontal = 16.dp, vertical = 12.dp)
-        .align(Alignment.TopStart),
-      verticalAlignment = Alignment.CenterVertically,
-    ) {
-      IconButton(
-        onClick = {
-          player.stop()
-          alSalir()
+
+    // Un toque en el vídeo enseña o esconde los controles; dos seguidos a un lado saltan 10 s.
+    Box(
+      Modifier
+        .fillMaxSize()
+        .pointerInput(duracion) {
+          detectTapGestures(
+            onTap = { if (controlesVisibles) controlesVisibles = false else tocar() },
+            onDoubleTap = { punto -> saltar(atras = punto.x < size.width / 2f) },
+          )
         },
-      ) {
-        Text("‹", color = Color.White, fontSize = 34.sp)
+    )
+
+    indicadorSalto?.let { (atras, segundos) ->
+      LaunchedEffect(indicadorSalto) {
+        delay(800)
+        indicadorSalto = null
       }
-      Spacer(Modifier.width(8.dp))
       Text(
-        titulo,
+        if (atras) "-$segundos s" else "+$segundos s",
         color = Color.White,
-        style = MaterialTheme.typography.titleMedium,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
+        fontWeight = FontWeight.Bold,
+        fontSize = 20.sp,
+        modifier = Modifier
+          .align(if (atras) Alignment.CenterStart else Alignment.CenterEnd)
+          .padding(horizontal = 48.dp)
+          .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(12.dp))
+          .padding(horizontal = 14.dp, vertical = 8.dp),
+      )
+    }
+
+    if (cargando) {
+      CircularProgressIndicator(color = Realce, modifier = Modifier.align(Alignment.Center).size(44.dp), strokeWidth = 3.dp)
+    }
+
+    AnimatedVisibility(
+      visible = controlesVisibles,
+      enter = fadeIn(Movimiento.aparecer(200)),
+      exit = fadeOut(Movimiento.aparecer(250)),
+      modifier = Modifier.fillMaxSize(),
+    ) {
+      Controles(
+        // Sin itemId en la ruta no hay carátula que pedir, y aquí tampoco hay red.
+        disco = null,
+        enMarcha = enMarcha,
+        posicion = arrastre ?: posicionUi,
+        duracion = duracion,
+        alPausar = { tocar(); if (player.isPlaying) player.pause() else player.play() },
+        alSaltar = { seg -> tocar(); irA(posicionUi + seg) },
+        alArrastrar = { seg -> tocar(); arrastre = seg },
+        alSoltar = { val destino = arrastre; arrastre = null; if (destino != null) irA(destino) },
+        esEpisodio = false,
+        alAnterior = null,
+        alSiguienteEpisodio = null,
+      )
+    }
+
+    AnimatedVisibility(
+      visible = controlesVisibles,
+      enter = fadeIn(Movimiento.aparecer(200)),
+      exit = fadeOut(Movimiento.aparecer(250)),
+      modifier = Modifier.align(Alignment.TopStart),
+    ) {
+      Row(
+        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
+        Box(
+          Modifier
+            .size(48.dp)
+            .clip(RoundedCornerShape(24.dp))
+            .clickable { player.stop(); alSalir() },
+          contentAlignment = Alignment.Center,
+        ) {
+          Text("‹", color = Color.White, fontSize = 36.sp)
+        }
+        Text(
+          titulo,
+          color = Color.White,
+          fontSize = 15.sp,
+          fontWeight = FontWeight.SemiBold,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+          modifier = Modifier.weight(1f).padding(end = 12.dp),
+        )
+        Box(
+          Modifier
+            .padding(end = 4.dp)
+            .size(48.dp)
+            .clip(RoundedCornerShape(100.dp))
+            .clickable { menuAbierto = true },
+          contentAlignment = Alignment.Center,
+        ) {
+          Icon(
+            Icons.Default.Settings,
+            contentDescription = "Opciones",
+            tint = Color.White,
+            modifier = Modifier.size(24.dp),
+          )
+        }
+      }
+    }
+
+    if (menuAbierto) {
+      MenuLocal(
+        reproductor = player,
+        encajeActual = encaje,
+        alElegirEncaje = { encaje = it; Encaje.recordar(it) },
+        alCerrar = { menuAbierto = false },
       )
     }
   }
+}
+
+/**
+ * Pistas y tamaño de pantalla de una descarga.
+ *
+ * Aquí no hay servidor que convierta nada: lo que el fichero trae dentro es lo
+ * que hay, y lo cambia ExoPlayer al vuelo. Por eso no está ni «Calidad» ni el
+ * desfase de subtítulos, que son cosas del flujo de red.
+ */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+@Composable
+private fun MenuLocal(
+  reproductor: Player,
+  encajeActual: Encaje,
+  alElegirEncaje: (Encaje) -> Unit,
+  alCerrar: () -> Unit,
+) {
+  Box(
+    Modifier
+      .fillMaxSize()
+      .background(Color(0xCC000000))
+      .clickable { alCerrar() },
+    contentAlignment = Alignment.Center,
+  ) {
+    Column(
+      Modifier
+        .fillMaxWidth(0.72f)
+        .clip(RoundedCornerShape(16.dp))
+        .background(Color(0xFF16161C))
+        .verticalScroll(rememberScrollState())
+        .padding(20.dp),
+      verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+      val audios = remember(reproductor.currentTracks) { pistasDeAudio(reproductor.currentTracks) }
+      if (audios.size > 1) {
+        Text("Audio", color = Texto, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(6.dp))
+        audios.forEach { (grupo, indice, etiqueta) ->
+          val puesta = grupo.isTrackSelected(indice)
+          Text(
+            (if (puesta) "✓  " else "     ") + etiqueta,
+            color = if (puesta) Realce else Texto,
+            fontSize = 14.sp,
+            modifier = Modifier
+              .fillMaxWidth()
+              .clickable {
+                reproductor.trackSelectionParameters = reproductor.trackSelectionParameters
+                  .buildUpon()
+                  .setOverrideForType(TrackSelectionOverride(grupo.mediaTrackGroup, indice))
+                  .build()
+                alCerrar()
+              }
+              .padding(vertical = 9.dp),
+          )
+        }
+        Spacer(Modifier.height(14.dp))
+      }
+
+      Text("Subtítulos", color = Texto, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+      Spacer(Modifier.height(6.dp))
+      val subtitulos = remember(reproductor.currentTracks) { pistasDeTexto(reproductor.currentTracks) }
+      Text(
+        "     Desactivados",
+        color = Texto,
+        fontSize = 14.sp,
+        modifier = Modifier
+          .fillMaxWidth()
+          .clickable {
+            reproductor.trackSelectionParameters = reproductor.trackSelectionParameters
+              .buildUpon()
+              .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+              .build()
+            alCerrar()
+          }
+          .padding(vertical = 9.dp),
+      )
+      subtitulos.forEach { (grupo, indice, etiqueta) ->
+        Text(
+          "     $etiqueta",
+          color = Texto,
+          fontSize = 14.sp,
+          modifier = Modifier
+            .fillMaxWidth()
+            .clickable {
+              reproductor.trackSelectionParameters = reproductor.trackSelectionParameters
+                .buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                .setOverrideForType(TrackSelectionOverride(grupo.mediaTrackGroup, indice))
+                .build()
+              alCerrar()
+            }
+            .padding(vertical = 9.dp),
+        )
+      }
+      if (subtitulos.isEmpty()) {
+        Text("     Este fichero no trae ninguno", color = TextoTenue, fontSize = 12.sp)
+      }
+
+      Spacer(Modifier.height(14.dp))
+      Text("Tamaño de pantalla", color = Texto, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+      Spacer(Modifier.height(6.dp))
+      Encaje.entries.forEach { e ->
+        Text(
+          (if (e == encajeActual) "✓  " else "     ") + e.etiqueta,
+          color = if (e == encajeActual) Realce else Texto,
+          fontSize = 14.sp,
+          modifier = Modifier
+            .fillMaxWidth()
+            .clickable { alElegirEncaje(e); alCerrar() }
+            .padding(vertical = 9.dp),
+        )
+      }
+    }
+  }
+}
+
+/** Las pistas de audio que este aparato sabe leer, con idioma, códec y canales. */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+private fun pistasDeAudio(pistas: Tracks): List<Triple<Tracks.Group, Int, String>> {
+  val salida = mutableListOf<Triple<Tracks.Group, Int, String>>()
+  for (grupo in pistas.groups) {
+    if (grupo.type != C.TRACK_TYPE_AUDIO) continue
+    for (i in 0 until grupo.length) {
+      if (!grupo.isTrackSupported(i)) continue
+      val f = grupo.getTrackFormat(i)
+      val canales = when (f.channelCount) { 8 -> " 7.1"; 6 -> " 5.1"; 2 -> " 2.0"; else -> "" }
+      val codec = f.sampleMimeType?.substringAfterLast('/')?.uppercase() ?: ""
+      salida += Triple(grupo, i, idiomaLegible(f.language) + (if (codec.isEmpty()) "" else " · $codec") + canales)
+    }
+  }
+  return salida
 }
