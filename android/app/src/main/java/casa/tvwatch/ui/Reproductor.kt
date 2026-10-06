@@ -389,6 +389,10 @@ private fun Reproduciendo(
       } else {
         reproductor.setMediaItem(elemento(url))
       }
+      reproductor.trackSelectionParameters = reproductor.trackSelectionParameters
+        .buildUpon()
+        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+        .build()
       reproductor.prepare()
       reproductor.playWhenReady = true
     } catch (e: Exception) {
@@ -1631,39 +1635,68 @@ fun PantallaReproductorLocal(
     alSalir()
   }
 
+  var controlesVisibles by remember { mutableStateOf(true) }
+  var ultimoToque by remember { mutableStateOf(System.currentTimeMillis()) }
+
+  LaunchedEffect(controlesVisibles, ultimoToque) {
+    if (!controlesVisibles) return@LaunchedEffect
+    delay(5_000)
+    controlesVisibles = false
+  }
+
   Box(Modifier.fillMaxSize().background(Color.Black)) {
     AndroidView(
       factory = { ctx ->
         PlayerView(ctx).apply {
           this.player = player
-          this.useController = true
+          this.useController = false
         }
       },
       modifier = Modifier.fillMaxSize(),
     )
-    Row(
-      modifier = Modifier
-        .fillMaxWidth()
-        .padding(horizontal = 16.dp, vertical = 12.dp)
-        .align(Alignment.TopStart),
-      verticalAlignment = Alignment.CenterVertically,
-    ) {
-      IconButton(
-        onClick = {
-          player.stop()
-          alSalir()
+    Box(
+      Modifier
+        .fillMaxSize()
+        .pointerInput(Unit) {
+          detectTapGestures(
+            onTap = {
+              if (controlesVisibles) controlesVisibles = false
+              else { ultimoToque = System.currentTimeMillis(); controlesVisibles = true }
+            },
+          )
         },
+    )
+    AnimatedVisibility(
+      visible = controlesVisibles,
+      enter = fadeIn(Movimiento.aparecer(200)),
+      exit = fadeOut(Movimiento.aparecer(250)),
+      modifier = Modifier.align(Alignment.TopStart),
+    ) {
+      Row(
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(horizontal = 8.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
       ) {
-        Text("‹", color = Color.White, fontSize = 34.sp)
+        Box(
+          Modifier
+            .size(48.dp)
+            .clip(RoundedCornerShape(24.dp))
+            .clickable { player.stop(); alSalir() },
+          contentAlignment = Alignment.Center,
+        ) {
+          Text("‹", color = Color.White, fontSize = 36.sp)
+        }
+        Text(
+          titulo,
+          color = Color.White,
+          fontSize = 15.sp,
+          fontWeight = FontWeight.SemiBold,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+          modifier = Modifier.weight(1f).padding(end = 12.dp),
+        )
       }
-      Spacer(Modifier.width(8.dp))
-      Text(
-        titulo,
-        color = Color.White,
-        style = MaterialTheme.typography.titleMedium,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-      )
     }
   }
 }

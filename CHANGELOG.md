@@ -12,6 +12,11 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.27 — 06/10/2026
+- Subtítulos apagados por defecto en los tres clientes: se eligen a mano.
+- El reproductor de descargas ya oculta el título a los 5 s y no oscurece la imagen.
+- El nombre del fichero descargado se muestra limpio, sin guiones bajos ni perfil.
+
 ## 3.26 — 05/10/2026
 - Doble toque a los lados del vídeo: salta 10 s atrás o adelante, con aviso en pantalla.
 

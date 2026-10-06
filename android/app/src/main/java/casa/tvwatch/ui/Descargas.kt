@@ -57,6 +57,14 @@ private val ETIQUETAS_PERFIL = mapOf(
   "original" to "Fichero original"
 )
 
+private val PERFILES_DESCARGA = listOf("_baja", "_movil", "_tablet", "_fhd", "_original")
+
+private fun limpiarNombreFichero(nombre: String): String {
+  var limpio = nombre
+  for (p in PERFILES_DESCARGA) if (limpio.endsWith(p, ignoreCase = true)) limpio = limpio.dropLast(p.length)
+  return limpio.replace('_', ' ').replace(Regex("\\s+"), " ").trim()
+}
+
 fun mismoTitulo(t1: String, t2: String): Boolean {
   val n1 = t1.lowercase().replace(Regex("[^a-z0-9]"), "")
   val n2 = t2.lowercase().replace(Regex("[^a-z0-9]"), "")
@@ -154,7 +162,7 @@ fun obtenerDescargasLocales(contexto: Context): List<DescargaLocal> {
           candidatos.add(
             DescargaLocal(
               null,
-              f.name.removeSuffix(".mp4").removeSuffix(".mkv"),
+              limpiarNombreFichero(f.name.removeSuffix(".mp4").removeSuffix(".mkv")),
               Uri.fromFile(f),
               f.length(),
               f.absolutePath,
