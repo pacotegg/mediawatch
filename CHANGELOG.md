@@ -12,6 +12,11 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.28 — 06/10/2026
+- El reproductor de descargas ya tiene controles: play/pausa, −10 y +30, y barra con el tiempo.
+- Doble toque a los lados del vídeo en una descarga: salta 10 s atrás o adelante.
+- Pistas de audio, subtítulos y tamaño de pantalla también al ver una descarga.
+
 ## 3.27 — 06/10/2026
 - Subtítulos apagados por defecto en los tres clientes: se eligen a mano.
 - El reproductor de descargas ya oculta el título a los 5 s y no oscurece la imagen.
