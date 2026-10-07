@@ -266,6 +266,7 @@ export class Reproductor {
         onerror: (e) => {
           if (!vigente()) return;
           this.fallo = motivo(e);
+          try { this.nativo?.stop(); this.nativo?.close(); } catch {}
           this.cb.onError('AVPlay: ' + this.fallo);
         },
       });
@@ -280,6 +281,7 @@ export class Reproductor {
             p.play();
           } catch (e) {
             this.fallo = 'play: ' + motivo(e);
+            try { this.nativo?.stop(); this.nativo?.close(); } catch {}
             this.cb.onError('No se pudo empezar: ' + this.fallo);
             return;
           }
@@ -301,6 +303,7 @@ export class Reproductor {
         (e) => {
           if (!vigente()) return;
           this.fallo = 'prepare: ' + motivo(e);
+          try { this.nativo?.stop(); this.nativo?.close(); } catch {}
           this.cb.onError('No se pudo preparar el vídeo: ' + this.fallo);
         },
       );

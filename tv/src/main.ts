@@ -2534,6 +2534,8 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
   /** Cortes del flujo que se han intentado recuperar, y cuándo fue el último. */
   let reintentos = 0;
   let ultimoReintento = 0;
+  let temporizadorReintento = 0;
+  let capaError: HTMLElement | null = null;
   /** Tramo que se está ofreciendo saltar ahora mismo, y si tiene el foco. */
   let tramoActivo: RangoSalto | null = null;
   let enTramo = false;
@@ -2793,6 +2795,12 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
 
   const reproductor = new Reproductor({
     onTiempo: (segundos, duracion) => {
+      if (capaError && capaError.parentElement) {
+        window.clearTimeout(temporizadorReintento);
+        capaError.parentElement.removeChild(capaError);
+        capaError = null;
+        alPulsar(manejarTeclas);
+      }
       if (destinoSalto === null) pintarTiempos(segundos);
       const t = duracion || duracionFichero;
       revisarTramo(segundos);
@@ -2824,28 +2832,84 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     },
     onError: (mensaje) => {
       cargando.style.display = 'none';
-      /*
-       * Un corte no tiene por qué acabar la película.
-       *
-       * El flujo se puede caer sin que el fichero tenga nada malo: el servidor
-       * se reinicia solo si el vigilante lo ve caído, el disco de 12 TB tarda
-       * en despertar, la tubería de ffmpeg muere si se cambia de modo de
-       * audio. Antes eso era un aviso y a la ficha. Ahora se vuelve a pedir la
-       * película donde iba, hasta tres veces y con margen entre intentos: si
-       * lo que está roto es el fichero, los tres fallan seguidos y entonces sí
-       * se avisa y se para.
-       */
       if (cerrado) return;
-      const ahora = Date.now();
-      if (reintentos < 3 && ahora - ultimoReintento > 8000) {
+      reproductor.cerrar();
+      const donde = Math.max(0, destinoSalto !== null ? destinoSalto : reproductor.tiempo());
+
+      const quitarCapaError = () => {
+        window.clearTimeout(temporizadorReintento);
+        if (capaError && capaError.parentElement) {
+          capaError.parentElement.removeChild(capaError);
+          capaError = null;
+        }
+        alPulsar(manejarTeclas);
+      };
+
+      const reintentarYa = () => {
+        quitarCapaError();
+        cargando.style.display = 'block';
+        cargando.textContent = 'Cargando…';
+        abrirFlujo(donde);
+      };
+
+      const mostrarPanelError = (intento: number, maxIntentos: number, sEspera: number) => {
+        if (!capaError) {
+          capaError = document.createElement('div');
+          capaError.className = 'capa';
+          capaError.innerHTML =
+            '<div class="panel"><h3>Se ha cortado la conexión</h3>' +
+            '<p class="dato" data-estado></p>' +
+            '<button class="linea enfocado" data-reintentar>Reintentar ahora</button>' +
+            '<button class="linea" data-salir>Volver a la ficha</button></div>';
+          marco.appendChild(capaError);
+
+          const btnReintentar = capaError.querySelector<HTMLElement>('[data-reintentar]');
+          if (btnReintentar) btnReintentar.addEventListener('click', reintentarYa);
+          const btnSalir = capaError.querySelector<HTMLElement>('[data-salir]');
+          if (btnSalir) btnSalir.addEventListener('click', () => { quitarCapaError(); salir(); });
+
+          let i = 0;
+          const lineas = [btnReintentar, btnSalir].filter((b): b is HTMLElement => b !== null);
+          const pintarFoco = () => lineas.forEach((el, n) => (n === i ? el.classList.add('enfocado') : el.classList.remove('enfocado')));
+
+          alPulsar((tecla) => {
+            if (tecla === TECLA.ABAJO || tecla === TECLA.ARRIBA) {
+              i = tecla === TECLA.ABAJO ? Math.min(lineas.length - 1, i + 1) : Math.max(0, i - 1);
+              pintarFoco();
+              return true;
+            }
+            if (tecla === TECLA.ENTRAR) {
+              if (i === 0) reintentarYa();
+              else { quitarCapaError(); salir(); }
+              return true;
+            }
+            if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE || tecla === TECLA.PARAR) {
+              quitarCapaError();
+              salir();
+              return true;
+            }
+            return true;
+          });
+        }
+        const txt = capaError.querySelector<HTMLElement>('[data-estado]');
+        if (intento <= maxIntentos) {
+          if (txt) txt.textContent = `Reintentando automáticamente (${intento}/${maxIntentos}) en ${sEspera} s…`;
+        } else {
+          if (txt) txt.textContent = 'No se pudo recuperar la conexión tras 4 intentos. Elige una opción:';
+        }
+      };
+
+      if (reintentos < 4) {
         reintentos++;
-        ultimoReintento = ahora;
-        const donde = reproductor.tiempo();
-        aviso('Se ha cortado; recuperando…');
-        window.setTimeout(() => { if (!cerrado) abrirFlujo(donde); }, 1500);
+        ultimoReintento = Date.now();
+        const pausas = [3000, 8000, 15000, 22000];
+        const espera = pausas[reintentos - 1] || 10000;
+        mostrarPanelError(reintentos, 4, Math.round(espera / 1000));
+        window.clearTimeout(temporizadorReintento);
+        temporizadorReintento = window.setTimeout(reintentarYa, espera);
         return;
       }
-      aviso(mensaje);
+      mostrarPanelError(5, 4, 0);
     },
     onSubtitulo: (texto, milisegundos) => {
       window.clearTimeout(temporizadorSub);
@@ -2951,6 +3015,11 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     if (cerrado) return;
     cerrado = true;
     reproductorActivo = null;
+    window.clearTimeout(temporizadorReintento);
+    if (capaError && capaError.parentElement) {
+      capaError.parentElement.removeChild(capaError);
+      capaError = null;
+    }
     window.clearInterval(temporizadorAvisos);
     window.clearTimeout(temporizadorSalto);
     window.clearTimeout(temporizadorSub);
