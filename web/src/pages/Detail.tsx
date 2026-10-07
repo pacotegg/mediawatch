@@ -614,7 +614,7 @@ export default function Detail() {
                           {codecDescarga === 'h265' ? 'H.265 (menor tamaño)' : 'H.264 (más rápido)'}
                         </button>
                       </div>
-                      {opcionesDescarga(movieFile.duration, movieFile.bytes, codecDescarga).map(([valor, titulo, pie]) => (
+                      {opcionesDescarga(movieFile.duration, movieFile.size, codecDescarga).map(([valor, titulo, pie]) => (
                         <button
                           key={valor}
                           onClick={() => pedirDescarga(movieFile.id, valor, codecDescarga)}

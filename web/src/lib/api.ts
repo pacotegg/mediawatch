@@ -624,6 +624,8 @@ export type CollectionSummary = {
   imagen_propia?: number;
   /** 1 si la saga tiene un fondo propio, elegido a mano. */
   fondo_propio?: number;
+  /** Cuándo se cambió su arte a mano: va en la URL para saltarse la caché. */
+  arte_actualizado?: string | null;
   fanart_id: number | null;
   seen?: number;
 };
