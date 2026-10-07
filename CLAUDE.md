@@ -107,6 +107,9 @@ Leerlo antes de tocar esas zonas. Los que reaparecen más:
   no solo el código**.
 - Antes de "arreglar" una carrera: `node:sqlite` es síncrono. Sin un `await` real entre las dos
   operaciones, no puede entrelazarse.
+- **AVPlay bloquea el decodificador si falla sin `stop()` y `close()`**: anula todos los eventos `keydown` del mando en Tizen.
+- **Navegación espacial D-pad**: restar la mitad del ancho da `desvío = 0` y el nodo más a la izquierda del DOM gana el empate; romperlo con `+ Math.abs(dx) * 0.1`.
+- **Google Cast HLS**: `-ss` siempre **antes** del `-i` en ffmpeg; si va después tarda decenas de segundos y expira el timeout de 40 s.
 
 ## Dónde está el resto
 
@@ -114,14 +117,11 @@ Leerlo antes de tocar esas zonas. Los que reaparecen más:
   red, trampas al detalle, pendientes y descartes. **Consultarlo antes de preguntar.**
 - `CHANGELOG.md` — historial de versiones de la app. Alimenta la ventana de novedades.
 - Skills: `instalar-app-tizen`, `probar-app-android`, `acceso-externo-tvwatch`, `auditar-tvwatch`,
-  `editar-webpanel-sin-romperlo`, `operacion-en-lote-biblioteca`.
+  `verificar-reproduccion-tvwatch`, `navegacion-espacial-tv`, `editar-webpanel-sin-romperlo`, `operacion-en-lote-biblioteca`.
 
 ## Git
 
-Desde `737dede` (16/09) hay unos 50 commits. Lo que diga este fichero sobre el estado del repo
-puede estar viejo: mirar `git log` antes de afirmarlo.
-
-Releases con APK: 3.7, 3.8, 3.13, 3.17, 3.23 y 3.25. Las versiones sin registro en `CHANGELOG.md`
+Releases con APK: 3.7, 3.8, 3.13, 3.17, 3.23, 3.25–3.34. Las versiones sin registro en `CHANGELOG.md`
 no tienen APK subido.
 
 Antes de cada push: `git status` y `git log origin/main..HEAD`. Puede haber commits ajenos en la
