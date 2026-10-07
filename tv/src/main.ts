@@ -1763,13 +1763,19 @@ async function pantallaFicha(id: number) {
               (res.valor ? '<span class="nota">★ ' + res.valor.toFixed(1) + '</span>' : '') +
               '</div><div class="resena-cuerpo">' +
               esc(res.contenido) +
-              '</div></div>',
+              '</div>' +
+              (res.pie ? '<div class="resena-pie">' + esc(res.pie) + '</div>' : '') +
+              '</div>',
           )
           .join('') +
+        // Faltaba este cierre: el resultado de la línea siguiente (undefined)
+        // acababa pintado como texto y los clics se conectaban antes de que
+        // existieran las tarjetas, así que no se podía abrir ninguna.
+        '</div></div></div>';
       hueco.querySelectorAll<HTMLElement>('[data-resena]').forEach((el, idx) => {
         el.addEventListener('click', () => {
           const res = r.items[idx];
-          if (res) dialogoResena(res.autor, res.fuente, res.contenido);
+          if (res) dialogoResena(res.autor, NOMBRE_FUENTE[res.fuente] || '', res.contenido + (res.pie ? '\n\n' + res.pie : ''));
         });
       });
       indexar();
@@ -2033,6 +2039,13 @@ type OpcionLista = { valor: number; texto: string; nota?: string };
  * A diferencia de `menuLista`, este pinta la miniatura del video enfocado: son
  * nombres como «301 No Mas» que no dicen nada por si solos.
  */
+/** Cómo se nombra cada fuente en el diálogo de una reseña. */
+const NOMBRE_FUENTE: Record<string, string> = {
+  sensacine: 'SensaCine · espectador',
+  'sensacine-prensa': 'Prensa · vía SensaCine',
+  tmdb: 'TMDb',
+};
+
 /** Modal para leer una reseña completa con el mando. */
 function dialogoResena(autor: string, fuente: string, contenido: string) {
   const teclasAntes = manejadorActual();

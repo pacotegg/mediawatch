@@ -2379,6 +2379,13 @@ body.viendo-extra .marco * {
   overflow: hidden;
 }
 
+/* En las de prensa: dónde está la crítica entera (SensaCine solo da un extracto). */
+.tarjeta-resena .resena-pie {
+  margin-top: 10px;
+  font-size: 16px;
+  color: var(--texto-ter);
+}
+
 /* Episodios mas compactos: caben mas filas en la ventana de la lista. */
 .episodio {
   padding: 12px 24px;

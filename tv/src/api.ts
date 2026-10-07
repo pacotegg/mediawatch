@@ -202,7 +202,7 @@ export const api = {
 
   /** Featurettes, «como se hizo» y demas videos que acompanyan a un titulo. */
   extras: (itemId: number) => pedir<{ extras: Extra[] }>('/api/items/' + itemId + '/extras'),
-  resenas: (itemId: number) => pedir<{ items: { fuente: string; autor: string; contenido: string; valor: number | null; url: string | null }[] }>('/api/items/' + itemId + '/reviews'),
+  resenas: (itemId: number) => pedir<{ items: { fuente: string; autor: string; contenido: string; valor: number | null; url: string | null; pie?: string | null }[] }>('/api/items/' + itemId + '/reviews'),
 
   /*
    * Plataformas del usuario (Movistar+, Prime, Apple TV+). Aqui NO se reproduce

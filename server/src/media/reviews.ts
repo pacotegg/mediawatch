@@ -44,7 +44,14 @@ export type Review = {
   contenido: string;
   valor: number | null;
   url: string | null;
+  /** Solo en las de prensa: crítico y dónde está la crítica entera. */
+  pie?: string | null;
 };
+
+// La columna `pie` llegó después de crear la tabla (07/10).
+if (!(db.prepare('PRAGMA table_info(resenas_externas)').all() as { name: string }[]).some((c) => c.name === 'pie')) {
+  db.exec('ALTER TABLE resenas_externas ADD COLUMN pie TEXT');
+}
 
 const CACHE_DIAS = 30;
 
@@ -69,7 +76,7 @@ export async function obtenerResenas(itemId: number): Promise<Review[]> {
   const item = db.prepare('SELECT imdb_id FROM items WHERE id = ?').get(itemId) as { imdb_id: string | null } | undefined;
   const externas = item?.imdb_id
     ? (db
-        .prepare('SELECT fuente, autor, contenido, valor, url FROM resenas_externas WHERE imdb_id = ? ORDER BY rowid')
+        .prepare('SELECT fuente, autor, contenido, valor, url, pie FROM resenas_externas WHERE imdb_id = ? ORDER BY rowid')
         .all(item.imdb_id) as Review[])
     : [];
   // El mismo filtro que aplica el lote al elegir, para las que guardó antes de
@@ -77,15 +84,22 @@ export async function obtenerResenas(itemId: number): Promise<Review[]> {
   const vistas = new Set<string>();
   const utiles = externas.filter((r) => {
     const huella = r.contenido.toLowerCase().replace(/[^a-záéíóúüñ0-9]/g, '').slice(0, 60);
-    if (r.contenido.length < 80 || vistas.has(huella)) return false;
+    // La prensa son extractos y alguno es corto pero bueno: 40 en vez de 80.
+    if (r.contenido.length < (r.fuente === 'sensacine-prensa' ? 40 : 80) || vistas.has(huella)) return false;
     vistas.add(huella);
     return true;
   });
   // El mínimo de 80 caracteres vale también para las de TMDb («Masterpiece.»).
   const todas = [...utiles, ...deTmdb.filter((r) => r.contenido.length >= 80)];
-  const esCastellano = (r: Review) => r.fuente === 'sensacine' || enCastellano(r.contenido);
-  // Hasta 4 en castellano (SensaCine primero) y hasta 4 en inglés, siempre las dos.
-  return [...todas.filter(esCastellano).slice(0, 4), ...todas.filter((r) => !esCastellano(r)).slice(0, 4)];
+  const esPrensa = (r: Review) => r.fuente === 'sensacine-prensa';
+  const esCastellano = (r: Review) => esPrensa(r) || r.fuente === 'sensacine' || enCastellano(r.contenido);
+  // Hasta 4 de prensa, 4 de espectadores en castellano (SensaCine primero) y
+  // 4 en inglés, en ese orden.
+  return [
+    ...todas.filter(esPrensa).slice(0, 4),
+    ...todas.filter((r) => esCastellano(r) && !esPrensa(r)).slice(0, 4),
+    ...todas.filter((r) => !esCastellano(r)).slice(0, 4),
+  ];
 }
 
 async function resenasTmdb(itemId: number): Promise<Review[]> {

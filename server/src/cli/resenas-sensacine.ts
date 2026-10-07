@@ -1,5 +1,6 @@
 /**
- * Reseñas de espectadores de SensaCine, en castellano, para las películas.
+ * Reseñas de SensaCine, en castellano, para las películas: de espectadores
+ * (texto completo) y de prensa (extracto, con el medio y el crítico).
  *
  *   node src/cli/resenas-sensacine.ts              todas las que falten
  *   node src/cli/resenas-sensacine.ts --limite 5   solo cinco, para probar
@@ -9,16 +10,16 @@
  * que es el mismo número que usa SensaCine. Comprobado el 07/10: lo tienen
  * 1.575 de las 1.713 películas con id de IMDb (92 %).
  *
- * Una página por película, una cada 3 s, y de sus 10 primeras críticas se
- * guardan las 4 con más votos de «útil». Nada se borra ni se sobrescribe; lo
- * ya mirado se apunta en `resenas_revisadas` y no se vuelve a pedir, así que
- * se puede parar y relanzar sin repetir trabajo. Si SensaCine responde 403 o
- * 429, se para en seco.
+ * Una página por película y fuente, una cada 3 s. De espectadores se guardan
+ * las 4 con más votos de «útil» (sin las de menos de 80 caracteres ni las
+ * copiadas); de prensa, las 4 primeras. Nada se borra ni se sobrescribe; lo
+ * ya mirado se apunta en `resenas_revisadas` por fuente y no se vuelve a
+ * pedir, así que se puede parar y relanzar sin repetir trabajo. Si SensaCine
+ * responde 403 o 429, se para en seco.
  */
 import { db } from '../db.ts';
 import '../media/reviews.ts';
 
-const FUENTE = 'sensacine';
 const POR_PELICULA = 4;
 const PAUSA_MS = 3000;
 const AGENTE = 'MediaWatch/1.0 (servidor domestico, uso personal)';
@@ -31,14 +32,107 @@ const limite = args.includes('--limite') ? Number(args[args.indexOf('--limite') 
 
 const espera = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
 
-const pendientes = (db
-  .prepare(`SELECT DISTINCT i.imdb_id, i.title FROM items i
-            WHERE i.kind = 'movie' AND i.imdb_id LIKE 'tt%'
-              AND NOT EXISTS (SELECT 1 FROM resenas_revisadas r WHERE r.imdb_id = i.imdb_id AND r.fuente = ?)
-            ORDER BY i.title`)
-  .all(FUENTE) as { imdb_id: string; title: string }[]);
+type Elegida = { autor: string; contenido: string; valor: number | null; fecha: string | null; pie: string | null; ancla: string };
+type Fuente = { clave: string; ruta: string; elegir: (html: string) => Elegida[] };
 
-console.log(`${pendientes.length} películas sin mirar en SensaCine.`);
+/* ------------------------------------------------------------- utilidades */
+
+function texto(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)))
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/ *\n */g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/** «MANUEL YÁÑEZ» → «Manuel Yáñez»; lo que ya viene en mayúsculas y minúsculas, igual. */
+function nombrePropio(t: string): string {
+  if (t !== t.toUpperCase()) return t;
+  return t.toLowerCase().replace(/(^|[\s'-])(\p{L})/gu, (_, a, b) => a + b.toUpperCase());
+}
+
+/* ------------------------------------------------------------ espectadores */
+
+function espectadores(html: string): Elegida[] {
+  const lista: (Elegida & { utiles: number })[] = [];
+  for (const t of html.split('class="hred review-card cf"').slice(1, 11)) {
+    const id = /id="review_(\d+)"/.exec(t)?.[1];
+    const autor = /<div class="meta-title">\s*<[^>]+>([^<]+)</.exec(t)?.[1];
+    const cuerpo = /class="content-txt review-card-content">([\s\S]*?)<\/div>/.exec(t)?.[1];
+    if (!id || !autor || !cuerpo) continue;
+    const nota = /class="stareval-note">([\d,]+)</.exec(t)?.[1];
+    const fecha = /review-card-meta-date light">\s*([^<]+?)\s*</.exec(t)?.[1] ?? null;
+    lista.push({
+      autor: texto(autor),
+      contenido: texto(cuerpo),
+      // De 0,5 a 5 en SensaCine; ×2 para la misma escala que las de TMDb.
+      valor: nota ? Number(nota.replace(',', '.')) * 2 : null,
+      fecha: fecha ? texto(fecha).replace(/^Publicada el\s+/i, '') : null,
+      pie: null,
+      ancla: `review_${id}`,
+      utiles: Number(/helpfulCount&quot;:(\d+)/.exec(t)?.[1] ?? 0),
+    });
+  }
+  // Fuera las de una línea («Obra maestra») y las copiadas: en la prueba de
+  // «101 dálmatas» había dos casi idénticas firmadas por autores distintos.
+  const vistas = new Set<string>();
+  return lista
+    .filter((c) => {
+      const huella = huellaDe(c.contenido);
+      if (c.contenido.length < MINIMO_CARACTERES || vistas.has(huella)) return false;
+      vistas.add(huella);
+      return true;
+    })
+    .sort((a, b) => b.utiles - a.utiles)
+    .slice(0, POR_PELICULA);
+}
+
+/* ------------------------------------------------------------------ prensa */
+
+/*
+ * SensaCine solo publica un extracto de cada crítica de prensa y remite al
+ * medio para leerla entera: se guarda el extracto, con el medio como autor y
+ * el crítico y el medio en el pie. Las webs de cada medio no se tocan.
+ */
+function prensa(html: string): Elegida[] {
+  const lista: Elegida[] = [];
+  for (const t of html.split('class="item hred" id="pressreview').slice(1, POR_PELICULA + 1)) {
+    const id = /^(\d+)"/.exec(t)?.[1];
+    const medio = /<h2 class="title">([\s\S]*?)<\/h2>/.exec(t)?.[1];
+    const cuerpo = /<p class="text">([\s\S]*?)<\/p>/.exec(t)?.[1];
+    if (!id || !medio || !cuerpo) continue;
+    const estrellas = /rating-mdl n(\d+)/.exec(t)?.[1];
+    const critico = /<span class="author">\s*por\s+([^<]+?)\s*</.exec(t)?.[1];
+    const nombreMedio = texto(medio); // tal cual: «ABC» no es «Abc»
+    const contenido = texto(cuerpo).replace(/^"\s*|\s*"$/g, '');
+    if (!contenido) continue;
+    lista.push({
+      autor: nombreMedio,
+      contenido,
+      // n45 = 4,5 estrellas de 5; ×2 como las demás. n00 es «sin nota».
+      valor: estrellas && Number(estrellas) > 0 ? Number(estrellas) / 5 : null,
+      fecha: null,
+      pie: (critico ? nombrePropio(texto(critico)) + ' · ' : '') + 'Crítica completa en ' + nombreMedio,
+      ancla: `pressreview${id}`,
+    });
+  }
+  return lista;
+}
+
+const FUENTES: Fuente[] = [
+  { clave: 'sensacine', ruta: 'criticas-espectadores', elegir: espectadores },
+  { clave: 'sensacine-prensa', ruta: 'criticas-prensa', elegir: prensa },
+];
 
 /* ---------------------------------------------------- enlace por Wikidata */
 
@@ -59,128 +153,78 @@ async function idsSensacine(imdb: string[]): Promise<Map<string, string>> {
   return mapa;
 }
 
-/* ------------------------------------------------------------- la página */
-
-function texto(html: string): string {
-  return html
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
-    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)))
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;|&apos;/g, "'")
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/[ \t]+/g, ' ')
-    .replace(/ *\n */g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-}
-
-type Critica = { id: string; autor: string; contenido: string; valor: number | null; fecha: string | null; utiles: number };
-
-function criticas(html: string): Critica[] {
-  const trozos = html.split('class="hred review-card cf"').slice(1);
-  const lista: Critica[] = [];
-  for (const t of trozos) {
-    const id = /id="review_(\d+)"/.exec(t)?.[1];
-    const autor = /<div class="meta-title">\s*<[^>]+>([^<]+)</.exec(t)?.[1];
-    const cuerpo = /class="content-txt review-card-content">([\s\S]*?)<\/div>/.exec(t)?.[1];
-    if (!id || !autor || !cuerpo) continue;
-    const nota = /class="stareval-note">([\d,]+)</.exec(t)?.[1];
-    const fecha = /review-card-meta-date light">\s*([^<]+?)\s*</.exec(t)?.[1] ?? null;
-    const utiles = Number(/helpfulCount&quot;:(\d+)/.exec(t)?.[1] ?? 0);
-    const contenido = texto(cuerpo);
-    if (!contenido) continue;
-    lista.push({
-      id,
-      autor: texto(autor),
-      contenido,
-      // De 0,5 a 5 en SensaCine; ×2 para la misma escala que las de TMDb.
-      valor: nota ? Number(nota.replace(',', '.')) * 2 : null,
-      fecha: fecha ? texto(fecha).replace(/^Publicada el\s+/i, '') : null,
-      utiles,
-    });
-  }
-  return lista;
-}
-
 /* --------------------------------------------------------------- el lote */
 
-const insertar = db.prepare(`INSERT OR IGNORE INTO resenas_externas (imdb_id, fuente, autor, contenido, valor, url, fecha, guardada)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+// Una fila por id de IMDb: las películas en varias ediciones se pedían una vez
+// por edición (unas 80 peticiones de más en la primera pasada).
+const peliculas = db
+  .prepare(`SELECT imdb_id, MIN(title) AS title FROM items
+            WHERE kind = 'movie' AND imdb_id LIKE 'tt%' GROUP BY imdb_id ORDER BY title`)
+  .all() as { imdb_id: string; title: string }[];
+const revisada = db.prepare('SELECT 1 FROM resenas_revisadas WHERE imdb_id = ? AND fuente = ?');
+const pendientes = peliculas
+  .map((p) => ({ ...p, fuentes: FUENTES.filter((f) => !revisada.get(p.imdb_id, f.clave)) }))
+  .filter((p) => p.fuentes.length > 0);
+
+console.log(`${pendientes.length} películas con alguna fuente sin mirar en SensaCine.`);
+
+const insertar = db.prepare(`INSERT OR IGNORE INTO resenas_externas (imdb_id, fuente, autor, contenido, valor, url, fecha, pie, guardada)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
 const marcar = db.prepare('INSERT OR IGNORE INTO resenas_revisadas (imdb_id, fuente, revisada, encontradas) VALUES (?, ?, ?, ?)');
 
 const lote = pendientes.slice(0, limite);
 const ids = await idsSensacine(lote.map((p) => p.imdb_id));
 console.log(`${ids.size} de ${lote.length} con enlace a SensaCine en Wikidata.\n`);
 
-let conResenas = 0;
-let sinResenas = 0;
+const cuenta: Record<string, { con: number; sin: number; guardadas: number }> = {};
+for (const f of FUENTES) cuenta[f.clave] = { con: 0, sin: 0, guardadas: 0 };
 let sinEnlace = 0;
 let fallos = 0;
-let guardadas = 0;
+let parar = false;
 
-for (let i = 0; i < lote.length; i++) {
+for (let i = 0; i < lote.length && !parar; i++) {
   const p = lote[i];
-  const ahora = new Date().toISOString();
   const allo = ids.get(p.imdb_id);
-  const prefijo = `[${i + 1}/${lote.length}] ${p.title}`;
   if (!allo) {
     // Sin enlace no se apunta como mirada: Wikidata puede ganarlo más adelante.
     sinEnlace++;
     continue;
   }
-
-  const url = `https://www.sensacine.com/peliculas/pelicula-${allo}/criticas-espectadores/`;
-  let html: string;
-  try {
-    const r = await fetch(url, { headers: { 'User-Agent': AGENTE }, signal: AbortSignal.timeout(30_000) });
-    if (r.status === 403 || r.status === 429) {
-      console.log(`${prefijo}: SensaCine respondió ${r.status}. Se para aquí; relanzar más tarde sigue donde se quedó.`);
-      break;
+  const partes: string[] = [];
+  for (const f of p.fuentes) {
+    const url = `https://www.sensacine.com/peliculas/pelicula-${allo}/${f.ruta}/`;
+    const ahora = new Date().toISOString();
+    try {
+      const r = await fetch(url, { headers: { 'User-Agent': AGENTE }, signal: AbortSignal.timeout(30_000) });
+      if (r.status === 403 || r.status === 429) {
+        console.log(`[${i + 1}/${lote.length}] ${p.title}: SensaCine respondió ${r.status}. Se para aquí; relanzar sigue donde se quedó.`);
+        parar = true;
+        break;
+      }
+      let elegidas: Elegida[] = [];
+      if (r.status !== 404) {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        elegidas = f.elegir(await r.text());
+      }
+      for (const c of elegidas) {
+        insertar.run(p.imdb_id, f.clave, c.autor, c.contenido, c.valor, `${url}#${c.ancla}`, c.fecha, c.pie, ahora);
+      }
+      marcar.run(p.imdb_id, f.clave, ahora, elegidas.length);
+      cuenta[f.clave].guardadas += elegidas.length;
+      if (elegidas.length) cuenta[f.clave].con++;
+      else cuenta[f.clave].sin++;
+      partes.push(`${f.clave === 'sensacine' ? 'espectadores' : 'prensa'} ${elegidas.length}`);
+    } catch (e) {
+      fallos++;
+      partes.push(`${f.clave}: fallo (${(e as Error).message})`);
     }
-    if (r.status === 404) {
-      marcar.run(p.imdb_id, FUENTE, ahora, 0);
-      sinResenas++;
-      console.log(`${prefijo}: no existe en SensaCine`);
-      await espera(PAUSA_MS);
-      continue;
-    }
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    html = await r.text();
-  } catch (e) {
-    fallos++;
-    console.log(`${prefijo}: fallo (${(e as Error).message}), se reintentará en otra pasada`);
     await espera(PAUSA_MS);
-    continue;
   }
-
-  // Fuera las de una línea («Obra maestra») y las copiadas: en la prueba de
-  // «101 dálmatas» había dos casi idénticas firmadas por autores distintos.
-  const vistas = new Set<string>();
-  const elegidas = criticas(html)
-    .slice(0, 10)
-    .filter((c) => {
-      const huella = huellaDe(c.contenido);
-      if (c.contenido.length < MINIMO_CARACTERES || vistas.has(huella)) return false;
-      vistas.add(huella);
-      return true;
-    })
-    .sort((a, b) => b.utiles - a.utiles)
-    .slice(0, POR_PELICULA);
-  for (const c of elegidas) {
-    insertar.run(p.imdb_id, FUENTE, c.autor, c.contenido, c.valor, `${url}#review_${c.id}`, c.fecha, ahora);
-  }
-  marcar.run(p.imdb_id, FUENTE, ahora, elegidas.length);
-  guardadas += elegidas.length;
-  if (elegidas.length) conResenas++;
-  else sinResenas++;
-  console.log(`${prefijo}: ${elegidas.length} reseñas`);
-  await espera(PAUSA_MS);
+  if (partes.length) console.log(`[${i + 1}/${lote.length}] ${p.title}: ${partes.join(', ')}`);
 }
 
-console.log(`\nHecho: ${conResenas} películas con reseñas (${guardadas} guardadas), ${sinResenas} sin ninguna, ` +
-  `${sinEnlace} sin enlace en Wikidata, ${fallos} fallos.`);
+console.log(
+  '\nHecho: ' +
+    FUENTES.map((f) => `${f.clave}: ${cuenta[f.clave].con} con reseñas (${cuenta[f.clave].guardadas} guardadas), ${cuenta[f.clave].sin} sin ninguna`).join(' | ') +
+    ` | ${sinEnlace} sin enlace en Wikidata, ${fallos} fallos.`,
+);
