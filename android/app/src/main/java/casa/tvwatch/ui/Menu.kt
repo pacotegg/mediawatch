@@ -43,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -116,23 +117,25 @@ fun Menu(rutaActual: String?, bibliotecaActual: Int?, alIr: (Destino) -> Unit) {
       )
       Spacer(Modifier.height(18.dp))
 
-      Entrada("Inicio", Icons.Default.Home, activa = rutaActual == "portada") { alIr(Destino.Inicio) }
-      Entrada("Buscar", Icons.Default.Search, activa = rutaActual == "buscar") { alIr(Destino.Buscar) }
-      Entrada("Favoritas", Icons.Default.Star, activa = rutaActual == "favoritas") { alIr(Destino.Favoritas) }
-      Entrada("Descargas", Icons.Default.Star, activa = rutaActual == "descargas") { alIr(Destino.Descargas) }
-      Entrada("Sagas", Icons.AutoMirrored.Filled.List, activa = rutaActual == "sagas") { alIr(Destino.Sagas) }
-      Entrada("Plataformas", Icons.Default.PlayArrow, activa = rutaActual == "plataformas") { alIr(Destino.Plataformas) }
-      Entrada("Ajustes", Icons.Default.Settings, activa = rutaActual == "ajustes") { alIr(Destino.Ajustes) }
+      Entrada("Inicio", activa = rutaActual == "portada", alPulsar = { alIr(Destino.Inicio) }) { IconoInicio(it) }
+      Entrada("Buscar", activa = rutaActual == "buscar", alPulsar = { alIr(Destino.Buscar) }) { IconoBuscar(it) }
+      Entrada("Favoritas", activa = rutaActual == "favoritas", alPulsar = { alIr(Destino.Favoritas) }) {
+        IconoEstrella(it, rellena = rutaActual == "favoritas", tamano = 20.dp)
+      }
+      Entrada("Descargas", activa = rutaActual == "descargas", alPulsar = { alIr(Destino.Descargas) }) { IconoDescarga(it) }
+      Entrada("Sagas", activa = rutaActual == "sagas", alPulsar = { alIr(Destino.Sagas) }) { IconoSagas(it) }
+      Entrada("Plataformas", activa = rutaActual == "plataformas", alPulsar = { alIr(Destino.Plataformas) }) { IconoPlataformas(it) }
+      Entrada("Ajustes", activa = rutaActual == "ajustes", alPulsar = { alIr(Destino.Ajustes) }) { IconoAjustes(it) }
 
       if (bibliotecas.isNotEmpty()) {
         Seccion("Bibliotecas")
         for (b in bibliotecas) {
           Entrada(
             b.name,
-            icono = null,
             detalle = b.count.toString(),
             activa = bibliotecaActual == b.id,
-          ) { alIr(Destino.Biblioteca(b.id, b.name)) }
+            alPulsar = { alIr(Destino.Biblioteca(b.id, b.name)) },
+          ) { IconoDeBiblioteca(b.name, b.kind, it) }
         }
       }
 
@@ -154,7 +157,7 @@ fun Menu(rutaActual: String?, bibliotecaActual: Int?, alIr: (Destino) -> Unit) {
         )
       }
       Spacer(Modifier.height(10.dp))
-      Entrada("Cambiar de perfil o servidor", Icons.AutoMirrored.Filled.ExitToApp, activa = false) { alIr(Destino.Salir) }
+      Entrada("Cambiar de perfil o servidor", activa = false, alPulsar = { alIr(Destino.Salir) }) { IconoUsuario(it) }
       val contexto = LocalContext.current
       val version = remember {
         try { contexto.packageManager.getPackageInfo(contexto.packageName, 0).versionName ?: "" } catch (e: Exception) { "" }
@@ -180,16 +183,16 @@ private fun Seccion(titulo: String) {
 }
 
 /**
- * Una línea del menú. La activa va en ámbar sobre un fondo un punto más claro;
- * las demás, en el texto normal. Se encoge al tocarla como todo lo demás.
+ * Una línea del menú. La activa lleva un indicador vertical en ámbar y el icono/texto
+ * en realce; las demás, en el texto normal. Se encoge al tocarla como todo lo demás.
  */
 @Composable
 private fun Entrada(
   texto: String,
-  icono: ImageVector?,
   activa: Boolean,
   detalle: String? = null,
   alPulsar: () -> Unit,
+  icono: @Composable (Color) -> Unit,
 ) {
   val pulsacion = remember { MutableInteractionSource() }
   val pulsada by pulsacion.collectIsPressedAsState()
@@ -199,31 +202,37 @@ private fun Entrada(
     label = "escala de la entrada",
   )
   val color = if (activa) Realce else Texto
+  val fondo = if (activa) FondoAlto else FondoTarjeta
 
   Row(
     Modifier
       .fillMaxWidth()
       .scale(escala)
       .clip(RoundedCornerShape(Esquinas.tarjeta))
-      .background(if (activa) FondoAlto else FondoTarjeta)
+      .background(fondo)
       .pulsable(pulsacion, alPulsar)
-      .padding(horizontal = 14.dp, vertical = 12.dp),
+      .padding(horizontal = 12.dp, vertical = 11.dp),
     verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(12.dp),
+    horizontalArrangement = Arrangement.spacedBy(10.dp),
   ) {
-    if (icono != null) {
-      Icon(icono, contentDescription = null, tint = color, modifier = Modifier.size(20.dp))
+    if (activa) {
+      Box(
+        Modifier
+          .size(width = 3.dp, height = 18.dp)
+          .clip(RoundedCornerShape(2.dp))
+          .background(Realce),
+      )
     } else {
-      // Sin icono: un punto ámbar si está activa, y el hueco si no, para que
-      // los nombres de las bibliotecas queden alineados con los de arriba.
-      Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) {
-        if (activa) Box(Modifier.size(6.dp).clip(RoundedCornerShape(Esquinas.pastilla)).background(Realce))
-      }
+      Spacer(Modifier.width(3.dp))
+    }
+    Box(Modifier.size(22.dp), contentAlignment = Alignment.Center) {
+      icono(color)
     }
     Text(
       texto,
       color = color,
       style = MaterialTheme.typography.bodyLarge,
+      fontWeight = if (activa) androidx.compose.ui.text.font.FontWeight.SemiBold else androidx.compose.ui.text.font.FontWeight.Normal,
       maxLines = 1,
       overflow = TextOverflow.Ellipsis,
       modifier = Modifier.weight(1f),

@@ -1,6 +1,12 @@
 package casa.tvwatch.ui
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -42,6 +48,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -200,6 +207,17 @@ private fun TarjetaDestacada(h: Titulo, alAbrirFicha: (Int) -> Unit, alBuscar: (
     label = "escala del destacado",
   )
 
+  val transicion = rememberInfiniteTransition(label = "ken-burns")
+  val zoomFanart by transicion.animateFloat(
+    initialValue = 1.0f,
+    targetValue = 1.05f,
+    animationSpec = infiniteRepeatable(
+      animation = tween(12000, easing = LinearEasing),
+      repeatMode = RepeatMode.Reverse,
+    ),
+    label = "zoom",
+  )
+
   Box(
     Modifier
       .fillMaxWidth()
@@ -208,7 +226,16 @@ private fun TarjetaDestacada(h: Titulo, alAbrirFicha: (Int) -> Unit, alBuscar: (
       .pulsable(pulsacion) { alAbrirFicha(h.id) },
   ) {
     if (h.tieneFondo == 1) {
-      Imagen(recordarUrl(h.id, "fanart", 1280), h.title, Modifier.fillMaxSize())
+      Imagen(
+        recordarUrl(h.id, "fanart", 1280),
+        h.title,
+        Modifier
+          .fillMaxSize()
+          .graphicsLayer {
+            scaleX = zoomFanart
+            scaleY = zoomFanart
+          },
+      )
     }
     Box(
       Modifier.fillMaxSize().background(
@@ -297,11 +324,12 @@ private fun AtajosDeBiblioteca(bibliotecas: List<Biblioteca>, alAbrir: (Int, Str
           .clip(RoundedCornerShape(Esquinas.pastilla))
           .background(FondoTarjeta)
           .pulsable(pulsacion) { alAbrir(b.id, b.name) }
-          .padding(horizontal = 16.dp, vertical = 10.dp),
+          .padding(horizontal = 14.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
       ) {
+        IconoDeBiblioteca(b.name, b.kind, Realce, tamano = 16.dp)
         Text(b.name, color = Texto, style = MaterialTheme.typography.labelLarge)
-        Spacer(Modifier.width(7.dp))
         Text(b.count.toString(), color = TextoTenue, style = MaterialTheme.typography.labelSmall)
       }
     }
