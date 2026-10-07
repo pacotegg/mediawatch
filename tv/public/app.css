@@ -217,12 +217,14 @@ button {
 .opcion {
   position: relative;
   display: block;
-  width: 100%;
-  height: 62px;
-  padding: 0 26px 0 34px;
+  width: calc(100% - 24px);
+  margin: 3px 12px;
+  height: 58px;
+  padding: 0 20px 0 24px;
+  border-radius: 14px;
   color: var(--texto-sec);
   font-size: 23px;
-  line-height: 62px;
+  line-height: 58px;
   white-space: nowrap;
   text-align: left;
   background: transparent;
@@ -250,22 +252,24 @@ button {
 
 .opcion.activa {
   color: var(--texto);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .opcion.activa:before {
   content: '';
   position: absolute;
-  left: 0;
-  top: 16px;
-  width: 5px;
-  height: 30px;
+  left: 8px;
+  top: 15px;
+  width: 4px;
+  height: 28px;
   background: var(--acento);
-  border-radius: 0 4px 4px 0;
+  border-radius: 4px;
 }
 
 .opcion.enfocado {
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.20);
   color: #fff;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.40);
 }
 
 /* ----------------------------------------------------------------- héroe */
@@ -476,9 +480,10 @@ button {
   position: relative;
   width: 214px;
   height: 321px;
-  border-radius: 12px;
+  border-radius: 14px;
   overflow: hidden;
   background: var(--superficie);
+  border: 1px solid rgba(255, 255, 255, 0.07);
   /*
    * Solo se anima `transform`, y corto. Animar también la sombra hacía que el
    * borde de selección tardara 200 ms en aparecer: se veía ir por detrás del
@@ -524,8 +529,8 @@ body.rend-rapido .lamina img {
 }
 
 .tarjeta.enfocado .lamina {
-  transform: scale(1.08);
-  box-shadow: 0 0 0 4px var(--acento);
+  transform: scale(1.07);
+  box-shadow: 0 0 0 3px #ffffff, 0 0 0 5px var(--acento);
 }
 
 .sin-lamina {
@@ -735,9 +740,10 @@ body.rend-rapido .lamina img {
 .etiqueta-tec {
   display: inline-block;
   margin: 0 8px 8px 0;
-  padding: 8px 15px;
-  border-radius: 9px;
-  background: rgba(255, 255, 255, 0.13);
+  padding: 6px 14px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   font-size: 18px;
   color: var(--texto-sec);
 }

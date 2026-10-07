@@ -68,6 +68,11 @@ const ICONOS: Record<string, string> = {
   ajustes: 'M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7M4 12h2M18 12h2M12 4v2M12 18v2',
   plataformas: 'M4 5h16v10H4zM9 19h6M12 15v4',
   usuario: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8M4.5 20c1.2-3.6 4-5 7.5-5s6.3 1.4 7.5 5',
+  animacion: 'M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09zM12 15l-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2zM9 12H4s.55-3.03 2-4.5c1.45-1.45 4.5-2 4.5-2M15 9V4s3.03.55 4.5 2c1.45 1.45 2 4.5 2 4.5M15 9l-6 6',
+  peques: 'M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10zM8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01',
+  documentales: 'M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10zM2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z',
+  conciertos: 'M9 18V5l12-2v13M9 9l12-2M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 19a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
+  monologos: 'M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3zM19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8',
 };
 
 /* La misma que `version` de public/config.xml: al subirla, subir las dos. */
@@ -175,6 +180,17 @@ let reproductorActivo: Reproductor | null = null;
 let focoSaga: string | null = null;
 let focoBuscar: string | null = null;
 
+function iconoBiblioteca(nombre: string, kind: string): string {
+  const n = nombre.toLowerCase();
+  if (n.indexOf('animaci') !== -1) return 'animacion';
+  if (n.indexOf('peque') !== -1 || n.indexOf('infantil') !== -1 || n.indexOf('niño') !== -1) return 'peques';
+  if (n.indexOf('concierto') !== -1 || n.indexOf('música') !== -1 || n.indexOf('musica') !== -1) return 'conciertos';
+  if (n.indexOf('monólog') !== -1 || n.indexOf('monolog') !== -1 || n.indexOf('comedia') !== -1 || n.indexOf('stand') !== -1) return 'monologos';
+  if (n.indexOf('docu') !== -1) return 'documentales';
+  if (kind === 'show' || n.indexOf('serie') !== -1) return 'serie';
+  return 'pelicula';
+}
+
 function destinosBase(): Destino[] {
   // Los cinco fijos juntos, Ajustes incluido; debajo, con su separador, las
   // bibliotecas. Antes Ajustes iba al final, perdido tras nueve bibliotecas.
@@ -190,7 +206,7 @@ function destinosBase(): Destino[] {
   const libs = bibliotecas.map((b) => ({
     clave: 'lib-' + b.id,
     etiqueta: b.name,
-    icono: b.kind === 'movie' ? 'pelicula' : 'serie',
+    icono: iconoBiblioteca(b.name, b.kind),
     ir: () => void pantallaBiblioteca(b.id, b.name),
   }));
   return fijos.concat(libs);
