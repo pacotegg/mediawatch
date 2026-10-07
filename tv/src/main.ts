@@ -1773,7 +1773,7 @@ async function pantallaFicha(id: number) {
       const hueco = marco.querySelector<HTMLElement>('[data-donde-ver]');
       if (!hueco || !d.suscripcion.length) return;
       hueco.innerHTML =
-        '<div class="donde-ver"><span class="donde-ver-texto">También en tu suscripción (JustWatch):</span>' +
+        '<div class="donde-ver"><span class="donde-ver-texto">También en:</span>' +
         d.suscripcion
           .map((p) => {
             const app = idDeApp(p.clave);

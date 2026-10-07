@@ -639,7 +639,7 @@ body.rend-rapido .lamina img {
 
 .ficha {
   position: relative;
-  padding: 60px 110px 60px 150px;
+  padding: 60px 110px 25px 150px;
 }
 
 .ficha-cuerpo {
@@ -790,12 +790,12 @@ body.rend-rapido .lamina img {
    izquierdo es el mismo que el de la ficha, para no meterse bajo el menu. */
 .reparto {
   position: relative;
-  padding-top: 40px;
+  padding-top: 30px;
 }
 
 /* Comparte la clase `fila` solo por la navegacion; el titulo sigue siendo un h3. */
 .reparto.fila {
-  padding-top: 40px;
+  padding-top: 30px;
 }
 
 /* El carrusel del reparto es mas bajo que el de caratulas: solo hay que dejar
