@@ -167,6 +167,10 @@ app.addHook('onRequest', async (req) => {
   const id = String(++siguientePeticion);
   (req as unknown as { idLatido?: string }).idLatido = id;
   enVuelo.set(id, { url: `${req.method} ${sinToken(req.url).slice(0, 90)}`, desde: Date.now() });
+  // Un flujo que el cliente corta a medias no llega a `onResponse` (Fastify
+  // solo lo lanza en 'finish'/'error'): sin esto quedaba «en vuelo» para
+  // siempre, y latido.log enseñaba películas «abiertas» horas después.
+  req.raw.on('close', () => enVuelo.delete(id));
 });
 app.addHook('onResponse', async (req) => {
   const id = (req as unknown as { idLatido?: string }).idLatido;
