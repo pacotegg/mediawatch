@@ -1,7 +1,8 @@
 import { config, DATA_DIR } from '../config.ts';
 import { avanzar } from '../media/historial.ts';
 import { createHash } from 'node:crypto';
-import { createReadStream, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { createReadStream, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { stat as statAsync } from 'node:fs/promises';
 import { extname, join, resolve, sep } from 'node:path';
 import { ficheroDelBuzon } from '../media/buzon.ts';
 import { descargar, formatoDeImagen, imagenesDeSaga } from '../scanner/tmdb.ts';
@@ -18,10 +19,12 @@ import { obtenerResenas } from '../media/reviews.ts';
 
 const MIME: Record<string, string> = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp' };
 
-function sendImage(reply: FastifyReply, path: string) {
+// `stat` asincrono: el original esta en E: (disco duro), y un `statSync` alli
+// llega a 14 ms con el hilo parado. Una rejilla de carátulas son cientos.
+async function sendImage(reply: FastifyReply, path: string) {
   let stat;
   try {
-    stat = statSync(path);
+    stat = await statAsync(path);
   } catch {
     return reply.code(404).send({ error: 'Imagen no disponible' });
   }
