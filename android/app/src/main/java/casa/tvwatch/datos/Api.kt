@@ -135,6 +135,12 @@ object Api {
   fun fotoDeEpisodio(id: Int, ancho: Int) = "${Servidor.baseCacheada()}/api/episodes/$id/thumb?w=$ancho"
   fun saga(nombre: String): ContenidoDeSaga = pedir("/api/collections/" + java.net.URLEncoder.encode(nombre, "UTF-8").replace("+", "%20"))
   fun ficha(id: Int): Ficha = pedir("/api/items/$id")
+  fun trailer(itemId: Int): Trailer? = try {
+    pedir<RespuestaTrailer>("/api/items/$itemId/trailer").trailer
+  } catch (_: Exception) {
+    null
+  }
+
   fun resenas(itemId: Int): List<Resena> = try {
     pedir<RespuestaResenas>("/api/items/$itemId/reviews").items
   } catch (_: Exception) {
@@ -354,6 +360,8 @@ data class Perfil(
   val color: String? = null,
   @SerialName("is_admin") val esAdmin: Int = 0,
   @SerialName("has_pin") val tienePin: Int = 0,
+  /** Cifras del PIN, solo dentro de casa: con él se entra al teclear la última. */
+  @SerialName("pin_len") val largoPin: Int? = null,
 )
 
 @Serializable
@@ -476,7 +484,16 @@ data class Resena(
   val contenido: String,
   val valor: Double? = null,
   val url: String? = null,
+  /** Solo en las de prensa: crítico y dónde está la crítica entera. */
+  val pie: String? = null,
 )
+
+/** El tráiler que elige el servidor (TMDb): solo el id de YouTube, nunca se descarga. */
+@Serializable
+data class Trailer(val youtube: String, val idioma: String = "", val calidad: Int = 0)
+
+@Serializable
+data class RespuestaTrailer(val trailer: Trailer? = null)
 
 @Serializable
 data class RespuestaResenas(val items: List<Resena> = emptyList())

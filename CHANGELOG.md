@@ -12,6 +12,12 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.29 — 07/10/2026
+- Botón «Tráiler» en la ficha: se abre en YouTube, en castellano si lo hay en buena calidad.
+- Reseñas en castellano de SensaCine, de prensa y de espectadores, además de las de TMDb en inglés.
+- Las críticas de prensa dicen quién las firma y dónde leerlas enteras.
+- El PIN admite hasta 12 cifras y, en casa, entra solo al teclear la última.
+
 ## 3.28 — 06/10/2026
 - El reproductor de descargas ya tiene controles: play/pausa, −10 y +30, y barra con el tiempo.
 - Doble toque a los lados del vídeo en una descarga: salta 10 s atrás o adelante.

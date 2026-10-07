@@ -188,7 +188,14 @@ fun PantallaConexion(alEntrar: () -> Unit) {
       if (elegido != null && elegido.tienePin == 1) {
         OutlinedTextField(
           value = pin,
-          onValueChange = { pin = it.filter { c -> c.isDigit() }.take(8) },
+          // 12 y no 8: el servidor admite PIN de 6 cifras o más, y con 8 uno de
+          // nueve no se podía escribir entero. Si el servidor sabe cuántas
+          // cifras tiene (solo en casa), se entra al teclear la última.
+          onValueChange = {
+            pin = it.filter { c -> c.isDigit() }.take(12)
+            val largo = elegido.largoPin
+            if (largo != null && largo > 0 && pin.length == largo && !ocupado) entrar(elegido)
+          },
           singleLine = true,
           label = { Text("PIN de ${elegido.name}") },
           keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Go),

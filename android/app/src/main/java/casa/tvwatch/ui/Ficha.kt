@@ -157,6 +157,11 @@ fun PantallaFicha(
     }
   }
 
+  var trailer by remember(itemId) { mutableStateOf<casa.tvwatch.datos.Trailer?>(null) }
+  LaunchedEffect(itemId) {
+    trailer = withContext(Dispatchers.IO) { Api.trailer(itemId) }
+  }
+
   LaunchedEffect(itemId) {
     resenas = try {
       withContext(Dispatchers.IO) { Api.resenas(itemId) }
@@ -326,6 +331,24 @@ fun PantallaFicha(
           Modifier.horizontalScroll(rememberScrollState()),
           horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+          /*
+           * El tráiler se abre en la app de YouTube (o en el navegador si no
+           * está): en el móvil no hay el problema de la tele, y Atrás vuelve
+           * aquí. Nunca se descarga nada.
+           */
+          trailer?.let { t ->
+            Pastilla("Tráiler") {
+              val app = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("vnd.youtube:" + t.youtube))
+              val web = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://www.youtube.com/watch?v=" + t.youtube))
+              try {
+                contexto.startActivity(app)
+              } catch (_: android.content.ActivityNotFoundException) {
+                try { contexto.startActivity(web) } catch (_: Exception) {
+                  Toast.makeText(contexto, "No hay nada con que abrir el tráiler", Toast.LENGTH_LONG).show()
+                }
+              }
+            }
+          }
           // Solo si los hay: extras disponibles
           if (extras.isNotEmpty()) {
             Pastilla("Extras (${extras.size})") { extrasAbiertos = true }
@@ -775,6 +798,10 @@ private fun TarjetaResena(res: Resena) {
       maxLines = if (abierta) Int.MAX_VALUE else 4,
       overflow = TextOverflow.Ellipsis,
     )
+    res.pie?.let {
+      Spacer(Modifier.height(8.dp))
+      Text(it, color = TextoTenue, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    }
   }
 }
 
