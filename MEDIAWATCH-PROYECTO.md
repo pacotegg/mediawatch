@@ -703,10 +703,15 @@ Herramientas de la sesión
 
 ## 9. Estado actual, pendientes y descartes
 
-**Estado a 07/10**: Android **3.30** (`versionCode 33`) publicada (releases `v3.29` y `v3.30`
-con APK; `instalar.html` enlaza el APK con número y su QR sale de `/qr-instalar.svg`). Desde
-la 3.30 la app avisa sola de cada APK nuevo (`/api/app/version`). Tele instalada y probada
-con el inspector: PIN con teclado en pantalla y `pin_len` (verificado por el usuario),
+**Estado a 07/10 (cierre)**: Android **3.34** (`versionCode 37`) publicada (releases `v3.29` a `v3.34`
+con APK; `instalar.html` enlaza el APK con número y su QR sale de `/qr-instalar.svg`). Novedades
+recientes (3.31–3.34):
+- **3.31**: Adaptación a Google TV y Android TV con mando a distancia, barra lateral cinemática con iconos vectoriales en Canvas y zoom Ken Burns, compatibilidad con 32 bits (`armeabi-v7a`), y emisión HTTPS a Cast.
+- **3.32**: Soporte de Google Cast con segmentos HLS nativos y pista AAC estéreo de respaldo en emisiones 5.1.
+- **3.33**: Salto y rebobinado rápido en Google Cast mediante búsqueda `-ss` previa en ffmpeg (< 2 s en vez de timeout de 40 s), e historial de novedades ampliado a las últimas 3 versiones.
+- **3.34**: Robustez integral de red: reintentos transparentes en Android (`retryOnConnectionFailure` + bucle de 3 reintentos en GET), timeout de 12 s con `AbortController` y reintentos en la TV, panel con botón de reintentar y 4 reintentos progresivos ante cortes de emisión, blindaje en Node 26 ante `uncaughtException`/`unhandledRejection`, sondeo del vigilante acelerado a 15 s, y corrección del desempate de navegación espacial vertical en la TV (`+ Math.abs(dx) * 0.1`). En ficha de TV: epígrafe acortado a «También en:» y espaciado vertical compactado.
+
+Tele instalada y probada: PIN con teclado en pantalla y `pin_len` (verificado por el usuario),
 acciones de la ficha con iconos (fila de 782 px), menú lateral con `transform` y que se
 desplaza, héroe sin rehacer el bloque, extras a pantalla completa, tráileres (YouTube vía
 `/trailer`, 1080p) y reseñas (SensaCine prensa + espectadores, TMDb en inglés). Servidor:
