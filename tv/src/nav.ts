@@ -416,8 +416,13 @@ function mejorEn(desde: Nodo, direccion: number, excluir?: HTMLElement, soloDent
     let desvio: number;
     if (direccion === TECLA.IZQUIERDA) { avance = -dx; desvio = Math.abs(dy); }
     else if (direccion === TECLA.DERECHA) { avance = dx; desvio = Math.abs(dy); }
-    else if (direccion === TECLA.ARRIBA) { avance = -dy; desvio = Math.max(0, Math.abs(dx) - n.ancho / 2); }
-    else { avance = dy; desvio = Math.max(0, Math.abs(dx) - n.ancho / 2); }
+    else if (direccion === TECLA.ARRIBA) {
+      avance = -dy;
+      desvio = Math.max(0, Math.abs(dx) - n.ancho / 2) + Math.abs(dx) * 0.1;
+    } else {
+      avance = dy;
+      desvio = Math.max(0, Math.abs(dx) - n.ancho / 2) + Math.abs(dx) * 0.1;
+    }
 
     if (avance <= 8) continue;
     const coste = avance + desvio * 3;

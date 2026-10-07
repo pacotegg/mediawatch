@@ -28,6 +28,7 @@ object Api {
 
   /** Tiempos cortos: si el servidor no está, hay que decirlo, no esperar. */
   val http: OkHttpClient = OkHttpClient.Builder()
+    .retryOnConnectionFailure(true)
     .connectTimeout(6, TimeUnit.SECONDS)
     .readTimeout(20, TimeUnit.SECONDS)
     // Con nombre: el servidor apunta desde qué aparato se entra y sin esto
@@ -50,20 +51,36 @@ object Api {
 
   /** Hace la petición y devuelve el cuerpo, o explica en castellano qué pasó. */
   fun texto(ruta: String, cuerpo: String? = null): String {
-    val r = try {
-      http.newCall(peticion(ruta, cuerpo)).execute()
-    } catch (e: Exception) {
-      // Se ha caido: que la proxima vez se vuelva a mirar por donde se llega.
-      // Es lo que hace que salir de casa con el movil en la mano funcione.
-      Servidor.olvidar()
-      throw FalloDeRed("No se llega al servidor. ¿Está encendido el ordenador?")
+    val maxIntentos = if (cuerpo == null) 3 else 1
+    var ultimoError: Exception? = null
+
+    for (intento in 1..maxIntentos) {
+      val r = try {
+        http.newCall(peticion(ruta, cuerpo)).execute()
+      } catch (e: Exception) {
+        ultimoError = e
+        if (intento < maxIntentos) {
+          try { Thread.sleep(1000) } catch (_: InterruptedException) { }
+          continue
+        }
+        // Se ha caído tras los reintentos: que la próxima vez se vuelva a mirar por dónde se llega.
+        Servidor.olvidar()
+        throw FalloDeRed("No se llega al servidor. ¿Está encendido el ordenador?")
+      }
+
+      r.use {
+        if (it.code == 401) throw SinSesion()
+        if (it.code in 502..504 && intento < maxIntentos) {
+          try { Thread.sleep(1000) } catch (_: InterruptedException) { }
+          return@use
+        }
+        val s = it.body?.string() ?: ""
+        if (!it.isSuccessful) throw FalloDeRed("El servidor respondió ${it.code}")
+        return s
+      }
     }
-    r.use {
-      if (it.code == 401) throw SinSesion()
-      val s = it.body?.string() ?: ""
-      if (!it.isSuccessful) throw FalloDeRed("El servidor respondió ${it.code}")
-      return s
-    }
+    Servidor.olvidar()
+    throw FalloDeRed(ultimoError?.message ?: "No se llega al servidor.")
   }
 
   inline fun <reified T> pedir(ruta: String): T = json.decodeFromString(texto(ruta))

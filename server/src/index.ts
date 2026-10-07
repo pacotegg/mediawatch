@@ -32,6 +32,20 @@ import { ultimaVersionApp } from './media/version-app.ts';
  * acotada al propio equipo, la IP real solo se acepta de quien puede saberla
  * —Caddy— y un cliente de casa no puede inventarse la suya.
  */
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException]', err);
+  try {
+    appendFileSync(join(DATA_DIR, 'server.err'), `\n[${new Date().toISOString()}] [uncaughtException] ${err?.stack || err}\n`);
+  } catch {}
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection]', reason);
+  try {
+    appendFileSync(join(DATA_DIR, 'server.err'), `\n[${new Date().toISOString()}] [unhandledRejection] ${reason instanceof Error ? reason.stack : reason}\n`);
+  } catch {}
+});
+
 const app = Fastify({
   logger: false,
   bodyLimit: 2 * 1024 * 1024,

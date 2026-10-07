@@ -58,25 +58,45 @@ export function olvidarToken() {
 
 async function pedir<T>(ruta: string, opciones?: RequestInit): Promise<T> {
   const cabeceras: Record<string, string> = {};
-  // Solo se declara el tipo si hay cuerpo: anunciar JSON sin enviarlo hace que
-  // el servidor rechace la petición por vacía.
   if (opciones && opciones.body) cabeceras['Content-Type'] = 'application/json';
 
   const t = token();
   if (t) cabeceras['Authorization'] = 'Bearer ' + t;
 
-  const res = await fetch(servidor() + ruta, Object.assign({ headers: cabeceras }, opciones));
-  if (!res.ok) {
-    let mensaje = 'Error ' + res.status;
+  const esLectura = !opciones || !opciones.method || opciones.method === 'GET';
+  const maxIntentos = esLectura ? 3 : 1;
+  let ultimoError: Error | null = null;
+
+  for (let intento = 1; intento <= maxIntentos; intento++) {
+    const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const reloj = ctrl ? window.setTimeout(() => ctrl.abort(), 12000) : 0;
     try {
-      const cuerpo = await res.json();
-      if (cuerpo && cuerpo.error) mensaje = cuerpo.error;
+      const opts = Object.assign({ headers: cabeceras }, opciones, ctrl ? { signal: ctrl.signal } : {});
+      const res = await fetch(servidor() + ruta, opts);
+      if (reloj) window.clearTimeout(reloj);
+
+      if (!res.ok) {
+        let mensaje = 'Error ' + res.status;
+        try {
+          const cuerpo = await res.json();
+          if (cuerpo && cuerpo.error) mensaje = cuerpo.error;
+        } catch (e) {
+          /* respuesta sin JSON */
+        }
+        if (res.status >= 502 && res.status <= 504 && intento < maxIntentos) {
+          await new Promise((r) => window.setTimeout(r, 1200));
+          continue;
+        }
+        throw Object.assign(new Error(mensaje), { status: res.status });
+      }
+      return (await res.json()) as T;
     } catch (e) {
-      /* respuesta sin JSON */
+      if (reloj) window.clearTimeout(reloj);
+      ultimoError = e as Error;
+      if (intento < maxIntentos) await new Promise((r) => window.setTimeout(r, 1200));
     }
-    throw Object.assign(new Error(mensaje), { status: res.status });
   }
-  return res.json() as Promise<T>;
+  throw ultimoError || new Error('No se pudo conectar con el servidor');
 }
 
 export type Titulo = {

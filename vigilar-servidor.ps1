@@ -69,5 +69,5 @@ while ($true) {
       Apuntar ("fallo al lanzarlo: " + $_.Exception.Message)
     }
   }
-  Start-Sleep -Seconds 60
+  Start-Sleep -Seconds 15
 }
