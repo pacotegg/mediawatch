@@ -805,6 +805,7 @@ body.rend-rapido .lamina img {
 }
 
 .reparto h3,
+.resenas h3,
 .episodios h3 {
   /* Ambos bloques van fuera de la ficha: el margen del menu lo ponen aqui. */
   margin: 0 0 16px 150px;
@@ -2027,6 +2028,13 @@ body.rend-medio .tarjeta.enfocado .lamina {
    En Tizen, AVPlay reproduce por hardware debajo de la capa web; el fondo DEBE ser transparente. */
 .capa-extra {
   background: transparent;
+}
+
+/* La ficha sigue montada debajo (para volver a ella): se esconde entera
+   mientras suena el extra, o el vídeo queda detrás de todo. */
+body.viendo-extra .marco,
+body.viendo-extra .marco * {
+  visibility: hidden !important;
 }
 
 .extra-cabecera {

@@ -2187,7 +2187,10 @@ function minutos(segundos: number): string {
  */
 function verExtra(ficha: Ficha, extra: Extra, alSalir: () => void) {
   alPulsar(null);
-  document.body.classList.add('viendo');
+  // `viendo-extra` esconde la ficha: el vídeo va por debajo de la página y,
+  // a diferencia del reproductor, aquí la ficha sigue montada para volver a
+  // ella; sin esto el extra se veía detrás de todo.
+  document.body.classList.add('viendo', 'viendo-extra');
 
   const capa = document.createElement('div');
   capa.className = 'capa capa-extra';
@@ -2211,7 +2214,7 @@ function verExtra(ficha: Ficha, extra: Extra, alSalir: () => void) {
     cerrado = true;
     try { reproductor.cerrar(); } catch (e) { /* ya estaba cerrado */ }
     if (capa.parentElement) capa.parentElement.removeChild(capa);
-    document.body.classList.remove('viendo');
+    document.body.classList.remove('viendo', 'viendo-extra');
     alSalir();
   };
 
