@@ -16,6 +16,7 @@ import { marcarActividad } from '../media/ocupado.ts';
 import { loteOmdb, pararOmdb, rellenarConOmdb } from '../media/omdb.ts';
 import { letrasDe } from '../media/letras.ts';
 import { obtenerResenas } from '../media/reviews.ts';
+import { paginaTrailer, trailerDe } from '../media/trailers.ts';
 
 const MIME: Record<string, string> = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp' };
 
@@ -946,5 +947,22 @@ export default async function libraryRoutes(app: FastifyInstance) {
     const id = Number((req.params as { id: string }).id);
     const items = await obtenerResenas(id);
     return { items };
+  });
+
+  /** El tráiler (id de YouTube) de una película o serie; `?temporada=N` para el de esa temporada. */
+  app.get('/api/items/:id/trailer', async (req) => {
+    const id = Number((req.params as { id: string }).id);
+    const { temporada } = req.query as { temporada?: string };
+    return { trailer: await trailerDe(id, temporada !== undefined && temporada !== '' ? Number(temporada) : undefined) };
+  });
+
+  /*
+   * La página del reproductor para la tele. Fuera de /api/ a propósito: no
+   * lleva sesión ni la necesita (solo incrusta YouTube con un id que se valida).
+   */
+  app.get('/trailer', async (req, reply) => {
+    const { v } = req.query as { v?: string };
+    if (!v || !/^[\w-]{11}$/.test(v)) return reply.code(400).send('Vídeo no válido');
+    return reply.header('Content-Type', 'text/html; charset=utf-8').header('Cache-Control', 'no-store').send(paginaTrailer(v));
   });
 }

@@ -1746,6 +1746,34 @@ async function pantallaFicha(id: number) {
     })
     .catch(() => undefined);
 
+  /*
+   * «Tráiler» solo si TMDb tiene alguno: se pregunta después de pintar para
+   * no retrasar la ficha. En una serie, al pulsarlo se pide el de la
+   * temporada elegida (el servidor da el de la serie si esa no tiene).
+   */
+  void api
+    .trailer(id)
+    .then((r) => {
+      const acciones = marco.querySelector<HTMLElement>('.ficha .acciones');
+      if (!r.trailer || !acciones || acciones.querySelector('[data-trailer]')) return;
+      const boton = document.createElement('button');
+      boton.className = 'boton';
+      boton.setAttribute('data-nav', '');
+      boton.setAttribute('data-trailer', '');
+      boton.textContent = 'Tráiler';
+      acciones.insertBefore(boton, acciones.querySelector('[data-extras], [data-vista]'));
+      boton.addEventListener('click', () => {
+        const activa = marco.querySelector<HTMLElement>('.temporada.activa');
+        const temporada = esSerie && activa ? Number(activa.getAttribute('data-temporada')) : undefined;
+        api
+          .trailer(id, temporada)
+          .then((t) => { if (t.trailer) verTrailer(t.trailer.youtube); })
+          .catch(() => aviso('No se pudo cargar el tráiler'));
+      });
+      indexar();
+    })
+    .catch(() => undefined);
+
   void api
     .resenas(id)
     .then((r) => {
@@ -2039,6 +2067,65 @@ type OpcionLista = { valor: number; texto: string; nota?: string };
  * A diferencia de `menuLista`, este pinta la miniatura del video enfocado: son
  * nombres como «301 No Mas» que no dicen nada por si solos.
  */
+/**
+ * Tráiler a pantalla completa. El reproductor de YouTube no se puede incrustar
+ * en la app directamente (error 153: la app es un fichero local), así que se
+ * carga la página `/trailer` del servidor, que lo incrusta por http y reenvía
+ * los mensajes del reproductor. Comprobado en la QN93A el 07/10: 1080p.
+ * OK o Play pausa; Atrás o Stop sale; al acabar o si falla, sale solo.
+ */
+function verTrailer(youtube: string) {
+  const teclasAntes = manejadorActual();
+  const focoAntes = actual();
+  document.body.classList.add('viendo');
+
+  const marcoVideo = document.createElement('iframe');
+  marcoVideo.className = 'capa-trailer';
+  marcoVideo.setAttribute('allow', 'autoplay; encrypted-media');
+  marcoVideo.setAttribute('tabindex', '-1');
+  marcoVideo.src = servidor() + '/trailer?v=' + encodeURIComponent(youtube);
+  marco.appendChild(marcoVideo);
+
+  let pausado = false;
+  let cerrado = false;
+  const orden = (func: string) => {
+    if (marcoVideo.contentWindow) marcoVideo.contentWindow.postMessage(JSON.stringify({ event: 'command', func: func, args: [] }), '*');
+  };
+  const cerrar = () => {
+    if (cerrado) return;
+    cerrado = true;
+    window.removeEventListener('message', alMensaje);
+    if (marcoVideo.parentElement) marcoVideo.parentElement.removeChild(marcoVideo);
+    document.body.classList.remove('viendo');
+    alPulsar(teclasAntes);
+    if (focoAntes) enfocar(focoAntes);
+  };
+  const alMensaje = (e: MessageEvent) => {
+    if (e.source !== marcoVideo.contentWindow) return;
+    let d: { event?: string; info?: { playerState?: number } | number } = {};
+    try { d = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch (x) { return; }
+    if (d.event === 'onError') {
+      cerrar();
+      aviso('Este tráiler no se puede ver aquí');
+    } else if (d.event === 'infoDelivery' && d.info && typeof d.info === 'object' && d.info.playerState === 0) {
+      cerrar(); // terminado
+    }
+  };
+  window.addEventListener('message', alMensaje);
+  // Que las teclas sigan llegando a la app y no al reproductor.
+  window.focus();
+
+  alPulsar((tecla) => {
+    if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE || tecla === TECLA.PARAR) { cerrar(); return true; }
+    if (tecla === TECLA.ENTRAR || tecla === TECLA.PLAY_PAUSA || tecla === TECLA.PAUSA || tecla === TECLA.REPRODUCIR) {
+      pausado = tecla === TECLA.PAUSA ? true : tecla === TECLA.REPRODUCIR ? false : !pausado;
+      orden(pausado ? 'pauseVideo' : 'playVideo');
+      return true;
+    }
+    return true;
+  });
+}
+
 /** Cómo se nombra cada fuente en el diálogo de una reseña. */
 const NOMBRE_FUENTE: Record<string, string> = {
   sensacine: 'SensaCine · espectador',

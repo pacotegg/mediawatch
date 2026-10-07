@@ -2030,6 +2030,18 @@ body.rend-medio .tarjeta.enfocado .lamina {
   background: transparent;
 }
 
+/* El tráiler (main.ts, verTrailer): la página del servidor a pantalla completa. */
+.capa-trailer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 1920px;
+  height: 1080px;
+  z-index: 90;
+  border: 0;
+  background: #000;
+}
+
 /* La ficha sigue montada debajo (para volver a ella): se esconde entera
    mientras suena el extra, o el vídeo queda detrás de todo. */
 body.viendo-extra .marco,

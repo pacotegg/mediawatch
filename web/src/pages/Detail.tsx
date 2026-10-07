@@ -8,6 +8,7 @@ import AnimeFixer from '../components/AnimeFixer.tsx';
 import NumeracionFixer from '../components/NumeracionFixer.tsx';
 import SelectorDeArte from '../components/SelectorDeArte.tsx';
 import Extras from '../components/Extras.tsx';
+import Trailer from '../components/Trailer.tsx';
 import Row from '../components/Row.tsx';
 import { api, img, type Episode, type ItemDetail, type PerfilDescarga, type CodecDescarga } from '../lib/api.ts';
 import { audioLabel, certification, clock, codecLabel, fileSize, languageName, resolutionLabel, runtime } from '../lib/format.ts';
@@ -143,6 +144,12 @@ function EpisodeList({
           </button>
         ))}
       </div>
+
+      {season > 0 && (
+        <div className="mb-5">
+          <Trailer key={season} itemId={item.id} temporada={season} texto={`Tráiler de la temporada ${season}`} />
+        </div>
+      )}
 
       <div className="space-y-2">
         {episodes.map((ep, i) => {
@@ -556,6 +563,8 @@ export default function Detail() {
                   Desde el principio
                 </button>
               )}
+
+              <Trailer itemId={item.id} />
 
               <Extras itemId={item.id} />
 

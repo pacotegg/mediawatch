@@ -358,6 +358,10 @@ export const api = {
   detectSkips: (showId: number, kind: 'cabecera' | 'creditos') => post<{ started: boolean }>('/api/skip/detect', { showId, kind }),
   plataformas: () => request<{ plataformas: Plataforma[]; total: number; consultados: number; conPlataforma: number; porPlataforma: (Plataforma & { titulos: number })[]; job: { running: boolean; total: number; hechos: number; conPlataforma: number; error: string | null } }>('/api/plataformas'),
   dondeVer: (itemId: number) => request<DondeVer>(`/api/items/${itemId}/plataformas`),
+  trailer: (itemId: number, temporada?: number) =>
+    request<{ trailer: { youtube: string; idioma: string; calidad: number; de?: 'temporada' | 'titulo' } | null }>(
+      `/api/items/${itemId}/trailer${temporada !== undefined ? `?temporada=${temporada}` : ''}`,
+    ),
   catalogoPlataforma: (clave: string, kind: 'movie' | 'show', orden: string, pagina: number) =>
     request<{ total: number; paginas: number; items: FichaPlataforma[] }>(
       `/api/plataformas/${clave}/catalogo?kind=${kind}&orden=${orden}&pagina=${pagina}`,
