@@ -8,6 +8,7 @@
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import type { FastifyInstance } from 'fastify';
 import { requireUser } from './auth.ts';
+import { parsearRango } from '../media/rango.ts';
 import { borrar, listar, nombreFichero, pedir, una, PERFILES, type Perfil, type Codec } from '../media/descargas.ts';
 
 export default async function descargaRoutes(app: FastifyInstance) {
@@ -57,11 +58,10 @@ export default async function descargaRoutes(app: FastifyInstance) {
       // El asterisco con UTF-8 es lo que hace que un título con tildes llegue bien.
       .header('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(nombreFichero(d))}`);
 
-    const rango = req.headers.range;
+    const rango = parsearRango(req.headers.range, stat.size);
+    if (rango === null) return reply.code(416).header('Content-Range', `bytes */${stat.size}`).send();
     if (rango) {
-      const m = /bytes=(\d*)-(\d*)/.exec(rango);
-      const desde = Number(m?.[1] || 0);
-      const hasta = m?.[2] ? Number(m[2]) : stat.size - 1;
+      const { desde, hasta } = rango;
       return reply
         .code(206)
         .header('Content-Range', `bytes ${desde}-${hasta}/${stat.size}`)

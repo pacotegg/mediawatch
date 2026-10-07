@@ -2,7 +2,8 @@ import { comenzar, nombreCliente } from '../media/historial.ts';
 import { audioEnvolvente, cerrarSesiones, cerrarSesionesDe, escalera, listaDeCalidad, listaMaestra, segmento, CALIDADES } from '../media/hls.ts';
 import { spawn } from 'node:child_process';
 import { createReadStream, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
-import { writeFile } from 'node:fs/promises';
+import { stat as statAsync, writeFile } from 'node:fs/promises';
+import { parsearRango } from '../media/rango.ts';
 import { join } from 'node:path';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { config, DATA_DIR } from '../config.ts';
@@ -546,17 +547,17 @@ export default async function playRoutes(app: FastifyInstance) {
 
     // A delay has to be applied while muxing, so it rules out serving the raw file.
     if ((raw || plan.mode === 'direct') && start === 0 && audioDelayMs === 0) {
-      const stat = statSync(row.path);
-      const range = req.headers.range;
+      // Asincrono: esta en E: y se pide en cada salto del reproductor.
+      const stat = await statAsync(row.path);
       const mime =
         /\.mkv$/i.test(row.path) ? 'video/x-matroska' :
         /\.avi$/i.test(row.path) ? 'video/x-msvideo' :
         /\.(mov)$/i.test(row.path) ? 'video/quicktime' : 'video/mp4';
       reply.header('Accept-Ranges', 'bytes').header('Content-Type', mime);
-      if (range) {
-        const match = /bytes=(\d*)-(\d*)/.exec(range);
-        const startByte = Number(match?.[1] || 0);
-        const endByte = match?.[2] ? Number(match[2]) : stat.size - 1;
+      const rango = parsearRango(req.headers.range, stat.size);
+      if (rango === null) return reply.code(416).header('Content-Range', `bytes */${stat.size}`).send();
+      if (rango) {
+        const { desde: startByte, hasta: endByte } = rango;
         const stream = createReadStream(row.path, { start: startByte, end: endByte });
         cerrarSiInactivo(stream, reply.raw);
         return reply
@@ -947,11 +948,10 @@ export default async function playRoutes(app: FastifyInstance) {
       /\.mov$/i.test(extra.path) ? 'video/quicktime' : 'video/mp4';
     reply.header('Accept-Ranges', 'bytes').header('Content-Type', mime);
 
-    const range = req.headers.range;
-    if (range) {
-      const match = /bytes=(\d*)-(\d*)/.exec(range);
-      const desde = Number(match?.[1] || 0);
-      const hasta = match?.[2] ? Number(match[2]) : stat.size - 1;
+    const rango = parsearRango(req.headers.range, stat.size);
+    if (rango === null) return reply.code(416).header('Content-Range', `bytes */${stat.size}`).send();
+    if (rango) {
+      const { desde, hasta } = rango;
       const trozo = createReadStream(extra.path, { start: desde, end: hasta });
       cerrarSiInactivo(trozo, reply.raw);
       return reply
