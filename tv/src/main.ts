@@ -82,6 +82,37 @@ function versionTizen(): string {
   }
 }
 
+/*
+ * Iconos de las acciones de la ficha. Mismo trazo que los del menú (24 px,
+ * 1,8 de grosor, extremos redondeados); «vista» y «favorito» tienen versión
+ * rellena para el estado activo.
+ */
+const ACCIONES: Record<string, string> = {
+  play: '<path d="M7.5 4.8v14.4L19 12z" fill="currentColor" stroke="none"/>',
+  reiniciar: '<path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4.5 4.5v4h4"/>',
+  trailer: '<rect x="3" y="5.5" width="18" height="13" rx="2"/><path d="M10.2 9.4v5.2l4.4-2.6z" fill="currentColor"/>',
+  audio: '<path d="M4 9.5h3.2L11.5 6v12l-4.3-3.5H4z"/><path d="M15 9.2a4 4 0 0 1 0 5.6M17.6 6.7a7.5 7.5 0 0 1 0 10.6"/>',
+  subtitulos: '<rect x="3" y="5.5" width="18" height="13" rx="2"/><path d="M7 12h4M13.5 12H17M7 15h6.5M15.5 15H17"/>',
+  extras: '<rect x="7" y="4" width="13.5" height="10.5" rx="1.5"/><path d="M4 7.5v10.2c0 .8.7 1.5 1.5 1.5H17"/>',
+  vista: '<circle cx="12" cy="12" r="8.6"/><path d="M8.3 12.4l2.6 2.6 5-5.4" stroke-width="2.4"/>',
+  vistaSi: '<circle cx="12" cy="12" r="9.2" fill="currentColor" stroke="none"/><path class="contraste" d="M8.3 12.4l2.6 2.6 5-5.4" stroke-width="2.6"/>',
+  favorito: '<path d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/>',
+  favoritoSi: '<path d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z" fill="currentColor"/>',
+  eliminar: '<path d="M4.5 7h15M9.5 7V4.6h5V7M6.6 7l.9 12.4h9l.9-12.4M10.2 10.8v5.4M13.8 10.8v5.4"/>',
+};
+
+const iconoAccion = (nombre: string) =>
+  '<svg class="icono-accion" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" ' +
+  'stroke-linecap="round" stroke-linejoin="round">' + ACCIONES[nombre] + '</svg>';
+
+/**
+ * Botón redondo solo con icono; el nombre sale debajo al enfocarlo. Ocupan un
+ * tercio del ancho de los de texto y se siguen leyendo a la distancia del sofá.
+ */
+const botonIcono = (atributos: string, nombre: string, rotulo: string, clase = '') =>
+  '<button class="boton boton-icono' + clase + '" data-nav ' + atributos + ' aria-label="' + esc(rotulo) + '">' +
+  iconoAccion(nombre) + '<span class="rotulo">' + esc(rotulo) + '</span></button>';
+
 const icono = (nombre: string) =>
   '<svg class="icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" ' +
   'stroke-linecap="round" stroke-linejoin="round"><path d="' + ICONOS[nombre] + '"/></svg>';
@@ -1396,26 +1427,27 @@ async function pantallaFicha(id: number) {
   }
 
   const vista = progreso && progreso.watched === 1;
-  const esFavorita = ficha.favorite === 1;
+  let esFavorita = ficha.favorite === 1;
   let acciones = '';
+  // Reproducir es el único con texto: es a lo que se viene. El resto, iconos
+  // con su nombre al enfocarlos (ver botonIcono).
   if (!esSerie && fichero) {
     acciones =
-      '<button class="boton primario" data-nav data-reproducir>' +
+      '<button class="boton primario boton-play" data-nav data-reproducir>' + iconoAccion('play') +
       (reanudar > 0 ? 'Reanudar ' + reloj(reanudar) : 'Reproducir') + '</button>' +
-      (reanudar > 0 ? '<button class="boton" data-nav data-desde-cero>Desde el principio</button>' : '') +
-      '<button class="boton" data-nav data-pistas="audio">Audio</button>' +
-      '<button class="boton" data-nav data-pistas="subs">Subtítulos</button>';
+      (reanudar > 0 ? botonIcono('data-desde-cero', 'reiniciar', 'Desde el principio') : '') +
+      botonIcono('data-pistas="audio"', 'audio', 'Audio') +
+      botonIcono('data-pistas="subs"', 'subtitulos', 'Subtítulos');
   }
   // «Eliminar» va el último a propósito: es lo único que no se puede deshacer,
   // y no debe quedar de paso entre los botones que se usan todos los días.
   if (ficha.extras_count && ficha.extras_count > 0) {
-    acciones += '<button class="boton" data-nav data-extras>Extras (' + ficha.extras_count + ')</button>';
+    acciones += botonIcono('data-extras', 'extras', 'Extras (' + ficha.extras_count + ')');
   }
   acciones +=
-    '<button class="boton" data-nav data-vista>' + (vista ? 'Marcar no vista' : 'Marcar vista') + '</button>' +
-    '<button class="boton' + (esFavorita ? ' activo' : '') + '" data-nav data-favorito>' +
-    (esFavorita ? 'Quitar de favoritos' : 'Añadir a favoritos') + '</button>' +
-    (soyAdmin ? '<button class="boton peligro" data-nav data-borrar>Eliminar</button>' : '');
+    botonIcono('data-vista', vista ? 'vistaSi' : 'vista', vista ? 'Vista · quitar' : 'Marcar vista', vista ? ' activo' : '') +
+    botonIcono('data-favorito', esFavorita ? 'favoritoSi' : 'favorito', esFavorita ? 'Quitar de favoritos' : 'Añadir a favoritos', esFavorita ? ' activo' : '') +
+    (soyAdmin ? botonIcono('data-borrar', 'eliminar', 'Eliminar', ' peligro') : '');
 
   const reparto = (ficha.cast || []).filter((c) => c.role === 'actor').slice(0, 10);
 
@@ -1541,7 +1573,13 @@ async function pantallaFicha(id: number) {
   const bVista = marco.querySelector<HTMLElement>('[data-vista]');
   if (bVista) {
     bVista.addEventListener('click', () => {
-      api.marcarVista(ficha.id, !vista).then(() => void pantallaFicha(ficha.id)).catch(() => aviso('No se pudo guardar'));
+      // Aquí sí se repinta (cambia «Reanudar» y la marca «Vista»), pero el foco
+      // vuelve al mismo botón y no a Reproducir.
+      api
+        .marcarVista(ficha.id, !vista)
+        .then(() => pantallaFicha(ficha.id))
+        .then(() => enfocar(marco.querySelector<HTMLElement>('[data-vista]')))
+        .catch(() => aviso('No se pudo guardar'));
     });
   }
 
@@ -1598,11 +1636,16 @@ async function pantallaFicha(id: number) {
     bFav.addEventListener('click', () => {
       // Antes estaba fijo en `true`: solo sabía añadir, nunca quitar, y el botón
       // no cambiaba, así que parecía que no hacía nada.
+      // Se cambia en el sitio: repintar la ficha mandaba el foco a Reproducir.
       api
         .favorito(ficha.id, !esFavorita)
         .then(() => {
-          aviso(esFavorita ? 'Quitada de favoritos' : 'Añadida a favoritos');
-          void pantallaFicha(ficha.id);
+          esFavorita = !esFavorita;
+          bFav.classList.toggle('activo', esFavorita);
+          const rotulo = esFavorita ? 'Quitar de favoritos' : 'Añadir a favoritos';
+          bFav.innerHTML = iconoAccion(esFavorita ? 'favoritoSi' : 'favorito') + '<span class="rotulo">' + rotulo + '</span>';
+          bFav.setAttribute('aria-label', rotulo);
+          avisoRapido(esFavorita ? 'Añadida a favoritos' : 'Quitada de favoritos');
         })
         .catch(() => aviso('No se pudo guardar'));
     });
@@ -1756,11 +1799,9 @@ async function pantallaFicha(id: number) {
     .then((r) => {
       const acciones = marco.querySelector<HTMLElement>('.ficha .acciones');
       if (!r.trailer || !acciones || acciones.querySelector('[data-trailer]')) return;
-      const boton = document.createElement('button');
-      boton.className = 'boton';
-      boton.setAttribute('data-nav', '');
-      boton.setAttribute('data-trailer', '');
-      boton.textContent = 'Tráiler';
+      const molde = document.createElement('div');
+      molde.innerHTML = botonIcono('data-trailer', 'trailer', 'Tráiler');
+      const boton = molde.firstChild as HTMLElement;
       acciones.insertBefore(boton, acciones.querySelector('[data-extras], [data-vista]'));
       boton.addEventListener('click', () => {
         const activa = marco.querySelector<HTMLElement>('.temporada.activa');

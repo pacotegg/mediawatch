@@ -1870,8 +1870,75 @@ body.rend-medio .tarjeta.enfocado .lamina {
  * pelicula quedaba sepultada debajo. Seguidos, el mando los recorre de
  * izquierda a derecha de una tirada, que es como se espera desde el sofa.
  */
+/*
+ * Acciones de la ficha: Reproducir con texto e icono; el resto, círculos con
+ * icono y su nombre debajo solo cuando tienen el foco (estilo Apple TV). El
+ * nombre va en absoluto para que aparecer no mueva nada: solo se anima la
+ * opacidad, que compone la GPU.
+ */
+.boton-play {
+  padding: 0 34px 0 26px;
+}
+
+.boton-play .icono-accion {
+  width: 26px;
+  height: 26px;
+  margin-right: 12px;
+  vertical-align: -5px;
+}
+
+.boton-icono {
+  position: relative;
+  width: 62px;
+  padding: 0;
+  margin-right: 14px;
+  text-align: center;
+}
+
+.boton-icono .icono-accion {
+  width: 30px;
+  height: 30px;
+  vertical-align: -7px;
+}
+
+.boton-icono .rotulo {
+  position: absolute;
+  top: 74px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 20px;
+  line-height: 24px;
+  white-space: nowrap;
+  color: var(--texto);
+  opacity: 0;
+  transition: opacity 0.15s linear;
+  pointer-events: none;
+}
+
+.boton-icono.enfocado .rotulo {
+  opacity: 1;
+}
+
+/* El tick del «vista» relleno: oscuro sobre el círculo, claro al enfocar
+   (el botón enfocado es blanco y el círculo pasa a oscuro). */
+.boton-icono .contraste {
+  stroke: var(--fondo);
+}
+
+.boton-icono.enfocado .contraste {
+  stroke: #fff;
+}
+
+/* La papelera no grita en reposo: solo se pone roja al enfocarla. */
+.boton-icono.peligro {
+  background: rgba(255, 255, 255, 0.16);
+  color: var(--texto);
+}
+
 .acciones {
   margin-top: 30px;
+  /* Sitio para el nombre del botón enfocado, que va debajo. */
+  padding-bottom: 34px;
   white-space: nowrap;
   /* La columna de texto mide 1020, pero los siete botones piden mas. Se declara
      lo que ocupan de verdad —medido: 1.261 px— para que la caja no mienta. */
