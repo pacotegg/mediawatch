@@ -17,6 +17,7 @@ import { loteOmdb, pararOmdb, rellenarConOmdb } from '../media/omdb.ts';
 import { letrasDe } from '../media/letras.ts';
 import { obtenerResenas } from '../media/reviews.ts';
 import { paginaTrailer, trailerDe } from '../media/trailers.ts';
+import { toString as qrComoSvg } from 'qrcode';
 
 const MIME: Record<string, string> = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp' };
 
@@ -954,6 +955,18 @@ export default async function libraryRoutes(app: FastifyInstance) {
     const id = Number((req.params as { id: string }).id);
     const { temporada } = req.query as { temporada?: string };
     return { trailer: await trailerDe(id, temporada !== undefined && temporada !== '' ? Number(temporada) : undefined) };
+  });
+
+  /*
+   * El QR de instalar.html: lleva a la web para abrirla en Safari del iPhone.
+   * La página pedía un /qr.svg que nunca existió. Se genera aquí con la
+   * dirección pública de data/config.json para no meter el dominio en el repo
+   * (es público); sin ella, la dirección por la que se ha llegado.
+   */
+  app.get('/qr-instalar.svg', async (req, reply) => {
+    const base = (config.publicUrl || `http://${req.headers.host ?? 'localhost'}`).replace(/\/+$/, '');
+    const svg = await qrComoSvg(base + '/', { type: 'svg', margin: 1 });
+    return reply.header('Content-Type', 'image/svg+xml').header('Cache-Control', 'no-store').send(svg);
   });
 
   /*
