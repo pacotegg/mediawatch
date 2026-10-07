@@ -135,6 +135,13 @@ object Api {
   fun fotoDeEpisodio(id: Int, ancho: Int) = "${Servidor.baseCacheada()}/api/episodes/$id/thumb?w=$ancho"
   fun saga(nombre: String): ContenidoDeSaga = pedir("/api/collections/" + java.net.URLEncoder.encode(nombre, "UTF-8").replace("+", "%20"))
   fun ficha(id: Int): Ficha = pedir("/api/items/$id")
+  /** La última versión publicada de la app (la del APK más alto en la web) y sus novedades. */
+  fun versionApp(): VersionApp? = try {
+    pedir<VersionApp>("/api/app/version")
+  } catch (_: Exception) {
+    null
+  }
+
   fun trailer(itemId: Int): Trailer? = try {
     pedir<RespuestaTrailer>("/api/items/$itemId/trailer").trailer
   } catch (_: Exception) {
@@ -487,6 +494,9 @@ data class Resena(
   /** Solo en las de prensa: crítico y dónde está la crítica entera. */
   val pie: String? = null,
 )
+
+@Serializable
+data class VersionApp(val version: String? = null, val novedades: List<String> = emptyList())
 
 /** El tráiler que elige el servidor (TMDb): solo el id de YouTube, nunca se descarga. */
 @Serializable

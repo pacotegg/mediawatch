@@ -12,6 +12,10 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.30 — 07/10/2026
+- Aviso de versión nueva al abrir la app, con sus novedades y un botón para instalarla.
+- «Más tarde» no vuelve a avisar de esa versión, solo de la siguiente.
+
 ## 3.29 — 07/10/2026
 - Botón «Tráiler» en la ficha: se abre en YouTube, en castellano si lo hay en buena calidad.
 - Reseñas en castellano de SensaCine, de prensa y de espectadores, además de las de TMDb en inglés.
