@@ -117,22 +117,32 @@ button {
 
 /* ------------------------------------------------------------ menú lateral */
 
+/*
+ * Se abre deslizándose, no ensanchándose. Animar `width` obligaba a rehacer el
+ * diseño del menú en cada fotograma y en la tele se notaba a tirones. Ahora el
+ * panel mide siempre 380 px y, cerrado, está corrido a la izquierda dejando
+ * ver solo sus 108 px de la derecha; `.menu-interior` se corre lo mismo hacia
+ * el otro lado, así que los iconos no se mueven y los nombres van apareciendo
+ * con el borde. Dos `transform` en capas propias: solo compone la GPU.
+ */
 .menu {
   position: absolute;
   top: 0;
   left: 0;
-  width: 108px;
+  width: 380px;
   height: 1080px;
   z-index: 40;
-  padding: 26px 0;
   /* Un degradado de 400x1080 hay que repintarlo entero en cada fotograma de la
-     animación de ancho, y en la tele se notaba. Color plano: solo compone. */
+     animación, y en la tele se notaba. Color plano: solo compone. */
   background: var(--menu-fondo);
   border-right: 1px solid rgba(255, 255, 255, 0.06);
-  transition: width 0.15s cubic-bezier(0.22, 1, 0.36, 1);
+  transform: translateX(-272px);
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
   overflow: hidden;
+  /* Con 17 entradas no cabe y se desplaza al foco (nav.ts, desplazarMenu). */
+  scroll-behavior: smooth;
   /*
-   * En su propia capa: al abrirse y cerrarse solo se repinta el menú, no lo
+   * En su propia capa: al abrirse y cerrarse solo se compone el menú, no lo
    * que tiene debajo. Sin esto, moverse por el menú hacía parpadear las
    * barras de progreso de «Continuar viendo», que quedan bajo su borde.
    */
@@ -140,7 +150,18 @@ button {
 }
 
 .menu.abierto {
-  width: 380px;
+  transform: none;
+}
+
+.menu-interior {
+  padding: 26px 0;
+  transform: translateX(272px);
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+.menu.abierto .menu-interior {
+  transform: none;
 }
 
 .menu-marca {
@@ -167,10 +188,13 @@ button {
   line-height: 62px;
   vertical-align: middle;
   visibility: hidden;
+  /* Se esconde al acabar de cerrarse el panel, no al empezar. */
+  transition: visibility 0s linear 0.2s;
 }
 
 .menu.abierto .menu-nombre {
   visibility: visible;
+  transition-delay: 0s;
 }
 
 .menu-seccion {
@@ -181,10 +205,13 @@ button {
   color: var(--texto-ter);
   white-space: nowrap;
   visibility: hidden;
+  /* Se esconde al acabar de cerrarse el panel, no al empezar. */
+  transition: visibility 0s linear 0.2s;
 }
 
 .menu.abierto .menu-seccion {
   visibility: visible;
+  transition-delay: 0s;
 }
 
 .opcion {
@@ -212,10 +239,13 @@ button {
 
 .opcion .etiqueta {
   visibility: hidden;
+  /* Se esconde al acabar de cerrarse el panel, no al empezar. */
+  transition: visibility 0s linear 0.2s;
 }
 
 .menu.abierto .opcion .etiqueta {
   visibility: visible;
+  transition-delay: 0s;
 }
 
 .opcion.activa {
@@ -261,6 +291,13 @@ button {
   opacity: 1;
 }
 
+/* Invisible a la vista, pero ya se dibuja: la tele la prepara antes del
+   fundido y no en su primer fotograma (main.ts, montarHeroe). */
+.heroe-fondo.preparando {
+  opacity: 0.004;
+  transition: none;
+}
+
 .heroe-fondo img {
   width: 1920px;
   height: auto;
@@ -284,11 +321,22 @@ button {
   background: linear-gradient(to right, rgba(22, 23, 28, 0.94) 6%, rgba(22, 23, 28, 0.7) 38%, rgba(22, 23, 28, 0));
 }
 
+/*
+ * Sobre un panel oscuro translúcido: con algunos fondos (rojos, morados) el
+ * texto se confundía con la imagen. Color plano y no `backdrop-filter`: el
+ * desenfoque en vivo sobre un fondo que cambia costaría fotogramas en la tele.
+ * Anclado abajo, así que al dejar más líneas a la sinopsis el logo sube solo
+ * y los botones no se mueven (bottom + padding = los 36 px de antes).
+ */
 .heroe-texto {
   position: absolute;
-  left: 150px;
-  bottom: 36px;
+  left: 122px;
+  bottom: 14px;
   width: 900px;
+  padding: 24px 28px 22px;
+  border-radius: 20px;
+  background: rgba(14, 15, 20, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.07);
 }
 
 .heroe-logo {
@@ -317,11 +365,16 @@ button {
   font-weight: 600;
 }
 
+/* Hasta seis líneas, con puntos suspensivos si no cabe; antes se cortaba a
+   las tres a media frase. */
 .heroe-sinopsis {
   font-size: 19px;
   line-height: 1.4;
   color: var(--texto-sec);
-  max-height: 76px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
+  max-height: 160px;
   overflow: hidden;
   margin-bottom: 18px;
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.95);
@@ -436,6 +489,10 @@ button {
    * la portada, cada movimiento del mando costaba un parón de 210 ms —el
    * «pequeño retraso»—; así, 90 ms. La sombra difusa de la enfocada también
    * se fue: 90 ms más por ella sola.
+   *
+   * El 07/10 se probó quitar el `will-change`: inyectado en memoria parecía
+   * mejorar, pero instalado no midió mejor y la apertura del menú se notó
+   * a tirones. Se queda.
    */
   transition: transform 0.13s cubic-bezier(0.22, 1, 0.36, 1);
   will-change: transform;
@@ -914,6 +971,52 @@ body.rend-rapido .lamina img {
   background: #fff;
   color: var(--fondo);
   transform: scale(1.08);
+}
+
+/* Teclado del PIN: los mandos de ahora no traen números. Teclas redondas,
+   3 por fila; el foco es el mismo blanco que el de Buscar. */
+.teclado-pin {
+  width: 324px;
+  margin: 0 auto 10px;
+  font-size: 0;
+}
+
+.teclado-pin .tecla {
+  width: 96px;
+  height: 96px;
+  margin: 0 18px 16px 0;
+  border-radius: 48px;
+  font-size: 40px;
+  line-height: 96px;
+  transition: transform 0.13s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.teclado-pin .tecla:nth-child(3n) {
+  margin-right: 0;
+}
+
+.teclado-pin .tecla.texto {
+  font-size: 21px;
+}
+
+/* Un hueco por cifra si se sabe cuántas son; si no, un punto por cifra escrita. */
+.puntos-pin {
+  height: 26px;
+  margin: 22px 0 30px;
+  font-size: 0;
+}
+
+.puntos-pin i {
+  display: inline-block;
+  width: 22px;
+  height: 22px;
+  margin: 0 9px;
+  border-radius: 11px;
+  border: 2px solid var(--acento);
+}
+
+.puntos-pin i.lleno {
+  background: var(--acento);
 }
 
 /* No se puede enfocar ni hace falta: es solo el recordatorio de que hay atajo. */

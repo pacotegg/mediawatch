@@ -274,7 +274,7 @@ export const api = {
   comprobarEmparejado: (codigo: string) =>
     pedir<{ paired: boolean; token?: string; user?: { name: string } }>('/api/auth/device/poll?code=' + codigo),
   perfiles: () =>
-    pedir<{ users: { id: number; name: string; color: string; has_pin: number }[] }>('/api/users'),
+    pedir<{ users: { id: number; name: string; color: string; has_pin: number; pin_len?: number | null }[] }>('/api/users'),
   emparejarConPin: (codigo: string, userId: number, pin: string) =>
     pedir<{ ok: boolean; user: string }>('/api/auth/device/pin', {
       method: 'POST',

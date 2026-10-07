@@ -117,6 +117,9 @@ type Destino = { clave: string; etiqueta: string; icono: string; ir: () => void 
 
 let bibliotecas: { id: number; name: string; kind: string }[] = [];
 let temporizadorHeroe = 0;
+/** Cuándo se tocó el mando por última vez; el héroe no rota encima. */
+let ultimaTecla = 0;
+document.addEventListener('keydown', () => { ultimaTecla = Date.now(); }, true);
 
 /**
  * La última portada pintada y por dónde iba el foco.
@@ -151,7 +154,7 @@ function destinosBase(): Destino[] {
     { clave: 'favoritos', etiqueta: 'Favoritos', icono: 'favorito', ir: () => void pantallaFavoritos() },
     { clave: 'plataformas', etiqueta: 'Plataformas', icono: 'plataformas', ir: () => void pantallaPlataformas() },
     { clave: 'ajustes', etiqueta: 'Ajustes', icono: 'ajustes', ir: () => pantallaAjustes() },
-    { clave: 'usuario', etiqueta: 'Cambiar de usuario', icono: 'usuario', ir: () => { olvidarToken(); void pantallaConexion(); } },
+    { clave: 'usuario', etiqueta: 'Cambiar de usuario', icono: 'usuario', ir: () => void pantallaConexion() },
   ];
   const libs = bibliotecas.map((b) => ({
     clave: 'lib-' + b.id,
@@ -168,7 +171,7 @@ const destinos = (): Destino[] => ordenar(destinosBase());
 function menuHtml(activa: string): string {
   const lista = destinos();
   let html =
-    '<nav class="menu" data-menu>' +
+    '<nav class="menu" data-menu><div class="menu-interior">' + // capa que compensa el deslizamiento (app.css)
     // Plegado se ve el icono; desplegado, el icono y el nombre. Antes salía
     // el nombre cortado a la mitad contra el borde del menú.
     '<div class="menu-marca"><img class="menu-icono" src="./icon.png" alt="">' +
@@ -186,7 +189,7 @@ function menuHtml(activa: string): string {
       '<span class="etiqueta">' + esc(d.etiqueta) + '</span></button>';
   });
 
-  return html + '</nav>';
+  return html + '</div></nav>';
 }
 
 function conectarMenu() {
@@ -529,51 +532,88 @@ async function pantallaPortada(volviendo = false) {
 function montarHeroe(heroes: Titulo[]) {
   let indice = 0;
 
+  /*
+   * El bloque (y sus botones) se crea una vez; en cada cambio solo se cambian
+   * logo, datos y sinopsis. Antes se rehacía entero con `innerHTML` y había
+   * que volver a medir los 260 enfocables y recolocar el foco: medido en la
+   * QN93A el 07/10, cada cambio costaba un parón de ~200 ms. Los botones no se
+   * mueven aunque cambie el alto del texto, porque el bloque va anclado abajo,
+   * así que el índice de navegación sigue valiendo.
+   */
+  const precargarLogo = (h: Titulo) => {
+    if (!h.has_logo) return;
+    const im = new Image();
+    im.src = imagen.logo(h.id, 520);
+    if (im.decode) im.decode().catch(() => { /* ya se cargará al mostrarlo */ });
+  };
+
   const pintarTexto = () => {
     const h = heroes[indice];
     const caja = marco.querySelector<HTMLElement>('[data-heroe-texto]');
     if (!caja) return;
 
-    const focoPrevio = actual();
-    const enfocadoAqui = !!(focoPrevio && focoPrevio.closest('[data-heroe]'));
-    const eraSiguiente = !!(focoPrevio && focoPrevio.hasAttribute('data-heroe-siguiente'));
-
-    caja.innerHTML =
-      (h.has_logo
-        ? '<img class="heroe-logo" src="' + imagen.logo(h.id, 520) + '" alt="">'
-        : '<h1 class="heroe-titulo">' + esc(h.title) + '</h1>') +
-      '<div class="heroe-meta">' +
-      [h.year, h.runtime ? Math.round(h.runtime) + ' min' : '', h.library_name].filter(Boolean).join('  ·  ') +
-      (h.rating ? '  ·  <span class="nota">★ ' + h.rating.toFixed(1) + '</span>' : '') +
-      '</div>' +
-      (h.plot ? '<div class="heroe-sinopsis">' + esc(h.plot) + '</div>' : '') +
-      '<button class="boton primario" data-nav data-heroe-ver>Ver ficha</button>' +
-      '<button class="boton" data-nav data-heroe-siguiente>Siguiente</button>';
-
-    const ver = caja.querySelector<HTMLElement>('[data-heroe-ver]');
-    if (ver) ver.addEventListener('click', () => void pantallaFicha(heroes[indice].id));
-    const sig = caja.querySelector<HTMLElement>('[data-heroe-siguiente]');
-    if (sig) sig.addEventListener('click', () => cambiar((indice + 1) % heroes.length));
-
-    indexar();
-    if (enfocadoAqui) {
-      enfocar(caja.querySelector<HTMLElement>(eraSiguiente ? '[data-heroe-siguiente]' : '[data-heroe-ver]'));
+    if (!caja.querySelector('[data-heroe-ver]')) {
+      caja.innerHTML =
+        '<div data-heroe-cabecera></div><div class="heroe-meta" data-heroe-meta></div>' +
+        '<div class="heroe-sinopsis" data-heroe-sinopsis></div>' +
+        '<button class="boton primario" data-nav data-heroe-ver>Ver ficha</button>' +
+        '<button class="boton" data-nav data-heroe-siguiente>Siguiente</button>';
+      const ver = caja.querySelector<HTMLElement>('[data-heroe-ver]');
+      if (ver) ver.addEventListener('click', () => void pantallaFicha(heroes[indice].id));
+      const sig = caja.querySelector<HTMLElement>('[data-heroe-siguiente]');
+      if (sig) sig.addEventListener('click', () => cambiar((indice + 1) % heroes.length));
+      indexar();
     }
+
+    const cabecera = caja.querySelector<HTMLElement>('[data-heroe-cabecera]');
+    if (cabecera) {
+      cabecera.innerHTML = h.has_logo
+        ? '<img class="heroe-logo" src="' + imagen.logo(h.id, 520) + '" alt="">'
+        : '<h1 class="heroe-titulo">' + esc(h.title) + '</h1>';
+    }
+    const meta = caja.querySelector<HTMLElement>('[data-heroe-meta]');
+    if (meta) {
+      meta.innerHTML =
+        [h.year, h.runtime ? Math.round(h.runtime) + ' min' : '', h.library_name].filter(Boolean).join('  ·  ') +
+        (h.rating ? '  ·  <span class="nota">★ ' + h.rating.toFixed(1) + '</span>' : '');
+    }
+    const sinopsis = caja.querySelector<HTMLElement>('[data-heroe-sinopsis]');
+    if (sinopsis) {
+      sinopsis.textContent = h.plot || '';
+      sinopsis.style.display = h.plot ? '' : 'none';
+    }
+
+    // El del siguiente, ya cargado y descodificado para cuando le toque.
+    if (heroes.length > 1) precargarLogo(heroes[(indice + 1) % heroes.length]);
   };
 
+  /*
+   * En dos tiempos. Medido en la QN93A el 07/10: preparar la imagen nueva
+   * (~100 ms) y redibujar el texto (~50-100 ms) son trabajo de la GPU que no
+   * se puede quitar, y caían en el primer fotograma del fundido: se veía como
+   * un tirón. Primero se cambia el texto y se deja la imagen siguiente a
+   * opacidad casi nula (`preparando`), que obliga a prepararla con la pantalla
+   * quieta; el fundido empieza después, con todo listo.
+   */
+  let preparacion = 0;
   const cambiar = (nuevo: number) => {
     indice = nuevo;
-    // El cruce de dos imágenes a pantalla completa es de lo más caro que hay
-    // aquí; en modo rápido el CSS ya lo anula, esto solo evita el trabajo.
-    marco.querySelectorAll<HTMLElement>('[data-fondo]').forEach((el, i) => {
-      if (i === indice) el.classList.add('visible');
-      else el.classList.remove('visible');
-    });
+    const fondos = marco.querySelectorAll<HTMLElement>('[data-fondo]');
+    const siguiente = fondos[indice];
+    pintarTexto();
     marco.querySelectorAll<HTMLElement>('[data-puntos] .punto').forEach((el, i) => {
       if (i === indice) el.classList.add('activo');
       else el.classList.remove('activo');
     });
-    pintarTexto();
+    if (siguiente) siguiente.classList.add('preparando');
+    window.clearTimeout(preparacion);
+    preparacion = window.setTimeout(() => {
+      fondos.forEach((el, i) => {
+        el.classList.remove('preparando');
+        if (i === indice) el.classList.add('visible');
+        else el.classList.remove('visible');
+      });
+    }, 350);
   };
 
   pintarTexto();
@@ -581,8 +621,15 @@ function montarHeroe(heroes: Titulo[]) {
   // Rota siempre: pausarlo cuando el foco estaba en el héroe significaba no
   // rotar nunca, porque ahí es donde arranca el foco al abrir la portada.
   // `pintarTexto` vuelve a colocar el foco en el mismo botón tras el cambio.
+  //
+  // Pero no mientras se usa el mando: cada cambio repinta el texto y abre un
+  // fundido a pantalla completa, y cayendo en mitad de la navegación se veía
+  // como un tirón. Se espera a que el mando lleve un rato quieto.
   if (ajustes().heroeRotar) {
-    temporizadorHeroe = window.setInterval(() => cambiar((indice + 1) % heroes.length), ajustes().heroeSegundos * 1000);
+    temporizadorHeroe = window.setInterval(() => {
+      if (Date.now() - ultimaTecla < 4000) return;
+      cambiar((indice + 1) % heroes.length);
+    }, ajustes().heroeSegundos * 1000);
   }
 }
 
@@ -3775,8 +3822,19 @@ function pantallaSimple(contenido: string) {
   indexar();
 }
 
+/*
+ * Cada vez que se abre esta pantalla se invalida el sondeo de la anterior: si
+ * no, «Reintentar» o volver atrás dejaban sondeos vivos que podían cambiar de
+ * usuario a destiempo.
+ */
+let generacionEmparejado = 0;
+
 async function pantallaConexion() {
-  let perfiles: { id: number; name: string; has_pin: number }[] = [];
+  const gen = ++generacionEmparejado;
+  // Con sesión abierta es que se viene de «Cambiar de usuario»: la sesión no
+  // se suelta hasta entrar con otro perfil, y Atrás vuelve a la app.
+  const cambiando = !!token();
+  let perfiles: { id: number; name: string; has_pin: number; pin_len?: number | null }[] = [];
   let codigoActual = '';
   const dibujar = (codigo: string | null, estado: string, url?: string) => {
     pantallaSimple(
@@ -3806,7 +3864,14 @@ async function pantallaConexion() {
     const c = marco.querySelector<HTMLElement>('[data-cambiar]');
     if (c) c.addEventListener('click', () => pantallaServidor());
     enfocar(enfocables()[0]);
-    alPulsar(null);
+    alPulsar((t) => {
+      if (cambiando && (t === TECLA.ATRAS || t === TECLA.ESCAPE)) {
+        generacionEmparejado++;
+        void pantallaPortada();
+        return true;
+      }
+      return false;
+    });
   };
 
   dibujar(null, 'Conectando…');
@@ -3819,6 +3884,7 @@ async function pantallaConexion() {
 
     const desde = Date.now();
     const sondear = async () => {
+      if (gen !== generacionEmparejado) return;
       if (Date.now() - desde > inicio.expiresInSeconds * 1000) {
         dibujar(null, 'El código ha caducado. Pulsa Reintentar para generar otro.');
         return;
@@ -3841,61 +3907,108 @@ async function pantallaConexion() {
   }
 }
 
-function pantallaPinEmparejar(perfil: { id: number; name: string; has_pin: number }, codigo: string) {
+/*
+ * PIN con teclado en pantalla: los mandos de ahora no traen números. Si el
+ * servidor sabe cuántas cifras tiene (`pin_len`, se aprende la primera vez que
+ * se acierta), se entra solo al teclear la última: un único intento, así que
+ * el freno de cinco fallos no se resiente. Si no lo sabe, con «Entrar».
+ *
+ * Se pinta una vez y al teclear solo se cambian los puntos: repintar entero
+ * movía el foco a la primera tecla en cada cifra.
+ */
+function pantallaPinEmparejar(perfil: { id: number; name: string; has_pin: number; pin_len?: number | null }, codigo: string) {
   let valor = '';
-  let error = '';
+  let enviando = false;
+  const largo = perfil.pin_len && perfil.pin_len > 0 ? perfil.pin_len : 0;
+
+  const puntos = () => {
+    const caja = marco.querySelector<HTMLElement>('[data-puntos-pin]');
+    if (!caja) return;
+    const total = largo || valor.length;
+    let html = '';
+    for (let i = 0; i < total; i++) html += '<i' + (i < valor.length ? ' class="lleno"' : '') + '></i>';
+    caja.innerHTML = html;
+  };
+
+  const aviso = (texto: string) => {
+    const p = marco.querySelector<HTMLElement>('[data-aviso-pin]');
+    if (p) p.textContent = texto;
+  };
 
   const enviar = () => {
+    if (enviando) return;
+    enviando = true;
     api
       .emparejarConPin(codigo, perfil.id, valor)
       .then(() => pantallaSimple('<h1 class="marca">Media Watch</h1><p class="sub">Entrando como ' + esc(perfil.name) + '…</p>'))
-      .catch(() => {
+      .catch((e) => {
+        enviando = false;
         valor = '';
-        error = 'PIN incorrecto o código caducado. Vuelve a intentarlo.';
-        dibujar();
+        puntos();
+        const m = e && (e as Error).message ? (e as Error).message : '';
+        aviso(/intentos/i.test(m) ? m : 'PIN incorrecto o código caducado. Vuelve a intentarlo.');
       });
   };
 
-  const dibujar = () => {
-    pantallaSimple(
-      '<h1 class="marca">' + esc(perfil.name) + '</h1>' +
-        '<p class="sub">Escribe el PIN con los números del mando y pulsa OK.</p>' +
-        '<div class="entrada">' + '•'.repeat(valor.length) + '</div>' +
-        (error ? '<p class="sub">' + esc(error) + '</p>' : '') +
-        '<div><button class="boton" data-nav data-volver>Volver</button></div>',
-    );
-    const v = marco.querySelector<HTMLElement>('[data-volver]');
-    if (v) v.addEventListener('click', () => void pantallaConexion());
-    enfocar(enfocables()[0]);
-    alPulsar((tecla) => {
-      if (tecla >= 48 && tecla <= 57 && valor.length < 12) {
-        valor += String(tecla - 48);
-        error = '';
-        dibujar();
-        return true;
-      }
-      if (tecla === TECLA.ENTRAR && valor.length > 0) {
-        enviar();
-        return true;
-      }
-      if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE) {
-        if (valor.length === 0) {
-          void pantallaConexion();
-        } else {
-          valor = valor.slice(0, -1);
-          dibujar();
-        }
-        return true;
-      }
-      return false;
-    });
+  const anadir = (cifra: string) => {
+    if (enviando || valor.length >= 12) return;
+    valor += cifra;
+    aviso('');
+    puntos();
+    if (largo && valor.length === largo) enviar();
+  };
+
+  const borrar = () => {
+    if (enviando) return;
+    valor = valor.slice(0, -1);
+    puntos();
   };
 
   if (!perfil.has_pin) {
     enviar();
     return;
   }
-  dibujar();
+
+  const tecla = (atributo: string, texto: string, clase = '') =>
+    '<button class="tecla' + clase + '" data-nav ' + atributo + '>' + texto + '</button>';
+  pantallaSimple(
+    '<h1 class="marca">' + esc(perfil.name) + '</h1>' +
+      '<p class="sub">' + (largo ? 'Escribe tu PIN.' : 'Escribe tu PIN y pulsa «Entrar».') + '</p>' +
+      '<div class="puntos-pin" data-puntos-pin></div>' +
+      '<div class="teclado-pin">' +
+      ['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((c) => tecla('data-cifra="' + c + '"', c)).join('') +
+      tecla('data-borrar', 'Borrar', ' texto') +
+      tecla('data-cifra="0"', '0') +
+      tecla('data-entrar', 'Entrar', ' texto') +
+      '</div>' +
+      '<p class="sub" data-aviso-pin></p>' +
+      '<div><button class="boton" data-nav data-volver>Volver</button></div>',
+  );
+  puntos();
+  marco.querySelectorAll<HTMLElement>('[data-cifra]').forEach((el) => {
+    el.addEventListener('click', () => anadir(el.getAttribute('data-cifra') || ''));
+  });
+  const b = marco.querySelector<HTMLElement>('[data-borrar]');
+  if (b) b.addEventListener('click', borrar);
+  const en = marco.querySelector<HTMLElement>('[data-entrar]');
+  if (en) en.addEventListener('click', () => { if (valor.length > 0) enviar(); });
+  const v = marco.querySelector<HTMLElement>('[data-volver]');
+  if (v) v.addEventListener('click', () => void pantallaConexion());
+  enfocar(marco.querySelector<HTMLElement>('[data-cifra="1"]'));
+
+  alPulsar((t) => {
+    // Los números del mando, en los que los tengan, siguen valiendo.
+    if (t >= 48 && t <= 57) {
+      anadir(String(t - 48));
+      return true;
+    }
+    if (t === TECLA.ATRAS || t === TECLA.ESCAPE) {
+      if (valor.length === 0) void pantallaConexion();
+      else borrar();
+      return true;
+    }
+    return false;
+  });
 }
 
 function pantallaServidor() {

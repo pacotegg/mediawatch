@@ -112,6 +112,22 @@ export function actual(): HTMLElement | null {
   return document.querySelector<HTMLElement>('.enfocado');
 }
 
+/**
+ * El menú ocupa la altura de la pantalla y con 17 entradas no cabe: medía
+ * 1165 px en 1080, y «Cambiar de usuario» quedaba bajo el borde con el foco
+ * puesto pero sin verse. `scrollTop` funciona con `overflow: hidden`, y como
+ * el menú es el `offsetParent` de sus opciones, el índice sigue valiendo.
+ */
+function desplazarMenu(menu: HTMLElement, el: HTMLElement) {
+  const holgura = 24;
+  const abajo = el.offsetTop + el.offsetHeight + holgura - menu.clientHeight;
+  const arriba = el.offsetTop - holgura;
+  if (abajo > menu.scrollTop) menu.scrollTop = abajo;
+  // En la mitad de arriba se vuelve del todo: si no, al llegar a «Inicio» la
+  // marca del menú se quedaba medio cortada por arriba.
+  else if (arriba < menu.scrollTop) menu.scrollTop = arriba < menu.clientHeight / 2 ? 0 : arriba;
+}
+
 function desplazarCarrusel(carrusel: HTMLElement, tarjeta: HTMLElement) {
   const pista = carrusel.firstElementChild as HTMLElement | null;
   if (!pista) return;
@@ -288,7 +304,13 @@ function desplazarVertical(el: HTMLElement, nodo: Nodo | undefined) {
      */
     const arriba = nodo.y - nodo.alto / 2;
     const abajo = nodo.y + nodo.alto / 2;
-    if (arriba - actualY < MARGEN_SUPERIOR) objetivo = arriba - MARGEN_SUPERIOR;
+    // En la última fila de enfocables se baja hasta el final: lo que queda
+    // debajo sin nada que enfocar —el «Acerca de» de Ajustes— no llegaba a
+    // verse nunca. «Fila», no «último»: en Ajustes el último está a la derecha
+    // de «Cambiar servidor» y bajando no se pasa por él.
+    const nadaDebajo = !indice.some((n) => !n.menu && !n.alfabeto && n.y - n.alto / 2 >= abajo);
+    if (nadaDebajo) objetivo = Number.MAX_SAFE_INTEGER;
+    else if (arriba - actualY < MARGEN_SUPERIOR) objetivo = arriba - MARGEN_SUPERIOR;
     else if (abajo - actualY > 1080 - MARGEN_INFERIOR) objetivo = abajo - 1080 + MARGEN_INFERIOR;
     else objetivo = actualY;
   } else {
@@ -324,6 +346,9 @@ export function enfocar(el: HTMLElement | null | undefined) {
 
   const lista = el.closest('[data-lista-episodios], [data-ventana]') as HTMLElement | null;
   if (lista) desplazarLista(lista, el);
+
+  const menu = el.closest('[data-menu]') as HTMLElement | null;
+  if (menu) desplazarMenu(menu, el);
 
   desplazarVertical(el, nodo);
 }
