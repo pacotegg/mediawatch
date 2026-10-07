@@ -417,6 +417,17 @@ if (existsSync(tvDist)) {
 
 const webDist = join(ROOT, 'web', 'dist');
 if (existsSync(webDist)) {
+  // Lo de `assets/` lleva el hash en el nombre: si cambia, cambia la URL. Sin
+  // esto salia con `max-age=0` y el navegador lo revalidaba en cada carga.
+  // Registro aparte porque `setHeaders` lo pisan las cabeceras de `send`; y
+  // `index.html` queda como estaba, que es el que apunta a los nuevos.
+  await app.register(fastifyStatic, {
+    root: join(webDist, 'assets'),
+    prefix: '/assets/',
+    decorateReply: false,
+    maxAge: '365d',
+    immutable: true,
+  });
   await app.register(fastifyStatic, { root: webDist });
   app.setNotFoundHandler((req, reply) => {
     if (req.url.startsWith('/api')) return reply.code(404).send({ error: 'No encontrado' });
