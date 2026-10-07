@@ -61,8 +61,8 @@ function enCastellano(texto: string): boolean {
 }
 
 /**
- * Las de TMDb y las de SensaCine juntas. Si hay alguna en castellano, solo
- * esas; las inglesas, únicamente cuando no hay ninguna en castellano.
+ * Las de TMDb y las de SensaCine juntas: primero hasta 4 en castellano y
+ * después hasta 4 en inglés.
  */
 export async function obtenerResenas(itemId: number): Promise<Review[]> {
   const deTmdb = await resenasTmdb(itemId);
@@ -81,9 +81,11 @@ export async function obtenerResenas(itemId: number): Promise<Review[]> {
     vistas.add(huella);
     return true;
   });
-  const todas = [...utiles, ...deTmdb];
-  const castellano = todas.filter((r) => r.fuente === 'sensacine' || enCastellano(r.contenido));
-  return castellano.length ? castellano : todas;
+  // El mínimo de 80 caracteres vale también para las de TMDb («Masterpiece.»).
+  const todas = [...utiles, ...deTmdb.filter((r) => r.contenido.length >= 80)];
+  const esCastellano = (r: Review) => r.fuente === 'sensacine' || enCastellano(r.contenido);
+  // Hasta 4 en castellano (SensaCine primero) y hasta 4 en inglés, siempre las dos.
+  return [...todas.filter(esCastellano).slice(0, 4), ...todas.filter((r) => !esCastellano(r)).slice(0, 4)];
 }
 
 async function resenasTmdb(itemId: number): Promise<Review[]> {
@@ -91,7 +93,19 @@ async function resenasTmdb(itemId: number): Promise<Review[]> {
     .prepare('SELECT fuente, autor, contenido, valor, url, actualizado FROM item_reviews WHERE item_id = ?')
     .all(itemId) as (Review & { actualizado: string })[];
 
-  if (guardadas.length > 0) {
+  const item = db.prepare('SELECT tmdb_id, kind FROM items WHERE id = ?').get(itemId) as { tmdb_id: string | null; kind: string } | undefined;
+  const tipo = item?.kind === 'show' ? 'tv' : 'movie';
+  /*
+   * Hasta el 07/10 se pedían las de castellano y las de cualquier idioma solo
+   * si no había ninguna en castellano: con una sola en castellano, las inglesas
+   * no se pedían nunca. Esta marca (clave `tmdb:<tipo>:<id>`, porque las series
+   * no tienen id de IMDb) dice que ya se pidieron las dos; lo guardado antes
+   * se vuelve a pedir una vez para completar el inglés.
+   */
+  const marca = item?.tmdb_id ? `tmdb:${tipo}:${item.tmdb_id}` : null;
+  const ambas = marca ? !!db.prepare("SELECT 1 FROM resenas_revisadas WHERE imdb_id = ? AND fuente = 'tmdb-ambas'").get(marca) : true;
+
+  if (guardadas.length > 0 && ambas) {
     // La más reciente, no la más vieja: una reseña que TMDb ya no devuelve se
     // queda con su fecha antigua para siempre, y con la más vieja se volvía a
     // preguntar a TMDb en cada apertura de la ficha.
@@ -103,23 +117,22 @@ async function resenasTmdb(itemId: number): Promise<Review[]> {
   }
 
   if (!config.tmdbApiKey) return guardadas;
-  const item = db.prepare('SELECT tmdb_id, kind FROM items WHERE id = ?').get(itemId) as { tmdb_id: string | null; kind: string } | undefined;
   if (!item || !item.tmdb_id) return guardadas;
 
-  const tipo = item.kind === 'show' ? 'tv' : 'movie';
   const urlBase = `https://api.themoviedb.org/3/${tipo}/${item.tmdb_id}/reviews?api_key=${config.tmdbApiKey}`;
 
   try {
-    // Primero intentamos reseñas en español
-    let res = await fetch(`${urlBase}&language=es`, { signal: AbortSignal.timeout(6000) });
-    let data = res.ok ? ((await res.json()) as { results?: any[] }) : null;
-    let results: any[] = data?.results || [];
-
-    // Fallback a cualquier idioma si no hay en español
-    if (results.length === 0) {
-      res = await fetch(urlBase, { signal: AbortSignal.timeout(6000) });
-      data = res.ok ? ((await res.json()) as { results?: any[] }) : null;
-      results = data?.results || [];
+    // Las dos siempre: castellano e inglés.
+    const pedir = async (idioma: string) => {
+      const res = await fetch(`${urlBase}&language=${idioma}`, { signal: AbortSignal.timeout(6000) });
+      const data = res.ok ? ((await res.json()) as { results?: any[] }) : null;
+      if (!res.ok) throw new Error(`TMDb ${res.status}`);
+      return data?.results || [];
+    };
+    const results: any[] = [...(await pedir('es')), ...(await pedir('en-US'))];
+    if (marca) {
+      db.prepare("INSERT OR IGNORE INTO resenas_revisadas (imdb_id, fuente, revisada, encontradas) VALUES (?, 'tmdb-ambas', ?, ?)")
+        .run(marca, new Date().toISOString(), results.length);
     }
 
     if (results.length > 0) {
@@ -134,7 +147,7 @@ async function resenasTmdb(itemId: number): Promise<Review[]> {
           actualizado = excluded.actualizado
       `);
 
-      for (const r of results.slice(0, 10)) {
+      for (const r of results.slice(0, 20)) {
         const autor = String(r.author || r.author_details?.username || 'Anónimo').trim();
         const contenido = String(r.content || '').trim();
         const valor = r.author_details?.rating ? Number(r.author_details.rating) : null;
