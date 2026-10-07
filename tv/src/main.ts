@@ -530,7 +530,10 @@ async function pantallaPortada(volviendo = false) {
       heroes
         .map((h, i) =>
           '<div class="heroe-fondo' + (i === 0 ? ' visible' : '') + '" data-fondo="' + i + '">' +
-          (h.has_fanart ? '<img src="' + imagen.fondo(h.id, 1920) + '" alt="">' : '') +
+          // 1280 y no 1920: preparar la imagen al empezar cada fundido es la mitad
+          // del parón que queda (medido el 07/10 en la QN93A: 155-211 ms a 1920,
+          // 126-165 a 1280). Va bajo los velos, la diferencia de nitidez no se ve.
+          (h.has_fanart ? '<img src="' + imagen.fondo(h.id, 1280) + '" alt="">' : '') +
           '</div>',
         )
         .join('') +
