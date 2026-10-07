@@ -703,6 +703,25 @@ Herramientas de la sesión
 
 ## 9. Estado actual, pendientes y descartes
 
+**Estado a 07/10**: Android **3.30** (`versionCode 33`) publicada (releases `v3.29` y `v3.30`
+con APK; `instalar.html` enlaza el APK con número y su QR sale de `/qr-instalar.svg`). Desde
+la 3.30 la app avisa sola de cada APK nuevo (`/api/app/version`). Tele instalada y probada
+con el inspector: PIN con teclado en pantalla y `pin_len` (verificado por el usuario),
+acciones de la ficha con iconos (fila de 782 px), menú lateral con `transform` y que se
+desplaza, héroe sin rehacer el bloque, extras a pantalla completa, tráileres (YouTube vía
+`/trailer`, 1080p) y reseñas (SensaCine prensa + espectadores, TMDb en inglés). Servidor:
+carátulas y stream sin `statSync` sobre E: (bloqueos del bucle de ~15-50/día a 2 en 13 h),
+`Range` común, `/assets` inmutable. Ver memorias `resenas-y-trailers-tvwatch` y
+`gotchas-tvwatch` (07/10).
+
+**Pendientes a 07/10**:
+- Probar en el móvil la ficha de la 3.29/3.30 (tráiler, reseñas de prensa, PIN automático):
+  en el emulador no se pudo entrar, los tres perfiles piden PIN.
+- El tick de «vista» de la tele no se probó (podía borrar un «Reanudar» real).
+- El parón de ~110 ms al empezar el fundido del héroe sigue; opción medida: fondos a 1280 px
+  (−25 %).
+- 138 películas sin enlace a SensaCine en Wikidata: relanzar el lote las recoge si aparece.
+
 **Estado a 06/10**: Android **3.28** (`versionCode 31`) publicado y en `main`. Servidor
 reiniciado con las rutas de emparejado por PIN. Tele: bundle con `702f140` instalado el 06/10
 y lanzado sin errores en el log; **sin verificar en pantalla**: «Acerca de», scroll de Ajustes,
