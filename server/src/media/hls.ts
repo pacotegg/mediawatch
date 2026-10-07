@@ -22,7 +22,7 @@
  *    el salto; ver `troceado()` para por qué no vale pedirlos por tiempo.
  */
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { config } from '../config.ts';
 import type { MediaInfo } from './probe.ts';
@@ -169,8 +169,24 @@ const sesiones = new Map<string, Sesion>();
 
 /** Cuántos trozos por delante puede ir ffmpeg antes de que valga la pena esperarle
  *  en vez de reiniciarlo en otro punto. */
-const ALCANCE = 12;
+const ALCANCE = 3;
 const CADUCIDAD_MS = 90_000;
+
+function ultimoSegmentoEnDisco(dir: string, desde: number): number {
+  try {
+    const archivos = readdirSync(dir);
+    let max = desde - 1;
+    for (const f of archivos) {
+      if (f.endsWith('.ts')) {
+        const n = parseInt(f, 10);
+        if (!Number.isNaN(n) && n > max) max = n;
+      }
+    }
+    return max;
+  } catch {
+    return desde - 1;
+  }
+}
 
 const rutaSegmento = (dir: string, n: number) => join(dir, `${n}.ts`);
 
@@ -335,23 +351,40 @@ export async function segmento(p: PeticionSegmento, esperaMs = 40_000): Promise<
   const k = clave(p);
   let sesion = sesiones.get(k);
 
-  const sirve = sesion && !sesion.muerta && p.segmento >= sesion.desde && p.segmento < sesion.desde + ALCANCE + 400;
-  const yaEstaba = sesion && existsSync(rutaSegmento(sesion.dir, p.segmento));
+  const ruta = sesion ? rutaSegmento(sesion.dir, p.segmento) : '';
+  const yaEstaba = Boolean(ruta && existsSync(ruta));
 
-  if (!sesion || (!sirve && !yaEstaba)) sesion = arrancar(p, p.segmento);
+  // Si ya tenemos el fichero generado en disco, lo devolvemos al vuelo sin
+  // tocar la sesión ni esperar a nadie.
+  if (sesion && yaEstaba) {
+    sesion.ultimoUso = Date.now();
+    return readFileSync(ruta);
+  }
+
+  // Si no estaba en disco, comprobamos si la sesión actual puede producirlo pronto.
+  // Ffmpeg avanza en orden: si el trozo pedido está por detrás del punto de inicio,
+  // o si va más de ALCANCE trozos por delante de lo que ffmpeg ya ha escrito en disco,
+  // es un salto del usuario (seek) y hay que reiniciar ffmpeg directamente en ese punto.
+  let sirve = false;
+  if (sesion && !sesion.muerta && p.segmento >= sesion.desde) {
+    const ultimo = ultimoSegmentoEnDisco(sesion.dir, sesion.desde);
+    sirve = p.segmento > ultimo && p.segmento <= ultimo + ALCANCE;
+  }
+
+  if (!sesion || !sirve) sesion = arrancar(p, p.segmento);
   sesion.ultimoUso = Date.now();
 
-  const ruta = rutaSegmento(sesion.dir, p.segmento);
+  const rutaFinal = rutaSegmento(sesion.dir, p.segmento);
   const limite = Date.now() + esperaMs;
 
   while (Date.now() < limite) {
     // ffmpeg escribe a un temporal y renombra (`temp_file`), así que si el
     // fichero existe con su nombre definitivo está completo.
-    if (existsSync(ruta)) {
+    if (existsSync(rutaFinal)) {
       sesion.ultimoUso = Date.now();
-      return readFileSync(ruta);
+      return readFileSync(rutaFinal);
     }
-    if (sesion.proc.exitCode !== null && !existsSync(ruta)) {
+    if (sesion.proc.exitCode !== null && !existsSync(rutaFinal)) {
       throw new Error('La conversión terminó sin producir ese trozo');
     }
     await new Promise((r) => setTimeout(r, 120));

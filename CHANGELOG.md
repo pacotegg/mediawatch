@@ -12,6 +12,10 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.33 — 07/10/2026
+- Salto y rebobinado rápido en Google Cast: respuesta inmediata al avanzar o retroceder metraje en televisores.
+- Historial ampliado de novedades: la ventana inicial muestra los cambios de las 3 últimas versiones por si se saltaron actualizaciones.
+
 ## 3.32 — 07/10/2026
 - Corrección de Google Cast: autodetección estándar de segmentos HLS sin sobreescritura de formato en el cliente.
 - Respaldo estéreo automático (AAC) en listas HLS con sonido 5.1 para receptores Cast web en televisores.

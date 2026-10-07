@@ -2,10 +2,13 @@ package casa.tvwatch.ui
 
 import android.content.Context
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -14,6 +17,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 
@@ -24,6 +28,39 @@ import androidx.compose.ui.unit.dp
  * no hay dos listas que mantener a mano. Ver android/app/build.gradle.kts.
  */
 private const val CLAVE_CODIGO_VISTO = "novedadesCodigoVisto"
+
+data class SeccionNovedades(
+  val version: String,
+  val titulo: String,
+  val viñetas: List<String>,
+)
+
+internal fun ultimasSecciones(changelog: String, maxVersiones: Int = 3): List<SeccionNovedades> {
+  val secciones = mutableListOf<SeccionNovedades>()
+  var versionActual: String? = null
+  var tituloActual: String? = null
+  var viñetasActuales = mutableListOf<String>()
+
+  for (linea in changelog.lineSequence()) {
+    if (linea.startsWith("## ")) {
+      if (versionActual != null && viñetasActuales.isNotEmpty()) {
+        secciones += SeccionNovedades(versionActual, tituloActual ?: versionActual, viñetasActuales.toList())
+        if (secciones.size >= maxVersiones) break
+      }
+      val cabecera = linea.removePrefix("## ").trim()
+      versionActual = cabecera.split(" ").firstOrNull()
+      tituloActual = cabecera
+      viñetasActuales = mutableListOf()
+    } else if (versionActual != null && linea.startsWith("- ")) {
+      viñetasActuales += linea.removePrefix("- ").trim()
+    }
+  }
+
+  if (versionActual != null && viñetasActuales.isNotEmpty() && secciones.size < maxVersiones) {
+    secciones += SeccionNovedades(versionActual, tituloActual ?: versionActual, viñetasActuales.toList())
+  }
+  return secciones
+}
 
 /** Viñetas de la sección `## <version> ...`; vacío si esa versión no tiene sección. */
 internal fun viñetasDe(changelog: String, version: String): List<String> {
@@ -40,9 +77,9 @@ internal fun viñetasDe(changelog: String, version: String): List<String> {
   return viñetas
 }
 
-private fun leerNovedades(contexto: Context, version: String): List<String> =
+private fun leerUltimasNovedades(contexto: Context, maxVersiones: Int = 3): List<SeccionNovedades> =
   try {
-    viñetasDe(contexto.assets.open("CHANGELOG.md").bufferedReader().use { it.readText() }, version)
+    ultimasSecciones(contexto.assets.open("CHANGELOG.md").bufferedReader().use { it.readText() }, maxVersiones)
   } catch (e: Exception) {
     emptyList()
   }
@@ -55,10 +92,10 @@ fun NovedadesDialogo() {
   @Suppress("DEPRECATION")
   val codigo = info.versionCode
   val nombre = info.versionName ?: ""
-  val viñetas = remember(nombre) { leerNovedades(contexto, nombre) }
+  val secciones = remember { leerUltimasNovedades(contexto, 3) }
   // Sin clave guardada (instalación nueva) vale 0 y se muestra; sin viñetas no hay nada que enseñar.
   var mostrar by remember {
-    mutableStateOf(viñetas.isNotEmpty() && prefs.getInt(CLAVE_CODIGO_VISTO, 0) < codigo)
+    mutableStateOf(secciones.isNotEmpty() && prefs.getInt(CLAVE_CODIGO_VISTO, 0) < codigo)
   }
   if (!mostrar) return
 
@@ -68,10 +105,23 @@ fun NovedadesDialogo() {
   }
   AlertDialog(
     onDismissRequest = cerrar,
-    title = { Text("Novedades en $nombre") },
+    title = { Text("Novedades en Media Watch") },
     text = {
       Column(Modifier.verticalScroll(rememberScrollState())) {
-        viñetas.forEach { Text("• $it", Modifier.padding(vertical = 4.dp)) }
+        secciones.forEachIndexed { index, sec ->
+          if (index > 0) {
+            Spacer(Modifier.height(14.dp))
+          }
+          Text(
+            text = "Versión ${sec.titulo}",
+            style = MaterialTheme.typography.titleSmall,
+            color = Color(0xFFFFC107),
+            modifier = Modifier.padding(bottom = 4.dp),
+          )
+          sec.viñetas.forEach { viñeta ->
+            Text("• $viñeta", Modifier.padding(vertical = 3.dp))
+          }
+        }
       }
     },
     confirmButton = { TextButton(onClick = cerrar) { Text("Entendido") } },
