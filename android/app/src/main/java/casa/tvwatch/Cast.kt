@@ -13,6 +13,8 @@ import androidx.mediarouter.app.MediaRouteButton
 import casa.tvwatch.datos.Ajustes
 import casa.tvwatch.datos.Api
 import casa.tvwatch.datos.Servidor
+import com.google.android.gms.cast.HlsSegmentFormat
+import com.google.android.gms.cast.HlsVideoSegmentFormat
 import com.google.android.gms.cast.MediaInfo
 import com.google.android.gms.cast.MediaLoadRequestData
 import com.google.android.gms.cast.MediaMetadata
@@ -96,7 +98,7 @@ object Cast {
   fun emitir(context: Context, fileId: Int, itemId: Int, episodioId: Int?, titulo: String, desde: Double) {
     val s = sesion(context) ?: return
     val cliente = s.remoteMediaClient ?: return
-    val base = Servidor.baseCacheada()
+    val base = Servidor.baseParaCast()
     val token = Ajustes.token ?: return
     val surround = Ajustes.castCincoUno
 
@@ -120,12 +122,14 @@ object Cast {
 
     val meta = MediaMetadata(MediaMetadata.MEDIA_TYPE_MOVIE).apply {
       putString(MediaMetadata.KEY_TITLE, titulo)
-      addImage(WebImage(Uri.parse(Api.imagen(itemId, "poster", 600) + "&token=$token")))
-      addImage(WebImage(Uri.parse(Api.imagen(itemId, "fanart", 1280) + "&token=$token")))
+      addImage(WebImage(Uri.parse("$base/api/items/$itemId/poster?w=600&token=$token")))
+      addImage(WebImage(Uri.parse("$base/api/items/$itemId/fanart?w=1280&token=$token")))
     }
     val info = MediaInfo.Builder("$base/api/play/$fileId/hls/master.m3u8?token=$token" + (if (surround) "&surround=1" else ""))
       .setStreamType(MediaInfo.STREAM_TYPE_BUFFERED)
       .setContentType("application/x-mpegURL")
+      .setHlsSegmentFormat(HlsSegmentFormat.TS)
+      .setHlsVideoSegmentFormat(HlsVideoSegmentFormat.MPEG2_TS)
       .setMetadata(meta)
       .setMediaTracks(pistas)
       .setTextTrackStyle(

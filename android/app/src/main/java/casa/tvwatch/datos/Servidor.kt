@@ -41,6 +41,18 @@ object Servidor {
   fun baseCacheada(): String = elegido ?: Ajustes.servidor
 
   /**
+   * Dirección para Chromecast: el receptor web corre en https://www.gstatic.com
+   * y bloquea conexiones http:// o a IPs privadas (Mixed Content / Private Network Access).
+   */
+  fun baseParaCast(): String {
+    val fuera = Ajustes.servidorFuera
+    if (fuera.isNotEmpty() && fuera.startsWith("https://")) return fuera
+    val casa = Ajustes.servidor
+    if (casa.startsWith("https://")) return casa
+    return baseCacheada()
+  }
+
+  /**
    * La dirección a usar, comprobando si hace falta.
    *
    * **Nunca desde el hilo principal**: puede tardar hasta 700 ms. Todas las
@@ -49,7 +61,15 @@ object Servidor {
   fun base(): String {
     val casa = Ajustes.servidor
     val fuera = Ajustes.servidorFuera
-    if (fuera.isEmpty() || fuera == casa) return casa
+    if (fuera.isEmpty() || fuera == casa) {
+      if (Ajustes.servidorFuera.isEmpty() && responde(casa)) {
+        try {
+          val q = Api.quienEs()
+          if (q.publica.isNotEmpty()) Ajustes.servidorFuera = q.publica
+        } catch (_: Exception) { }
+      }
+      return casa
+    }
 
     val ahora = System.currentTimeMillis()
     elegido?.let { if (ahora - cuando < VALIDEZ_MS) return it }
