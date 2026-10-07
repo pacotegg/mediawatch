@@ -99,14 +99,36 @@ const SURROUND_BITRATE = 640_000;
 
 export function listaMaestra(fileId: number, info: MediaInfo, consulta: string, envolvente: { codec: string } | null = null) {
   const lineas = ['#EXTM3U', '#EXT-X-VERSION:6', '#EXT-X-INDEPENDENT-SEGMENTS'];
-  const codecAudio = envolvente ? (envolvente.codec === 'ac3' ? 'ac-3' : 'ec-3') : 'mp4a.40.2';
-  const tasaAudio = envolvente ? SURROUND_BITRATE : AUDIO_BITRATE;
-  for (const c of escalera(info)) {
-    const ancho = info.video ? Math.round((info.video.width * c.alto) / info.video.height / 2) * 2 : 0;
-    lineas.push(
-      `#EXT-X-STREAM-INF:BANDWIDTH=${c.bitrate + tasaAudio},RESOLUTION=${ancho}x${c.alto},CODECS="avc1.640029,${codecAudio}",NAME="${c.nombreLegible}"`,
-      `/api/play/${fileId}/hls/${c.nombre}.m3u8${consulta}`,
-    );
+  if (envolvente) {
+    const codecAudio = envolvente.codec === 'ac3' ? 'ac-3' : 'ec-3';
+    for (const c of escalera(info)) {
+      const ancho = info.video ? Math.round((info.video.width * c.alto) / info.video.height / 2) * 2 : 0;
+      lineas.push(
+        `#EXT-X-STREAM-INF:BANDWIDTH=${c.bitrate + SURROUND_BITRATE},RESOLUTION=${ancho}x${c.alto},CODECS="avc1.640029,${codecAudio}",NAME="${c.nombreLegible} 5.1"`,
+        `/api/play/${fileId}/hls/${c.nombre}.m3u8${consulta}`,
+      );
+    }
+    // Variantes estéreo (AAC) de respaldo: si el cliente (Chromecast Web Receiver / navegador)
+    // no soporta decodificación de Dolby por MediaSource Extensions (MSE), Shaka Player
+    // salta a la pista estéreo en vez de fallar y cerrar la emisión.
+    const paramsSinSurround = new URLSearchParams(consulta.startsWith('?') ? consulta.slice(1) : consulta);
+    paramsSinSurround.delete('surround');
+    const qEstereo = paramsSinSurround.toString() ? `?${paramsSinSurround.toString()}` : '';
+    for (const c of escalera(info)) {
+      const ancho = info.video ? Math.round((info.video.width * c.alto) / info.video.height / 2) * 2 : 0;
+      lineas.push(
+        `#EXT-X-STREAM-INF:BANDWIDTH=${c.bitrate + AUDIO_BITRATE},RESOLUTION=${ancho}x${c.alto},CODECS="avc1.640029,mp4a.40.2",NAME="${c.nombreLegible}"`,
+        `/api/play/${fileId}/hls/${c.nombre}.m3u8${qEstereo}`,
+      );
+    }
+  } else {
+    for (const c of escalera(info)) {
+      const ancho = info.video ? Math.round((info.video.width * c.alto) / info.video.height / 2) * 2 : 0;
+      lineas.push(
+        `#EXT-X-STREAM-INF:BANDWIDTH=${c.bitrate + AUDIO_BITRATE},RESOLUTION=${ancho}x${c.alto},CODECS="avc1.640029,mp4a.40.2",NAME="${c.nombreLegible}"`,
+        `/api/play/${fileId}/hls/${c.nombre}.m3u8${consulta}`,
+      );
+    }
   }
   return lineas.join('\n') + '\n';
 }

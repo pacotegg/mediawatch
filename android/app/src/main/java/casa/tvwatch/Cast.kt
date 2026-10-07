@@ -13,8 +13,6 @@ import androidx.mediarouter.app.MediaRouteButton
 import casa.tvwatch.datos.Ajustes
 import casa.tvwatch.datos.Api
 import casa.tvwatch.datos.Servidor
-import com.google.android.gms.cast.HlsSegmentFormat
-import com.google.android.gms.cast.HlsVideoSegmentFormat
 import com.google.android.gms.cast.MediaInfo
 import com.google.android.gms.cast.MediaLoadRequestData
 import com.google.android.gms.cast.MediaMetadata
@@ -128,8 +126,6 @@ object Cast {
     val info = MediaInfo.Builder("$base/api/play/$fileId/hls/master.m3u8?token=$token" + (if (surround) "&surround=1" else ""))
       .setStreamType(MediaInfo.STREAM_TYPE_BUFFERED)
       .setContentType("application/x-mpegURL")
-      .setHlsSegmentFormat(HlsSegmentFormat.TS)
-      .setHlsVideoSegmentFormat(HlsVideoSegmentFormat.MPEG2_TS)
       .setMetadata(meta)
       .setMediaTracks(pistas)
       .setTextTrackStyle(
