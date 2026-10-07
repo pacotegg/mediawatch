@@ -12,6 +12,13 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.31 — 07/10/2026
+- Interfaz adaptada a Google TV y Android TV con navegación completa por mando a distancia.
+- Barra lateral cinemática desplegable con iconos vectoriales temáticos para cada biblioteca.
+- Nuevos iconos vectoriales en Canvas y destacados dinámicos con zoom suave Ken Burns también en la app móvil.
+- Compatibilidad con procesadores de 32 bits (armeabi-v7a) en televisores TCL y Android TV.
+- Corrección de Google Cast a televisores: emisión segura por HTTPS y soporte de segmentos MPEG-TS.
+
 ## 3.30 — 07/10/2026
 - Aviso de versión nueva al abrir la app, con sus novedades y un botón para instalarla.
 - «Más tarde» no vuelve a avisar de esa versión, solo de la siguiente.

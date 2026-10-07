@@ -24,8 +24,8 @@ android {
      * `versionCode` sube siempre en uno: es lo que Android mira para instalar
      * encima. El nombre se ve al pie del menú lateral.
      */
-    versionCode = 33
-    versionName = "3.30"
+    versionCode = 34
+    versionName = "3.31"
   }
 
   buildFeatures { compose = true }
@@ -44,8 +44,10 @@ android {
        * que una versión nueva se instala encima sin perder la sesión.
        */
       signingConfig = signingConfigs.getByName("debug")
-      // Solo lo que lleva el móvil: cada ABI de más son 1,2 MB de librería.
-      ndk { abiFilters += listOf("arm64-v8a") }
+      // arm64 para el móvil y armeabi-v7a para las teles: muchas Google TV (la
+      // TCL, 07/10/2026) ejecutan Android en 32 bits aunque el procesador sea de
+      // 64, y con solo arm64 la tienda de la tele dice «no es compatible».
+      ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
   }
 
