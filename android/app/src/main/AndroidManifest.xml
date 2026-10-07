@@ -11,12 +11,18 @@
 
   <!--
     Que la aplicación valga también en una tele o en un aparato sin pantalla
-    táctil: ninguna de las dos cosas es obligatoria. En esos aparatos se carga
-    la interfaz de mando a distancia en vez de la del móvil; lo decide
-    `Principal`.
+    táctil: ninguna de las dos cosas es obligatoria. En una tele `Principal`
+    carga la interfaz de mando (paquete `tele`, desde la 3.31) en vez de la
+    del móvil; lo decide `Tele.es()`.
   -->
   <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
   <uses-feature android:name="android.software.leanback" android:required="false" />
+  <!--
+    ControlDeCast va fijada en vertical, y eso hace que Android exija pantalla
+    vertical a TODA la app: una tele no la tiene y la rechaza («no es
+    compatible», visto en la TCL el 07/10/2026). Se declara no obligatoria.
+  -->
+  <uses-feature android:name="android.hardware.screen.portrait" android:required="false" />
 
   <!--
     Ver qué apps con icono hay instaladas, para ofrecer «abrir Movistar+» solo si

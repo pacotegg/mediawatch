@@ -48,6 +48,8 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import casa.tvwatch.datos.Ajustes
 import android.net.Uri
+import casa.tvwatch.tele.NavegacionTele
+import casa.tvwatch.tele.Tele
 import casa.tvwatch.ui.Destino
 import casa.tvwatch.ui.Fondo
 import casa.tvwatch.ui.Menu
@@ -103,10 +105,16 @@ class Principal : AppCompatActivity() {
      */
     try { com.google.android.gms.cast.framework.CastContext.getSharedInstance(this) } catch (e: Exception) { /* sin Cast */ }
 
+    val esTele = Tele.es(this)
     setContent {
       TemaTvWatch {
-        val nav = rememberNavController()
-        Navegacion(nav)
+        // En una tele, la interfaz de mando (paquete `tele`); en lo demás, la del móvil.
+        if (esTele) {
+          NavegacionTele()
+        } else {
+          val nav = rememberNavController()
+          Navegacion(nav)
+        }
         NovedadesDialogo()
         AvisoDeVersionNueva()
       }

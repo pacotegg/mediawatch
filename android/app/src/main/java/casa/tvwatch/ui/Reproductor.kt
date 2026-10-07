@@ -23,6 +23,15 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.foundation.focusable
+import casa.tvwatch.tele.resaltarFoco
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -244,6 +253,11 @@ private fun Reproduciendo(
   /** Lado (true = atrás) y segundos acumulados del último doble toque, para el aviso «-10 s». */
   var indicadorSalto by remember { mutableStateOf<Pair<Boolean, Int>?>(null) }
   val tramosSaltados = remember(fileId) { mutableSetOf<String>() }
+  /** En la tele: el mando maneja el reproductor (ver `teclaTele`). */
+  val esTele = remember { casa.tvwatch.tele.Tele.es(contexto) }
+  val focoVideo = remember { FocusRequester() }
+  /** En la tele, OK pulsa «Saltar cabecera» mientras este está enfocado. */
+  var tramoEnfocado by remember { mutableStateOf(false) }
 
   /*
    * Desfase de subtítulos, en milisegundos y con signo. Lo aplica el servidor
@@ -778,7 +792,73 @@ private fun Reproduciendo(
     onDispose { reproductor.removeListener(oyente) }
   }
 
-  androidx.activity.compose.BackHandler { if (menuAbierto) menuAbierto = false else salir() }
+  /*
+   * En la tele, como en la Samsung: un Atrás esconde los controles y otro sale.
+   * Así una pulsación sin querer no saca de la película.
+   */
+  androidx.activity.compose.BackHandler {
+    when {
+      menuAbierto -> menuAbierto = false
+      esTele && tramoEnfocado -> tramoEnfocado = false
+      esTele && controlesVisibles -> controlesVisibles = false
+      else -> salir()
+    }
+  }
+
+  /*
+   * El mando de la tele. OK pausa, ◀ ▶ saltan 10 s atrás y 30 s adelante (lo
+   * de Plex y lo mismo que los botones del móvil), ▼ o Menú abren las pistas,
+   * ▲ enseña los controles. Mientras está el botón de saltar cabecera, OK lo
+   * pulsa; cualquier flecha lo suelta. Con el menú, la cuenta atrás o un
+   * fallo a la vista, las flechas son del foco normal y no se tocan aquí.
+   */
+  fun saltarTele(seg: Double) {
+    tocar()
+    tramoEnfocado = false
+    val base = saltoPendiente ?: (desfase + reproductor.currentPosition / 1000.0)
+    val destino = (base + seg).coerceIn(0.0, maxOf(0.0, duracionConocida - 2))
+    posicionUi = destino
+    irA(destino)
+    val atras = seg < 0
+    indicadorSalto = atras to ((indicadorSalto?.takeIf { it.first == atras }?.second ?: 0) + kotlin.math.abs(seg).toInt())
+  }
+  fun teclaTele(e: androidx.compose.ui.input.key.KeyEvent): Boolean {
+    if (e.type != KeyEventType.KeyDown) return false
+    if (menuAbierto || cuentaAtras != null || fallo.isNotEmpty()) return false
+    when (e.key) {
+      Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+        val tramo = tramoALaVista
+        if (tramoEnfocado && tramo != null) {
+          val encadena = tramo.kind == "credits" && siguiente != null
+          tramosSaltados += tramo.kind + tramo.desde
+          tramoALaVista = null
+          tramoEnfocado = false
+          if (encadena) pasarAlSiguiente() else irA(tramo.hasta)
+        } else {
+          tocar()
+          if (reproductor.isPlaying) reproductor.pause() else reproductor.play()
+        }
+      }
+      Key.MediaPlayPause -> { tocar(); if (reproductor.isPlaying) reproductor.pause() else reproductor.play() }
+      Key.MediaPlay -> { tocar(); reproductor.play() }
+      Key.MediaPause -> { tocar(); reproductor.pause() }
+      Key.MediaStop -> salir()
+      Key.DirectionLeft, Key.MediaRewind -> saltarTele(-10.0)
+      Key.DirectionRight, Key.MediaFastForward -> saltarTele(30.0)
+      Key.MediaNext -> { if (siguiente != null) irAEpisodio(siguiente) }
+      Key.MediaPrevious -> { if (anterior != null) irAEpisodio(anterior) }
+      Key.DirectionDown, Key.Menu -> { tramoEnfocado = false; menuAbierto = true }
+      Key.DirectionUp -> { tocar(); if (tramoALaVista != null) tramoEnfocado = true }
+      else -> return false
+    }
+    return true
+  }
+  // Tras cerrar el menú, la cuenta atrás o un fallo, el foco vuelve al vídeo:
+  // sin él, las teclas no llegarían a nadie.
+  LaunchedEffect(menuAbierto, cuentaAtras == null, fallo.isEmpty()) {
+    if (esTele && !menuAbierto && cuentaAtras == null && fallo.isEmpty()) runCatching { focoVideo.requestFocus() }
+  }
+  LaunchedEffect(tramoALaVista) { if (esTele) tramoEnfocado = tramoALaVista != null }
 
   // Se esconden solos a los 5 s del último toque, como en la tele, y solo si
   // está sonando: en pausa se quedan, que es cuando uno quiere verlos.
@@ -814,7 +894,12 @@ private fun Reproduciendo(
 
   /* ------------------------------------------------------------ pantalla */
 
-  Box(Modifier.fillMaxSize().background(Color.Black)) {
+  Box(
+    Modifier
+      .fillMaxSize()
+      .background(Color.Black)
+      .then(if (esTele) Modifier.focusRequester(focoVideo).onPreviewKeyEvent { teclaTele(it) }.focusable() else Modifier),
+  ) {
     AndroidView(
       modifier = Modifier.fillMaxSize(),
       factory = { ctx ->
@@ -1004,6 +1089,7 @@ private fun Reproduciendo(
         modifier = Modifier
           .align(Alignment.BottomEnd)
           .padding(end = 24.dp, bottom = 96.dp)
+          .then(if (tramoEnfocado) Modifier.border(3.dp, Realce, RoundedCornerShape(10.dp)) else Modifier)
           .clip(RoundedCornerShape(10.dp))
           .background(Color.White)
           .clickable {
@@ -1028,6 +1114,8 @@ private fun Reproduciendo(
             fontWeight = FontWeight.SemiBold,
           )
           Spacer(Modifier.height(18.dp))
+          val focoYa = remember { FocusRequester() }
+          LaunchedEffect(Unit) { if (esTele) runCatching { focoYa.requestFocus() } }
           Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(
               "Reproducir ya \u00b7 $c",
@@ -1035,6 +1123,8 @@ private fun Reproduciendo(
               fontSize = 15.sp,
               fontWeight = FontWeight.SemiBold,
               modifier = Modifier
+                .focusRequester(focoYa)
+                .resaltarFoco(RoundedCornerShape(10.dp))
                 .clip(RoundedCornerShape(10.dp))
                 .background(Realce)
                 .clickable { pasarAlSiguiente() }
@@ -1046,6 +1136,7 @@ private fun Reproduciendo(
               fontSize = 15.sp,
               modifier = Modifier
                 .clip(RoundedCornerShape(10.dp))
+                .resaltarFoco(RoundedCornerShape(10.dp))
                 .background(Color(0x33FFFFFF))
                 .clickable { cuentaAtras = null }
                 .padding(horizontal = 20.dp, vertical = 12.dp),
@@ -1064,7 +1155,7 @@ private fun Reproduciendo(
             "Reintentar",
             color = Realce,
             fontSize = 15.sp,
-            modifier = Modifier.clickable {
+            modifier = Modifier.resaltarFoco().clickable {
               fallo = ""
               reintentosDeCarga = 0
               val donde = if (porTuberia) desdeDeLaTuberia else reproductor.currentPosition / 1000.0
@@ -1075,7 +1166,7 @@ private fun Reproduciendo(
             "Volver",
             color = Realce,
             fontSize = 15.sp,
-            modifier = Modifier.clickable { salir() }.padding(12.dp),
+            modifier = Modifier.resaltarFoco().clickable { salir() }.padding(12.dp),
           )
         }
       }
@@ -1365,6 +1456,9 @@ private fun MenuDePistas(
   alCambiarRetardoSubs: (Int) -> Unit,
   alCerrar: () -> Unit,
 ) {
+  // En la tele el foco entra por la pista que suena; sin él, el mando no llega al menú.
+  val focoInicial = remember { FocusRequester() }
+  LaunchedEffect(Unit) { runCatching { focoInicial.requestFocus() } }
   Box(
     Modifier
       .fillMaxSize()
@@ -1395,6 +1489,8 @@ private fun MenuDePistas(
         Column(
           Modifier
             .fillMaxWidth()
+            .then(if (a.id == pistaAudioActual) Modifier.focusRequester(focoInicial) else Modifier)
+            .resaltarFoco()
             .clickable { alElegirAudio(a.id, a.compatible) }
             .padding(vertical = 9.dp),
         ) {
@@ -1424,6 +1520,7 @@ private fun MenuDePistas(
         fontSize = 14.sp,
         modifier = Modifier
           .fillMaxWidth()
+          .resaltarFoco()
           .clickable {
             reproductor.trackSelectionParameters = reproductor.trackSelectionParameters
               .buildUpon()
@@ -1440,6 +1537,7 @@ private fun MenuDePistas(
           fontSize = 14.sp,
           modifier = Modifier
             .fillMaxWidth()
+            .resaltarFoco()
             .clickable {
               reproductor.trackSelectionParameters = reproductor.trackSelectionParameters
                 .buildUpon()
@@ -1474,6 +1572,7 @@ private fun MenuDePistas(
             color = Texto,
             fontSize = 22.sp,
             modifier = Modifier
+              .resaltarFoco()
               .clickable { alCambiarRetardoSubs((retardoSubsMs - 100).coerceAtLeast(-10_000)) }
               .padding(horizontal = 14.dp, vertical = 6.dp),
           )
@@ -1487,6 +1586,7 @@ private fun MenuDePistas(
             color = Texto,
             fontSize = 22.sp,
             modifier = Modifier
+              .resaltarFoco()
               .clickable { alCambiarRetardoSubs((retardoSubsMs + 100).coerceAtMost(10_000)) }
               .padding(horizontal = 14.dp, vertical = 6.dp),
           )
@@ -1510,6 +1610,7 @@ private fun MenuDePistas(
           fontSize = 14.sp,
           modifier = Modifier
             .fillMaxWidth()
+            .resaltarFoco()
             .clickable { alElegirEncaje(e); alCerrar() }
             .padding(vertical = 9.dp),
         )
@@ -1535,6 +1636,7 @@ private fun MenuDePistas(
           fontSize = 14.sp,
           modifier = Modifier
             .fillMaxWidth()
+            .resaltarFoco()
             .clickable { alElegirCalidad(c) }
             .padding(vertical = 9.dp),
         )
@@ -1899,6 +2001,7 @@ private fun MenuLocal(
         fontSize = 14.sp,
         modifier = Modifier
           .fillMaxWidth()
+          .resaltarFoco()
           .clickable {
             reproductor.trackSelectionParameters = reproductor.trackSelectionParameters
               .buildUpon()
@@ -1915,6 +2018,7 @@ private fun MenuLocal(
           fontSize = 14.sp,
           modifier = Modifier
             .fillMaxWidth()
+            .resaltarFoco()
             .clickable {
               reproductor.trackSelectionParameters = reproductor.trackSelectionParameters
                 .buildUpon()
@@ -1940,6 +2044,7 @@ private fun MenuLocal(
           fontSize = 14.sp,
           modifier = Modifier
             .fillMaxWidth()
+            .resaltarFoco()
             .clickable { alElegirEncaje(e); alCerrar() }
             .padding(vertical = 9.dp),
         )
