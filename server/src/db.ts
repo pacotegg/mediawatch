@@ -393,6 +393,10 @@ anadirColumna('items', 'discart', 'TEXT');
 // Cuándo se revisaron sus imágenes en fanart.tv/TVDB, para no repetir la
 // comparación de idiomas (que baja previsualizaciones) en cada pasada.
 anadirColumna('items', 'arte_revisado', 'TEXT');
+// Cuántas cifras tiene el PIN (no el PIN): con eso la tele entra sola al
+// teclear la última, con un único intento. Se apunta al fijarlo y, en los
+// PIN de antes, la primera vez que se aciertan.
+anadirColumna('users', 'pin_len', 'INTEGER');
 // Cuándo se casó el reparto de este título con TMDb (fotos e ids de personas).
 anadirColumna('items', 'personas_revisadas', 'TEXT');
 // Segunda pasada de personas: el IMDb que da TMDb (para confirmar en TVDB) y el

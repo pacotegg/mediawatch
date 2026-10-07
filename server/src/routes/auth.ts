@@ -233,9 +233,12 @@ export default async function authRoutes(app: FastifyInstance) {
 
   app.get('/api/users', async (req) => {
     const users = db
-      .prepare('SELECT id, name, color, is_admin, pin IS NOT NULL AS has_pin, avatar IS NOT NULL AS has_avatar, kid_ratings FROM users ORDER BY id')
+      .prepare('SELECT id, name, color, is_admin, pin IS NOT NULL AS has_pin, pin_len, avatar IS NOT NULL AS has_avatar, kid_ratings FROM users ORDER BY id')
       .all() as any[];
+    const fuera = deFuera(req);
     for (const u of users) {
+      // La longitud del PIN solo dentro de casa: desde fuera facilitaría probarlo.
+      if (fuera || !u.has_pin) delete u.pin_len;
       if (typeof u.kid_ratings === 'string') {
         try { u.kid_ratings = JSON.parse(u.kid_ratings); } catch { u.kid_ratings = null; }
       }
@@ -245,7 +248,7 @@ export default async function authRoutes(app: FastifyInstance) {
      * que no lo pide seria ensenar la llave puesta: cualquiera que de con la
      * direccion entra con un clic.
      */
-    const visibles = deFuera(req) ? users.filter((u) => u.has_pin === 1) : users;
+    const visibles = fuera ? users.filter((u) => u.has_pin === 1) : users;
     return { users: visibles, setupNeeded: users.length === 0 };
   });
 
@@ -270,8 +273,8 @@ export default async function authRoutes(app: FastifyInstance) {
     const kidRatingsJson = esInfantil ? JSON.stringify(kidRatings) : null;
     try {
       const row = db
-        .prepare('INSERT INTO users (name, color, pin, is_admin, kid_ratings, created_at) VALUES (?,?,?,?,?,?) RETURNING id')
-        .get(name.trim(), color, pin ? hashPin(pin) : null, finalAdmin, kidRatingsJson, new Date().toISOString()) as { id: number };
+        .prepare('INSERT INTO users (name, color, pin, pin_len, is_admin, kid_ratings, created_at) VALUES (?,?,?,?,?,?,?) RETURNING id')
+        .get(name.trim(), color, pin ? hashPin(pin) : null, pin ? String(pin).length : null, finalAdmin, kidRatingsJson, new Date().toISOString()) as { id: number };
       return { id: row.id };
     } catch {
       return reply.code(409).send({ error: 'Ya existe un perfil con ese nombre' });
@@ -307,6 +310,7 @@ export default async function authRoutes(app: FastifyInstance) {
       return reply.code(401).send({ error: 'PIN incorrecto' });
     }
     olvidarFallos(req.ip);
+    if (user.pin && pin) db.prepare('UPDATE users SET pin_len = ? WHERE id = ?').run(String(pin).length, user.id);
 
     const token = randomBytes(32).toString('hex');
     db.prepare('INSERT INTO sessions (token, user_id, created_at) VALUES (?,?,?)').run(token, user.id, new Date().toISOString());
@@ -358,7 +362,7 @@ export default async function authRoutes(app: FastifyInstance) {
     }
 
     const nuevo = nuevoTexto ? hashPin(nuevoTexto) : null;
-    db.prepare('UPDATE users SET pin = ? WHERE id = ?').run(nuevo, id);
+    db.prepare('UPDATE users SET pin = ?, pin_len = ? WHERE id = ?').run(nuevo, nuevoTexto ? nuevoTexto.length : null, id);
 
     /*
      * Cambiar el PIN cierra las demas sesiones de ese perfil. Es lo que se
@@ -422,7 +426,7 @@ export default async function authRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: 'El PIN tiene que ser de seis cifras o más, solo números' });
       }
       const nuevoHash = pinStr.length > 0 ? hashPin(pinStr) : null;
-      db.prepare('UPDATE users SET pin = ? WHERE id = ?').run(nuevoHash, id);
+      db.prepare('UPDATE users SET pin = ?, pin_len = ? WHERE id = ?').run(nuevoHash, pinStr.length > 0 ? pinStr.length : null, id);
       const miToken = (req.headers.authorization ?? '').replace(/^Bearer /i, '') || req.cookies[COOKIE] || '';
       db.prepare('DELETE FROM sessions WHERE user_id = ? AND token != ?').run(id, miToken);
     }
@@ -571,6 +575,7 @@ export default async function authRoutes(app: FastifyInstance) {
       return reply.code(401).send({ error: 'PIN incorrecto' });
     }
     olvidarFallos(req.ip);
+    if (user.pin && pin) db.prepare('UPDATE users SET pin_len = ? WHERE id = ?').run(String(pin).length, user.id);
 
     entry.userId = user.id;
     db.prepare('INSERT INTO sessions (token, user_id, created_at) VALUES (?,?,?)').run(entry.token, user.id, new Date().toISOString());
