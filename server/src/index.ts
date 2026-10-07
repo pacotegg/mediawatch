@@ -21,6 +21,7 @@ import playRoutes from './routes/play.ts';
 import preferenceRoutes from './routes/preferences.ts';
 import subtitleRoutes from './routes/subtitles.ts';
 import { scanAllEnWorker, type ScanProgress } from './scanner/scan.ts';
+import { ultimaVersionApp } from './media/version-app.ts';
 
 /*
  * El proxy inverso es de fiar; nadie mas.
@@ -92,6 +93,7 @@ const ABIERTAS = new Set([
   'GET /api/auth/device/poll',
   'POST /api/auth/device/pin', // la tele manda el PIN del perfil antes de tener token; el handler exige red de casa y frena intentos
   'GET /api/qr.svg', // el QR de emparejamiento se pinta en esa misma pantalla
+  'GET /api/app/version', // la app avisa de versión nueva también antes de entrar
 ]);
 
 app.addHook('onRequest', async (req, reply) => {
@@ -398,6 +400,13 @@ app.get('/api/scan/stream', async (req, reply) => {
     reply.raw.end();
   }
 });
+
+/*
+ * La última versión de la app Android y sus novedades: la app lo pregunta al
+ * abrirse y, si es más nueva que la suya, avisa y lleva a instalar.html.
+ * Abierta: también se pregunta desde la pantalla de entrada.
+ */
+app.get('/api/app/version', async () => ultimaVersionApp() ?? { version: null, novedades: [] });
 
 app.get('/api/stats', async () => {
   return db
