@@ -3,7 +3,7 @@ import { createReadStream, existsSync, mkdirSync, unlinkSync, writeFileSync } fr
 import { extname, join } from 'node:path';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { toString } from 'qrcode';
-import { config, DATA_DIR } from '../config.ts';
+import { config, DATA_DIR, MODO_PORTABLE } from '../config.ts';
 import { db } from '../db.ts';
 import { formatoDeImagen } from '../scanner/tmdb.ts';
 
@@ -260,6 +260,9 @@ export default async function authRoutes(app: FastifyInstance) {
     if (pin && !/^\d{6,}$/.test(String(pin))) return reply.code(400).send({ error: 'El PIN tiene que ser de seis cifras o más, solo números' });
 
     const first = userCount() === 0;
+    // MediaWatch Server: el primer perfil es el administrador y quien llegue antes se queda
+    // con el servidor, asi que no puede ser un perfil sin PIN.
+    if (first && MODO_PORTABLE && !pin) return reply.code(400).send({ error: 'El administrador necesita un PIN de seis cifras o más' });
     const esInfantil = Array.isArray(kidRatings) && kidRatings.length > 0;
     if (!first) {
       const me = requireUser(req);
