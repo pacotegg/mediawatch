@@ -21,7 +21,7 @@ import sys
 import tempfile
 import time
 
-FFMPEG = r"C:\Users\HTPC\AppData\Local\Microsoft\WinGet\Links\ffmpeg.exe"
+FFMPEG = os.environ.get("MEDIAWATCH_FFMPEG") or r"C:\Users\HTPC\AppData\Local\Microsoft\WinGet\Links\ffmpeg.exe"
 
 # Whisper trabaja a 16 kHz mono; darle mas es tirar tiempo de decodificacion.
 TASA = 16000
