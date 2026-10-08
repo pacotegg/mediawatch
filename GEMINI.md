@@ -96,6 +96,14 @@ son obligatorios sin excepción, aunque parezca trivial:
   3. **Comprobar contra el dominio real**, no contra el disco: `curl -s https://<dominio>/instalar.html
      | grep MediaWatch-` debe dar el número nuevo, y el `.apk` debe responder 200 con el mismo
      tamaño que el asset de la release. Una release correcta no demuestra que el enlace lo sea.
+- **Depurar un cliente: mirar su registro ANTES de suponer.** Desde la 3.36 la app Android manda su
+  registro técnico a `POST /api/cliente/log` (exige sesión) y queda en texto plano en
+  `data/clientes/<id>-<usuario>/<plataforma>-<aparato>-<AAAA-MM-DD>.log` (14 días, 1 MiB por
+  fichero, 20 MB por usuario). Una línea por evento: arranque (versión, modelo, red, dirección),
+  peticiones que fallan o tardan, carga de la portada, fallos no capturados y por qué terminó la
+  ejecución anterior. Solo llega si esa instalación ha conectado una vez y tiene activado
+  «Enviar informes técnicos» (Ajustes). Si no hay fichero del usuario, la petición no llegó al
+  servidor: mirar entonces el log de Caddy (`C:\Caddy\logs\tvwatch.log`, agente `MediaWatch Android`).
 - **Mirar las skills y el historial antes de decir "no se puede".**
 - Estética: fluida por encima de bonita. Controles del reproductor a los 5 s; en pausa se quedan.
 - Las claves de API viven en `data/config.json` y **no se registran en logs**.

@@ -34,8 +34,17 @@ object Servidor {
     .readTimeout(700, TimeUnit.MILLISECONDS)
     .build()
 
+  private const val ESPERA_APRENDER_MS = 10 * 60_000L
+
+  /** Para preguntar quién es el servidor: algo más de paciencia que el sondeo de casa. */
+  private val consulta: OkHttpClient = OkHttpClient.Builder()
+    .connectTimeout(3, TimeUnit.SECONDS)
+    .readTimeout(4, TimeUnit.SECONDS)
+    .build()
+
   @Volatile private var elegido: String? = null
   @Volatile private var cuando = 0L
+  @Volatile private var ultimoAprendizaje = 0L
 
   /** La última que se sabe buena, sin comprobar nada. Vale para las imágenes. */
   fun baseCacheada(): String = elegido ?: Ajustes.servidor
@@ -62,12 +71,7 @@ object Servidor {
     val casa = Ajustes.servidor
     val fuera = Ajustes.servidorFuera
     if (fuera.isEmpty() || fuera == casa) {
-      if (Ajustes.servidorFuera.isEmpty() && responde(casa)) {
-        try {
-          val q = Api.quienEs()
-          if (q.publica.isNotEmpty()) Ajustes.servidorFuera = q.publica
-        } catch (_: Exception) { }
-      }
+      aprenderFuera(casa)
       return casa
     }
 
@@ -75,9 +79,45 @@ object Servidor {
     elegido?.let { if (ahora - cuando < VALIDEZ_MS) return it }
 
     val bueno = if (responde(casa)) casa else fuera
+    if (bueno != elegido) {
+      Registro.i("servidor", "se usa la dirección de ${if (bueno == casa) "casa" else "fuera"}: $bueno")
+    }
     elegido = bueno
     cuando = ahora
     return bueno
+  }
+
+  /**
+   * Pregunta al servidor cuál es su dirección de fuera, **sin pasar por `base()`**.
+   *
+   * Antes llamaba a `Api.quienEs()`, que pedía la dirección a `base()`, que volvía
+   * a preguntar... sin fin: cada nivel hacía otra petición y la app acababa
+   * cayéndose (08/10/2026, un betatester que solo había entrado por el dominio:
+   * el servidor solo da su dirección pública dentro de casa, así que nunca la
+   * aprendía y entraba en el bucle en cada llamada).
+   *
+   * Si el servidor no la da desde donde se está, no se insiste hasta pasados
+   * diez minutos.
+   */
+  private fun aprenderFuera(casa: String) {
+    if (casa.isEmpty() || Ajustes.servidorFuera.isNotEmpty()) return
+    val ahora = System.currentTimeMillis()
+    if (ahora - ultimoAprendizaje < ESPERA_APRENDER_MS) return
+    ultimoAprendizaje = ahora
+    try {
+      val cuerpo = consulta.newCall(Request.Builder().url("$casa/api/servidor").build()).execute().use {
+        if (it.isSuccessful) it.body?.string() else null
+      } ?: return
+      val q = Api.json.decodeFromString<QuienEs>(cuerpo)
+      if (q.publica.isNotEmpty()) {
+        Ajustes.servidorFuera = q.publica
+        Registro.i("servidor", "dirección de fuera aprendida: ${q.publica}")
+      } else {
+        Registro.i("servidor", "el servidor no da su dirección de fuera desde esta red; se vuelve a preguntar en 10 minutos")
+      }
+    } catch (e: Exception) {
+      Registro.w("servidor", "no se pudo preguntar la dirección de fuera: ${e.javaClass.simpleName}: ${e.message}")
+    }
   }
 
   /** Tras un fallo de red, que la próxima vez se vuelva a mirar. */

@@ -12,6 +12,11 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.36 — 08/10/2026
+- Arreglo de un fallo que dejaba la portada en blanco y cerraba la app al entrar solo desde fuera de casa con el dominio.
+- Si el servidor no responde, la portada lo dice con la dirección a la que intenta conectar y deja de esperar.
+- Informes técnicos opcionales (Ajustes): la app envía al servidor errores y tiempos de conexión, sin contraseñas ni lo que ves, para poder arreglar fallos.
+
 ## 3.35 — 08/10/2026
 - Selección limpia de subtítulos: desactivados por defecto; se eligen únicamente desde la ficha o en reproducción.
 - Soporte completo para subtítulos PGS con OCR y subtítulos externos/internos sincronizados.

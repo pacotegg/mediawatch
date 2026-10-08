@@ -719,6 +719,15 @@ Herramientas de la sesión
 
 ## 9. Estado actual, pendientes y descartes
 
+**Android 3.36 (08/10, `versionCode 39`)**: corrige una recursión sin fin entre `Servidor.base()` y
+`Api.quienEs()` que cerraba la app (SIGSEGV, reproducido en emulador) o la dejaba en el esqueleto a
+quien solo había entrado por el dominio desde fuera: el servidor solo da su dirección pública dentro de
+casa, así que `servidorFuera` no se aprendía nunca y cada llamada volvía a entrar en el bucle (un
+cliente hizo 15.876 sondeos en un día). Ahora se pregunta como mucho cada 10 min y sin pasar por
+`base()`. Además: tope de 25 s por llamada de texto, la portada dice a qué dirección conecta, y registro
+técnico enviado a `POST /api/cliente/log` (`routes/registro-cliente.ts`; sesión obligatoria; guarda en
+`data/clientes/<id>-<usuario>/`; 14 días, 1 MiB por fichero, 20 MB por usuario).
+
 **Estado a 08/10**: Android **3.35** (`versionCode 38`, release `v3.35`). `instalar.html` se quedó
 sirviendo la 3.33 durante 3.34 y 3.35 porque el APK solo se subió a la release de GitHub y no a
 `web/public` + `web/dist` ni se cambió el enlace; corregido y comprobado contra el dominio. Regla

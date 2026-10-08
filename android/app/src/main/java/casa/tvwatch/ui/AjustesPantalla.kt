@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import casa.tvwatch.datos.Ajustes
 import casa.tvwatch.datos.Calidad
+import casa.tvwatch.datos.Registro
 import casa.tvwatch.datos.Servidor
 
 @Composable
@@ -61,6 +62,7 @@ fun PantallaAjustes(
   var calidadDescarga by remember { mutableStateOf(Ajustes.calidadDescargaDefecto) }
 
   var modoAudio by remember { mutableStateOf(Ajustes.modoAudio) }
+  var informesTecnicos by remember { mutableStateOf(Ajustes.informesTecnicos) }
 
   // Diálogo selector genérico
   var dialogoOpciones by remember { mutableStateOf<DialogoConfig?>(null) }
@@ -283,6 +285,25 @@ fun PantallaAjustes(
           (if (enCasa) "Red de casa (local)" else "Conexión remota") + " · " + direccion,
           color = TextoSuave,
           fontSize = 14.sp,
+        )
+      }
+
+      Spacer(Modifier.height(10.dp))
+
+      FilaInterruptor(
+        titulo = "Enviar informes técnicos",
+        subtitulo = "Manda al servidor errores y tiempos de conexión para poder arreglar fallos. Sin contraseñas ni lo que ves.",
+        activo = informesTecnicos,
+        alCambiar = {
+          informesTecnicos = it
+          Ajustes.informesTecnicos = it
+        },
+      )
+      if (informesTecnicos) {
+        FilaBoton(
+          titulo = "Enviar el registro ahora",
+          detalle = "Por si algo falla y quieres que lo vea quien administra el servidor",
+          alPulsar = { Registro.enviarAhora() },
         )
       }
 

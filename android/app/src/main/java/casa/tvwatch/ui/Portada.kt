@@ -52,10 +52,14 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import casa.tvwatch.datos.Api
 import casa.tvwatch.datos.Biblioteca
 import casa.tvwatch.datos.Cache
+import casa.tvwatch.datos.Registro
+import casa.tvwatch.datos.Servidor
 import casa.tvwatch.datos.Titulo
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -88,15 +92,22 @@ fun PantallaPortada(
   LaunchedEffect(intento) {
     if (datos != null && intento == 0) return@LaunchedEffect
     fallo = ""
+    val t0 = System.currentTimeMillis()
+    Registro.i("portada", "cargando (intento $intento) · servidor=${Servidor.baseCacheada()} · red=${Registro.red()}")
     try {
       val p = withContext(Dispatchers.IO) { Api.portada() }
       val b = withContext(Dispatchers.IO) { Api.bibliotecas() }
       Cache.guardarPortada(p, b)
       datos = p
       bibliotecas = b
+      Registro.i("portada", "cargada en ${System.currentTimeMillis() - t0} ms")
     } catch (e: Api.SinSesion) {
       alPerderSesion()
-    } catch (e: Exception) {
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Throwable) {
+      // Throwable y no solo Exception: un fallo que no lo fuera dejaba el esqueleto para siempre.
+      Registro.e("portada", "no se pudo cargar tras ${System.currentTimeMillis() - t0} ms", e)
       if (datos == null) fallo = e.message ?: "No se pudo cargar."
     }
   }
@@ -138,7 +149,7 @@ fun PantallaPortada(
         }
       }
     }
-    d == null -> EsqueletoDePortada()
+    d == null -> CargandoPortada()
     else -> LazyColumn(
       Modifier.fillMaxSize().background(Fondo),
       contentPadding = PaddingValues(bottom = 30.dp),
@@ -147,6 +158,35 @@ fun PantallaPortada(
       item { AtajosDeBiblioteca(bibliotecas, alAbrirBiblioteca) }
       items(d.rows, key = { it.key }) { fila -> Fila(fila.title, fila.items, alAbrirFicha) }
     }
+  }
+}
+
+/**
+ * El esqueleto, con una línea que dice a qué dirección está conectando y cuánto
+ * lleva. Un esqueleto mudo no le dice nada a quien lo ve ni a quien le pregunta
+ * qué ve (08/10/2026).
+ */
+@Composable
+private fun CargandoPortada() {
+  var segundos by remember { mutableStateOf(0) }
+  LaunchedEffect(Unit) {
+    while (true) {
+      delay(1000)
+      segundos++
+    }
+  }
+  val direccion = Servidor.baseCacheada().removePrefix("https://").removePrefix("http://")
+  Box(Modifier.fillMaxSize()) {
+    EsqueletoDePortada()
+    Text(
+      if (segundos < 8) "Conectando con $direccion…" else "Está tardando más de lo normal ($segundos s) · $direccion",
+      color = TextoSuave,
+      fontSize = 13.sp,
+      textAlign = TextAlign.Center,
+      modifier = Modifier
+        .align(Alignment.BottomCenter)
+        .padding(horizontal = 24.dp, vertical = 32.dp),
+    )
   }
 }
 

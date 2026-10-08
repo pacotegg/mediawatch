@@ -18,6 +18,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import casa.tvwatch.datos.Api
 import casa.tvwatch.datos.Cache
+import casa.tvwatch.datos.Registro
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.material.icons.Icons
@@ -95,6 +96,7 @@ class Principal : AppCompatActivity() {
     super.onCreate(estado)
     enableEdgeToEdge()
     Ajustes.iniciar(this)
+    Registro.iniciar(this)
     /*
      * Chromecast se inicializa aquí, en onCreate, y no cuando se pinta el
      * botón: el SDK engancha la búsqueda de aparatos al ciclo de vida de la

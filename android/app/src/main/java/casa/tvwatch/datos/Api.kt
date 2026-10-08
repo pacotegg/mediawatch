@@ -50,36 +50,63 @@ object Api {
   }
 
   /** Hace la petición y devuelve el cuerpo, o explica en castellano qué pasó. */
+  /**
+   * Para las respuestas de texto (JSON), con tope por llamada. No vale para la
+   * misma instancia que las descargas y los vídeos, que tardan lo que tarden.
+   */
+  private val httpTexto: OkHttpClient = http.newBuilder().callTimeout(25, TimeUnit.SECONDS).build()
+
+  /** Pasado este tiempo no se empieza otro reintento: mejor decir que falla que dejar la pantalla esperando. */
+  private const val NO_REINTENTAR_DESDE_MS = 8_000L
+
   fun texto(ruta: String, cuerpo: String? = null): String {
+    // Sin servidor aún (primera apertura, pantalla de conexión): no es un fallo de red.
+    if (Ajustes.servidor.isEmpty()) throw FalloDeRed("Todavía no hay servidor configurado.")
     val maxIntentos = if (cuerpo == null) 3 else 1
     var ultimoError: Exception? = null
+    val inicio = System.nanoTime()
+    fun ms() = (System.nanoTime() - inicio) / 1_000_000
+    // En el registro solo la ruta: una búsqueda lleva lo que ha escrito la persona.
+    val que = ruta.substringBefore('?')
 
     for (intento in 1..maxIntentos) {
       val r = try {
-        http.newCall(peticion(ruta, cuerpo)).execute()
+        httpTexto.newCall(peticion(ruta, cuerpo)).execute()
       } catch (e: Exception) {
         ultimoError = e
-        if (intento < maxIntentos) {
+        if (intento < maxIntentos && ms() < NO_REINTENTAR_DESDE_MS) {
+          Registro.w("api", "$que intento $intento falló (${e.javaClass.simpleName}: ${e.message}) tras ${ms()} ms; se reintenta")
           try { Thread.sleep(1000) } catch (_: InterruptedException) { }
           continue
         }
         // Se ha caído tras los reintentos: que la próxima vez se vuelva a mirar por dónde se llega.
         Servidor.olvidar()
-        throw FalloDeRed("No se llega al servidor. ¿Está encendido el ordenador?")
+        val donde = Servidor.baseCacheada()
+        Registro.e("api", "$que sin respuesta tras $intento intento(s), ${ms()} ms: ${e.javaClass.simpleName}: ${e.message} · servidor=$donde · red=${Registro.red()}")
+        throw FalloDeRed("No se llega al servidor (${donde.removePrefix("https://").removePrefix("http://")}). ¿Está encendido el ordenador?")
       }
 
       r.use {
-        if (it.code == 401) throw SinSesion()
-        if (it.code in 502..504 && intento < maxIntentos) {
+        if (it.code == 401) {
+          Registro.w("api", "$que -> 401: la sesión ya no vale")
+          throw SinSesion()
+        }
+        if (it.code in 502..504 && intento < maxIntentos && ms() < NO_REINTENTAR_DESDE_MS) {
+          Registro.w("api", "$que -> ${it.code} en el intento $intento; se reintenta")
           try { Thread.sleep(1000) } catch (_: InterruptedException) { }
           return@use
         }
         val s = it.body?.string() ?: ""
-        if (!it.isSuccessful) throw FalloDeRed("El servidor respondió ${it.code}")
+        if (!it.isSuccessful) {
+          Registro.e("api", "$que -> ${it.code} en ${ms()} ms")
+          throw FalloDeRed("El servidor respondió ${it.code}")
+        }
+        if (ms() > 3_000) Registro.w("api", "$que tardó ${ms()} ms (intento $intento)")
         return s
       }
     }
     Servidor.olvidar()
+    Registro.e("api", "$que sin respuesta tras $maxIntentos intentos, ${ms()} ms")
     throw FalloDeRed(ultimoError?.message ?: "No se llega al servidor.")
   }
 

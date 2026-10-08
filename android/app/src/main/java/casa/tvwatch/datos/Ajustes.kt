@@ -104,6 +104,24 @@ object Ajustes {
     get() = prefs.getBoolean("descargasSoloWifi", true)
     set(v) = prefs.edit().putBoolean("descargasSoloWifi", v).apply()
 
+  /**
+   * Mandar al servidor el registro técnico de esta app (errores, tiempos de
+   * conexión y fallos). Sin tokens ni contraseñas, y sin lo que se ve. Encendido
+   * por defecto: es lo que permite saber por qué una instalación no conecta.
+   */
+  var informesTecnicos: Boolean
+    get() = prefs.getBoolean("informesTecnicos", true)
+    set(v) = prefs.edit().putBoolean("informesTecnicos", v).apply()
+
+  /** Identifica esta instalación en los registros. No es el token ni dice quién es la persona. */
+  val aparatoId: String
+    get() {
+      prefs.getString("aparatoId", null)?.let { return it }
+      val nuevo = java.util.UUID.randomUUID().toString().replace("-", "").take(12)
+      prefs.edit().putString("aparatoId", nuevo).apply()
+      return nuevo
+    }
+
   /** Perfil de descarga preferido ("preguntar", "original", "fhd", "tablet", "movil", "baja"). */
   var calidadDescargaDefecto: String
     get() = prefs.getString("calidadDescargaDefecto", "preguntar") ?: "preguntar"
