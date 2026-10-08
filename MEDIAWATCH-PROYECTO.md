@@ -140,7 +140,7 @@ C:\tvwatch
 | `artwork/personas/<id>.jpg` | Fotos de reparto bajadas de TMDb |
 | `cache/images/` | Miniaturas redimensionadas, clave = hash de ruta+mtime+tamaño+ancho (1,9 GB a 26/09 gracias a la purga semanal; eran 63.613 ficheros sin límite hasta el 21/09). Sin límite hasta el 21/09: purga semanal por antigüedad desde `media/images.ts` |
 | `trickplay/` | Tiras de fotogramas para la barra (126 MB a 26/09). Carpetas huérfanas (fichero ya retirado) se limpian solas cada semana desde `media/trickplay.ts` |
-| `copias/` | Copias de seguridad de la BD, una diaria, `VACUUM INTO` (consistente con WAL abierto), rotando a las 14 más recientes desde el 21/09 (`db.ts`) |
+| `copias/` | Copias de seguridad de la BD con `VACUUM INTO` (consistente con WAL abierto): una a los 60 s de cada arranque y otra cada 24 h de servidor encendido. Desde el 08/10/2026 se conserva la más reciente de cada uno de los últimos 7 días (UTC) y las 3 últimas (`rotacion-copias.ts`); antes eran «las 5 últimas» y con varios reinicios al día todas caían en el mismo día. Siguen en el mismo disco que la BD (`C:`): una segunda ubicación está pendiente |
 | `server.log`, `server.err`, `vigilante.log`, `completar-arte.log`, `completar-personas.log` | Registros. Desde el 08/10/2026 `server.log`/`server.err` llevan hora en cada línea y se rotan en cada arranque a `*.AAAAMMDD-HHMMSS` (5 copias): lo que hay en `server.err` es de ESTE arranque. Antes eran acumulativos y un `SyntaxError` viejo se tomó por un reinicio roto |
 
 Bibliotecas configuradas (todas en `E:\`): Películas, Animación (`Pelis Animacion`),
@@ -157,7 +157,7 @@ Node ejecuta `src/index.ts` directamente: **no hay paso de compilación**.
 |---|---|---|
 | `src/index.ts` | 261 | Arranque Fastify; CORS (el preflight **con `return`**); gancho global de autenticación (solo abiertas `/api/users`, `/api/auth/*`, `/api/qr.svg`); `trustProxy` acotado a localhost; `uncaughtException`/`unhandledRejection` capturados; escaneo automático cada 24 h y a los 20 s de arrancar; **mantenimiento semanal** (huérfanos de trickplay + caché de imágenes) y **copia de seguridad diaria** (21/09); sirve `web/dist` y `/tv/`; `CINETECA_LOG=1` registra peticiones; registra todas las rutas |
 | `src/config.ts` | 142 | Lee `data/config.json`; localiza ffmpeg/ffprobe/python por rutas absolutas (el entorno de logon no tiene PATH); `DATA_DIR` |
-| `src/db.ts` | 416 | Esquema y migraciones (`ALTER TABLE` idempotentes); `DatabaseSync` con `timeout: 10000` (CLI y servidor a la vez); `normalize()` (sin tildes); (21/09) `backupBaseDeDatos()` (`VACUUM INTO`, rota a 5), `optimizarBaseDeDatos()` (VACUUM+ANALYZE, bloqueante, solo a mano), `tamanoBaseDeDatos()` |
+| `src/db.ts` | 416 | Esquema y migraciones (`ALTER TABLE` idempotentes); `DatabaseSync` con `timeout: 10000` (CLI y servidor a la vez); `normalize()` (sin tildes); (21/09) `backupBaseDeDatos()` (`VACUUM INTO`, rota por días: ver `copias/`), `optimizarBaseDeDatos()` (VACUUM+ANALYZE, bloqueante, solo a mano), `tamanoBaseDeDatos()` |
 | `src/media/transcode.ts` | 323 | `planPlayback()`: directa / remux / transcodificar según `ClientCaps` (códecs, `maxHeight`, `maxHeightHevc`, `hevc10`, `maxKbps`); ffmpeg QSV (`vpp_qsv=format=nv12`, tonemap HDR), VBR con `-b:v/-maxrate/-bufsize` (ICQ ignora `-maxrate`), `+delay_moov` para AC3 en fMP4, downmix con canal central por índice (`c2`), modo noche (`acompressor`+`alimiter level=false`), `adelay`/`atrim` para desfases, sesiones con `sesion` (aparato) |
 | `src/media/hls.ts` | 355 | HLS VOD con escalera de calidades, segmentación exacta por GOP (`-g`/`-forced_idr`, h264_qsv ignora `-force_key_frames`), `surround=1` (AC3/DD+ copiados o DD+ 5.1 para Chromecast), caché de segmentos; (21/09) cada sesión guarda el `dispositivo` que la pidió y `cerrarSesionesDe()` corta las de un aparato — antes «parar» en Actividad no tocaba el ffmpeg de HLS |
 | `src/media/probe.ts` | 237 | ffprobe con caché por tamaño+fecha; `duracionFiable()` (descarta duraciones imposibles); detecta Atmos en `profile`; pistas de audio/subs; (21/09) el `UPDATE` del re-sondeo protege `video_codec`/`width`/`height` con `COALESCE`, no solo `hdr` — si ffprobe fallaba a mitad, borraba codec/resolución ya buenos |
@@ -740,6 +740,15 @@ desplaza, héroe sin rehacer el bloque, extras a pantalla completa, tráileres (
 carátulas y stream sin `statSync` sobre E: (bloqueos del bucle de ~15-50/día a 2 en 13 h),
 `Range` común, `/assets` inmutable. Ver memorias `resenas-y-trailers-tvwatch` y
 `gotchas-tvwatch` (07/10).
+
+**Bloqueos del hilo por `E:` (08/10)**: quedaban `existsSync`/`statSync` sobre la ruta de la
+película al iniciar cada reproducción (`play.ts` info/stream/extras y `probe.ts`). Ahora son
+`fs/promises`. `latido.log` tenía 11 bloqueos de 6,76–6,93 s (23/09–05/10), casi todos de tarde-noche;
+la causa NO está demostrada (el disco `E:` es un Toshiba N300 PRO de 12 TB en una caja USB que
+casi nunca llega a standby: 369 arranques de motor frente a 339 ciclos de encendido en 7.685 h).
+Si tras el cambio dejan de aparecer en `latido.log`, era eso. Referencias SMART guardadas en
+`data/smart-E-base-2026-10-08.txt` y `data/smart-internos-base-2026-10-08.txt` (ignoradas por git):
+repetir la lectura (smartctl, como administrador) y comparar `Start_Stop_Count`/`Load_Cycle_Count`.
 
 **Pendientes a 07/10**:
 - Probar en el móvil la ficha de la 3.29/3.30 (tráiler, reseñas de prensa, PIN automático):
