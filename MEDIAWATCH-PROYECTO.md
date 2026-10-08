@@ -22,7 +22,7 @@ tinyMediaManager en `E:\`, y la sirve a tres clientes:
 |---|---|---|---|
 | **Web** | `web/` | React 19 + Vite + Tailwind 4 + motion | Cualquier navegador; PWA instalable |
 | **Tele** | `tv/` | TypeScript plano + CSS plano, ES2016/iife | Samsung QN93A (Tizen 6.0 ≈ Chrome 76), reproductor nativo AVPlay |
-| **Android** | `android/` | Kotlin + Jetpack Compose + Media3/ExoPlayer + Cast SDK | Móvil (Android 8+, pensado para 13+). Versión actual **3.25** |
+| **Android** | `android/` | Kotlin + Jetpack Compose + Media3/ExoPlayer + Cast SDK | Móvil (Android 8+, pensado para 13+). Versión actual **3.35** |
 
 Nombres: empezó como **Cineteca** (04/09), se renombró a **TvWatch** (05/09) y a
 **Media Watch** (16/09). El código y el paquete Android siguen llamándose
@@ -652,6 +652,15 @@ Servidor / SQLite
 - Antes de "arreglar" una carrera reportada en código con `node:sqlite`
   (`DatabaseSync`, síncrono): comprobar si hay algún `await` real entre las dos
   operaciones. Sin él, no puede entrelazarse aunque lleguen casi a la vez.
+- `PRAGMA busy_timeout = 10000` y `synchronous = NORMAL` son obligatorios con `node:sqlite`:
+  por defecto `busy_timeout` es 0 y cualquier contención entre lecturas del cliente y escrituras
+  de escaneo o fondo lanza `SQLITE_BUSY: database is locked`. `synchronous = NORMAL` en WAL es
+  100% resistente a cuelgues y multiplica la velocidad de escritura frente a `FULL`.
+- En `scan.ts`, `person: INSERT ... ON CONFLICT(name) DO UPDATE SET thumb = COALESCE(people.thumb, excluded.thumb)`
+  protege las fotos oficiales de TMDb para que un reescaneo no las pise con fotos de `.actors` de TMM.
+- Subtítulos PGS (`hdmv_pgs_subtitle`): no transcodificar vídeo en TV; pasar por OCR en servidor
+  con `PgsToSrt` + Tesseract a WebVTT cacheado en `data/subtitles/${fileId}-${streamIndex}.vtt`
+  (10 s primera vez, 38 ms siguientes).
 
 Tele (Tizen / AVPlay)
 - Samsung no tiene Dolby Vision (usa HDR10/HDR10+); 2021 no decodifica DTS/TrueHD/FLAC.
@@ -660,6 +669,13 @@ Tele (Tizen / AVPlay)
 - Solo expone una pista de texto; audio sin idioma (los nombres los pone el servidor).
 - **El vídeo se pinta por debajo de la página**: `html`/`body`/reproductor transparentes.
 - AVPlay no dibuja subtítulos: la app los pinta; `setSilentSubtitle(true)` para apagar.
+  Dispara `onsubtitlechange` por su cuenta al arrancar si el contenedor trae `default: 1`
+  en pistas de subtítulo: silenciarlo explícitamente en `open()` con `setSilentSubtitle(true)`
+  para que los subtítulos comiencen desactivados.
+- `getTotalTrackInfo()` en Tizen devuelve `"unavailable"` o `"und"` en pistas sin etiquetar;
+  filtrarlo en `idioma()` para no mostrar `UNAVAILABLE` en la interfaz.
+- `cargarSubExterno` quitaba el prefijo `external-` pidiendo `12.vtt` en vez de `external-12.vtt`
+  → 400 mudo en el servidor. El endpoint ahora acepta ambos formatos.
 - CSP descarta estilos en línea; `crossorigin` y falta de `defer` dejan la pantalla negra.
 - App en segundo plano = todo `fetch` colgado (`document.visibilityState === 'hidden'`).
 - `<img>` no manda cabeceras: token en la URL. Sombras en 190 carátulas = 210 ms por tecla.
@@ -841,6 +857,23 @@ o un desfase tan grande que ninguna ventana cae donde toca.
 - **Marcas de tiempo por palabra** (`word_timestamps=True`): da el desfase con
   ±0,9 s tras tres intentos de afinarlo. No basta para corregir; **sobra para
   corroborar**. Ese es su sitio en la tercera puerta.
+
+### 9.1 Hitos de subtítulos PGS, robustez SQLite y fotos de reparto (07/10/2026)
+
+- **Subtítulos PGS en Web y Smart TV**: AVPlay y el navegador no soportan mapas de bits PGS nativamente sin transcodificar el vídeo. Implementado conversor bajo demanda con `PgsToSrt` + Tesseract (`spa`/`eng`) a WebVTT cacheado en `data/subtitles/${fileId}-${streamIndex}.vtt`. Servidos con renderizado nativo en DOM en tele y web sin tocar el stream de vídeo ni transcodificar. Preconvertidos y cacheados 33 subtítulos PGS de los 21 ficheros de la biblioteca.
+- **Ruta de subtítulos externos**: corregido bug donde la tele eliminaba el prefijo `external-` pidiendo solo el ID numérico (`/api/play/:fileId/subtitle/:id`), provocando 400 Bad Request; ahora el backend acepta ambos formatos (`external-12` y `12`).
+- **Subtítulos desactivados por defecto**: en Tizen se fuerza `setSilentSubtitle(true)` al arrancar para evitar que pistas marcadas como `default` en el MKV se activen solas. Eliminada selección global en ajustes; la pista se elige únicamente en la ficha o durante la reproducción.
+- **Robustez y optimización de índices SQLite**:
+  - Aplicados PRAGMAs obligatorios en `server/src/db.ts` (`journal_mode=WAL`, `synchronous=NORMAL`, `busy_timeout=10000`, `cache_size=-64000` [64 MB RAM], `mmap_size=268435456` [256 MB zero-copy], `temp_store=MEMORY`, `foreign_keys=ON`). Elimina bloqueos `SQLITE_BUSY: database is locked` ante lecturas y escrituras simultáneas del escáner y la API.
+  - Creados índices estratégicos:
+    - `idx_item_people_person`: indexa `item_people(person_id)` (94.458 filas). Reduce la consulta de películas de un actor de 2,560 ms a 0,006 ms (**426× más rápido**) y elimina el escaneo completo de la tabla de películas.
+    - `idx_items_added`: indexa `items(added_at DESC)`. Reduce el carrusel de novedades en `/api/home` de 1,302 ms a 0,015 ms (**86× más rápido**) y elimina ordenaciones temporales en disco/RAM.
+    - `idx_items_premiered`: indexa `items(premiered DESC)` para el carrusel de estrenos.
+    - `idx_item_genres_genre`: indexa `item_genres(genre_id)` (**2× más rápido** en títulos similares por género y filtros).
+    - `idx_sessions_user` y `idx_playbacks_item`: cubren claves foráneas sin índice previo.
+  - Ejecutado `ANALYZE` (56 registros en `sqlite_stat1`) para optimizar el planificador de consultas.
+- **Protección de fotos de actores TMDb**: corregido `server/src/scanner/scan.ts` con `COALESCE(people.thumb, excluded.thumb)` para blindar las fotos verificadas de TMDb frente a imágenes corruptas o genéricas de `.actors/` generadas por tinyMediaManager en los reescaneos.
+
 
 ## 10. Claves, credenciales y dónde viven
 

@@ -110,6 +110,9 @@ Leerlo antes de tocar esas zonas. Los que reaparecen más:
 - **AVPlay bloquea el decodificador si falla sin `stop()` y `close()`**: anula todos los eventos `keydown` del mando en Tizen.
 - **Navegación espacial D-pad**: restar la mitad del ancho da `desvío = 0` y el nodo más a la izquierda del DOM gana el empate; romperlo con `+ Math.abs(dx) * 0.1`.
 - **Google Cast HLS**: `-ss` siempre **antes** del `-i` en ffmpeg; si va después tarda decenas de segundos y expira el timeout de 40 s.
+- **Subtítulos externos en Tizen**: `cargarSubExterno` quitaba `external-` pidiendo `12.vtt` en vez de `external-12.vtt` → **400 mudo**. Aceptar ambos formatos en el servidor.
+- **`node:sqlite` sin `busy_timeout`**: arranca en 0 y falla con `SQLITE_BUSY: database is locked`. Siempre `PRAGMA busy_timeout = 10000;` y `synchronous = NORMAL`.
+- **Subtítulos PGS en TV**: AVPlay no lee mapas de bits; OCR bajo demanda en servidor con `PgsToSrt` + Tesseract a WebVTT cacheado en `data/subtitles/`.
 
 ## Dónde está el resto
 
@@ -121,7 +124,7 @@ Leerlo antes de tocar esas zonas. Los que reaparecen más:
 
 ## Git
 
-Releases con APK: 3.7, 3.8, 3.13, 3.17, 3.23, 3.25–3.34. Las versiones sin registro en `CHANGELOG.md`
+Releases con APK: 3.7, 3.8, 3.13, 3.17, 3.23, 3.25–3.35. Las versiones sin registro en `CHANGELOG.md`
 no tienen APK subido.
 
 Antes de cada push: `git status` y `git log origin/main..HEAD`. Puede haber commits ajenos en la
