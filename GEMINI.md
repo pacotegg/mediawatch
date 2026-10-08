@@ -86,6 +86,16 @@ son obligatorios sin excepción, aunque parezca trivial:
   cada versión; sin sección, no sale ventana.
 - **El APK no va a git** (`*.apk` está en `.gitignore` y el repo es público). Se sube como asset
   de una release de GitHub, con tag `v<ver>` apuntando al commit de esa versión.
+- **Publicar un APK son tres sitios, siempre; la release de GitHub sola NO basta.** Con 3.34 y 3.35
+  (08/10/2026) se hizo la release y `instalar.html` siguió ofreciendo la 3.33 sin que nadie lo
+  notara. Después de subir la release:
+  1. Copiar `MediaWatch-<ver>.apk` **y** `MediaWatch.apk` a `web/public/` (la fuente: Vite copia
+     `public/` a `dist/` en cada build) **y** a `web/dist/` (lo que sirve el servidor ya, sin rebuild).
+  2. Cambiar en `web/public/instalar.html` **y** en `web/dist/instalar.html` el `href` y el
+     «(vX.Y)» del botón. Es un fichero con git: la copia de `public` se commitea.
+  3. **Comprobar contra el dominio real**, no contra el disco: `curl -s https://<dominio>/instalar.html
+     | grep MediaWatch-` debe dar el número nuevo, y el `.apk` debe responder 200 con el mismo
+     tamaño que el asset de la release. Una release correcta no demuestra que el enlace lo sea.
 - **Mirar las skills y el historial antes de decir "no se puede".**
 - Estética: fluida por encima de bonita. Controles del reproductor a los 5 s; en pausa se quedan.
 - Las claves de API viven en `data/config.json` y **no se registran en logs**.
