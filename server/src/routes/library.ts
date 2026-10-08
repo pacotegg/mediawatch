@@ -279,8 +279,8 @@ export default async function libraryRoutes(app: FastifyInstance) {
 
     const genres = db.prepare('SELECT g.name FROM item_genres ig JOIN genres g ON g.id = ig.genre_id WHERE ig.item_id = ? ORDER BY g.name').all(id) as { name: string }[];
     const cast = db
-      .prepare(`SELECT p.id, p.name, ip.character, ip.role, p.thumb IS NOT NULL AS has_thumb
-                FROM item_people ip JOIN people p ON p.id = ip.person_id
+      .prepare(`SELECT p.id, p.name, ip.character, ip.role, (p.thumb IS NOT NULL OR pd.profile IS NOT NULL) AS has_thumb
+                FROM item_people ip JOIN people p ON p.id = ip.person_id LEFT JOIN people_details pd ON pd.person_id = p.id
                 WHERE ip.item_id = ? ORDER BY ip.role = 'actor' DESC, ip.ord IS NULL, ip.ord LIMIT 40`)
       .all(id) as any[];
 
@@ -776,8 +776,19 @@ export default async function libraryRoutes(app: FastifyInstance) {
   app.get('/api/people/:id/thumb', async (req, reply) => {
     const id = Number((req.params as { id: string }).id);
     const width = Number((req.query as { w?: string }).w ?? 160);
-    const row = db.prepare('SELECT thumb AS src FROM people WHERE id = ?').get(id) as { src: string | null } | undefined;
-    return serveArt(reply, row?.src ?? null, width);
+    const localArt = join(DATA_DIR, 'artwork', 'personas', `${id}.jpg`);
+    if (existsSync(localArt)) return serveArt(reply, localArt, width);
+    const row = db.prepare('SELECT p.thumb, pd.profile FROM people p LEFT JOIN people_details pd ON pd.person_id = p.id WHERE p.id = ?').get(id) as { thumb: string | null; profile: string | null } | undefined;
+    if (row?.profile && row.profile.startsWith('http')) {
+      try {
+        mkdirSync(join(DATA_DIR, 'artwork', 'personas'), { recursive: true });
+        const dest = await descargar(row.profile, localArt);
+        return serveArt(reply, dest, width);
+      } catch {
+        return reply.redirect(row.profile);
+      }
+    }
+    return serveArt(reply, row?.thumb ?? null, width);
   });
 
   /*

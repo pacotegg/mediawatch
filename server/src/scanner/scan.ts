@@ -178,7 +178,8 @@ function actorThumbs(dir: string): Map<string, string> {
   const map = new Map<string, string>();
   for (const f of listDir(join(dir, '.actors'))) {
     if (f.isDir) continue;
-    map.set(normalize(basename(f.name, extname(f.name)).replace(/_/g, ' ')), f.path);
+    const k = normalize(basename(f.name, extname(f.name)).replace(/_/g, ' '));
+    if (k) map.set(k, f.path);
   }
   return map;
 }
@@ -280,7 +281,7 @@ const stmt = {
   person: db.prepare(`INSERT INTO people (name, search_name, thumb) VALUES (?,?,?)
                       ON CONFLICT(name) DO UPDATE SET
                         search_name=excluded.search_name,
-                        thumb=COALESCE(excluded.thumb, people.thumb) RETURNING id`),
+                        thumb=COALESCE(people.thumb, excluded.thumb) RETURNING id`),
   linkPerson: db.prepare('INSERT OR REPLACE INTO item_people (item_id, person_id, role, character, ord) VALUES (?,?,?,?,?)'),
   clearPeople: db.prepare('DELETE FROM item_people WHERE item_id = ?'),
   library: db.prepare('INSERT INTO libraries (name, path, kind) VALUES (?,?,?) ON CONFLICT(path) DO UPDATE SET name=excluded.name, kind=excluded.kind RETURNING id'),
@@ -362,8 +363,9 @@ function saveGenresAndPeople(itemId: number, nfo: NfoData | null, thumbs: Map<st
     const key = `${p.name}|${p.role}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    const localThumb = thumbs.get(normalize(p.name));
-    const row = stmt.person.get(p.name, normalize(p.name), localThumb ?? null) as { id: number };
+    const k = normalize(p.name);
+    const localThumb = k ? thumbs.get(k) : null;
+    const row = stmt.person.get(p.name, k || null, localThumb ?? null) as { id: number };
     stmt.linkPerson.run(itemId, row.id, p.role, p.character ?? null, p.order ?? null);
   }
 }

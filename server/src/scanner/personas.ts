@@ -83,11 +83,17 @@ export async function completarPersonas(): Promise<void> {
         const creditos = await creditosDe(it.kind, it.tmdb_id);
         if (creditos.length === 0) estado.sinCredits++;
         const porNombre = new Map<string, Credito>();
-        for (const c of creditos) porNombre.set(normalize(c.name), c);
+        for (const c of creditos) {
+          const k1 = normalize(c.name);
+          if (k1) porNombre.set(k1, c);
+          const k2 = (c as any).original_name ? normalize((c as any).original_name) : '';
+          if (k2) porNombre.set(k2, c);
+        }
 
         const personas = gente.all(it.id) as { id: number; name: string; search_name: string | null; thumb: string | null }[];
         for (const p of personas) {
-          const c = porNombre.get(p.search_name ?? normalize(p.name));
+          const k = p.search_name || normalize(p.name);
+          const c = k ? porNombre.get(k) : null;
           if (!c) continue;
           const detalle = conDetalle.get(p.id) as { tmdb_id: number | null } | undefined;
           if (!detalle?.tmdb_id) {

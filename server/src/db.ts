@@ -27,6 +27,11 @@ db.function('rating_categoria', parseRatingCategoria);
 
 db.exec(`
 PRAGMA journal_mode = WAL;
+PRAGMA synchronous = NORMAL;
+PRAGMA busy_timeout = 10000;
+PRAGMA cache_size = -64000;
+PRAGMA mmap_size = 268435456;
+PRAGMA temp_store = MEMORY;
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS libraries (
@@ -78,6 +83,8 @@ CREATE INDEX IF NOT EXISTS idx_items_coleccion ON items(collection);
 -- de CPU sincrona por cada /api/home, 2,5 ms con el indice. Aqui el parcial si
 -- se usa: la subconsulta repite literalmente las dos condiciones.
 CREATE INDEX IF NOT EXISTS idx_items_tmdb ON items(tmdb_id) WHERE kind = 'movie' AND tmdb_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_items_added ON items(added_at DESC) WHERE added_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_items_premiered ON items(premiered DESC) WHERE premiered IS NOT NULL;
 
 -- Valoraciones de cada sitio, cada una con su escala. IMDb y TheMovieDb van
 -- sobre 10 y los tomatometros y Metacritic sobre 100: guardar el maximo evita
@@ -206,6 +213,7 @@ CREATE TABLE IF NOT EXISTS item_genres (
   genre_id INTEGER NOT NULL REFERENCES genres(id) ON DELETE CASCADE,
   PRIMARY KEY (item_id, genre_id)
 );
+CREATE INDEX IF NOT EXISTS idx_item_genres_genre ON item_genres(genre_id);
 
 CREATE TABLE IF NOT EXISTS people (
   id    INTEGER PRIMARY KEY,
@@ -233,6 +241,7 @@ CREATE TABLE IF NOT EXISTS item_people (
   ord       INTEGER,
   PRIMARY KEY (item_id, person_id, role)
 );
+CREATE INDEX IF NOT EXISTS idx_item_people_person ON item_people(person_id);
 
 CREATE TABLE IF NOT EXISTS users (
   id         INTEGER PRIMARY KEY,
@@ -248,6 +257,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   created_at TEXT NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+
 
 CREATE TABLE IF NOT EXISTS progress (
   user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -335,9 +346,10 @@ function prepararBusquedaDePersonas() {
 export function normalize(text: string): string {
   return text
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
+    .normalize('NFC')
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim();
 }
 
@@ -359,6 +371,7 @@ CREATE TABLE IF NOT EXISTS playbacks (
 );
 CREATE INDEX IF NOT EXISTS idx_playbacks_fecha ON playbacks(started_at);
 CREATE INDEX IF NOT EXISTS idx_playbacks_usuario ON playbacks(user_id, item_id, episode_id);
+CREATE INDEX IF NOT EXISTS idx_playbacks_item ON playbacks(item_id);
 
 CREATE TABLE IF NOT EXISTS descargas (
   id       INTEGER PRIMARY KEY,
