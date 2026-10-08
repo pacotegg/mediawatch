@@ -3,6 +3,7 @@ import { mkdirSync, readdirSync, statSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { Worker } from 'node:worker_threads';
 import { DATA_DIR } from './config.ts';
+import { copiasAConservar } from './rotacion-copias.ts';
 
 mkdirSync(DATA_DIR, { recursive: true });
 
@@ -492,8 +493,10 @@ const COPIAS_DIR = join(DATA_DIR, 'copias');
  *
  * No es un simple `copyFile`: la base va en modo WAL, así que el fichero
  * `.db` solo, sin el `-wal`, puede no tener los últimos cambios. `VACUUM INTO`
- * escribe una copia completa y coherente en un solo paso. Conserva las 14 más
- * recientes, al estilo de las copias rotadas de Plex.
+ * escribe una copia completa y coherente en un solo paso. Conserva la más
+ * reciente de cada uno de los últimos 7 días y las 3 últimas (ver
+ * `rotacion-copias.ts`: se copia en cada arranque, y «las N últimas» dejaba
+ * todas las copias en el mismo día).
  *
  * Sigue siendo síncrona y bloqueante —medido: ~466 ms sobre 168 MB—, así que
  * quien la llama en el servidor real usa `backupBaseDeDatosEnWorker()`, más
@@ -506,8 +509,9 @@ export function backupBaseDeDatos(): string {
   const destino = join(COPIAS_DIR, nombre);
   db.exec(`VACUUM INTO '${destino.replace(/'/g, "''")}'`);
 
-  const copias = readdirSync(COPIAS_DIR).filter((f) => f.startsWith('tvwatch-') && f.endsWith('.db')).sort();
-  while (copias.length > 5) unlinkSync(join(COPIAS_DIR, copias.shift()!));
+  const copias = readdirSync(COPIAS_DIR).filter((f) => f.startsWith('tvwatch-') && f.endsWith('.db'));
+  const quedan = copiasAConservar(copias);
+  for (const f of copias) if (!quedan.has(f)) unlinkSync(join(COPIAS_DIR, f));
 
   return destino;
 }
