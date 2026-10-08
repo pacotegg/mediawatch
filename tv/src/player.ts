@@ -250,6 +250,9 @@ export class Reproductor {
         p.open(url);
         p.setDisplayRect(0, 0, 1920, 1080);
         p.setDisplayMethod('PLAYER_DISPLAY_MODE_LETTER_BOX');
+        if (p.setSilentSubtitle) {
+          try { p.setSilentSubtitle(true); } catch {}
+        }
       } catch (e) {
         this.fallo = 'open: ' + motivo(e);
         this.cb.onError('No se pudo abrir el vídeo: ' + this.fallo);
@@ -295,7 +298,9 @@ export class Reproductor {
            */
           if (pistas) {
             if (pistas.audio > 0) this.elegirAudio(pistas.audio);
-            if (pistas.subtitulo >= 0) this.elegirSubtitulo(pistas.subtitulo);
+            this.elegirSubtitulo(pistas.subtitulo >= 0 ? pistas.subtitulo : -1);
+          } else {
+            this.elegirSubtitulo(-1);
           }
           if (desdeSegundos > desfaseDelFlujo + 1) this.irA(desdeSegundos);
           this.cb.onBuffer(false);

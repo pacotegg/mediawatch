@@ -665,6 +665,14 @@ body.rend-rapido .lamina img {
   letter-spacing: -0.5px;
 }
 
+.ficha-titulo-es {
+  margin: -4px 0 16px;
+  font-size: 25px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--texto);
+}
+
 /* Año, duración y estado en una sola línea, en negrita: es lo primero que se
    mira después del título. */
 .linea-datos {

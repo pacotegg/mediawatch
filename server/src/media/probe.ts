@@ -146,7 +146,7 @@ export async function probeFile(path: string): Promise<MediaInfo> {
       codec: s.codec_name ?? 'unknown',
       language: s.tags?.language,
       title: s.tags?.title,
-      forced: Boolean(s.disposition?.forced),
+      forced: Boolean(s.disposition?.forced || /forced|forzado/i.test(s.tags?.title ?? '')),
       textual: TEXT_SUB_CODECS.has(s.codec_name ?? ''),
     }));
 

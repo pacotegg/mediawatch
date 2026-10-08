@@ -1,7 +1,7 @@
 import { comenzar, nombreCliente } from '../media/historial.ts';
 import { audioEnvolvente, cerrarSesiones, cerrarSesionesDe, escalera, listaDeCalidad, listaMaestra, segmento, CALIDADES } from '../media/hls.ts';
 import { spawn } from 'node:child_process';
-import { createReadStream, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, mkdirSync, readFileSync, statSync, unlinkSync } from 'node:fs';
 import { stat as statAsync, writeFile } from 'node:fs/promises';
 import { parsearRango } from '../media/rango.ts';
 import { join } from 'node:path';
@@ -257,6 +257,74 @@ function salidaDeAudio(perfil: string | undefined): { codec: string; maxCanales:
 const SUBS_CACHE = join(DATA_DIR, 'subtitles');
 mkdirSync(SUBS_CACHE, { recursive: true });
 
+const ocrEnProgreso = new Map<string, Promise<string | null>>();
+
+async function extraerYOcrPgs(
+  videoPath: string,
+  streamIndex: number,
+  lang: string | undefined,
+  cachePath: string,
+): Promise<string | null> {
+  const clave = `${videoPath}:${streamIndex}`;
+  if (ocrEnProgreso.has(clave)) {
+    return ocrEnProgreso.get(clave)!;
+  }
+  const tarea = (async () => {
+    const tmpSup = join(SUBS_CACHE, `tmp_${Date.now()}_${streamIndex}.sup`);
+    const tmpSrt = join(SUBS_CACHE, `tmp_${Date.now()}_${streamIndex}.srt`);
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const proc = spawn(
+          config.ffmpeg,
+          ['-y', '-hide_banner', '-loglevel', 'error', '-i', videoPath, '-map', `0:${streamIndex}`, '-c:s', 'copy', tmpSup],
+          { windowsHide: true },
+        );
+        proc.on('error', reject);
+        proc.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`ffmpeg exit ${code}`))));
+      });
+
+      if (!existsSync(tmpSup) || statSync(tmpSup).size < 64) {
+        const vacio = 'WEBVTT\n\n';
+        await writeFile(cachePath, vacio, 'utf8').catch(() => {});
+        return vacio;
+      }
+
+      const ocrLang = lang === 'spa' || lang === 'es' || lang === 'esp' ? 'spa' : 'eng';
+      const dotnetExe = existsSync('C:\\Program Files\\dotnet\\dotnet.exe') ? 'C:\\Program Files\\dotnet\\dotnet.exe' : 'dotnet';
+      const pgsToSrtDll = 'C:\\scripts\\PgsToSrt\\PgsToSrt.dll';
+      const tessData = 'C:\\scripts\\PgsToSrt\\tessdata';
+
+      await new Promise<void>((resolve, reject) => {
+        const proc = spawn(
+          dotnetExe,
+          [pgsToSrtDll, '--input', tmpSup, '--output', tmpSrt, '--tesseractlanguage', ocrLang, '--tesseractdata', tessData],
+          { windowsHide: true },
+        );
+        proc.on('error', reject);
+        proc.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`PgsToSrt exit ${code}`))));
+      });
+
+      if (existsSync(tmpSrt)) {
+        const srtRaw = readFileSync(tmpSrt, 'utf8');
+        const vtt = srtToVtt(srtRaw);
+        await writeFile(cachePath, vtt, 'utf8').catch(() => {});
+        return vtt;
+      }
+      return null;
+    } catch (err) {
+      console.error('[subtitulos-pgs] fallo en OCR:', (err as Error).message);
+      return null;
+    } finally {
+      try { if (existsSync(tmpSup)) unlinkSync(tmpSup); } catch {}
+      try { if (existsSync(tmpSrt)) unlinkSync(tmpSrt); } catch {}
+      ocrEnProgreso.delete(clave);
+    }
+  })();
+
+  ocrEnProgreso.set(clave, tarea);
+  return tarea;
+}
+
 export default async function playRoutes(app: FastifyInstance) {
   app.get('/api/play/:fileId/info', async (req, reply) => {
     const fileId = Number((req.params as { fileId: string }).fileId);
@@ -306,21 +374,14 @@ export default async function playRoutes(app: FastifyInstance) {
         compatible: audioCompatible((req.query as { perfil?: string }).perfil, a.codec),
       })),
       subtitles: [
-        /*
-         * Un incrustado se omite si ya hay un externo del mismo idioma y del
-         * mismo tipo (forzado o no): antes se concatenaban sin más, y desde
-         * que se pueden extraer incrustados a `.srt` (24/09) eso significaba
-         * ver «Español» dos veces en el menú, sin forma de distinguirlos. El
-         * externo gana porque es el que se puede desajustar.
-         */
         ...info.subs
-          .filter((s) => s.textual)
-          .filter((s) => !external.some((e) => (e.language ?? null) === (s.language ?? null) && Boolean(e.forced) === s.forced))
+          .filter((s) => s.textual || s.codec === 'hdmv_pgs_subtitle')
           .map((s) => ({
             id: `embedded-${s.streamIndex}`,
             language: s.language,
             title: s.title,
             forced: s.forced,
+            codec: s.codec,
             source: 'embedded' as const,
           })),
         ...external.map((s) => ({
@@ -328,6 +389,7 @@ export default async function playRoutes(app: FastifyInstance) {
           language: s.language,
           title: s.external.split(/[\\/]/).pop(),
           forced: Boolean(s.forced),
+          codec: 'srt',
           source: 'external' as const,
         })),
       ],
@@ -711,11 +773,9 @@ export default async function playRoutes(app: FastifyInstance) {
     const ajuste = retardoMs / 1000 - desde;
     reply.header('Content-Type', 'text/vtt; charset=utf-8').header('Cache-Control', 'public, max-age=86400');
 
-    if (id.startsWith('external-')) {
-      // Sin el `file_id = ?`, adivinar el id (autoincremental y pequeño) de la
-      // pista de subtítulo externo de OTRO fichero la servía igual aunque el
-      // fileId de la URL fuera distinto.
-      const row = db.prepare('SELECT external FROM sub_tracks WHERE id = ? AND file_id = ?').get(Number(id.slice(9)), Number(fileId)) as { external: string } | undefined;
+    const externalId = id.startsWith('external-') ? Number(id.slice(9)) : /^\d+$/.test(id) ? Number(id) : null;
+    if (externalId !== null) {
+      const row = db.prepare('SELECT external FROM sub_tracks WHERE id = ? AND file_id = ?').get(externalId, Number(fileId)) as { external: string } | undefined;
       if (!row?.external) return reply.code(404).send('');
       const text = decodeText(readFileSync(row.external));
       if (row.external.toLowerCase().endsWith('.vtt')) return reply.send(desplazarVtt(text, ajuste));
@@ -739,6 +799,16 @@ export default async function playRoutes(app: FastifyInstance) {
       }
       const file = db.prepare('SELECT path FROM media_files WHERE id = ?').get(Number(fileId)) as { path: string } | undefined;
       if (!file) return reply.code(404).send('');
+
+      const info = await mediaInfo(Number(fileId));
+      const subInfo = info.subs.find((s) => s.streamIndex === streamIndex);
+
+      if (subInfo?.codec === 'hdmv_pgs_subtitle') {
+        const vtt = await extraerYOcrPgs(file.path, streamIndex, subInfo.language, cachePath);
+        if (!vtt) return reply.code(500).send('');
+        return reply.send(ajuste !== 0 ? desplazarVtt(vtt, ajuste) : vtt);
+      }
+
       const proc = spawn(
         config.ffmpeg,
         ['-hide_banner', '-loglevel', 'error', '-i', file.path, '-map', `0:${streamIndex}`, '-f', 'webvtt', 'pipe:1'],

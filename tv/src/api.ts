@@ -177,7 +177,7 @@ export type InfoReproduccion = {
   video: { codec: string; width: number; height: number; hdr?: string; profile?: string; fps: number } | null;
   plan: { mode: 'direct' | 'remux' | 'transcode'; reasons?: string[] };
   audio: { id: number; codec: string; language: string | null; channels: number | null; title?: string | null; default?: boolean; compatible?: boolean; atmos?: boolean }[];
-  subtitles: { id: string; language: string | null; title?: string | null; forced: boolean; source?: string }[];
+  subtitles: { id: string; language: string | null; title?: string | null; forced: boolean; source?: string; codec?: string }[];
 };
 
 type Saga = {
@@ -291,6 +291,13 @@ export const api = {
   /** Con `perfil`, el servidor marca que pistas puede decodificar esta tele. */
   pistas: (fileId: number) =>
     pedir<InfoReproduccion>('/api/play/' + fileId + '/info?perfil=' + PERFIL),
+  subtituloVtt: async (fileId: number, trackId: string, desde = 0, retardo = 0) => {
+    const t = token();
+    const url = servidor() + '/api/play/' + fileId + '/subtitle/' + trackId + '.vtt?desde=' + desde + '&retardo=' + retardo + (t ? '&token=' + t : '');
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('No se pudo descargar el subtítulo');
+    return await res.text();
+  },
   // Devuelve 202 con `{generating}` mientras el servidor la fabrica.
   // `solo=1`: mirar si ya está hecha, sin pedir que la fabrique. Generarla
   // mientras se ve la película deja al vídeo sin disco.
@@ -384,8 +391,12 @@ const IDIOMAS: Record<string, string> = {
   kor: 'Coreano', chi: 'Chino', rus: 'Ruso',
 };
 
-export const idioma = (codigo: string | null | undefined) =>
-  !codigo ? 'Desconocido' : IDIOMAS[codigo.toLowerCase()] || codigo.toUpperCase();
+export const idioma = (codigo: string | null | undefined) => {
+  if (!codigo) return 'Desconocido';
+  const c = codigo.toLowerCase().trim();
+  if (c === 'und' || c === 'unavailable' || c === 'unknown') return 'Desconocido';
+  return IDIOMAS[c] || codigo.toUpperCase();
+};
 
 /**
  * `raw=1` entrega el fichero original. AVPlay descodifica MKV, HEVC y AC3 por

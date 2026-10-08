@@ -98,9 +98,6 @@ function AudioTab() {
   const a = prefs.audio;
   return (
     <Panel title="Audio" subtitle="Se aplica al elegir pista y al transcodificar.">
-      <Field label="Idioma preferido" hint="Se selecciona sola esta pista si la película la tiene.">
-        <Select value={a.preferredLanguage} onChange={(preferredLanguage) => update('audio', { preferredLanguage })} options={LANGUAGES} />
-      </Field>
       <Field
         label="Mezcla de diálogos"
         hint="Al bajar un 5.1 a estéreo el canal central queda enterrado bajo música y efectos. «Diálogos» lo realza (+8 dB medidos); «Noche» además comprime las escenas fuertes para no despertar a nadie."
@@ -154,27 +151,7 @@ function SubtitlesTab() {
 
   return (
     <div className="space-y-5">
-      <Panel title="Subtítulos" subtitle="Selección automática y aspecto del texto.">
-        <Field label="Idioma preferido">
-          <Select value={s.preferredLanguage} onChange={(preferredLanguage) => update('subtitles', { preferredLanguage })} options={LANGUAGES} />
-        </Field>
-        <Field
-          label="Cuándo activarlos"
-          hint="«Si el audio está en otro idioma» los enciende solo cuando ves algo que no está en tu idioma preferido."
-        >
-          <Select
-            value={s.mode}
-            onChange={(mode) => update('subtitles', { mode })}
-            options={[
-              { value: 'auto', label: 'Si el audio está en otro idioma' },
-              { value: 'always', label: 'Siempre' },
-              { value: 'never', label: 'Nunca' },
-            ]}
-          />
-        </Field>
-        <Field label="Preferir forzados" hint="Solo rótulos y diálogo en otro idioma.">
-          <Toggle checked={s.preferForced} onChange={(preferForced) => update('subtitles', { preferForced })} />
-        </Field>
+      <Panel title="Subtítulos" subtitle="Aspecto del texto y tamaño.">
         <Field label="Tamaño del texto">
           <Slider value={s.size} min={60} max={220} step={10} suffix="%" onChange={(size) => update('subtitles', { size })} />
         </Field>

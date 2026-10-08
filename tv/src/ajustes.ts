@@ -15,10 +15,6 @@ export type Ajustes = {
   /** Claves del menú en el orden elegido; las que falten van al final. */
   ordenMenu: string[];
   ocultos: string[];
-  /** Codigo ISO de tres letras de la pista de audio que se elige al empezar. */
-  idiomaAudio: string;
-  /** Si hay una pista Atmos en otro idioma, ¿gana al idioma preferido? */
-  preferirAtmos: boolean;
   /** Tamaño de los subtítulos, en porcentaje del normal (42 px). */
   tamanoSubtitulos: number;
   /** Fondo tras el texto: 'sombra' basta casi siempre, 'caja' para cine ruidoso. */
@@ -66,8 +62,6 @@ const POR_DEFECTO: Ajustes = {
   saltoLargo: 60,
   ordenMenu: [],
   ocultos: [],
-  idiomaAudio: 'spa',
-  preferirAtmos: false,
   tamanoSubtitulos: 100,
   fondoSubtitulos: 'sombra',
   retardoSubtitulos: 0,
@@ -95,8 +89,6 @@ export function cargarAjustes(): Ajustes {
         saltoLargo: guardado.saltoLargo || POR_DEFECTO.saltoLargo,
         ordenMenu: recolocarAjustes(guardado.ordenMenu || []),
         ocultos: guardado.ocultos || [],
-        idiomaAudio: guardado.idiomaAudio || POR_DEFECTO.idiomaAudio,
-        preferirAtmos: guardado.preferirAtmos === true,
         tamanoSubtitulos: guardado.tamanoSubtitulos || POR_DEFECTO.tamanoSubtitulos,
         fondoSubtitulos: guardado.fondoSubtitulos === 'caja' ? 'caja' : 'sombra',
         retardoSubtitulos: guardado.retardoSubtitulos || 0,

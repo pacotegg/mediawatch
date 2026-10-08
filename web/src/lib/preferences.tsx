@@ -11,16 +11,12 @@ export type Preferences = {
     adaptativo: 'auto' | 'siempre' | 'nunca';
   };
   audio: {
-    preferredLanguage: string;
     downmixStereo: boolean;
     normalize: boolean;
     defaultVolume: number;
     mode: 'normal' | 'dialogue' | 'night';
   };
   subtitles: {
-    preferredLanguage: string;
-    mode: 'always' | 'auto' | 'never';
-    preferForced: boolean;
     size: number;
     color: string;
     background: 'none' | 'shadow' | 'box';
@@ -34,8 +30,8 @@ export type Preferences = {
 
 export const DEFAULTS: Preferences = {
   playback: { maxHeight: 0, resume: true, autoPlayNext: true, seekStep: 10, seekStepLarge: 60, adaptativo: 'auto' },
-  audio: { preferredLanguage: 'spa', downmixStereo: true, normalize: false, defaultVolume: 1, mode: 'normal' },
-  subtitles: { preferredLanguage: 'spa', mode: 'never', preferForced: false, size: 100, color: '#ffffff', background: 'shadow', offset: 0 },
+  audio: { downmixStereo: true, normalize: false, defaultVolume: 1, mode: 'normal' },
+  subtitles: { size: 100, color: '#ffffff', background: 'shadow', offset: 0 },
   interface: { reduceMotion: false, showWatched: true },
 };
 

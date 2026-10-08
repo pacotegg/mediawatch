@@ -1492,7 +1492,8 @@ async function pantallaFicha(id: number) {
     '<div class="ficha-cuerpo">' +
 
     (ficha.has_logo
-      ? '<img class="ficha-logo" src="' + imagen.logo(ficha.id, 480) + '" alt="">'
+      ? '<img class="ficha-logo" src="' + imagen.logo(ficha.id, 480) + '" alt="">' +
+        '<div class="ficha-titulo-es">' + esc(ficha.title) + '</div>'
       : '<h1 class="ficha-titulo">' + esc(ficha.title) + '</h1>') +
 
     (datos.length || vista
@@ -1689,8 +1690,24 @@ async function pantallaFicha(id: number) {
       if (i !== iAudio && i >= 3) return;
       html += chip(nombreAudio(a) + (a.compatible === false && i === iAudio ? ' \u00b7 se convertirá a DD+' : ''), i === iAudio);
     });
-    const sub = iSub >= 0 ? info.subtitles[iSub] : null;
-    html += chip(sub ? 'Subtítulos: ' + idioma(sub.language) + (sub.forced ? ' (forzados)' : '') : 'Sin subtítulos', !!sub);
+    const subsIncrustados = info.subtitles.filter((s) => s.source === 'embedded');
+    const subsExternos = info.subtitles.filter((s) => s.source === 'external');
+    const totalSubs = subsIncrustados.length + subsExternos.length;
+    const subTexto = (() => {
+      if (iSub === -1) {
+        return totalSubs > 0 ? 'Subtítulos: Desactivados (' + totalSubs + ' disp.)' : 'Sin subtítulos';
+      }
+      if (iSub >= 0 && subsIncrustados[iSub]) {
+        const s = subsIncrustados[iSub];
+        return 'Subtítulos: ' + (s.title ? s.title + ' (' + idioma(s.language) + ')' : idioma(s.language) + (s.forced ? ' (forzados)' : ''));
+      }
+      if (iSub <= -10 && subsExternos[-(iSub + 10)]) {
+        const s = subsExternos[-(iSub + 10)];
+        return 'Subtítulos (SRT): ' + (s.title ? s.title : idioma(s.language) + (s.forced ? ' (forzados)' : ''));
+      }
+      return 'Sin subtítulos';
+    })();
+    html += chip(subTexto, iSub !== -1);
     hueco.innerHTML = html;
   };
   if (fichero) api.pistas(fichero.id).then(pintarChipsDePistas).catch(() => undefined);
@@ -1916,16 +1933,10 @@ const esAtmos = (a: PistaInfo) => a.atmos === true || /atmos|joc/i.test(a.codec)
  */
 function pistaInicial(audios: PistaInfo[]): number {
   if (audios.length === 0) return 0;
-  const aj = ajustes();
-  const idioma = (aj.idiomaAudio || 'spa').toLowerCase();
-  const puntua = (a: PistaInfo) =>
-    (a.compatible === false ? -100 : 0) +
-    ((a.language || '').toLowerCase() === idioma ? 10 : 0) +
-    (esAtmos(a) ? (aj.preferirAtmos ? 20 : 5) : 0) +
-    (a.default ? 1 : 0);
-  let mejor = 0;
-  for (let i = 1; i < audios.length; i++) if (puntua(audios[i]) > puntua(audios[mejor])) mejor = i;
-  return mejor;
+  const def = audios.findIndex((a) => a.default && a.compatible !== false);
+  if (def >= 0) return def;
+  const comp = audios.findIndex((a) => a.compatible !== false);
+  return comp >= 0 ? comp : 0;
 }
 
 /** Pregunta antes de algo irreversible. «Volver» del mando cancela. */
@@ -1978,6 +1989,24 @@ async function menuPistas(fileId: number, tipo: 'audio' | 'subs', alCambiar?: (i
     seleccion.subtitulo = -1;
   }
 
+  const subsIncrustados = info.subtitles.filter((s) => s.source === 'embedded');
+  const subsExternos = info.subtitles.filter((s) => s.source === 'external');
+
+  const opcionesSubs: { i: number; texto: string }[] = [{ i: -1, texto: 'Desactivados' }];
+  subsIncrustados.forEach((sb, idx) => {
+    const pgsTag = sb.codec === 'hdmv_pgs_subtitle' ? ' [PGS]' : '';
+    opcionesSubs.push({
+      i: idx,
+      texto: 'Incrustado: ' + (sb.title ? sb.title + ' (' + idioma(sb.language) + ')' : idioma(sb.language) + (sb.forced ? ' (forzados)' : '')) + pgsTag,
+    });
+  });
+  subsExternos.forEach((sb, idx) => {
+    opcionesSubs.push({
+      i: -(10 + idx),
+      texto: 'Externo (SRT): ' + (sb.title ? sb.title : idioma(sb.language) + (sb.forced ? ' (forzados)' : '')),
+    });
+  });
+
   const opciones =
     tipo === 'audio'
       ? info.audio.map((a, i) => ({
@@ -1988,9 +2017,7 @@ async function menuPistas(fileId: number, tipo: 'audio' | 'subs', alCambiar?: (i
             (a.channels === 6 ? ' 5.1' : a.channels === 8 ? ' 7.1' : '') +
             (a.compatible === false ? ' · la tele no la lee: se convertirá a DD+' : ''),
         }))
-      : [{ i: -1, texto: 'Desactivados' }].concat(
-          info.subtitles.map((sb, i) => ({ i, texto: idioma(sb.language) + (sb.forced ? ' (forzados)' : '') })),
-        );
+      : opcionesSubs;
 
   const elegida = tipo === 'audio' ? seleccion.audio : seleccion.subtitulo;
 
@@ -2449,6 +2476,35 @@ function menuLista(
   });
 }
 
+type Cue = { start: number; end: number; text: string };
+
+function parseVttSimple(text: string): Cue[] {
+  const parseTime = (raw: string) => {
+    const parts = raw.trim().split(':');
+    const sec = Number((parts.pop() || '0').replace(',', '.'));
+    const min = Number(parts.pop() || '0');
+    const hr = Number(parts.pop() || '0');
+    return hr * 3600 + min * 60 + sec;
+  };
+  const cues: Cue[] = [];
+  const blocks = text.replace(/\r\n/g, '\n').split(/\n{2,}/);
+  for (const b of blocks) {
+    const lines = b.split('\n').filter(Boolean);
+    const arrowIdx = lines.findIndex((l) => l.includes('-->'));
+    if (arrowIdx < 0) continue;
+    const [startRaw, endRaw] = lines[arrowIdx].split('-->');
+    if (!startRaw || !endRaw) continue;
+    const body = lines.slice(arrowIdx + 1).join('\n').replace(/<[^>]*>/g, '').trim();
+    if (!body) continue;
+    cues.push({
+      start: parseTime(startRaw),
+      end: parseTime(endRaw.trim().split(' ')[0]),
+      text: body,
+    });
+  }
+  return cues;
+}
+
 /** Lo que el panel de controles deja libre a cada lado; igual que su `padding`. */
 const MARGEN_OSD = 110;
 /** Las miniaturas son de 160 px: en una pantalla de 1920 hay que agrandarlas. */
@@ -2540,6 +2596,21 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
   let ultimaInfo = 0;
   let audioOrdinal = 0;
   let subOrdinal = -1;
+  let cuesExternos: Cue[] = [];
+  let textoSubExtActual = '';
+  const cargarSubExterno = (trackId: string) => {
+    cuesExternos = [];
+    textoSubExtActual = '';
+    capaSubs.innerHTML = '';
+    reproductor.elegirSubtitulo(-1);
+    api.subtituloVtt(fileId, trackId)
+      .then((vtt) => {
+        cuesExternos = parseVttSimple(vtt);
+      })
+      .catch(() => {
+        cuesExternos = [];
+      });
+  };
   let audioId: number | undefined;
   let convertir = false;
   let modoAudio = aj.modoAudio;
@@ -2749,7 +2820,13 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
       lienzo,
       desdeSegundos,
       duracionFichero,
-      { audio: porTuberia() ? 0 : audioOrdinal, subtitulo: subOrdinal },
+      {
+        audio: porTuberia() ? 0 : audioOrdinal,
+        subtitulo:
+          subOrdinal >= 0 && infoServidor?.subtitles.filter((s) => s.source === 'embedded')[subOrdinal]?.codec !== 'hdmv_pgs_subtitle'
+            ? subOrdinal
+            : -1,
+      },
       desfase,
     );
     window.setTimeout(() => {
@@ -2818,6 +2895,17 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
         alPulsar(manejarTeclas);
       }
       if (destinoSalto === null) pintarTiempos(segundos);
+      if (cuesExternos.length > 0) {
+        const seg = segundos + (retardoSubs / 1000);
+        const activa = cuesExternos.find((c) => seg >= c.start && seg <= c.end);
+        const txt = activa ? activa.text : '';
+        if (txt !== textoSubExtActual) {
+          textoSubExtActual = txt;
+          capaSubs.innerHTML = txt
+            ? txt.split('\n').map((l) => '<span>' + esc(l) + '</span>').join('')
+            : '';
+        }
+      }
       const t = duracion || duracionFichero;
       revisarTramo(segundos);
 
@@ -2929,6 +3017,10 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     },
     onSubtitulo: (texto, milisegundos) => {
       window.clearTimeout(temporizadorSub);
+      if (subOrdinal < 0) {
+        capaSubs.innerHTML = '';
+        return;
+      }
       // AVPlay entrega el texto del MKV tal cual, con las etiquetas de estilo
       // de ASS y sus saltos de línea propios. Los subtítulos los pinta la
       // aplicación: el reproductor no dibuja ninguno, y por eso antes elegirlos
@@ -3253,50 +3345,36 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
 
   const menuSubtitulos = () => {
     const nativas = reproductor.pistasNativas('TEXT');
-    const delServidor = infoServidor ? infoServidor.subtitles.filter((x) => x.source !== 'external') : [];
+    const delServidor = infoServidor ? infoServidor.subtitles.filter((x) => x.source === 'embedded') : [];
+    const externos = infoServidor ? infoServidor.subtitles.filter((x) => x.source === 'external') : [];
 
-    /*
-     * Se ofrece lo que la tele puede elegir de verdad, no lo que trae el
-     * fichero. Medido en un MKV con cuatro pistas de subtítulos: AVPlay expone
-     * una sola. Listando las cuatro salían dos «Inglés» y dos «Español» y tres
-     * de ellas no hacían nada.
-     */
-    const cuantas = reproductor.usaNativo ? nativas.length : delServidor.length;
     const opciones: OpcionLista[] = [{ valor: -1, texto: 'Desactivados' }];
-    for (let n = 0; n < cuantas; n++) {
-      const info = delServidor[n];
-      const lang = (info && info.language) || (nativas[n] && nativas[n].idioma) || '';
-      // El título del propio fichero («Castellano [Completos] SRT») dice más
-      // que el idioma a secas, que se repite entre pistas.
+    delServidor.forEach((info, idx) => {
+      const lang = info.language || (nativas[idx] && nativas[idx].idioma) || '';
+      const pgsTag = info.codec === 'hdmv_pgs_subtitle' ? ' [PGS]' : '';
       opciones.push({
-        valor: n,
-        texto: (info && info.title) || idioma(lang) + (info && info.forced ? ' (forzados)' : ''),
+        valor: idx,
+        texto: info.title
+          ? 'Incrustado: ' + info.title + (lang ? ' (' + idioma(lang) + ')' : '') + pgsTag
+          : (idioma(lang) ? 'Incrustado: ' + idioma(lang) + (info.forced ? ' (forzados)' : '') : 'Incrustado ' + (idx + 1)) + pgsTag,
       });
-    }
-    if (delServidor.length > cuantas) {
+    });
+    externos.forEach((ext, idx) => {
       opciones.push({
-        valor: -4,
-        texto: 'La tele solo abre ' + cuantas + ' de las ' + delServidor.length + ' pistas del fichero',
-        nota: 'es cosa de AVPlay, no del servidor',
+        valor: -(10 + idx),
+        texto: 'Externo (SRT): ' + (ext.title ? ext.title : idioma(ext.language) + (ext.forced ? ' (forzados)' : '')),
       });
-    }
+    });
     opciones.push({
       valor: -3,
       texto: 'Ajustar el desfase…',
       nota: retardoSubs ? 'ahora: ' + (retardoSubs / 1000).toFixed(1) + ' s' : 'ahora: sincronizados',
     });
-    if (infoServidor && infoServidor.subtitles.some((x) => x.source === 'external')) {
-      opciones.push({ valor: -2, texto: 'Hay subtítulos en fichero aparte', nota: 'en la tele solo valen los que van dentro del vídeo' });
-    }
     menuLista('Subtítulos', opciones, subOrdinal, cambiarSubtitulo, () => alPulsar(manejarTeclas));
   };
 
   function cambiarSubtitulo(n: number) {
     if (n === -4) return;
-    if (n === -2) {
-      aviso('Los subtítulos en fichero aparte todavía no se pueden en la tele');
-      return;
-    }
     if (n === -3) {
       panelDesfase();
       return;
@@ -3305,8 +3383,38 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     seleccion.fileId = fileId;
     seleccion.subtitulo = n;
     capaSubs.innerHTML = '';
-    if (reproductor.elegirSubtitulo(n)) avisoRapido(n < 0 ? 'Subtítulos apagados' : 'Subtítulos puestos');
-    else aviso('No se pudo cambiar: ' + (reproductor.fallo || 'la tele lo rechaza'));
+    if (n === -1) {
+      cuesExternos = [];
+      textoSubExtActual = '';
+      reproductor.elegirSubtitulo(-1);
+      avisoRapido('Subtítulos apagados');
+    } else if (n <= -10 && infoServidor) {
+      const extTracks = infoServidor.subtitles.filter((s) => s.source === 'external');
+      const tr = extTracks[-(n + 10)];
+      if (tr) {
+        reproductor.elegirSubtitulo(-1);
+        cargarSubExterno(tr.id);
+        avisoRapido('Subtítulo externo puesto');
+      }
+    } else if (infoServidor) {
+      const delServidor = infoServidor.subtitles.filter((x) => x.source === 'embedded');
+      const tr = delServidor[n];
+      if (tr && tr.codec === 'hdmv_pgs_subtitle') {
+        reproductor.elegirSubtitulo(-1);
+        cargarSubExterno(tr.id);
+        avisoRapido('Subtítulo PGS puesto');
+      } else {
+        cuesExternos = [];
+        textoSubExtActual = '';
+        if (reproductor.elegirSubtitulo(n)) avisoRapido('Subtítulos puestos');
+        else if (tr) {
+          cargarSubExterno(tr.id);
+          avisoRapido('Subtítulos puestos (servidor)');
+        } else {
+          aviso('No se pudo cambiar: ' + (reproductor.fallo || 'la tele lo rechaza'));
+        }
+      }
+    }
   }
 
   /**
@@ -3481,6 +3589,17 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
       }
       construirBotones();
       pintarCapitulos();
+      if (subOrdinal <= -10) {
+        const extTracks = info.subtitles.filter((s) => s.source === 'external');
+        const tr = extTracks[-(subOrdinal + 10)];
+        if (tr) cargarSubExterno(tr.id);
+      } else if (subOrdinal >= 0) {
+        const delServidor = info.subtitles.filter((s) => s.source === 'embedded');
+        const tr = delServidor[subOrdinal];
+        if (tr && tr.codec === 'hdmv_pgs_subtitle') {
+          cargarSubExterno(tr.id);
+        }
+      }
       abrirFlujo(desde);
     })
     .catch(() => {
@@ -3546,16 +3665,6 @@ function pantallaAjustes() {
       elecciones('horaDeFin', [{ valor: 'si', texto: 'Termina a las…' }, { valor: 'no', texto: 'Solo lo que queda' }], a.horaDeFin ? 'si' : 'no') +
       elecciones('saltoCorto', [10, 15, 30].map(function (n: number) { return { valor: n, texto: 'Atrás ' + n + ' s' }; }), a.saltoCorto) +
       elecciones('saltoLargo', [30, 60, 120].map(function (n: number) { return { valor: n, texto: 'Adelante ' + n + ' s' }; }), a.saltoLargo),
-    ) +
-
-    grupo('Audio', 'Qué pista se pone al empezar. Una pista Dolby Atmos va intacta a la barra; solo se convierte lo que la tele no lee (DTS, TrueHD, FLAC).',
-      elecciones('idiomaAudio', [
-        { valor: 'spa', texto: 'Español' }, { valor: 'eng', texto: 'Inglés' }, { valor: 'cat', texto: 'Catalán' },
-        { valor: 'fre', texto: 'Francés' }, { valor: 'ger', texto: 'Alemán' }, { valor: 'jpn', texto: 'Japonés' },
-      ], a.idiomaAudio) +
-      elecciones('preferirAtmos', [
-        { valor: 'no', texto: 'Idioma primero' }, { valor: 'si', texto: 'Atmos aunque sea en otro idioma' },
-      ], a.preferirAtmos ? 'si' : 'no'),
     ) +
 
     grupo('Subtítulos', 'Los pinta la aplicación a partir de los que van dentro del vídeo: nunca se queman.',
@@ -3649,8 +3758,6 @@ function pantallaAjustes() {
       else if (campo === 'saltoLargo') guardarAjustes({ saltoLargo: Number(valor) });
       else if (campo === 'salvaMenu') guardarAjustes({ salvaMenu: Number(valor) });
       else if (campo === 'salvaPausa') guardarAjustes({ salvaPausa: Number(valor) });
-      else if (campo === 'idiomaAudio') guardarAjustes({ idiomaAudio: String(valor) });
-      else if (campo === 'preferirAtmos') guardarAjustes({ preferirAtmos: valor === 'si' });
       else if (campo === 'tamanoSubtitulos') guardarAjustes({ tamanoSubtitulos: Number(valor) });
       else if (campo === 'fondoSubtitulos') guardarAjustes({ fondoSubtitulos: valor === 'caja' ? 'caja' : 'sombra' });
       else if (campo === 'modoAudio') guardarAjustes({ modoAudio: valor as 'normal' | 'night' | 'dialogue' });

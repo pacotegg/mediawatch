@@ -208,40 +208,11 @@ export default function Player() {
   const virtual = (isTimeshift ? offset : 0) + current;
   const duration = info?.duration ?? 0;
 
-  // Preferred language wins over the file's own default flag, which is often
-  // just whatever the release group happened to set.
+  // Arrancar con la pista marcada por defecto o la primera; subtítulos apagados salvo elección manual.
   useEffect(() => {
     if (!info || audioTrack !== null) return;
-    const preferred = info.audio.find((a) => a.language === prefs.audio.preferredLanguage);
-    setAudioTrack(preferred?.id ?? info.audio.find((a) => a.default)?.id ?? info.audio[0]?.id ?? 0);
-  }, [info, audioTrack, prefs.audio.preferredLanguage]);
-
-  useEffect(() => {
-    if (!info || autoSubApplied || audioTrack === null) return;
-    setAutoSubApplied(true);
-
-    const mode = prefs.subtitles.mode;
-    if (mode === 'never') return;
-
-    const spokenLanguage = info.audio.find((a) => a.id === audioTrack)?.language;
-    const audioIsPreferred = spokenLanguage === prefs.audio.preferredLanguage;
-    const wanted = info.subtitles.filter((s) => s.language === prefs.subtitles.preferredLanguage);
-    const forcedSub = wanted.find((s) => s.forced);
-    const completeSub = wanted.find((s) => !s.forced) ?? wanted[0];
-
-    if (mode === 'auto') {
-      if (audioIsPreferred) {
-        // En idioma preferido: SOLO activar si hay pista forzada; si no, nada
-        if (forcedSub) setSubtitle(forcedSub.id);
-      } else {
-        // En idioma extranjero: activar completos en el idioma preferido
-        if (completeSub) setSubtitle(completeSub.id);
-      }
-    } else if (mode === 'always') {
-      const pick = prefs.subtitles.preferForced ? (forcedSub ?? completeSub) : (completeSub ?? forcedSub);
-      if (pick) setSubtitle(pick.id);
-    }
-  }, [info, audioTrack, autoSubApplied, prefs.audio.preferredLanguage, prefs.subtitles]);
+    setAudioTrack(info.audio.find((a) => a.default)?.id ?? info.audio[0]?.id ?? 0);
+  }, [info, audioTrack]);
 
   const src =
     info && audioTrack !== null
