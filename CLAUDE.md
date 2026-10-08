@@ -142,8 +142,11 @@ Leerlo antes de tocar esas zonas. Los que reaparecen más:
 
 ## Git
 
-Releases con APK: 3.7, 3.8, 3.13, 3.17, 3.23, 3.25–3.35. Las versiones sin registro en `CHANGELOG.md`
+Releases con APK: 3.7, 3.8, 3.13, 3.17, 3.23, 3.25–3.36. Las versiones sin registro en `CHANGELOG.md`
 no tienen APK subido.
+
+**Plan abierto: app para teles LG (webOS)** → `PLAN-LG-WEBOS.md` (no empezado; valoración, hechos verificados
+de LG, fases y preguntas abiertas). «Ver en la tele» hoy solo tiene receptor en la app de Tizen (Samsung).
 
 Antes de cada push: `git status` y `git log origin/main..HEAD`. Puede haber commits ajenos en la
 rama local, y un push los sube (`bb662a7` se subió sin pedirse). Solo se empuja lo de la tarea.
