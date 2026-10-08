@@ -24,6 +24,14 @@ export type Proposal = {
   backdropUrl: string | null;
   logoUrl: string | null;
   genres: string[];
+  /** Solo en la ficha completa (`details`), no en los resultados de busqueda. */
+  certificacion?: string | null;
+  imdbId?: string | null;
+  runtime?: number | null;
+  tagline?: string | null;
+  coleccion?: string | null;
+  estreno?: string | null;
+  votos?: number | null;
 };
 
 export type Candidate = {
@@ -40,6 +48,10 @@ export type Candidate = {
 };
 
 export class TmdbError extends Error {}
+
+/** Para los modulos que piden a TMDb algo que aqui no tiene funcion propia. */
+export const tmdbGet = <T>(path: string, params: Record<string, string> = {}) => tmdb<T>(path, params);
+export { details as detallesDe, IMAGES as TMDB_IMAGENES, ARTWORK_DIR as DIR_ARTE };
 
 async function tmdb<T>(path: string, params: Record<string, string> = {}): Promise<T> {
   if (!config.tmdbApiKey) throw new TmdbError('Falta la clave de API de TMDb');
@@ -82,14 +94,49 @@ function toProposal(raw: any, kind: 'movie' | 'show'): Proposal {
     backdropUrl: imageUrl(raw.backdrop_path),
     logoUrl: preferred ? imageUrl(preferred.file_path) : null,
     genres: (raw.genres ?? []).map((g: any) => g.name),
+    certificacion: certificacionDe(raw, kind),
+    imdbId: raw.external_ids?.imdb_id || raw.imdb_id || null,
+    runtime: raw.runtime ?? raw.episode_run_time?.[0] ?? null,
+    tagline: raw.tagline || null,
+    coleccion: raw.belongs_to_collection?.name ?? null,
+    estreno: date || null,
+    votos: typeof raw.vote_count === 'number' ? raw.vote_count : null,
   };
+}
+
+/**
+ * Clasificacion por edades del pais del idioma configurado (es-ES -> ES), en la
+ * forma `ES:12` que entiende `parseRatingCategoria`. `null` si TMDb no la trae
+ * para ese pais: entonces se avisa al administrador, no se adivina.
+ *
+ * Forma de la respuesta segun la documentacion de TMDb (no comprobada contra la
+ * API real desde aqui): peliculas `release_dates.results[].release_dates[].certification`,
+ * series `content_ratings.results[].rating`.
+ */
+const EQUIVALENCIA_EDAD: Record<string, string> = {
+  tp: 'TP', a: 'TP', apta: 'TP', '0': 'TP', '0+': 'TP', '3': 'TP', '4': 'TP',
+  '7': '7', '10': '7', '12': '12', '13': '12', '14': '16', '16': '16', '18': '18', '+18': '18',
+};
+
+export function certificacionDe(raw: any, kind: 'movie' | 'show', pais = config.tmdbLanguage.split('-')[1] ?? 'ES'): string | null {
+  let crudo = '';
+  if (kind === 'movie') {
+    const fechas = (raw?.release_dates?.results ?? []).find((r: any) => r.iso_3166_1 === pais)?.release_dates ?? [];
+    // Estreno en cines (3) antes que cualquier otro tipo.
+    const conCert = fechas.filter((d: any) => String(d.certification ?? '').trim() !== '');
+    crudo = String((conCert.find((d: any) => d.type === 3) ?? conCert[0])?.certification ?? '');
+  } else {
+    crudo = String((raw?.content_ratings?.results ?? []).find((r: any) => r.iso_3166_1 === pais)?.rating ?? '');
+  }
+  const cat = EQUIVALENCIA_EDAD[crudo.trim().toLowerCase()];
+  return cat ? `${pais}:${cat}` : null;
 }
 
 const endpoint = (kind: 'movie' | 'show') => (kind === 'movie' ? 'movie' : 'tv');
 
 async function details(tmdbId: number, kind: 'movie' | 'show'): Promise<Proposal> {
   const raw = await tmdb<any>(`/${endpoint(kind)}/${tmdbId}`, {
-    append_to_response: 'images',
+    append_to_response: `images,external_ids,${kind === 'movie' ? 'release_dates' : 'content_ratings'}`,
     include_image_language: `${config.tmdbLanguage.slice(0, 2)},en,null`,
   });
   return toProposal(raw, kind);
@@ -594,6 +641,12 @@ export type ApplyRequest = {
   kind: 'movie' | 'show';
   fields: ('poster' | 'fanart' | 'logo' | 'plot' | 'rating' | 'genres')[];
   overwrite?: boolean;
+  /**
+   * Instalacion sin .nfo: ademas de rellenar huecos, TMDb pasa a ser la
+   * identidad del titulo (nombre, ano, clasificacion...) y se marca con
+   * `meta_origen = 'tmdb'` para que el escaneo no lo borre.
+   */
+  identidad?: boolean;
 };
 
 /** Writes only the requested fields, and only into gaps unless `overwrite` is set. */
@@ -632,6 +685,23 @@ export async function applyProposal(request: ApplyRequest) {
   if (updates.poster || updates.fanart || updates.clearlogo) updates.arte_actualizado = new Date().toISOString();
 
   updates.tmdb_id = String(request.tmdbId);
+
+  if (request.identidad) {
+    if (proposal.title) {
+      updates.title = proposal.title;
+      updates.search_title = normalize(proposal.title);
+    }
+    if (proposal.year != null) updates.year = proposal.year;
+    if (proposal.originalTitle) updates.original_title = proposal.originalTitle;
+    if (proposal.votos != null) updates.votes = proposal.votos;
+    if (proposal.tagline) updates.tagline = proposal.tagline;
+    if (proposal.runtime) updates.runtime = proposal.runtime;
+    if (proposal.imdbId) updates.imdb_id = proposal.imdbId;
+    if (proposal.estreno) updates.premiered = proposal.estreno;
+    if (proposal.coleccion) updates.collection = proposal.coleccion;
+    if (proposal.certificacion) updates.mpaa = proposal.certificacion;
+    updates.meta_origen = 'tmdb';
+  }
 
   const keys = Object.keys(updates);
   if (keys.length > 0) {

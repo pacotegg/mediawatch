@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { readFileSync } from 'node:fs';
-import { config } from '../config.ts';
+import { config, MODO_PORTABLE } from '../config.ts';
 import { BUZON, ficheroDelBuzon, loDelBuzon } from '../media/buzon.ts';
 import { requireUser } from './auth.ts';
 import { applyProposal, buildCandidates, candidateForItem, formatoDeImagen, imagenesDe, missingCount, ponerArte, ponerArteDeDatos, search, soltarArte, TmdbError, type Candidate, type Papel } from '../scanner/tmdb.ts';
@@ -97,7 +97,7 @@ export default async function enrichRoutes(app: FastifyInstance) {
     if (!body?.itemId || !body?.tmdbId) return reply.code(400).send({ error: 'Faltan datos de la propuesta' });
 
     try {
-      const result = await applyProposal(body);
+      const result = await applyProposal({ ...body, identidad: MODO_PORTABLE });
       job.candidates = job.candidates.filter((c) => c.itemId !== body.itemId);
       return result;
     } catch (err) {

@@ -288,6 +288,7 @@ const stmt = {
   genre: db.prepare('INSERT INTO genres (name) VALUES (?) ON CONFLICT(name) DO UPDATE SET name=excluded.name RETURNING id'),
   linkGenre: db.prepare('INSERT OR IGNORE INTO item_genres (item_id, genre_id) VALUES (?,?)'),
   clearGenres: db.prepare('DELETE FROM item_genres WHERE item_id = ?'),
+  episodioTmdb: db.prepare("SELECT id FROM episodes WHERE show_id = ? AND season = ? AND episode = ? AND meta_origen = 'tmdb'"),
   metaOrigen: db.prepare('SELECT meta_origen FROM items WHERE id = ?'),
   imdbGeneros: db.prepare('SELECT generos FROM imdb_generos WHERE imdb_id = ?'),
   clearRatings: db.prepare("DELETE FROM item_ratings WHERE item_id = ? AND origen = 'nfo'"),
@@ -595,7 +596,10 @@ function scanShowFolder(libId: number, dir: string, files: Entry[], now: string)
       const meta = fileMeta(video.path, epNfo);
       if (meta.added && (!latestAdded || meta.added > latestAdded)) latestAdded = meta.added;
 
-      const ep = stmt.upsertEpisode.get(
+      // Episodio ya rellenado desde TMDb y sin .nfo: titulo, sinopsis y miniatura se quedan.
+      const yaDeTmdb = epNfo ? undefined
+        : stmt.episodioTmdb.get(item.id, nums.season, nums.episode) as { id: number } | undefined;
+      const ep = yaDeTmdb ?? stmt.upsertEpisode.get(
         item.id, epNfo?.season ?? nums.season, epNfo?.episode ?? nums.episode,
         // Tambien al titulo del .nfo: los de «Un siglo de Ciencia Ficcion» los
         // genero tinyMediaManager desde el nombre del fichero, asi que traen

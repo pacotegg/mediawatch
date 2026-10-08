@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, readdirSync, statSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { Worker } from 'node:worker_threads';
-import { DATA_DIR } from './config.ts';
+import { DATA_DIR, MODO_PORTABLE } from './config.ts';
 import { copiasAConservar } from './rotacion-copias.ts';
 
 mkdirSync(DATA_DIR, { recursive: true });
@@ -13,7 +13,9 @@ mkdirSync(DATA_DIR, { recursive: true });
 export const db = new DatabaseSync(join(DATA_DIR, 'tvwatch.db'), { timeout: 10_000 });
 
 export function parseRatingCategoria(mpaa: string | null, libraryId: number): string {
-  if (libraryId === 3 || libraryId === 9) return 'TP';
+  // Bibliotecas 3 y 9 = «Peques» y «Series Peques» del servidor original. En una instalacion
+  // nueva esos ids son bibliotecas cualquiera.
+  if (!MODO_PORTABLE && (libraryId === 3 || libraryId === 9)) return 'TP';
   if (!mpaa) return '18';
   const m = mpaa.toUpperCase();
   if (m.includes('18') || m.includes('NC-17') || m.includes('R ') || m.endsWith(' R') || m.includes('TV-MA')) return '18';
@@ -487,6 +489,9 @@ anadirColumna('items', 'arte_fijado', 'TEXT');
 anadirColumna('items', 'arte_actualizado', 'TEXT');
 // 'tmdb' = metadatos puestos desde TMDb (no vienen de un .nfo): el escaneo no los pisa.
 anadirColumna('items', 'meta_origen', 'TEXT');
+// Fecha del ultimo intento de identificar el titulo por su nombre (para no repetirlo cada dia).
+anadirColumna('items', 'ident_intento', 'TEXT');
+anadirColumna('episodes', 'meta_origen', 'TEXT');
 
 prepararBusquedaDePersonas();
 

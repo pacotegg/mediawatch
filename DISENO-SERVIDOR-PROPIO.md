@@ -120,6 +120,33 @@ Todo condicionado a **modo portable** o a «sin NFO»: con NFO el escáner se co
 Limitación que no puedo salvar desde aquí: esta sesión no puede llamar a TMDb (sin clave ni acceso verificado), así que los puntos 3 a 5 solo
 se podrán probar contra TMDb real en la máquina del propietario con su clave.
 
+### 3.4 Estado del hito 2 (08/10)
+
+Decisiones del usuario: identificación **automática solo en modo portable** (el HTPC sigue con la regla de confirmar); un título sin clasificación por edades **avisa al administrador**; durante la instalación se **avisa de la convención de nombres** (§10).
+
+Implementado (todo bajo modo portable o «sin NFO»; con NFO nada cambia, comprobado con un `movie.nfo` de prueba):
+
+| Pieza | Dónde |
+|---|---|
+| Limpieza de nombres de release (`The.Matrix.1999.1080p…` → «The Matrix», 1999) | `scanner/nombres.ts` |
+| `items.meta_origen = 'tmdb'`: el escaneo respeta título, año, sinopsis, nota, clasificación, géneros y reparto | `scanner/scan.ts`, `db.ts` |
+| Coincidencia segura (título igual y año ±1; sin año, un único resultado con ese título) y aplicación automática; lo dudoso se queda para la revisión manual y no se reintenta hasta 30 días después | `scanner/identificar.ts` |
+| Clasificación por edades del país del idioma (`ES:12`…) desde TMDb | `scanner/tmdb.ts` (`certificacionDe`) |
+| Episodios (título, sinopsis, fecha, duración, nota, miniatura) y protección frente al reescaneo | `scanner/episodios-tmdb.ts`, `scan.ts` |
+| Rutas de administrador: `GET /api/identificar/estado`, `POST /api/identificar/ejecutar`, `POST /api/identificar/clasificacion` | `routes/identificar.ts` |
+| Se lanza sola tras cada escaneo en modo portable | `index.ts` |
+| La confirmación manual (`/api/enrich/apply`) también deja el título identificado en modo portable | `routes/enrich.ts` |
+
+Correcciones que salieron de la medición: (1) el reescaneo borraba todo lo de TMDb; (2) `parseRatingCategoria` trataba como infantiles las bibliotecas con id 3 y 9 (son las del propietario), que en una instalación nueva son bibliotecas cualquiera.
+
+Sin clasificación, un título cuenta como +18 (invisible para perfiles infantiles) **hasta que el administrador la ponga**: es lo seguro, y por eso el aviso es obligatorio.
+
+**Pendiente / sin verificar:**
+- **API real de TMDb**: las pruebas usan respuestas simuladas con la forma de la documentación. Sin comprobar: que `append_to_response=images,external_ids,release_dates` (películas) y `…,content_ratings` (series) lo acepte tal cual, y que la certificación aparezca donde se supone. Probar con una clave real antes de dar el hito por cerrado.
+- **Interfaz del aviso**: el servidor expone las rutas; falta la pantalla del administrador (títulos sin clasificar, dudosos, botón «identificar ahora»). Va con el hito 3.
+- **Biblioteca real desordenada** para medir el % de acierto (la actual es sintética).
+- Las series de TMDb pueden numerar distinto que los ficheros; no se corrige aquí (existe `numeracion.ts`).
+
 ## 4. App de escritorio (Electron)
 
 - **Proceso principal**: arranca el servidor Node como proceso hijo, lo vigila, lo reinicia
@@ -195,7 +222,7 @@ Abiertas:
 |---|---|---|
 | 0 | ✅ Auditoría de rutas fijas, dependencias y cliente Android (§2.1.b y §2.1.c) | Lista con cifras |
 | 1 | ✅ (08/10) Servidor configurable por entorno (datos, binarios, bibliotecas vacías). Variables `MEDIAWATCH_DATA_DIR/HOST/PORT/FFMPEG/FFPROBE/PYTHON/TMP_DIR/SUBSFETCH`; sin ellas, comportamiento anterior. Corregido un fallo de primer arranque en `db.ts` (índice creado antes que su tabla) | Probado en Linux con Node 22.22 y datos vacíos: arranca y `setupNeeded: true`. **Sin probar** en el HTPC/Windows ni con Node 26 |
-| 2 | Escáner por nombre + TMDb (diseño en §3.1–3.3; medición inicial hecha, **código sin escribir**) | % identificado, % dudoso, y que un reescaneo no borre lo identificado |
+| 2 | ✅ (08/10) Escáner por nombre + TMDb: puntos 1–5 de §3.3 implementados y probados **con TMDb simulado** (ver §3.4). Falta probar contra la API real y la interfaz del aviso | Biblioteca sintética: 9/9 títulos limpios (antes 3/9), 8/9 identificados, 1 dudoso a revisión, y el reescaneo no borra lo identificado. 25 tests (`node --test`) |
 | 3 | Envoltorio Electron (hijo, bandeja, asistente) en máquina limpia | Instalar y ver una película |
 | 4 | Instalador y prueba con un amigo | Instalación sin ayuda |
 
@@ -220,4 +247,38 @@ Limitaciones a tener en cuenta:
 - Quien clone el repo nuevo debe usar `git clone --recurse-submodules`.
 - La web (`web/dist`) se **compila en la integración continua** del repo nuevo, no se versiona.
 - Los cambios en `core/` hechos desde el repo nuevo no deben hacerse: se hacen en este repo y se sube el puntero.
+
+## 10. Aviso de instalación y mini tutorial de nombres
+
+### 10.1 Texto del aviso en el asistente (borrador)
+
+> **Antes de añadir tus carpetas: cómo poner los nombres**
+>
+> MediaWatch Server reconoce tus películas y series por el **nombre**. Para que encuentre bien la carátula, la sinopsis y los episodios, ponles
+> el nombre **y el año** así:
+>
+> ```
+> Películas\Blade Runner (1982)\Blade Runner (1982).mkv
+> Series\Breaking Bad (2008)\Season 01\Breaking Bad - S01E01.mkv
+> ```
+>
+> Si los nombres ya vienen como `Pelicula.2019.1080p.BluRay.x264-GRUPO`, el servidor intenta limpiarlos, pero acertará menos.
+> Para renombrar muchas de golpe puedes usar un **gestor de biblioteca** (ver el tutorial). Lo que no se reconozca con seguridad
+> quedará pendiente para que lo revises tú, y nunca se borra ni se renombra nada de tus carpetas.
+>
+> [Ver tutorial]  [Entendido, continuar]
+
+### 10.2 Mini tutorial (borrador)
+
+1. **Convención**: una carpeta por película con el nombre y el año; para series, una carpeta por serie con subcarpetas `Season 01`, `Season 02` y ficheros `Serie - S01E01.mkv`.
+2. **Herramientas para renombrar en lote** (a revisar: precio, licencia y estado de cada una antes de publicarlo):
+   - **tinyMediaManager**: es el que usa el propietario; renombra y genera `.nfo` y carátulas, que MediaWatch Server lee directamente.
+   - **MediaElch**: alternativa de código abierto que también renombra y genera `.nfo`.
+   - **FileBot**: renombrado muy potente; comprobar condiciones de uso.
+   - Radarr/Sonarr: solo si ya los usan para descargar; no hace falta instalarlos para esto.
+3. **Qué hacer con lo que no se reconoce**: pantalla de administrador → «Pendientes de revisión» → elegir la coincidencia correcta de la lista que propone TMDb.
+4. **Clasificación por edades**: si TMDb no la tiene para España, el administrador la ve en «Sin clasificar» y la elige; mientras tanto el título solo lo ven los perfiles adultos.
+5. **Clave de TMDb**: gratuita, hay que registrarse en themoviedb.org y pedirla en Ajustes de la cuenta → API. Sin clave no hay identificación automática.
+
+Las capturas y los pasos concretos de cada herramienta se escribirán al llegar al hito 3, comprobándolos con la versión vigente en ese momento (aquí no los he verificado).
 
