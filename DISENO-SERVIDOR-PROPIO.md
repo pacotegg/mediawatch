@@ -86,6 +86,40 @@ Hoy el escáner *lee* NFO y arte que ya existen (~30 s, sin internet). Sin tMM h
 Riesgo principal: la calidad de la identificación con nombres desordenados. Medir con una
 biblioteca real y desordenada antes de prometer nada. Dependencia: exige una clave TMDb.
 
+### 3.1 Medición del escáner actual sin NFO (08/10, hito 2, antes de tocar código)
+
+Biblioteca **sintética** de 9 títulos con nombres desordenados (ficheros dispersos de 6 MB, sin NFO), escaneada en modo portable.
+No es una biblioteca real: sirve para localizar fallos, no para dar un porcentaje fiable.
+
+| Qué | Resultado |
+|---|---|
+| Títulos limpios a la primera | **3 de 9** (`Blade Runner (1982)`, `Friends (1994)`, `Breaking Bad`). Solo entiende la forma `Título (AAAA)` |
+| Con basura en el título | `The.Matrix.1999.1080p.BluRay.x264-GROUP`, `Amelie 2001 [1080p]`, `Alien Resurrection (1997) [BluRay]`, `El_laberinto_del_fauno_2006_DVDRip_spa`, `Inception.2010.720p.BluRay`, `The.Office.US.2005.720p`. Año sin detectar en todos ellos |
+| Episodios | `SxxExx` y `1x05` se detectan bien. El título del episodio es el nombre del fichero (`Breaking.Bad.S01E01.720p`, `S02E03`) |
+| **Reescaneo tras aplicar TMDb** | Con `plot`, `rating`, `tmdb_id` y `mpaa` puestos a mano, **un escaneo los dejó todos a NULL**. Además `saveGenresAndPeople` borra géneros y reparto en cada pasada si no hay NFO (lectura de código, `scan.ts:340-343`) |
+| Perfil infantil | `parseRatingCategoria` devuelve `'18'` cuando `mpaa` es nulo (`db.ts`, lectura de código). Sin NFO, **todo cuenta como +18** y un perfil infantil no vería nada |
+
+### 3.2 Lo que ya existe y se reutiliza
+
+`parseTitleYear`, `tituloDeSuelto` (vídeos sueltos en la raíz), `episodeNumbers`, `numeroDelantero`, la detección de temporadas, y en `tmdb.ts`
+`search()`, `details()`, `scoreMatch()` (`strong`/`weak`), `buildCandidates()`, `candidateForItem()` y `applyProposal()` (escribe en `data/artwork/<id>/`, no en la biblioteca).
+Hoy todo pasa por una **revisión manual** que propone y espera confirmación.
+
+### 3.3 Cambios propuestos para el hito 2
+
+Todo condicionado a **modo portable** o a «sin NFO»: con NFO el escáner se comporta exactamente como ahora.
+
+1. **Limpiar el nombre**: nuevo `limpiarNombre()` que quita etiquetas de resolución, fuente, códec, grupo, idiomas y corchetes, cambia `.` y `_` por espacios y extrae el año `19xx/20xx`. Se aplica a carpeta y a fichero, y cae al nombre del fichero si la carpeta no informa (`CD1`, `Movies`).
+2. **No perder lo identificado**: el `upsert` y el borrado de géneros y reparto respetan lo guardado cuando el escaneo no trae NFO. Hace falta una columna que marque «metadatos de TMDb» (p. ej. `items.meta_origen`) para saber qué se puede reescribir. Es el cambio más delicado y el primero a hacer.
+3. **Identificación automática**: tras escanear, los títulos sin `tmdb_id` pasan a una cola en segundo plano (respetando el límite de TMDb). Coincidencia `strong` (título y año) → se aplica sola, **solo en `data/`**; el resto → cola de revisión con alternativas. Decisión que debes tomar: en tu servidor la regla es «nunca escribir sin confirmar»; aquí lo que se escribe es la BD y el arte propios, no los ficheros del usuario. Propongo automático **solo en modo portable**.
+4. **Clasificación por edades**: pedir la certificación a TMDb (`release_dates` en películas, `content_ratings` en series) para el país del idioma configurado (`ES`), y guardarla en `mpaa`. Sin certificación → decidir si se trata como +18 (seguro) o se avisa al administrador.
+5. **Series**: títulos, sinopsis, fecha y miniatura de cada episodio desde TMDb (hoy `temporadasDeSerie` solo cuenta episodios). Entradas por temporada: una llamada por temporada.
+6. **Reparto y fotos**: ya existe `personas.ts` a partir de `tmdb_id`; comprobar que sigue funcionando sin NFO.
+7. **Medición con una biblioteca real**: la sintética no basta. Pedir al usuario (o a un amigo) una lista de nombres de carpetas/ficheros reales, sin datos personales, para medir el % identificado.
+
+Limitación que no puedo salvar desde aquí: esta sesión no puede llamar a TMDb (sin clave ni acceso verificado), así que los puntos 3 a 5 solo
+se podrán probar contra TMDb real en la máquina del propietario con su clave.
+
 ## 4. App de escritorio (Electron)
 
 - **Proceso principal**: arranca el servidor Node como proceso hijo, lo vigila, lo reinicia
@@ -161,7 +195,7 @@ Abiertas:
 |---|---|---|
 | 0 | ✅ Auditoría de rutas fijas, dependencias y cliente Android (§2.1.b y §2.1.c) | Lista con cifras |
 | 1 | ✅ (08/10) Servidor configurable por entorno (datos, binarios, bibliotecas vacías). Variables `MEDIAWATCH_DATA_DIR/HOST/PORT/FFMPEG/FFPROBE/PYTHON/TMP_DIR/SUBSFETCH`; sin ellas, comportamiento anterior. Corregido un fallo de primer arranque en `db.ts` (índice creado antes que su tabla) | Probado en Linux con Node 22.22 y datos vacíos: arranca y `setupNeeded: true`. **Sin probar** en el HTPC/Windows ni con Node 26 |
-| 2 | Escáner por nombre + TMDb sobre una biblioteca de prueba desordenada | % identificado, % dudoso |
+| 2 | Escáner por nombre + TMDb (diseño en §3.1–3.3; medición inicial hecha, **código sin escribir**) | % identificado, % dudoso, y que un reescaneo no borre lo identificado |
 | 3 | Envoltorio Electron (hijo, bandeja, asistente) en máquina limpia | Instalar y ver una película |
 | 4 | Instalador y prueba con un amigo | Instalación sin ayuda |
 
