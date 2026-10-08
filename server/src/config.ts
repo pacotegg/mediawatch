@@ -14,6 +14,8 @@ export const ROOT = resolve(here, '..', '..');
  */
 const env = (nombre: string): string => (process.env[nombre] ?? '').trim();
 const PORTABLE = env('MEDIAWATCH_DATA_DIR') !== '';
+/** Instalacion de MediaWatch Server (sin .nfo ni bibliotecas de tinyMediaManager). */
+export const MODO_PORTABLE = PORTABLE;
 export const DATA_DIR = PORTABLE ? resolve(env('MEDIAWATCH_DATA_DIR')) : join(ROOT, 'data');
 export const CONFIG_PATH = join(DATA_DIR, 'config.json');
 
