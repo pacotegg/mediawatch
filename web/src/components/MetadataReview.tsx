@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'motion/react';
 import { Button, Field, Panel, Select, TextInput } from './Controls.tsx';
 import { api, img, type Candidate, type Proposal } from '../lib/api.ts';
+import Identificacion, { useIdentificarEstado } from './Identificacion.tsx';
 
 const CONFIDENCE = {
   exact: { label: 'Coincidencia exacta', tone: 'bg-emerald-500/15 text-emerald-300 ring-emerald-500/25' },
@@ -203,6 +204,7 @@ export default function MetadataReview() {
   const [limit, setLimit] = useState(25);
   const [message, setMessage] = useState('');
 
+  const { data: identificar } = useIdentificarEstado();
   const { data: status } = useQuery({
     queryKey: ['enrich-status'],
     queryFn: api.enrichStatus,
@@ -264,9 +266,12 @@ export default function MetadataReview() {
 
   return (
     <div className="space-y-5">
+      <Identificacion />
       <Panel
         title="Metadatos que faltan"
-        subtitle="Nada se guarda solo: cada coincidencia se te propone con su nivel de confianza y decides tú. Una coincidencia equivocada sobrescribiría datos buenos."
+        subtitle={identificar?.portable
+          ? 'Aquí revisas lo que la identificación automática dejó en duda: cada coincidencia se te propone con su nivel de confianza y decides tú.'
+          : 'Nada se guarda solo: cada coincidencia se te propone con su nivel de confianza y decides tú. Una coincidencia equivocada sobrescribiría datos buenos.'}
       >
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
           {[

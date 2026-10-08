@@ -143,7 +143,7 @@ Sin clasificación, un título cuenta como +18 (invisible para perfiles infantil
 
 **Pendiente / sin verificar:**
 - **API real de TMDb**: las pruebas usan respuestas simuladas con la forma de la documentación. Sin comprobar: que `append_to_response=images,external_ids,release_dates` (películas) y `…,content_ratings` (series) lo acepte tal cual, y que la certificación aparezca donde se supone. Probar con una clave real antes de dar el hito por cerrado.
-- **Interfaz del aviso**: el servidor expone las rutas; falta la pantalla del administrador (títulos sin clasificar, dudosos, botón «identificar ahora»). Va con el hito 3.
+- ~~Interfaz del aviso~~ **Hecha (08/10)**: `web/src/components/Identificacion.tsx`, dentro de Ajustes → Metadatos (solo administrador y solo en MediaWatch Server): contadores, «Identificar ahora» y lista «Sin clasificación por edades» con selector. Probada en un navegador real contra el servidor con datos de prueba (el botón Guardar fija `ES:12` y la fila desaparece). El aviso por título dudoso es un contador y un texto, no una notificación emergente.
 - **Biblioteca real desordenada** para medir el % de acierto (la actual es sintética).
 - Las series de TMDb pueden numerar distinto que los ficheros; no se corrige aquí (existe `numeracion.ts`).
 

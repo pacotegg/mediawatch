@@ -336,6 +336,11 @@ export const api = {
       body: JSON.stringify(patch),
     }),
 
+  identificarEstado: () => request<IdentificarEstado>('/api/identificar/estado'),
+  identificarEjecutar: () => post<{ arrancado: boolean; motivo?: string }>('/api/identificar/ejecutar', {}),
+  identificarClasificacion: (itemId: number, categoria: string) =>
+    post<{ ok: true }>('/api/identificar/clasificacion', { itemId, categoria }),
+
   enrichStatus: () => request<EnrichStatus>('/api/enrich/status'),
   enrichScan: (limit: number) => post<{ started: boolean }>('/api/enrich/scan', { limit }),
   enrichCandidates: () => request<{ running: boolean; done: number; total: number; error: string | null; candidates: Candidate[] }>('/api/enrich/candidates'),
@@ -701,6 +706,17 @@ export type Candidate = {
   matchedBy: string;
   proposal: Proposal | null;
   alternatives: Proposal[];
+};
+
+/** Identificación automática por nombre (MediaWatch Server). */
+export type IdentificarEstado = {
+  portable: boolean;
+  configurada: boolean;
+  enCurso: boolean;
+  pendientes: number;
+  dudosos: number;
+  identificados: number;
+  sinClasificar: { id: number; title: string; year: number | null; kind: string }[];
 };
 
 export type EnrichStatus = {
