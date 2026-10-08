@@ -485,6 +485,8 @@ anadirColumna('items', 'arte_fijado', 'TEXT');
 // seguía enseñando la carátula vieja de su propia caché aunque el servidor ya
 // tuviera otra: elegir una imagen distinta «no cambiaba nada» en pantalla.
 anadirColumna('items', 'arte_actualizado', 'TEXT');
+// 'tmdb' = metadatos puestos desde TMDb (no vienen de un .nfo): el escaneo no los pisa.
+anadirColumna('items', 'meta_origen', 'TEXT');
 
 prepararBusquedaDePersonas();
 

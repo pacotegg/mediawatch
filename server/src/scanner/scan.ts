@@ -6,6 +6,7 @@ import { db, normalize } from '../db.ts';
 import { config, type LibraryConfig } from '../config.ts';
 import { parseNfo, type NfoData } from './nfo.ts';
 import { indexarExtras } from '../media/extras.ts';
+import { limpiarNombre, esNombreGenerico, tituloDespuesDeNumeracion } from './nombres.ts';
 
 const VIDEO_EXT = new Set(['.mkv', '.mp4', '.avi', '.m4v', '.mov', '.wmv', '.mpg', '.mpeg', '.ts', '.webm']);
 const SUB_EXT = new Set(['.srt', '.ass', '.ssa', '.vtt', '.sub']);
@@ -197,9 +198,7 @@ function videoFiles(files: Entry[]): Entry[] {
 }
 
 function parseTitleYear(folderName: string): { title: string; year?: number } {
-  const m = folderName.match(/^(.*?)\s*\((\d{4})\)\s*$/);
-  if (m) return { title: m[1].trim(), year: Number(m[2]) };
-  return { title: folderName.trim() };
+  return limpiarNombre(folderName);
 }
 
 const stmt = {
@@ -209,11 +208,28 @@ const stmt = {
       poster, fanart, clearlogo, landscape, added_at, scanned_at)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ON CONFLICT(folder) DO UPDATE SET
-      library_id=excluded.library_id, kind=excluded.kind, title=excluded.title, search_title=excluded.search_title,
-      sort_title=excluded.sort_title, original_title=excluded.original_title, year=excluded.year, plot=excluded.plot,
-      tagline=excluded.tagline, runtime=excluded.runtime, rating=excluded.rating, votes=excluded.votes,
-      mpaa=excluded.mpaa, premiered=excluded.premiered, studio=excluded.studio, country=excluded.country,
-      collection=excluded.collection, trailer=excluded.trailer, imdb_id=excluded.imdb_id, tmdb_id=excluded.tmdb_id,
+      library_id=excluded.library_id, kind=excluded.kind,
+      -- Con meta_origen = 'tmdb' el titulo, el ano y todo lo que puso TMDb se quedan:
+      -- sin .nfo el escaneo traia NULL en todos y lo borraba cada 24 h. Los items
+      -- con .nfo no tienen meta_origen, y para ellos nada cambia.
+      title=CASE WHEN items.meta_origen = 'tmdb' THEN items.title ELSE excluded.title END,
+      search_title=CASE WHEN items.meta_origen = 'tmdb' THEN items.search_title ELSE excluded.search_title END,
+      year=CASE WHEN items.meta_origen = 'tmdb' THEN items.year ELSE excluded.year END,
+      sort_title=CASE WHEN items.meta_origen = 'tmdb' THEN COALESCE(excluded.sort_title, items.sort_title) ELSE excluded.sort_title END,
+      original_title=CASE WHEN items.meta_origen = 'tmdb' THEN COALESCE(excluded.original_title, items.original_title) ELSE excluded.original_title END,
+      plot=CASE WHEN items.meta_origen = 'tmdb' THEN COALESCE(excluded.plot, items.plot) ELSE excluded.plot END,
+      tagline=CASE WHEN items.meta_origen = 'tmdb' THEN COALESCE(excluded.tagline, items.tagline) ELSE excluded.tagline END,
+      runtime=CASE WHEN items.meta_origen = 'tmdb' THEN COALESCE(excluded.runtime, items.runtime) ELSE excluded.runtime END,
+      rating=CASE WHEN items.meta_origen = 'tmdb' THEN COALESCE(excluded.rating, items.rating) ELSE excluded.rating END,
+      votes=CASE WHEN items.meta_origen = 'tmdb' THEN COALESCE(excluded.votes, items.votes) ELSE excluded.votes END,
+      mpaa=CASE WHEN items.meta_origen = 'tmdb' THEN COALESCE(excluded.mpaa, items.mpaa) ELSE excluded.mpaa END,
+      premiered=CASE WHEN items.meta_origen = 'tmdb' THEN COALESCE(excluded.premiered, items.premiered) ELSE excluded.premiered END,
+      studio=CASE WHEN items.meta_origen = 'tmdb' THEN COALESCE(excluded.studio, items.studio) ELSE excluded.studio END,
+      country=CASE WHEN items.meta_origen = 'tmdb' THEN COALESCE(excluded.country, items.country) ELSE excluded.country END,
+      collection=CASE WHEN items.meta_origen = 'tmdb' THEN COALESCE(excluded.collection, items.collection) ELSE excluded.collection END,
+      trailer=CASE WHEN items.meta_origen = 'tmdb' THEN COALESCE(excluded.trailer, items.trailer) ELSE excluded.trailer END,
+      imdb_id=CASE WHEN items.meta_origen = 'tmdb' THEN COALESCE(excluded.imdb_id, items.imdb_id) ELSE excluded.imdb_id END,
+      tmdb_id=CASE WHEN items.meta_origen = 'tmdb' THEN COALESCE(excluded.tmdb_id, items.tmdb_id) ELSE excluded.tmdb_id END,
       -- Las imagenes elegidas a mano no se tocan; el resto se actualiza con lo
       -- que haya ahora en la carpeta. Sin esto, cambiar una caratula desde la
       -- ficha duraba hasta el siguiente escaneo.
@@ -272,6 +288,7 @@ const stmt = {
   genre: db.prepare('INSERT INTO genres (name) VALUES (?) ON CONFLICT(name) DO UPDATE SET name=excluded.name RETURNING id'),
   linkGenre: db.prepare('INSERT OR IGNORE INTO item_genres (item_id, genre_id) VALUES (?,?)'),
   clearGenres: db.prepare('DELETE FROM item_genres WHERE item_id = ?'),
+  metaOrigen: db.prepare('SELECT meta_origen FROM items WHERE id = ?'),
   imdbGeneros: db.prepare('SELECT generos FROM imdb_generos WHERE imdb_id = ?'),
   clearRatings: db.prepare("DELETE FROM item_ratings WHERE item_id = ? AND origen = 'nfo'"),
   addRating: db.prepare("INSERT OR REPLACE INTO item_ratings (item_id, fuente, valor, maximo, votos, origen) VALUES (?,?,?,?,?,'nfo')"),
@@ -337,6 +354,8 @@ function saveRatings(itemId: number, nfo: { ratings?: { fuente: string; valor: n
 }
 
 function saveGenresAndPeople(itemId: number, nfo: NfoData | null, thumbs: Map<string, string>) {
+  // Identificado desde TMDb y sin .nfo: generos y reparto vienen de TMDb, no se borran.
+  if (!nfo && (stmt.metaOrigen.get(itemId) as { meta_origen: string | null } | undefined)?.meta_origen === 'tmdb') return;
   stmt.clearGenres.run(itemId);
   stmt.clearPeople.run(itemId);
   if (!nfo) return;
@@ -454,7 +473,8 @@ function scanMovieFolder(libId: number, dir: string, files: Entry[], now: string
     files.find((f) => f.name.toLowerCase() === `${base.toLowerCase()}.nfo`)?.path ??
     (suelto ? undefined : files.find((f) => f.name.toLowerCase() === 'movie.nfo')?.path);
   const nfo = nfoPath ? parseNfo(nfoPath) : null;
-  const fromFolder = suelto ? parseTitleYear(tituloDeSuelto(base)) : parseTitleYear(basename(dir));
+  // Una carpeta que no dice nada (CD1, Movies...) no sirve de titulo: vale el nombre del fichero.
+  const fromFolder = suelto || esNombreGenerico(basename(dir)) ? parseTitleYear(tituloDeSuelto(base)) : parseTitleYear(basename(dir));
   const title = nfo?.title ?? fromFolder.title;
   // `items.folder` es UNIQUE: 105 sueltos comparten carpeta, asi que la clave
   // de un suelto es su propia ruta, o se machacarian unos a otros.
@@ -511,6 +531,15 @@ function numeroDelantero(base: string): number | null {
  */
 const tituloEpisodio = (base: string) =>
   base.replace(/^s\d{1,3}[\s._-]*e\d{1,3}[\s._-]*/i, '').replace(/^\d{1,2}\s*[-.]\s*/, '').trim() || base;
+
+/**
+ * Sin .nfo: si el nombre trae SxxExx (o 1x05) se usa lo que va despues, o
+ * «Episodio N» si no queda nada; si no trae numeracion, como hasta ahora.
+ */
+function tituloDeEpisodioSinNfo(base: string, episodio: number): string {
+  if (episodeNumbers(base)) return tituloDespuesDeNumeracion(base) ?? `Episodio ${episodio}`;
+  return tituloEpisodio(base);
+}
 
 function scanShowFolder(libId: number, dir: string, files: Entry[], now: string) {
   const nfoPath = files.find((f) => f.name.toLowerCase() === 'tvshow.nfo')?.path;
@@ -571,7 +600,7 @@ function scanShowFolder(libId: number, dir: string, files: Entry[], now: string)
         // Tambien al titulo del .nfo: los de «Un siglo de Ciencia Ficcion» los
         // genero tinyMediaManager desde el nombre del fichero, asi que traen
         // dentro el mismo «02 - » que se queria quitar.
-        tituloEpisodio(epNfo?.title ?? base), epNfo?.plot ?? null, epNfo?.premiered ?? null,
+        epNfo?.title ? tituloEpisodio(epNfo.title) : tituloDeEpisodioSinNfo(base, epNfo?.episode ?? nums.episode), epNfo?.plot ?? null, epNfo?.premiered ?? null,
         epNfo?.runtime ?? null, epNfo?.rating ?? null, thumb ?? null,
       ) as { id: number };
 
