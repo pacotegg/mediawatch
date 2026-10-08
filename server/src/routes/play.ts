@@ -32,8 +32,8 @@ function caps(req: FastifyRequest): ClientCaps {
 }
 
 /** Tasa media del fichero en bits por segundo, para el tope de calidad. */
-function tasaDe(path: string, info: MediaInfo): number {
-  return info.duration > 0 ? Math.round((statSync(path).size * 8) / info.duration) : 0;
+function tasaDe(bytes: number, info: MediaInfo): number {
+  return info.duration > 0 ? Math.round((bytes * 8) / info.duration) : 0;
 }
 
 /**
@@ -334,11 +334,14 @@ export default async function playRoutes(app: FastifyInstance) {
     if (!permitidoParaUsuario(row, user)) {
       return reply.code(403).send({ error: 'Contenido no disponible para este perfil' });
     }
-    if (!existsSync(row.path)) return reply.code(410).send({ error: 'El fichero ya no está en disco; se retirará en el próximo escaneo' });
+    // Asincrono: E: es un disco USB que se duerme y el primer acceso tarda ~7 s;
+    // con existsSync/statSync esa espera congelaba el servidor para todos.
+    const statFichero = await statAsync(row.path).catch(() => null);
+    if (!statFichero) return reply.code(410).send({ error: 'El fichero ya no está en disco; se retirará en el próximo escaneo' });
 
     const info = await mediaInfo(fileId);
     const audioIndex = info.audio[0]?.streamIndex ?? 0;
-    const plan = planPlayback(info, caps(req), audioIndex, tasaDe(row.path, info));
+    const plan = planPlayback(info, caps(req), audioIndex, tasaDe(statFichero.size, info));
 
     const external = db
       .prepare('SELECT id, language, forced, external FROM sub_tracks WHERE file_id = ? AND external IS NOT NULL ORDER BY language')
@@ -346,7 +349,7 @@ export default async function playRoutes(app: FastifyInstance) {
 
     // Tamaño y tasa de bits para la pantalla de informacion del reproductor:
     // es lo que Plex ensena ahi y lo unico que no estaba ya en `mediaInfo`.
-    const bytes = statSync(row.path).size;
+    const bytes = statFichero.size;
 
     return {
       fileId,
@@ -405,14 +408,15 @@ export default async function playRoutes(app: FastifyInstance) {
     if (!permitidoParaUsuario(row, user)) {
       return reply.code(403).send({ error: 'Contenido no disponible para este perfil' });
     }
-    if (!existsSync(row.path)) return reply.code(410).send({ error: 'El fichero ya no está en disco' });
+    const statFichero = await statAsync(row.path).catch(() => null);
+    if (!statFichero) return reply.code(410).send({ error: 'El fichero ya no está en disco' });
 
     // Alguien está viendo algo: los trabajos de fondo se apartan del disco.
     marcarActividad();
 
     const info = await mediaInfo(fileId);
     const audioIndex = q.audio !== undefined ? Number(q.audio) : info.audio.find((a) => a.default)?.streamIndex ?? info.audio[0]?.streamIndex ?? 0;
-    const plan = planPlayback(info, caps(req), audioIndex, tasaDe(row.path, info));
+    const plan = planPlayback(info, caps(req), audioIndex, tasaDe(statFichero.size, info));
     const start = Math.max(0, Number(q.t ?? 0));
     const audioDelayMs = Math.max(-10_000, Math.min(10_000, Number(q.audiodelay ?? 0)));
 
@@ -1008,10 +1012,10 @@ export default async function playRoutes(app: FastifyInstance) {
   app.get('/api/extras/:id/stream', async (req, reply) => {
     const extra = extraPorId(Number((req.params as { id: string }).id));
     if (!extra) return reply.code(404).send({ error: 'Extra no encontrado' });
-    if (!existsSync(extra.path)) return reply.code(410).send({ error: 'El fichero ya no esta en disco' });
+    const stat = await statAsync(extra.path).catch(() => null);
+    if (!stat) return reply.code(410).send({ error: 'El fichero ya no esta en disco' });
 
     marcarActividad();
-    const stat = statSync(extra.path);
     const mime =
       /\.mkv$/i.test(extra.path) ? 'video/x-matroska' :
       /\.avi$/i.test(extra.path) ? 'video/x-msvideo' :

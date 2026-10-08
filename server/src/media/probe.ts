@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { statSync } from 'node:fs';
+import { stat as statAsync } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import { config } from '../config.ts';
 import { db } from '../db.ts';
@@ -194,12 +194,16 @@ export async function mediaInfo(fileId: number): Promise<MediaInfo & { path: str
    * codificacion reescribe peliculas en su sitio, con la misma ruta: sin esta
    * comprobacion el servidor seguiria creyendo que es HEVC 4K despues de
    * haberlo recodificado, y decidiria mal como reproducirlo.
+   *
+   * Asincrono a proposito: el fichero esta en E:, un disco duro USB que se
+   * duerme, y el primer acceso tras un rato parado tarda ~7 s en volver. Con
+   * `statSync` esos 7 s congelaban el servidor entero (latido.log, 08/10/2026).
    */
   const cached = cache.get(fileId);
   if (cached) {
     let sigueIgual = true;
     try {
-      const st = statSync(file.path);
+      const st = await statAsync(file.path);
       sigueIgual = cached.marca === st.size + ':' + Math.round(st.mtimeMs);
     } catch {
       sigueIgual = false;
@@ -210,7 +214,7 @@ export async function mediaInfo(fileId: number): Promise<MediaInfo & { path: str
 
   const info = await probeFile(file.path);
   try {
-    const st = statSync(file.path);
+    const st = await statAsync(file.path);
     cache.set(fileId, { info, marca: st.size + ':' + Math.round(st.mtimeMs) });
   } catch {
     cache.set(fileId, { info, marca: '' });
