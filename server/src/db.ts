@@ -148,8 +148,6 @@ CREATE TABLE IF NOT EXISTS coleccion_imagen (
 -- estadisticas; con el indice, 0,7 ms. Ademas el sondeo borra las pistas por
 -- fichero antes de reescribirlas, asi que un escaneo completo hacia ese
 -- recorrido 5.566 veces.
-CREATE INDEX IF NOT EXISTS idx_sub_tracks_file ON sub_tracks(file_id);
-CREATE INDEX IF NOT EXISTS idx_audio_tracks_file ON audio_tracks(file_id);
 CREATE INDEX IF NOT EXISTS idx_items_search ON items(search_title);
 
 CREATE TABLE IF NOT EXISTS episodes (
@@ -204,6 +202,10 @@ CREATE TABLE IF NOT EXISTS sub_tracks (
   forced   INTEGER NOT NULL DEFAULT 0,
   external TEXT
 );
+
+-- Van aqui, despues de crear las tablas: antes de sub_tracks fallaba una BD nueva.
+CREATE INDEX IF NOT EXISTS idx_sub_tracks_file ON sub_tracks(file_id);
+CREATE INDEX IF NOT EXISTS idx_audio_tracks_file ON audio_tracks(file_id);
 
 CREATE TABLE IF NOT EXISTS genres (
   id   INTEGER PRIMARY KEY,

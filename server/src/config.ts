@@ -4,7 +4,17 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const ROOT = resolve(here, '..', '..');
-export const DATA_DIR = join(ROOT, 'data');
+/*
+ * Variables de entorno de MediaWatch Server (la app de escritorio las pone al
+ * lanzar el servidor). Sin ellas, todo queda como en el HTPC original.
+ *   MEDIAWATCH_DATA_DIR   carpeta de datos del usuario; activa el modo «portable»:
+ *                         sin las bibliotecas de E:\ ni la carpeta temporal de G:\
+ *   MEDIAWATCH_HOST/PORT  direccion de escucha (127.0.0.1 mientras dura el asistente)
+ *   MEDIAWATCH_FFMPEG / _FFPROBE / _PYTHON / _TMP_DIR / _SUBSFETCH
+ */
+const env = (nombre: string): string => (process.env[nombre] ?? '').trim();
+const PORTABLE = env('MEDIAWATCH_DATA_DIR') !== '';
+export const DATA_DIR = PORTABLE ? resolve(env('MEDIAWATCH_DATA_DIR')) : join(ROOT, 'data');
 export const CONFIG_PATH = join(DATA_DIR, 'config.json');
 
 export type LibraryKind = 'movie' | 'show';
@@ -92,6 +102,8 @@ const RUTAS_PYTHON = [
 ];
 
 function localizar(nombre: 'ffmpeg' | 'ffprobe' | 'python'): string {
+  const deEntorno = env('MEDIAWATCH_' + nombre.toUpperCase());
+  if (deEntorno) return deEntorno;
   const dirs = nombre === 'python' ? RUTAS_PYTHON : RUTAS_FFMPEG;
   for (const dir of dirs) {
     const ruta = join(dir, nombre + '.exe');
@@ -105,8 +117,8 @@ function defaultConfig(): AppConfig {
     port: 8730,
     host: '0.0.0.0',
     publicUrl: '',
-    libraries: DEFAULT_LIBRARIES.filter((l) => existsSync(l.path)),
-    transcodeDir: existsSync('G:\\') ? 'G:\\TvWatchTmp' : join(DATA_DIR, 'transcode'),
+    libraries: PORTABLE ? [] : DEFAULT_LIBRARIES.filter((l) => existsSync(l.path)),
+    transcodeDir: env('MEDIAWATCH_TMP_DIR') || (!PORTABLE && existsSync('G:\\') ? 'G:\\TvWatchTmp' : join(DATA_DIR, 'transcode')),
     ffmpeg: localizar('ffmpeg'),
     ffprobe: localizar('ffprobe'),
     python: localizar('python'),
@@ -122,27 +134,67 @@ function defaultConfig(): AppConfig {
   };
 }
 
+/*
+ * Las variables de entorno mandan sobre config.json, pero no se guardan en el:
+ * si la app cambia de sitio ffmpeg o el asistente pone 127.0.0.1, el siguiente
+ * arranque tiene que poder volver a lo que hubiera antes.
+ */
+const POR_ENTORNO: Partial<Record<keyof AppConfig, string>> = {
+  host: env('MEDIAWATCH_HOST'),
+  port: env('MEDIAWATCH_PORT'),
+  ffmpeg: env('MEDIAWATCH_FFMPEG'),
+  ffprobe: env('MEDIAWATCH_FFPROBE'),
+  python: env('MEDIAWATCH_PYTHON'),
+  transcodeDir: env('MEDIAWATCH_TMP_DIR'),
+};
+let guardadoPrevio: Partial<AppConfig> = {};
+
 function load(): AppConfig {
   mkdirSync(DATA_DIR, { recursive: true });
   if (!existsSync(CONFIG_PATH)) {
     const cfg = defaultConfig();
-    writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2), 'utf8');
+    aplicarEntorno(cfg);
+    const aDisco: Partial<AppConfig> = { ...cfg };
+    for (const k of Object.keys(POR_ENTORNO) as (keyof AppConfig)[]) if (POR_ENTORNO[k]) delete aDisco[k];
+    writeFileSync(CONFIG_PATH, JSON.stringify(aDisco, null, 2), 'utf8');
     return cfg;
   }
   const guardado = JSON.parse(readFileSync(CONFIG_PATH, 'utf8')) as Partial<AppConfig>;
+  guardadoPrevio = guardado;
   const cfg = { ...defaultConfig(), ...guardado };
   // Un config.json antiguo trae «ffmpeg» a secas: no vale en el entorno del
   // vigilante, asi que se resuelve igual que el valor por defecto.
   if (cfg.ffmpeg === 'ffmpeg') cfg.ffmpeg = localizar('ffmpeg');
   if (cfg.ffprobe === 'ffprobe') cfg.ffprobe = localizar('ffprobe');
   if (!cfg.python || cfg.python === 'python') cfg.python = localizar('python');
+  aplicarEntorno(cfg);
   return cfg;
+}
+
+function aplicarEntorno(cfg: AppConfig) {
+  const o = POR_ENTORNO;
+  if (o.host) cfg.host = o.host;
+  if (o.port && Number.isInteger(Number(o.port))) cfg.port = Number(o.port);
+  if (o.ffmpeg) cfg.ffmpeg = o.ffmpeg;
+  if (o.ffprobe) cfg.ffprobe = o.ffprobe;
+  if (o.python) cfg.python = o.python;
+  if (o.transcodeDir) cfg.transcodeDir = o.transcodeDir;
 }
 
 export const config = load();
 
+// Los scripts de Python que lanza el servidor leen la ruta de ffmpeg de aqui
+// (heredan el entorno del proceso).
+process.env.MEDIAWATCH_FFMPEG = config.ffmpeg;
+
 export function saveConfig(next: AppConfig) {
-  writeFileSync(CONFIG_PATH, JSON.stringify(next, null, 2), 'utf8');
+  const aDisco: Partial<AppConfig> = { ...next };
+  for (const k of Object.keys(POR_ENTORNO) as (keyof AppConfig)[]) {
+    if (!POR_ENTORNO[k]) continue;
+    if (k in guardadoPrevio) (aDisco as Record<string, unknown>)[k] = guardadoPrevio[k];
+    else delete aDisco[k];
+  }
+  writeFileSync(CONFIG_PATH, JSON.stringify(aDisco, null, 2), 'utf8');
   Object.assign(config, next);
 }
 

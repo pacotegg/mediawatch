@@ -160,7 +160,7 @@ Abiertas:
 | Hito | Contenido | Cómo se valida |
 |---|---|---|
 | 0 | ✅ Auditoría de rutas fijas, dependencias y cliente Android (§2.1.b y §2.1.c) | Lista con cifras |
-| 1 | Servidor configurable por entorno (datos, binarios, bibliotecas vacías) | Arranca con otra carpeta de datos |
+| 1 | ✅ (08/10) Servidor configurable por entorno (datos, binarios, bibliotecas vacías). Variables `MEDIAWATCH_DATA_DIR/HOST/PORT/FFMPEG/FFPROBE/PYTHON/TMP_DIR/SUBSFETCH`; sin ellas, comportamiento anterior. Corregido un fallo de primer arranque en `db.ts` (índice creado antes que su tabla) | Probado en Linux con Node 22.22 y datos vacíos: arranca y `setupNeeded: true`. **Sin probar** en el HTPC/Windows ni con Node 26 |
 | 2 | Escáner por nombre + TMDb sobre una biblioteca de prueba desordenada | % identificado, % dudoso |
 | 3 | Envoltorio Electron (hijo, bandeja, asistente) en máquina limpia | Instalar y ver una película |
 | 4 | Instalador y prueba con un amigo | Instalación sin ayuda |

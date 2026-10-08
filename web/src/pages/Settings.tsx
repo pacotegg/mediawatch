@@ -186,7 +186,7 @@ function SubtitlesTab() {
         subtitle="Usa el buscador del pipeline: mira primero en tu propia biblioteca, luego OpenSubtitles por hash del fichero, y comprueba la sincronía contra el audio antes de aceptar nada. Si no puede demostrar que encaja, lo rechaza."
       >
         {available?.available === false ? (
-          <p className="text-[13px] text-mist-500">No se encuentra subsfetch.py en C:\scripts\webpanel.</p>
+          <p className="text-[13px] text-mist-500">Esta función no está disponible en esta instalación (falta el buscador subsfetch.py).</p>
         ) : (
           <>
             <Field label="Identificador del fichero" hint="Lo ves en la ficha de la película, en el panel «Fichero».">
