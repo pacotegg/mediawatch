@@ -282,3 +282,8 @@ Limitaciones a tener en cuenta:
 
 Las capturas y los pasos concretos de cada herramienta se escribirán al llegar al hito 3, comprobándolos con la versión vigente en ese momento (aquí no los he verificado).
 
+## 11. Estado del hito 3 (08/10)
+
+- **Repo `mediawatch-server`**: intento de crearlo desde la sesión rechazado por GitHub (`403 Resource not accessible by integration`): la integración no puede crear repositorios. Hay que crearlo a mano (vacío) y añadirlo a la sesión.
+- **Servidor**: en modo portable, el primer perfil (administrador) **exige PIN** (`routes/auth.ts`); sin PIN → 400. Probado: sin PIN y con PIN corto se rechazan, con PIN de 6 cifras se crea.
+
