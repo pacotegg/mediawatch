@@ -507,7 +507,7 @@ export function backupBaseDeDatos(): string {
   db.exec(`VACUUM INTO '${destino.replace(/'/g, "''")}'`);
 
   const copias = readdirSync(COPIAS_DIR).filter((f) => f.startsWith('tvwatch-') && f.endsWith('.db')).sort();
-  while (copias.length > 14) unlinkSync(join(COPIAS_DIR, copias.shift()!));
+  while (copias.length > 5) unlinkSync(join(COPIAS_DIR, copias.shift()!));
 
   return destino;
 }
