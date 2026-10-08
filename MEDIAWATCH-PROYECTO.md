@@ -120,7 +120,7 @@ C:\tvwatch
 ├── package-lock.json
 ├── README.md                  README general (qué es, reproducción, ajustes, atajos)
 ├── MEDIAWATCH-PROYECTO.md     este dosier
-├── vigilar-servidor.ps1       vigilante: arranca/reinicia el servidor cada minuto (carpeta Inicio)
+├── vigilar-servidor.ps1       vigilante (pwsh 7, lo lanza TvWatch.vbs de Inicio): cada 15 s mira que el proceso exista Y que conteste GET /api/salud; relanza si cae, mata si se cuelga (3 fallos seguidos, máx. 6 por hora), rota server.log/err al arrancar y frena los reintentos (5 fallos → 60 s, 8 → 300 s)
 ├── .gitignore                 node_modules, data/, dist, .wgt, .apk, build de Android, local.properties
 ├── .claude/launch.json        arranque del servidor para la vista previa (node server/src/index.ts, puerto 8730)
 ├── data/                      (NO en git) BD, config, arte, cachés, logs
@@ -141,7 +141,7 @@ C:\tvwatch
 | `cache/images/` | Miniaturas redimensionadas, clave = hash de ruta+mtime+tamaño+ancho (1,9 GB a 26/09 gracias a la purga semanal; eran 63.613 ficheros sin límite hasta el 21/09). Sin límite hasta el 21/09: purga semanal por antigüedad desde `media/images.ts` |
 | `trickplay/` | Tiras de fotogramas para la barra (126 MB a 26/09). Carpetas huérfanas (fichero ya retirado) se limpian solas cada semana desde `media/trickplay.ts` |
 | `copias/` | Copias de seguridad de la BD, una diaria, `VACUUM INTO` (consistente con WAL abierto), rotando a las 14 más recientes desde el 21/09 (`db.ts`) |
-| `server.log`, `server.err`, `vigilante.log`, `completar-arte.log`, `completar-personas.log` | Registros |
+| `server.log`, `server.err`, `vigilante.log`, `completar-arte.log`, `completar-personas.log` | Registros. Desde el 08/10/2026 `server.log`/`server.err` llevan hora en cada línea y se rotan en cada arranque a `*.AAAAMMDD-HHMMSS` (5 copias): lo que hay en `server.err` es de ESTE arranque. Antes eran acumulativos y un `SyntaxError` viejo se tomó por un reinicio roto |
 
 Bibliotecas configuradas (todas en `E:\`): Películas, Animación (`Pelis Animacion`),
 Peques, Documentales (`Docupelis`), Conciertos, Monólogos → tipo `movie`; Series,
@@ -299,7 +299,7 @@ Firmada con la clave de depuración a propósito (estable en este equipo).
 ## 4. Cómo se arranca, compila e instala
 
 ```bash
-# Servidor (queda en http://localhost:8730; lo vigila vigilar-servidor.ps1 desde Inicio, ~45 s en volver)
+# Servidor (queda en http://localhost:8730; lo vigila vigilar-servidor.ps1 desde Inicio; "levantado" solo se apunta cuando GET /api/salud contesta)
 cd /c/tvwatch && npm start
 
 # Desarrollo con recarga (servidor + web)
@@ -718,6 +718,12 @@ Herramientas de la sesión
 ---
 
 ## 9. Estado actual, pendientes y descartes
+
+**Estado a 08/10**: Android **3.35** (`versionCode 38`, release `v3.35`). `instalar.html` se quedó
+sirviendo la 3.33 durante 3.34 y 3.35 porque el APK solo se subió a la release de GitHub y no a
+`web/public` + `web/dist` ni se cambió el enlace; corregido y comprobado contra el dominio. Regla
+permanente (tres sitios + comprobar contra el dominio real) en `CLAUDE.md`. Servidor: nuevo
+`GET /api/salud` público (`{"ok":true}` tras un `SELECT 1`) y vigilante endurecido (ver árbol de ficheros).
 
 **Estado a 07/10 (cierre)**: Android **3.34** (`versionCode 37`) publicada (releases `v3.29` a `v3.34`
 con APK; `instalar.html` enlaza el APK con número y su QR sale de `/qr-instalar.svg`). Novedades

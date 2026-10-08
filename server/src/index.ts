@@ -24,13 +24,22 @@ import { scanAllEnWorker, type ScanProgress } from './scanner/scan.ts';
 import { ultimaVersionApp } from './media/version-app.ts';
 
 /*
- * El proxy inverso es de fiar; nadie mas.
- *
- * Sin esto, todo lo que entra por Caddy llega con la IP 127.0.0.1, y el freno
- * de intentos fallidos del login contaria a todo internet como una sola
- * direccion: un solo atacante dejaria fuera a la familia entera. Con la lista
- * acotada al propio equipo, la IP real solo se acepta de quien puede saberla
- * —Caddy— y un cliente de casa no puede inventarse la suya.
+ * `server.log` y `server.err` se abren en modo añadir y no llevaban hora: un
+ * error de hace días era indistinguible de uno de este arranque (08/10/2026 se
+ * dio por roto un reinicio sano por leer un SyntaxError viejo). Con la hora en
+ * cada línea, y el vigilante rotando los ficheros al arrancar, lo que se ve en
+ * ellos es del arranque actual o está fechado.
+ */
+for (const nivel of ['log', 'error'] as const) {
+  const original = console[nivel].bind(console);
+  console[nivel] = (...args: unknown[]) => original(new Date().toISOString(), ...args);
+}
+
+/*
+ * Un error no capturado mataba el proceso y dejaba la casa sin servidor, en
+ * silencio. Se registra y se sigue: un fallo sirviendo un fichero raro no puede
+ * tirar abajo la reproducción de los demás. Un solo manejador de cada tipo:
+ * había un segundo par más abajo que registraba lo mismo por duplicado.
  */
 process.on('uncaughtException', (err) => {
   console.error('[uncaughtException]', err);
@@ -46,6 +55,15 @@ process.on('unhandledRejection', (reason) => {
   } catch {}
 });
 
+/*
+ * El proxy inverso es de fiar; nadie mas.
+ *
+ * Sin esto, todo lo que entra por Caddy llega con la IP 127.0.0.1, y el freno
+ * de intentos fallidos del login contaria a todo internet como una sola
+ * direccion: un solo atacante dejaria fuera a la familia entera. Con la lista
+ * acotada al propio equipo, la IP real solo se acepta de quien puede saberla
+ * —Caddy— y un cliente de casa no puede inventarse la suya.
+ */
 const app = Fastify({
   logger: false,
   bodyLimit: 2 * 1024 * 1024,
@@ -108,6 +126,7 @@ const ABIERTAS = new Set([
   'POST /api/auth/device/pin', // la tele manda el PIN del perfil antes de tener token; el handler exige red de casa y frena intentos
   'GET /api/qr.svg', // el QR de emparejamiento se pinta en esa misma pantalla
   'GET /api/app/version', // la app avisa de versión nueva también antes de entrar
+  'GET /api/salud', // el vigilante comprueba que el servidor CONTESTA, no solo que el proceso existe
 ]);
 
 app.addHook('onRequest', async (req, reply) => {
@@ -123,13 +142,16 @@ app.addHook('onRequest', async (req, reply) => {
     return reply.code(401).send({ error: 'No autenticado' });
   }
 });
+
 /*
- * Un error no capturado mataba el proceso y dejaba la casa sin servidor, en
- * silencio. Se registra y se sigue: un fallo sirviendo un fichero raro no puede
- * tirar abajo la reproducción de los demás.
+ * Lo único que dice es «contesto y la base abre»: sin versión ni hora de
+ * arranque, porque la ruta es pública y también se alcanza desde fuera. Si el
+ * hilo está bloqueado, no contesta; si la base está rota, lanza y da 500. Las
+ * dos cosas las ve el vigilante como fallo.
  */
-process.on('uncaughtException', (err) => {
-  console.error('[fatal evitado]', err);
+app.get('/api/salud', async () => {
+  db.prepare('SELECT 1').get();
+  return { ok: true };
 });
 
 /*
@@ -139,9 +161,6 @@ process.on('uncaughtException', (err) => {
  */
 app.addHook('onError', async (req, _reply, err) => {
   console.error(`[error] ${req.method} ${req.url.slice(0, 80)} -> ${err.message}`);
-});
-process.on('unhandledRejection', (motivo) => {
-  console.error('[promesa sin capturar]', motivo);
 });
 
 /*
