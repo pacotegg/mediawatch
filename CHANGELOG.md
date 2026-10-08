@@ -12,6 +12,10 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.35 — 08/10/2026
+- Selección limpia de subtítulos: desactivados por defecto; se eligen únicamente desde la ficha o en reproducción.
+- Soporte completo para subtítulos PGS con OCR y subtítulos externos/internos sincronizados.
+
 ## 3.34 — 07/10/2026
 - Robustez de red y peticiones: reintentos automáticos transparentes y recuperación ante microcortes o reinicios de servidor.
 - Navegación espacial corregida en televisor: los desplazamientos arriba/abajo mantienen la alineación vertical sin saltos laterales.

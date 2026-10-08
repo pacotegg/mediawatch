@@ -60,10 +60,7 @@ fun PantallaAjustes(
   var descargasSoloWifi by remember { mutableStateOf(Ajustes.descargasSoloWifi) }
   var calidadDescarga by remember { mutableStateOf(Ajustes.calidadDescargaDefecto) }
 
-  var idiomaAudio by remember { mutableStateOf(Ajustes.idiomaAudioPreferido) }
   var modoAudio by remember { mutableStateOf(Ajustes.modoAudio) }
-  var modoSubs by remember { mutableStateOf(Ajustes.modoSubtitulos) }
-  var idiomaSubs by remember { mutableStateOf(Ajustes.idiomaSubtitulosPreferido) }
 
   // Diálogo selector genérico
   var dialogoOpciones by remember { mutableStateOf<DialogoConfig?>(null) }
@@ -242,28 +239,8 @@ fun PantallaAjustes(
 
     Spacer(Modifier.height(16.dp))
 
-    // 3. AUDIO Y SUBTÍTULOS
-    SeccionAjustes("Audio y Subtítulos") {
-      val opcionesIdiomaAudio = listOf(
-        "spa" to "Español (Castellano)",
-        "orig" to "Versión original / Inglés",
-        "cualquiera" to "Primera pista disponible",
-      )
-      FilaSeleccion(
-        titulo = "Idioma de audio preferido",
-        valor = opcionesIdiomaAudio.firstOrNull { it.first == idiomaAudio }?.second ?: "Español",
-      ) {
-        dialogoOpciones = DialogoConfig(
-          titulo = "Idioma de audio preferido",
-          seleccionado = idiomaAudio,
-          opciones = opcionesIdiomaAudio,
-          alElegir = {
-            idiomaAudio = it
-            Ajustes.idiomaAudioPreferido = it
-          },
-        )
-      }
-
+    // 3. MODO DE AUDIO
+    SeccionAjustes("Modo de Audio") {
       val opcionesModoAudio = listOf(
         "normal" to "Normal (mezcla original)",
         "dialogue" to "Realzar diálogos",
@@ -280,45 +257,6 @@ fun PantallaAjustes(
           alElegir = {
             modoAudio = it
             Ajustes.modoAudio = it
-          },
-        )
-      }
-
-      val opcionesModoSubs = listOf(
-        "auto" to "Automáticos (solo con audio extranjero)",
-        "always" to "Siempre activados",
-        "never" to "Desactivados",
-      )
-      FilaSeleccion(
-        titulo = "Subtítulos automáticos",
-        valor = opcionesModoSubs.firstOrNull { it.first == modoSubs }?.second ?: "Automáticos",
-      ) {
-        dialogoOpciones = DialogoConfig(
-          titulo = "Subtítulos automáticos",
-          seleccionado = modoSubs,
-          opciones = opcionesModoSubs,
-          alElegir = {
-            modoSubs = it
-            Ajustes.modoSubtitulos = it
-          },
-        )
-      }
-
-      val opcionesIdiomaSubs = listOf(
-        "spa" to "Español (Castellano)",
-        "eng" to "Inglés",
-      )
-      FilaSeleccion(
-        titulo = "Idioma de subtítulos preferido",
-        valor = opcionesIdiomaSubs.firstOrNull { it.first == idiomaSubs }?.second ?: "Español",
-      ) {
-        dialogoOpciones = DialogoConfig(
-          titulo = "Idioma de subtítulos preferido",
-          seleccionado = idiomaSubs,
-          opciones = opcionesIdiomaSubs,
-          alElegir = {
-            idiomaSubs = it
-            Ajustes.idiomaSubtitulosPreferido = it
           },
         )
       }

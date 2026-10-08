@@ -470,74 +470,11 @@ private fun Reproduciendo(
     if (listaSubs.isEmpty()) return@LaunchedEffect
     autoSubAplicado = true
 
-    val modo = Ajustes.modoSubtitulos
-    if (modo == "never") {
-      reproductor.trackSelectionParameters = reproductor.trackSelectionParameters
-        .buildUpon()
-        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-        .build()
-      return@LaunchedEffect
-    }
-
-    val idiomaAudioPreferido = Ajustes.idiomaAudioPreferido
-    val audioActual = info?.audio?.firstOrNull { it.id == pistaAudio }
-    val idiomaAudioActual = audioActual?.language?.lowercase()?.take(3)
-    val esAudioPreferido = idiomaAudioActual == null || idiomaAudioActual == idiomaAudioPreferido.lowercase().take(3)
-
-    val idiomaSubPreferido = Ajustes.idiomaSubtitulosPreferido.lowercase().take(3)
-    val subsEnIdioma = listaSubs.filter { (grupo, indice, _) ->
-      val f = grupo.getTrackFormat(indice)
-      val lang = f.language?.lowercase()?.take(3)
-      lang == idiomaSubPreferido || lang == "es" || lang == "spa"
-    }
-
-    val subForzado = subsEnIdioma.firstOrNull { (grupo, indice, etiqueta) ->
-      val f = grupo.getTrackFormat(indice)
-      (f.selectionFlags and C.SELECTION_FLAG_FORCED != 0) || etiqueta.lowercase().contains("forzad") || etiqueta.lowercase().contains("forced")
-    }
-    val subCompleto = subsEnIdioma.firstOrNull { it != subForzado } ?: subsEnIdioma.firstOrNull()
-
-    if (modo == "auto") {
-      if (esAudioPreferido) {
-        // En español: SOLO activar si hay subtítulos forzados; si no, apagados
-        if (subForzado != null) {
-          reproductor.trackSelectionParameters = reproductor.trackSelectionParameters
-            .buildUpon()
-            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-            .setOverrideForType(TrackSelectionOverride(subForzado.first.mediaTrackGroup, subForzado.second))
-            .build()
-        } else {
-          reproductor.trackSelectionParameters = reproductor.trackSelectionParameters
-            .buildUpon()
-            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-            .build()
-        }
-      } else {
-        // En audio extranjero: activar completos en el idioma preferido
-        val elegida = subCompleto ?: subForzado
-        if (elegida != null) {
-          reproductor.trackSelectionParameters = reproductor.trackSelectionParameters
-            .buildUpon()
-            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-            .setOverrideForType(TrackSelectionOverride(elegida.first.mediaTrackGroup, elegida.second))
-            .build()
-        } else {
-          reproductor.trackSelectionParameters = reproductor.trackSelectionParameters
-            .buildUpon()
-            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-            .build()
-        }
-      }
-    } else if (modo == "always") {
-      val elegida = subCompleto ?: subForzado ?: listaSubs.firstOrNull()
-      if (elegida != null) {
-        reproductor.trackSelectionParameters = reproductor.trackSelectionParameters
-          .buildUpon()
-          .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-          .setOverrideForType(TrackSelectionOverride(elegida.first.mediaTrackGroup, elegida.second))
-          .build()
-      }
-    }
+    // Por defecto los subtítulos empiezan apagados siempre
+    reproductor.trackSelectionParameters = reproductor.trackSelectionParameters
+      .buildUpon()
+      .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+      .build()
   }
 
   /* ------------------------------------- guardar el progreso y los saltos */
