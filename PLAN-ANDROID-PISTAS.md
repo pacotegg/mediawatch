@@ -1,9 +1,9 @@
-# Android: audio y subtítulos en la ficha y en Cast (3.37 / 3.38 / 3.39)
+# Android: audio y subtítulos en la ficha y en Cast (3.37 – 3.40)
 
 Para quien continúe (Claude o Gemini). Estado a 09/10/2026.
 
 ## DÓNDE LO DEJO (leer primero)
-Última versión publicada: **3.39** (GitHub release `v3.38`, APK en `web/public` y `web/dist`, `instalar.html` apuntando a ella). Todo está commiteado y empujado.
+Última versión publicada: **3.40** (GitHub release `v3.38`, APK en `web/public` y `web/dist`, `instalar.html` apuntando a ella). Todo está commiteado y empujado.
 
 **Lo único que queda por hacer es probar en un móvil real con Chromecast** (yo no tengo dispositivo):
 1. Cast: el botón de audio del control ampliado (hueco 1, `ControlDeCast`) y que el cambio recargue el stream en la posición actual; subtítulos de Cast tras elegirlos en la ficha.
@@ -55,6 +55,8 @@ Regla de audio (`Pistas.elegirAudio`): elegida a mano > preferida («spa» → e
 ## 3.38 (09/10/2026)
 - **Series:** la ficha muestra Audio/Subtítulos con las pistas del próximo episodio por ver (o el primero). Lo elegido se guarda **por idioma** en memoria (`EleccionDePistas.DeSerie`, vive mientras la app esté abierta) y reproductor y Cast lo aplican a cualquier episodio de ese título (`Pistas.elegirAudio(..., idioma=)`, `Pistas.subtituloParecido`). Verificado en emulador solo que los iconos y las etiquetas salen; **no probado** reproducir un episodio con la elección puesta.
 - **Reordenar menú (3.39):** arrastrando en el propio menú lateral, sin pantalla en Ajustes (`ui/Menu.kt`): pulsación larga en una entrada → modo edición (ojo abierto/tachado para esconder, «Listo» para salir; las escondidas se ven atenuadas solo en edición). Cada grupo (secciones / bibliotecas) se ordena aparte; «Ajustes» ni se mueve ni se esconde. Claves como en la tele (`inicio`, `buscar`, `favoritos`, `descargas`, `sagas`, `plataformas`, `lib-<id>`), guardadas en `Ajustes.ordenMenu` / `menuOcultos` (local al móvil; son `mutableIntStateOf`-observables). Verificado en emulador: arrastre, ojo, «Listo», persistencia y repintado en vivo del menú y de los atajos de la portada.
+- **3.40, arrastre:** los gestos van en UNA columna fija (dentro del scroll del menú) con una tabla de límites por fila, y el menú se desplaza solo cerca de los bordes. Antes el gesto estaba en cada fila y **Compose cancela un gesto cuando mueve la fila** al reordenar: solo se podía saltar de uno en uno (en emulador con eventos rápidos no se veía; con eventos lentos, sí). Verificado: Animación recorrió 8 puestos en un solo arrastre lento.
+- **3.40, destacado (`Portada.kt`):** «Buscar» sacado del pager (se deslizaba con cada página) y `clipToBounds` en la tarjeta (el zoom del fondo asomaba por los lados y por debajo).
 - Por hacer: el orden no se comparte entre móvil y tele (la tele lo guarda en su localStorage).
 
 ## Limitaciones conocidas (por hacer)

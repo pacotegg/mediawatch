@@ -45,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -232,13 +233,24 @@ private fun Destacado(heroes: List<Titulo>, alAbrirFicha: (Int) -> Unit, alBusca
   if (siguiente.tieneFondo == 1) precargarImagen(recordarUrl(siguiente.id, "fanart", 1280))
   if (siguiente.tieneLogo == 1) precargarImagen(recordarUrl(siguiente.id, "logo", 560))
 
-  HorizontalPager(state = estado, beyondViewportPageCount = 1) { pagina ->
-    TarjetaDestacada(heroes[pagina % heroes.size], alAbrirFicha, alBuscar)
+  /*
+   * «Buscar» va FUERA del pager y fijo: dentro de cada página se deslizaba con ella y,
+   * al cambiar de destacado, se veían dos botones cruzándose.
+   */
+  Box {
+    HorizontalPager(state = estado, beyondViewportPageCount = 1) { pagina ->
+      TarjetaDestacada(heroes[pagina % heroes.size], alAbrirFicha)
+    }
+    Pastilla(
+      "Buscar",
+      modifier = Modifier.align(Alignment.TopEnd).padding(Aire.borde),
+      alPulsar = alBuscar,
+    )
   }
 }
 
 @Composable
-private fun TarjetaDestacada(h: Titulo, alAbrirFicha: (Int) -> Unit, alBuscar: () -> Unit) {
+private fun TarjetaDestacada(h: Titulo, alAbrirFicha: (Int) -> Unit) {
   val pulsacion = remember { MutableInteractionSource() }
   val pulsada by pulsacion.collectIsPressedAsState()
   val escala by animateFloatAsState(
@@ -262,6 +274,9 @@ private fun TarjetaDestacada(h: Titulo, alAbrirFicha: (Int) -> Unit, alBuscar: (
     Modifier
       .fillMaxWidth()
       .height(440.dp)
+      // El zoom lento del fondo se salía de la tarjeta (un 5 %): una franja de la imagen asomaba por los lados
+      // y por debajo al cambiar de destacado. Recortado a la tarjeta, no se ve nada fuera de ella.
+      .clipToBounds()
       .scale(escala)
       .pulsable(pulsacion) { alAbrirFicha(h.id) },
   ) {
@@ -286,12 +301,6 @@ private fun TarjetaDestacada(h: Titulo, alAbrirFicha: (Int) -> Unit, alBuscar: (
           1f to Fondo,
         ),
       ),
-    )
-
-    Pastilla(
-      "Buscar",
-      modifier = Modifier.align(Alignment.TopEnd).padding(Aire.borde),
-      alPulsar = alBuscar,
     )
 
     Column(

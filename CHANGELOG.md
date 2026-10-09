@@ -12,6 +12,11 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.40 — 09/10/2026
+
+- Reordenar el menú: ahora se puede arrastrar una entrada varios puestos de una vez y por todo el menú (se desplaza solo al llegar al borde).
+- El destacado de la portada: «Buscar» queda fijo y la imagen ya no se sale de su tarjeta al cambiar de destacado.
+
 ## 3.39 — 09/10/2026
 
 - Reordenar el menú arrastrando: deja pulsada una entrada del menú lateral y arrástrala arriba o abajo; aparece un ojo en cada una para esconderla o mostrarla, y «Listo» sale. Ya no hay opción aparte en Ajustes.

@@ -11,8 +11,12 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.zIndex
+import kotlinx.coroutines.delay
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -117,6 +121,13 @@ fun Menu(rutaActual: String?, bibliotecaActual: Int?, alIr: (Destino) -> Unit) {
   var arrastrada by remember { mutableStateOf<String?>(null) }
   var desplazamiento by remember { mutableFloatStateOf(0f) }
   var alturaFila by remember { mutableFloatStateOf(0f) }
+  val desplazamientoDelMenu = rememberScrollState()
+  var dedoY by remember { mutableFloatStateOf(0f) }
+  // Dónde está cada fila movible dentro del contenido (arriba, abajo): para saber cuál se ha pulsado.
+  val limites = remember { HashMap<String, Pair<Float, Float>>() }
+  var contenidoY by remember { mutableFloatStateOf(0f) }
+  var cajaArriba by remember { mutableFloatStateOf(0f) }
+  var cajaAbajo by remember { mutableFloatStateOf(0f) }
 
   LaunchedEffect(Unit) {
     if (bibliotecas.isNotEmpty()) return@LaunchedEffect
@@ -126,6 +137,71 @@ fun Menu(rutaActual: String?, bibliotecaActual: Int?, alIr: (Destino) -> Unit) {
       bibliotecas = b
     } catch (e: Exception) {
       // Sin red no hay lista; el resto del menú sigue sirviendo.
+    }
+  }
+
+    /*
+     * OJO: estas funciones las llaman los gestos, que se crean una sola vez y por
+     * tanto guardan los valores de la PRIMERA composición. Por eso leen el orden
+     * de `Ajustes` en el momento de la llamada y no las listas de arriba: con las
+     * de arriba, el segundo salto de un mismo arrastre partía del orden viejo y
+     * solo se podía mover un puesto cada vez.
+     */
+    fun mover(clave: String, paso: Int): Boolean {
+      val fijas = Ajustes.ordenar(SECCIONES_FIJAS.map { it.first })
+      val libs = Ajustes.ordenar(bibliotecas.map { claveDeBiblioteca(it) })
+      val enFijas = clave in fijas
+      val grupo = (if (enFijas) fijas else libs).toMutableList()
+      val i = grupo.indexOf(clave)
+      val j = i + paso
+      if (i < 0 || j < 0 || j >= grupo.size) return false
+      grupo[i] = grupo[j]
+      grupo[j] = clave
+      Ajustes.ordenMenu = if (enFijas) grupo + libs else fijas + grupo
+      return true
+    }
+
+    fun alternar(clave: String) {
+      val o = Ajustes.menuOcultos
+      Ajustes.menuOcultos = if (clave in o) o - clave else o + clave
+    }
+
+    /** Cuantos puestos ha recorrido ya el dedo: se intercambia tantas veces como filas se hayan cruzado. */
+    fun reajustar(clave: String) {
+      val h = alturaFila
+      if (h <= 0f) return
+      while (desplazamiento > h * 0.6f) {
+        if (!mover(clave, 1)) { desplazamiento = 0f; break }
+        desplazamiento -= h
+      }
+      while (desplazamiento < -h * 0.6f) {
+        if (!mover(clave, -1)) { desplazamiento = 0f; break }
+        desplazamiento += h
+      }
+    }
+
+  /*
+   * Si se arrastra pegado al borde de arriba o de abajo, el menú se desplaza solo (más
+   * deprisa cuanto más cerca del borde), para poder llevar una entrada por todo el menú.
+   * Al moverse el contenido, la fila arrastrada se queda bajo el dedo: se compensa en `desplazamiento`.
+   */
+  LaunchedEffect(arrastrada) {
+    val clave = arrastrada ?: return@LaunchedEffect
+    val zona = 140f
+    while (true) {
+      val v = when {
+        dedoY < cajaArriba + zona -> -(1f - (dedoY - cajaArriba).coerceAtLeast(0f) / zona) * 30f
+        dedoY > cajaAbajo - zona -> (1f - (cajaAbajo - dedoY).coerceAtLeast(0f) / zona) * 30f
+        else -> 0f
+      }
+      if (v != 0f) {
+        val usado = desplazamientoDelMenu.scrollBy(v)
+        if (usado != 0f) {
+          desplazamiento += usado
+          reajustar(clave)
+        }
+      }
+      delay(16)
     }
   }
 
@@ -140,9 +216,49 @@ fun Menu(rutaActual: String?, bibliotecaActual: Int?, alIr: (Destino) -> Unit) {
         .fillMaxHeight()
         .statusBarsPadding()
         .navigationBarsPadding()
-        .verticalScroll(rememberScrollState())
+        .onGloballyPositioned {
+          cajaArriba = it.positionInWindow().y
+          cajaAbajo = cajaArriba + it.size.height
+        }
+        .verticalScroll(desplazamientoDelMenu)
         .padding(horizontal = 12.dp, vertical = 18.dp),
     ) {
+      /*
+       * Los gestos van aquí, en UNA columna que no se mueve, y no en cada fila: al
+       * reordenar, Compose mueve las filas y un gesto puesto en la fila se cancela
+       * en el primer cambio de sitio; por eso solo se podía saltar de uno en uno.
+       * Esta columna está DENTRO del desplazamiento del menú, así que recibe los
+       * eventos antes que él y, una vez pulsado largo, el arrastre no lo roba el scroll.
+       */
+      Column(
+        Modifier
+          .onGloballyPositioned { contenidoY = it.positionInWindow().y }
+          .pointerInput(Unit) {
+            detectDragGesturesAfterLongPress(
+              onDragStart = { inicio ->
+                val golpe = limites.entries.firstOrNull { inicio.y >= it.value.first && inicio.y <= it.value.second }
+                if (golpe != null) {
+                  editando = true
+                  arrastrada = golpe.key
+                  desplazamiento = 0f
+                  alturaFila = golpe.value.second - golpe.value.first
+                  dedoY = contenidoY + inicio.y
+                }
+              },
+              onDrag = { cambio, delta ->
+                val clave = arrastrada
+                if (clave != null) {
+                  cambio.consume()
+                  desplazamiento += delta.y
+                  dedoY += delta.y
+                  reajustar(clave)
+                }
+              },
+              onDragEnd = { arrastrada = null; desplazamiento = 0f },
+              onDragCancel = { arrastrada = null; desplazamiento = 0f },
+            )
+          },
+      ) {
       Row(
         Modifier.fillMaxWidth().padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -169,54 +285,8 @@ fun Menu(rutaActual: String?, bibliotecaActual: Int?, alIr: (Destino) -> Unit) {
        * bibliotecas) se ordena por separado; «Ajustes» no se mueve ni se esconde.
        */
       val ocultos = Ajustes.menuOcultos
-      val clavesLibs = bibliotecas.map { claveDeBiblioteca(it) }
       val fijasOrdenadas = Ajustes.ordenar(SECCIONES_FIJAS.map { it.first })
-      val libsOrdenadas = Ajustes.ordenar(clavesLibs)
-
-      /** Mueve `clave` un puesto dentro de su grupo. `false` si ya estaba en el borde. */
-      fun mover(clave: String, paso: Int): Boolean {
-        val enFijas = clave in fijasOrdenadas
-        val grupo = (if (enFijas) fijasOrdenadas else libsOrdenadas).toMutableList()
-        val i = grupo.indexOf(clave)
-        val j = i + paso
-        if (i < 0 || j < 0 || j >= grupo.size) return false
-        grupo[i] = grupo[j]
-        grupo[j] = clave
-        Ajustes.ordenMenu = if (enFijas) grupo + libsOrdenadas else fijasOrdenadas + grupo
-        return true
-      }
-
-      fun alternar(clave: String) {
-        Ajustes.menuOcultos = if (clave in ocultos) ocultos - clave else ocultos + clave
-      }
-
-      /** Los gestos de una entrada movible: pulsación larga y arrastre vertical. */
-      fun gestos(clave: String) = Modifier.pointerInput(clave) {
-        detectDragGesturesAfterLongPress(
-          onDragStart = {
-            editando = true
-            arrastrada = clave
-            desplazamiento = 0f
-          },
-          onDrag = { cambio, delta ->
-            cambio.consume()
-            desplazamiento += delta.y
-            val h = alturaFila
-            if (h > 0f) {
-              while (desplazamiento > h * 0.6f) {
-                if (!mover(clave, 1)) { desplazamiento = 0f; break }
-                desplazamiento -= h
-              }
-              while (desplazamiento < -h * 0.6f) {
-                if (!mover(clave, -1)) { desplazamiento = 0f; break }
-                desplazamiento += h
-              }
-            }
-          },
-          onDragEnd = { arrastrada = null; desplazamiento = 0f },
-          onDragCancel = { arrastrada = null; desplazamiento = 0f },
-        )
-      }
+      val libsOrdenadas = Ajustes.ordenar(bibliotecas.map { claveDeBiblioteca(it) })
 
       @Composable
       fun Movible(
@@ -228,14 +298,20 @@ fun Menu(rutaActual: String?, bibliotecaActual: Int?, alIr: (Destino) -> Unit) {
         icono: @Composable (Color) -> Unit,
       ) {
         val oculta = clave in ocultos
-        if (oculta && !editando) return
+        if (oculta && !editando) {
+          limites.remove(clave)
+          return
+        }
         Entrada(
           texto,
           activa = activa && !editando,
           detalle = if (editando) null else detalle,
           alPulsar = { if (!editando) alPulsar() },
-          modificador = gestos(clave)
-            .onSizeChanged { if (arrastrada == clave) alturaFila = it.height.toFloat() }
+          modificador = Modifier
+            .onGloballyPositioned {
+              val arriba = it.positionInParent().y
+              limites[clave] = arriba to (arriba + it.size.height)
+            }
             .zIndex(if (arrastrada == clave) 1f else 0f)
             .graphicsLayer { translationY = if (arrastrada == clave) desplazamiento else 0f }
             .alpha(if (oculta) 0.45f else 1f),
@@ -319,6 +395,7 @@ fun Menu(rutaActual: String?, bibliotecaActual: Int?, alIr: (Destino) -> Unit) {
         style = MaterialTheme.typography.labelSmall,
         modifier = Modifier.padding(start = 14.dp, top = 10.dp),
       )
+      }
     }
   }
 }
