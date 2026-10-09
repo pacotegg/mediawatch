@@ -1739,11 +1739,17 @@ body.rend-rapido .heroe-fondo {
   transition: none;
 }
 
-body.rend-rapido .velo-izq,
-body.rend-rapido .velo-abajo {
+body.rend-rapido .velo-izq {
   /* Dos degradados a pantalla completa sobre una imagen grande: se sustituyen
      por planos con transparencia, que solo componen. */
   background: linear-gradient(to right, rgba(18, 19, 23, 0.92) 0%, rgba(18, 19, 23, 0.82) 32%, rgba(18, 19, 23, 0.3) 60%, rgba(18, 19, 23, 0.12) 100%);
+}
+
+/* El de abajo no puede faltar: sin él la imagen del destacado acababa en un corte seco contra
+   las carátulas (09/10/2026). Es una franja baja y estática de tres paradas: casi no cuesta. */
+body.rend-rapido .velo-abajo {
+  height: 240px;
+  background: linear-gradient(to top, #16171c 0%, rgba(22, 23, 28, 0.75) 42%, rgba(22, 23, 28, 0) 100%);
 }
 
 body.rend-rapido .heroe-titulo,
