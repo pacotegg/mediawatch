@@ -1414,6 +1414,15 @@ async function pantallaFicha(id: number) {
   const fichero = ficha.files.filter((f) => !f.episode_id)[0];
   const progreso = ficha.progress.filter((p) => p.episode_id === null)[0];
   const reanudar = ajustes().reanudar && progreso && !progreso.watched ? progreso.position : 0;
+  /*
+   * Fichero cuyas pistas se enseñan en la ficha: la película, o en una serie el
+   * episodio que toca (o el primero). Lo que se elige en una serie vale, por idioma,
+   * para todos sus episodios (ver `seleccionSerie`).
+   */
+  const ficheroPistasId: number | null = esSerie
+    ? (ficha.nextUp ? (ficha.files.filter((f) => f.episode_id === ficha.nextUp!.id)[0] || { id: 0 }).id || null : null) ||
+      ((ficha.episodes || []).filter((e) => e.file_id).sort((a, b) => a.season - b.season || a.episode - b.episode)[0] || { file_id: null }).file_id
+    : (fichero ? fichero.id : null);
 
   const etiquetas: string[] = [];
   if (fichero) {
@@ -1453,8 +1462,12 @@ async function pantallaFicha(id: number) {
   if (!esSerie && fichero) {
     acciones =
       '<button class="boton primario boton-play" data-nav data-reproducir>' + iconoAccion('play') +
-      (reanudar > 0 ? 'Reanudar ' + reloj(reanudar) : 'Reproducir') + '</button>' +
+      (reanudar > 0 ? 'Reanudar ' + reloj(reanudar) + textoQueFalta(reanudar, (fichero.duration || (ficha.runtime ? ficha.runtime * 60 : 0))) : 'Reproducir') + '</button>' +
       (reanudar > 0 ? botonIcono('data-desde-cero', 'reiniciar', 'Desde el principio') : '') +
+      botonIcono('data-pistas="audio"', 'audio', 'Audio') +
+      botonIcono('data-pistas="subs"', 'subtitulos', 'Subtítulos');
+  } else if (esSerie && ficheroPistasId) {
+    acciones =
       botonIcono('data-pistas="audio"', 'audio', 'Audio') +
       botonIcono('data-pistas="subs"', 'subtitulos', 'Subtítulos');
   }
@@ -1512,7 +1525,7 @@ async function pantallaFicha(id: number) {
     // los nombres del reparto en cuanto la sinopsis tenia tres lineas.
     // Las de audio y subtítulos van en su propio hueco: se repintan al elegir
     // pista, marcando la que se va a usar.
-    (etiquetas.length || fichero
+    (etiquetas.length || fichero || ficheroPistasId
       ? '<div class="tecnicas">' +
         etiquetas.filter((t) => !esEtiquetaDePista(t)).map((t) => '<span class="etiqueta-tec' + (t === '4K' || t.indexOf('HDR') === 0 ? ' destacada' : '') + '">' + esc(t) + '</span>').join('') +
         '<span data-chips-pistas>' +
@@ -1679,10 +1692,11 @@ async function pantallaFicha(id: number) {
    */
   const pintarChipsDePistas = (info: InfoReproduccion) => {
     const hueco = marco.querySelector<HTMLElement>('[data-chips-pistas]');
-    if (!hueco || !fichero) return;
-    const propia = seleccion.fileId === fichero.id;
-    const iAudio = propia ? seleccion.audio : pistaInicial(info.audio);
-    const iSub = propia ? seleccion.subtitulo : -1;
+    if (!hueco || !ficheroPistasId) return;
+    const propia = seleccion.fileId === ficheroPistasId;
+    const deLaSerie = esSerie && seleccionSerie && seleccionSerie.itemId === ficha.id ? resolverSerie(info, seleccionSerie) : null;
+    const iAudio = propia ? seleccion.audio : deLaSerie ? deLaSerie.audio : pistaInicial(info.audio);
+    const iSub = propia ? seleccion.subtitulo : deLaSerie ? deLaSerie.subtitulo : -1;
     const chip = (texto: string, elegida: boolean) =>
       '<span class="etiqueta-tec' + (elegida ? ' elegida' : '') + '">' + (elegida ? '\u25b6 ' : '') + esc(texto) + '</span>';
     let html = '';
@@ -1710,11 +1724,11 @@ async function pantallaFicha(id: number) {
     html += chip(subTexto, iSub !== -1);
     hueco.innerHTML = html;
   };
-  if (fichero) api.pistas(fichero.id).then(pintarChipsDePistas).catch(() => undefined);
+  if (ficheroPistasId) api.pistas(ficheroPistasId).then(pintarChipsDePistas).catch(() => undefined);
 
   marco.querySelectorAll<HTMLElement>('[data-pistas]').forEach((el) => {
     el.addEventListener('click', () => {
-      if (fichero) void menuPistas(fichero.id, el.getAttribute('data-pistas') === 'audio' ? 'audio' : 'subs', pintarChipsDePistas);
+      if (ficheroPistasId) void menuPistas(ficheroPistasId, el.getAttribute('data-pistas') === 'audio' ? 'audio' : 'subs', pintarChipsDePistas, esSerie ? ficha.id : undefined);
     });
   });
 
@@ -1939,6 +1953,67 @@ function pistaInicial(audios: PistaInfo[]): number {
   return comp >= 0 ? comp : 0;
 }
 
+/** `1 h 28 min` / `24 min`: lo que falta de una película. Vacío si no se sabe el total. */
+function textoQueFalta(posicion: number, total: number): string {
+  const min = Math.round((total - posicion) / 60);
+  if (!total || min < 1) return '';
+  return ' · faltan ' + (min >= 60 ? Math.floor(min / 60) + ' h ' + (min % 60) + ' min' : min + ' min');
+}
+
+/**
+ * Lo elegido en una serie, por IDIOMA y no por número de pista: cada episodio es
+ * otro fichero con sus propias pistas. Vale para todos los episodios de ese título
+ * mientras la app siga abierta (mismo criterio que la app del móvil).
+ */
+type SeleccionSerie = { itemId: number; audioIdioma: string | null; sub: { language: string | null; forced: boolean } | null };
+let seleccionSerie: SeleccionSerie | null = null;
+
+function mismoIdioma(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return false;
+  const base = (x: string) => x.toLowerCase().trim().split(/[-_]/)[0];
+  const es = (x: string) => ['spa', 'es', 'esp', 'spanish', 'castellano'].indexOf(base(x)) >= 0;
+  return (es(a) && es(b)) || base(a) === base(b);
+}
+
+/** Qué pista de audio y de subtítulos de ESTE fichero corresponden a lo elegido para la serie. */
+function resolverSerie(info: InfoReproduccion, s: SeleccionSerie): { audio: number; subtitulo: number } {
+  let audio = pistaInicial(info.audio);
+  if (s.audioIdioma) {
+    const i = info.audio.findIndex((a) => mismoIdioma(a.language, s.audioIdioma));
+    if (i >= 0) audio = i;
+  }
+  let subtitulo = -1;
+  if (s.sub) {
+    const q = s.sub;
+    const inc = info.subtitles.filter((x) => x.source === 'embedded');
+    const ext = info.subtitles.filter((x) => x.source === 'external');
+    let i = inc.findIndex((x) => mismoIdioma(x.language, q.language) && !!x.forced === q.forced);
+    if (i < 0) i = inc.findIndex((x) => mismoIdioma(x.language, q.language));
+    if (i >= 0) subtitulo = i;
+    else {
+      const j = ext.findIndex((x) => mismoIdioma(x.language, q.language));
+      if (j >= 0) subtitulo = -(10 + j);
+    }
+  }
+  return { audio, subtitulo };
+}
+
+/** Anota en la serie lo que se acaba de elegir (audio u ordinal de subtítulo). */
+function recordarSerie(itemId: number, tipo: 'audio' | 'subs', info: InfoReproduccion, v: number) {
+  const s: SeleccionSerie = seleccionSerie && seleccionSerie.itemId === itemId ? seleccionSerie : { itemId, audioIdioma: null, sub: null };
+  if (tipo === 'audio') {
+    s.audioIdioma = info.audio[v] ? info.audio[v].language : null;
+  } else if (v === -1) {
+    s.sub = null;
+  } else {
+    const inc = info.subtitles.filter((x) => x.source === 'embedded');
+    const ext = info.subtitles.filter((x) => x.source === 'external');
+    const pista = v >= 0 ? inc[v] : ext[-(v + 10)];
+    s.sub = pista ? { language: pista.language, forced: !!pista.forced } : null;
+  }
+  seleccionSerie = s;
+}
+
 /** Pregunta antes de algo irreversible. «Volver» del mando cancela. */
 function confirmar(titulo: string, detalle: string, alAceptar: () => void) {
   const capa = document.createElement('div');
@@ -1972,7 +2047,7 @@ function esEtiquetaDePista(t: string): boolean {
   return t.indexOf('Subs:') === 0 || /^(Dolby|DTS|AAC|FLAC|MP3|Opus|PCM|TRUEHD|EAC3|AC3)/i.test(t);
 }
 
-async function menuPistas(fileId: number, tipo: 'audio' | 'subs', alCambiar?: (info: InfoReproduccion) => void) {
+async function menuPistas(fileId: number, tipo: 'audio' | 'subs', alCambiar?: (info: InfoReproduccion) => void, serieId?: number) {
   let info: InfoReproduccion;
   try {
     info = await api.pistas(fileId);
@@ -1987,6 +2062,15 @@ async function menuPistas(fileId: number, tipo: 'audio' | 'subs', alCambiar?: (i
     seleccion.fileId = fileId;
     seleccion.audio = 0;
     seleccion.subtitulo = -1;
+    // En una serie, partir de lo ya elegido para ella (por idioma) y no de cero.
+    if (serieId !== undefined && seleccionSerie && seleccionSerie.itemId === serieId) {
+      const r = resolverSerie(info, seleccionSerie);
+      seleccion.audio = r.audio;
+      seleccion.subtitulo = r.subtitulo;
+      const p = info.audio[r.audio];
+      seleccion.audioId = p ? p.id : undefined;
+      seleccion.convertir = !!p && p.compatible === false;
+    }
   }
 
   const subsIncrustados = info.subtitles.filter((s) => s.source === 'embedded');
@@ -2054,6 +2138,7 @@ async function menuPistas(fileId: number, tipo: 'audio' | 'subs', alCambiar?: (i
         seleccion.audioId = pista ? pista.id : undefined;
         seleccion.convertir = !!pista && pista.compatible === false;
       } else seleccion.subtitulo = v;
+      if (serieId !== undefined) recordarSerie(serieId, tipo, info, v);
       cerrar();
       // Sin cartel: la línea elegida ya se queda marcada en amarillo, y el
       // aviso tapaba la pantalla 4,5 s para decir lo que ya se ve.
@@ -3331,6 +3416,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     seleccion.audio = n;
     seleccion.audioId = audioId;
     seleccion.convertir = necesitaConvertir;
+    if (ficha.kind === 'show') recordarSerie(ficha.id, 'audio', inf, n);
 
     // Volver a la primera pista es el fichero en crudo; cualquier otra, o una
     // que hay que convertir, es otro flujo del servidor (ver `porTuberia`).
@@ -3382,6 +3468,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     subOrdinal = n;
     seleccion.fileId = fileId;
     seleccion.subtitulo = n;
+    if (ficha.kind === 'show' && infoServidor) recordarSerie(ficha.id, 'subs', infoServidor, n);
     capaSubs.innerHTML = '';
     if (n === -1) {
       cuesExternos = [];
@@ -3581,11 +3668,13 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
         audioId = seleccion.audioId;
         convertir = seleccion.convertir;
       } else {
-        audioOrdinal = pistaInicial(info.audio);
+        // Un episodio de una serie en la que ya se eligió: se busca esa pista por idioma.
+        const deLaSerie = seleccionSerie && seleccionSerie.itemId === ficha.id ? resolverSerie(info, seleccionSerie) : null;
+        audioOrdinal = deLaSerie ? deLaSerie.audio : pistaInicial(info.audio);
         const pista = info.audio[audioOrdinal];
         audioId = pista ? pista.id : undefined;
         convertir = !!pista && pista.compatible === false;
-        subOrdinal = -1;
+        subOrdinal = deLaSerie ? deLaSerie.subtitulo : -1;
       }
       construirBotones();
       pintarCapitulos();
