@@ -55,6 +55,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import casa.tvwatch.datos.Ajustes
 import casa.tvwatch.datos.Api
+import casa.tvwatch.datos.EleccionDePistas
+import casa.tvwatch.datos.InfoReproduccion
+import casa.tvwatch.datos.Pistas
 import casa.tvwatch.datos.AppsDePlataforma
 import casa.tvwatch.datos.PlataformaTitulo
 import casa.tvwatch.datos.Extra
@@ -120,6 +123,11 @@ fun PantallaFicha(
    */
   var dondeVer by remember(itemId) { mutableStateOf<List<PlataformaTitulo>>(emptyList()) }
   var fileIdDescargaDialogo by remember(itemId) { mutableStateOf<Int?>(null) }
+  var infoPistas by remember(itemId) { mutableStateOf<InfoReproduccion?>(null) }
+  // null = «el de siempre» (audio) / apagados (subtítulos); lo que se toque en la ficha manda en esta reproducción.
+  var audioElegido by remember(itemId) { mutableStateOf<Int?>(null) }
+  var subElegido by remember(itemId) { mutableStateOf<String?>(null) }
+  var dialogoPistas by remember(itemId) { mutableStateOf<String?>(null) }
   var codecDescarga by remember { mutableStateOf("h265") }
   val ambito = rememberCoroutineScope()
 
@@ -176,6 +184,29 @@ fun PantallaFicha(
 
   val esSerie = f.kind == "show"
   val ficheroPelicula = f.files.firstOrNull { it.episodioId == null }
+
+  // Las pistas del fichero, para poder elegir audio y subtítulos antes de reproducir (como en la tele).
+  val idFicheroPelicula = ficheroPelicula?.id
+  LaunchedEffect(idFicheroPelicula) {
+    if (idFicheroPelicula == null) return@LaunchedEffect
+    infoPistas = try {
+      withContext(Dispatchers.IO) { Api.infoDeReproduccion(idFicheroPelicula) }
+    } catch (e: Exception) {
+      null
+    }
+  }
+
+  /** Deja lo elegido para que lo recoja el reproductor o Cast. Sin cambios, no deja nada. */
+  fun prepararPistas(fileId: Int) {
+    val i = infoPistas
+    EleccionDePistas.guardar(
+      if (i != null && (audioElegido != null || subElegido != null)) {
+        EleccionDePistas.Eleccion(fileId, audioElegido, i.subtitles.firstOrNull { it.id == subElegido })
+      } else {
+        null
+      },
+    )
+  }
   val progresoPelicula = f.progress.firstOrNull { it.episodioId == null }
   /*
    * Dónde se reanuda. Mira también `estaVista`, que es el estado de aquí: al
@@ -312,32 +343,39 @@ fun PantallaFicha(
         if (!esSerie && ficheroPelicula != null) {
           BotonReproducirIos(
             texto = if (reanudarEn > 0) "Reanudar · ${reloj(reanudarEn)}" else "Reproducir",
-            alPulsar = { alReproducir(ficheroPelicula.id, null, reanudarEn) },
+            alPulsar = {
+              prepararPistas(ficheroPelicula.id)
+              alReproducir(ficheroPelicula.id, null, reanudarEn)
+            },
           )
-          if (reanudarEn > 0) {
-            Spacer(Modifier.height(8.dp))
-            BotonSecundarioIos(
-              texto = "Desde el principio",
-              alPulsar = { alReproducir(ficheroPelicula.id, null, 0.0) },
-            )
-          }
         }
         Spacer(Modifier.height(14.dp))
         /*
-         * La fila de acciones estilo iOS: botones frosted glass con iconos
-         * vectoriales limpios y respuesta táctil por resorte.
+         * Como en la app de la tele: «Reproducir» es el único botón con texto; el
+         * resto, iconos redondos con su nombre debajo (`BotonIcono`, en
+         * AccionesDeFicha.kt).
          */
         Row(
           Modifier.horizontalScroll(rememberScrollState()),
-          horizontalArrangement = Arrangement.spacedBy(8.dp),
+          horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
+          if (!esSerie && ficheroPelicula != null) {
+            if (reanudarEn > 0) {
+              BotonIcono("Desde el principio", "reiniciar") {
+                prepararPistas(ficheroPelicula.id)
+                alReproducir(ficheroPelicula.id, null, 0.0)
+              }
+            }
+            BotonIcono("Audio", "audio", activo = audioElegido != null) { dialogoPistas = "audio" }
+            BotonIcono("Subtítulos", "subtitulos", activo = subElegido != null) { dialogoPistas = "subs" }
+          }
           /*
            * El tráiler se abre en la app de YouTube (o en el navegador si no
            * está): en el móvil no hay el problema de la tele, y Atrás vuelve
            * aquí. Nunca se descarga nada.
            */
           trailer?.let { t ->
-            Pastilla("Tráiler") {
+            BotonIcono("Tráiler", "trailer") {
               val app = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("vnd.youtube:" + t.youtube))
               val web = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://www.youtube.com/watch?v=" + t.youtube))
               try {
@@ -351,11 +389,11 @@ fun PantallaFicha(
           }
           // Solo si los hay: extras disponibles
           if (extras.isNotEmpty()) {
-            Pastilla("Extras (${extras.size})") { extrasAbiertos = true }
+            BotonIcono("Extras (${extras.size})", "extras") { extrasAbiertos = true }
           }
           // «También en tu suscripción»
           for (p in dondeVer) {
-            Pastilla("También en ${p.nombre}") {
+            BotonIcono("En ${p.nombre}", "plataforma") {
               ambito.launch {
                 val enlace = try {
                   withContext(Dispatchers.IO) { Api.enlaceDeTitulo(itemId, p.clave) }
@@ -369,11 +407,7 @@ fun PantallaFicha(
               }
             }
           }
-          Pastilla(
-            "Favorita",
-            activa = esFavorita,
-            icono = { IconoEstrella(it, rellena = esFavorita) },
-          ) {
+          BotonIcono("Favorita", if (esFavorita) "favoritoSi" else "favorito", activo = esFavorita) {
             val nuevo = !esFavorita
             esFavorita = nuevo
             ambito.launch {
@@ -385,11 +419,7 @@ fun PantallaFicha(
               }
             }
           }
-          Pastilla(
-            if (estaVista) "Vista" else "Marcar vista",
-            activa = estaVista,
-            icono = { IconoCheck(it) },
-          ) {
+          BotonIcono(if (estaVista) "Vista" else "Marcar vista", if (estaVista) "vistaSi" else "vista", activo = estaVista) {
             val nuevo = !estaVista
             estaVista = nuevo
             ambito.launch {
@@ -402,15 +432,30 @@ fun PantallaFicha(
             }
           }
           if (!esSerie && ficheroPelicula != null) {
-            Pastilla("Descargar", icono = { IconoDescarga(it) }) {
-              fileIdDescargaDialogo = ficheroPelicula.id
-            }
-            Pastilla("En la tele", icono = { IconoCast(it) }) {
-              mandarALaTele(ficheroPelicula.id, null, reanudarEn)
-            }
+            BotonIcono("Descargar", "descargar") { fileIdDescargaDialogo = ficheroPelicula.id }
+            BotonIcono("En la tele", "tele") { mandarALaTele(ficheroPelicula.id, null, reanudarEn) }
           }
           // Cambiar las imágenes: solo administrador
-          if (Ajustes.esAdmin) Pastilla("Imágenes") { alCambiarImagenes(f.kind, f.title, f.year) }
+          if (Ajustes.esAdmin) BotonIcono("Imágenes", "imagenes") { alCambiarImagenes(f.kind, f.title, f.year) }
+        }
+
+        // Lo que se pondrá al reproducir, con lo elegido en ámbar (como en la tele).
+        if (!esSerie && ficheroPelicula != null) {
+          val i = infoPistas
+          if (i != null && i.audio.isNotEmpty()) {
+            Spacer(Modifier.height(10.dp))
+            val a = Pistas.elegirAudio(i.audio, audioElegido)
+            val s = i.subtitles.firstOrNull { it.id == subElegido }
+            EtiquetasDePistas(
+              audio = (a?.let { etiquetaAudio(it) } ?: "Sin audio") + (if (a != null && !a.compatible) " · se convertirá" else ""),
+              subtitulos = when {
+                s != null -> "Subtítulos: " + etiquetaSubtitulo(s)
+                i.subtitles.isNotEmpty() -> "Subtítulos: desactivados (${i.subtitles.size})"
+                else -> "Sin subtítulos"
+              },
+              subtitulosActivos = s != null,
+            )
+          }
         }
 
         Spacer(Modifier.height(24.dp))
@@ -507,6 +552,34 @@ fun PantallaFicha(
     DialogoDeExtras(extras) { extrasAbiertos = false }
   }
 
+  // Elegir pista de audio o subtítulos para esta película (la ficha de la tele hace lo mismo).
+  val dialogoDePistas = dialogoPistas
+  val infoDelDialogo = infoPistas
+  if (dialogoDePistas != null && infoDelDialogo != null) {
+    if (dialogoDePistas == "audio") {
+      SelectorDePistas(
+        titulo = "Pista de audio",
+        opciones = infoDelDialogo.audio.map { it.id.toString() to (etiquetaAudio(it) + if (it.compatible) "" else " · se convertirá") },
+        elegida = (Pistas.elegirAudio(infoDelDialogo.audio, audioElegido)?.id ?: -1).toString(),
+        alElegir = {
+          audioElegido = it.toIntOrNull()
+          dialogoPistas = null
+        },
+        alCerrar = { dialogoPistas = null },
+      )
+    } else {
+      SelectorDePistas(
+        titulo = "Subtítulos",
+        opciones = listOf("" to "Desactivados") + infoDelDialogo.subtitles.map { it.id to etiquetaSubtitulo(it) },
+        elegida = subElegido ?: "",
+        alElegir = {
+          subElegido = it.ifEmpty { null }
+          dialogoPistas = null
+        },
+        alCerrar = { dialogoPistas = null },
+      )
+    }
+  }
   if (fileIdDescargaDialogo != null) {
     val targetFileId = fileIdDescargaDialogo!!
     val ficheroElegido = f.files.firstOrNull { it.id == targetFileId }

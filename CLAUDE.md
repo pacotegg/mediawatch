@@ -145,6 +145,8 @@ Leerlo antes de tocar esas zonas. Los que reaparecen más:
 Releases con APK: 3.7, 3.8, 3.13, 3.17, 3.23, 3.25–3.36. Las versiones sin registro en `CHANGELOG.md`
 no tienen APK subido.
 
+**Android 3.37 (audio/subtítulos en ficha y Cast)** → `PLAN-ANDROID-PISTAS.md` (hecho, con limitaciones y pendientes).
+
 **Plan abierto: app para teles LG (webOS)** → `PLAN-LG-WEBOS.md` (no empezado; valoración, hechos verificados
 de LG, fases y preguntas abiertas). «Ver en la tele» hoy solo tiene receptor en la app de Tizen (Samsung).
 

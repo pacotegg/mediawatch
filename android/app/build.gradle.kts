@@ -24,8 +24,8 @@ android {
      * `versionCode` sube siempre en uno: es lo que Android mira para instalar
      * encima. El nombre se ve al pie del menú lateral.
      */
-    versionCode = 39
-    versionName = "3.36"
+    versionCode = 40
+    versionName = "3.37"
   }
 
   buildFeatures { compose = true }
@@ -117,5 +117,6 @@ dependencies {
   implementation(files("libs/lib-decoder-ffmpeg-release.aar"))
 
   implementation("com.squareup.okhttp3:okhttp:4.12.0")
+  testImplementation("junit:junit:4.13.2")
   implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 }

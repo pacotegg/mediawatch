@@ -98,6 +98,10 @@ import casa.tvwatch.datos.Cache
 import casa.tvwatch.datos.Capacidades
 import casa.tvwatch.datos.Episodio
 import casa.tvwatch.datos.InfoReproduccion
+import casa.tvwatch.datos.EleccionDePistas
+import casa.tvwatch.datos.PistaSubtitulo
+import casa.tvwatch.datos.Pistas
+import casa.tvwatch.datos.Registro
 import casa.tvwatch.datos.RangoSalto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -229,7 +233,9 @@ private fun Reproduciendo(
 
   var info by remember(fileId) { mutableStateOf<InfoReproduccion?>(null) }
   var fallo by remember(fileId) { mutableStateOf("") }
-  var pistaAudio by remember(fileId) { mutableStateOf<Int?>(null) }
+  // Lo elegido en la ficha para esta película (audio y subtítulos). Se recoge una sola vez.
+  val eleccion = remember(fileId) { EleccionDePistas.tomar(fileId) }
+  var pistaAudio by remember(fileId) { mutableStateOf<Int?>(eleccion?.audioId) }
   var menuAbierto by remember { mutableStateOf(false) }
   /*
    * Cómo encaja el vídeo. Sin clave en el `remember` y guardado en Ajustes:
@@ -370,8 +376,8 @@ private fun Reproduciendo(
       // La pista que se pone al empezar: la primera que el aparato sepa leer.
       // Si ninguna vale, la primera y que el servidor la convierta. Al
       // recargar por un cambio de calidad se conserva la que ya estaba.
-      val elegida = i.audio.firstOrNull { it.id == pistaAudio }
-        ?: i.audio.firstOrNull { it.compatible } ?: i.audio.firstOrNull()
+      val elegida = Pistas.elegirAudio(i.audio, pistaAudio)
+      Registro.i("pistas", "reproductor: " + Pistas.describir(i.audio, elegida))
       pistaAudio = elegida?.id
       /*
        * El servidor ya ha decidido, con lo que este aparato le ha contado de
@@ -475,6 +481,22 @@ private fun Reproduciendo(
       .buildUpon()
       .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
       .build()
+
+    // ...salvo que en la ficha se haya elegido uno.
+    val querido = eleccion?.subtitulo
+    if (querido != null) {
+      val pista = buscarSubtitulo(pistas, querido)
+      if (pista != null) {
+        reproductor.trackSelectionParameters = reproductor.trackSelectionParameters
+          .buildUpon()
+          .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+          .setOverrideForType(TrackSelectionOverride(pista.first.mediaTrackGroup, pista.second))
+          .build()
+        Registro.i("pistas", "subtítulo de la ficha puesto: idioma=${querido.language} forzado=${querido.forced}")
+      } else {
+        Registro.w("pistas", "el reproductor no tiene el subtítulo elegido en la ficha: idioma=${querido.language} forzado=${querido.forced}")
+      }
+    }
   }
 
   /* ------------------------------------- guardar el progreso y los saltos */
@@ -1591,6 +1613,34 @@ private fun MenuDePistas(
       }
     }
   }
+}
+
+/**
+ * La pista de texto del reproductor que corresponde al subtítulo elegido en la
+ * ficha. No hay un identificador común (las incrustadas del MKV y los ficheros
+ * aparte llegan con ids distintos), así que se casa por idioma y, a igualdad, por
+ * «forzados». Es una heurística: sirve para el caso normal (un idioma, uno
+ * completo y uno forzado), no distingue dos pistas del mismo idioma y tipo.
+ */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+private fun buscarSubtitulo(pistas: Tracks, elegido: PistaSubtitulo): Pair<Tracks.Group, Int>? {
+  fun base(c: String?) = c?.lowercase()?.split('-', '_')?.firstOrNull().orEmpty()
+  val querido = base(elegido.language)
+  var mejor: Pair<Tracks.Group, Int>? = null
+  for (grupo in pistas.groups) {
+    if (grupo.type != C.TRACK_TYPE_TEXT) continue
+    for (i in 0 until grupo.length) {
+      if (!grupo.isTrackSupported(i)) continue
+      val f = grupo.getTrackFormat(i)
+      val idioma = base(f.language)
+      val mismoIdioma = idioma.take(2) == querido.take(2) || (Pistas.esEspanol(idioma) && Pistas.esEspanol(querido))
+      if (!mismoIdioma) continue
+      val forzado = (f.selectionFlags and C.SELECTION_FLAG_FORCED) != 0
+      if (forzado == elegido.forced) return grupo to i
+      if (mejor == null) mejor = grupo to i
+    }
+  }
+  return mejor
 }
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Mismo dibujo que el icono «audio» de la tele (tv/src/main.ts, ACCIONES): 24 px, trazo de 1,8. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+  <path
+      android:pathData="M4 9.5h3.2L11.5 6v12l-4.3-3.5H4z"
+      android:strokeColor="#FFFFFF"
+      android:strokeWidth="1.8"
+      android:strokeLineCap="round"
+      android:strokeLineJoin="round" />
+  <path
+      android:pathData="M15 9.2a4 4 0 0 1 0 5.6M17.6 6.7a7.5 7.5 0 0 1 0 10.6"
+      android:strokeColor="#FFFFFF"
+      android:strokeWidth="1.8"
+      android:strokeLineCap="round"
+      android:strokeLineJoin="round" />
+</vector>

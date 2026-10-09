@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!--
+    Los cuatro huecos de botones de la pantalla de control de Cast. Por defecto el
+    SDK pone: subtítulos, anterior, siguiente y silencio (cast_expanded_controller_
+    default_control_buttons, leído en el propio AAR el 09/10/2026). Anterior y
+    siguiente no sirven con una sola película, así que el segundo hueco pasa a ser
+    uno propio: el de AUDIO (se rellena en ControlDeCast, en Cast.kt).
+  -->
+  <array name="botones_control_de_cast">
+    <item>@id/cast_button_type_closed_caption</item>
+    <item>@id/cast_button_type_custom</item>
+    <item>@id/cast_button_type_skip_next</item>
+    <item>@id/cast_button_type_mute_toggle</item>
+  </array>
+
+  <style name="EstiloControlDeCast" parent="CastExpandedController">
+    <item name="castControlButtons">@array/botones_control_de_cast</item>
+  </style>
+</resources>

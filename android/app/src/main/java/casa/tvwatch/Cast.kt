@@ -12,6 +12,9 @@ import androidx.core.graphics.drawable.DrawableCompat
 import androidx.mediarouter.app.MediaRouteButton
 import casa.tvwatch.datos.Ajustes
 import casa.tvwatch.datos.Api
+import casa.tvwatch.datos.EleccionDePistas
+import casa.tvwatch.datos.Pistas
+import casa.tvwatch.datos.Registro
 import casa.tvwatch.datos.Servidor
 import com.google.android.gms.cast.MediaInfo
 import com.google.android.gms.cast.MediaLoadRequestData
@@ -74,7 +77,52 @@ class OpcionesDeCast : OptionsProvider {
 }
 
 /** La pantalla de control mientras se emite: la del SDK, con nuestro tema. */
-class ControlDeCast : ExpandedControllerActivity()
+class ControlDeCast : ExpandedControllerActivity() {
+
+  override fun onCreate(savedInstanceState: android.os.Bundle?) {
+    super.onCreate(savedInstanceState)
+    // El segundo hueco de botones es el de audio (res/values/cast.xml). Los
+    // subtítulos ya los trae el SDK; el audio no, porque el HLS que sirve el
+    // servidor lleva una sola pista y el receptor no tiene otra que ofrecer.
+    try {
+      val boton = getButtonImageViewAt(1)
+      boton.setImageResource(R.drawable.ic_audio_cast)
+      boton.contentDescription = "Audio"
+      boton.setOnClickListener { elegirAudio() }
+    } catch (e: Exception) {
+      Registro.w("cast", "no se pudo preparar el botón de audio: ${e.javaClass.simpleName}: ${e.message}")
+    }
+  }
+
+  private fun elegirAudio() {
+    val emision = Cast.emision ?: return
+    CoroutineScope(Dispatchers.Main).launch {
+      val info = try {
+        withContext(Dispatchers.IO) { Api.infoDeReproduccion(emision.fileId) }
+      } catch (e: Exception) {
+        null
+      }
+      if (info == null || info.audio.isEmpty()) {
+        android.widget.Toast.makeText(this@ControlDeCast, "No se pudo leer las pistas de audio", android.widget.Toast.LENGTH_LONG).show()
+        return@launch
+      }
+      if (info.audio.size < 2) {
+        android.widget.Toast.makeText(this@ControlDeCast, "Este fichero solo trae una pista de audio", android.widget.Toast.LENGTH_SHORT).show()
+        return@launch
+      }
+      val etiquetas = info.audio.map { casa.tvwatch.ui.etiquetaAudio(it) }.toTypedArray()
+      val actual = info.audio.indexOfFirst { it.id == emision.audioId }.coerceAtLeast(0)
+      androidx.appcompat.app.AlertDialog.Builder(this@ControlDeCast)
+        .setTitle("Audio")
+        .setSingleChoiceItems(etiquetas, actual) { dialogo, cual ->
+          dialogo.dismiss()
+          if (info.audio[cual].id != emision.audioId) Cast.cambiarAudio(this@ControlDeCast, info.audio[cual].id)
+        }
+        .setNegativeButton("Cancelar", null)
+        .show()
+    }
+  }
+}
 
 object Cast {
 
@@ -88,12 +136,43 @@ object Cast {
 
   fun emitiendo(context: Context): Boolean = sesion(context) != null
 
+  /** Lo que se está emitiendo ahora, para poder recargarlo con otro audio. */
+  data class Emision(val fileId: Int, val itemId: Int, val episodioId: Int?, val titulo: String, val audioId: Int?)
+
+  @Volatile var emision: Emision? = null
+
+  /**
+   * Cambiar la pista de audio mientras se emite: se vuelve a cargar la misma
+   * película con `&audio=<id>` en el segundo en que va y con el mismo subtítulo
+   * activo. Se nota un corte de un par de segundos: el servidor recodifica el
+   * audio de la pista nueva, y el receptor de Google no sabe cambiar de pista
+   * dentro de un HLS que lleva una sola.
+   */
+  fun cambiarAudio(context: Context, audioId: Int) {
+    val e = emision ?: return
+    val cliente = sesion(context)?.remoteMediaClient ?: return
+    val posicion = cliente.approximateStreamPosition / 1000.0
+    val subtitulo = cliente.mediaStatus?.activeTrackIds?.firstOrNull()
+    Registro.i("cast", "cambio de audio a $audioId en el segundo ${posicion.toInt()}")
+    emitir(context, e.fileId, e.itemId, e.episodioId, e.titulo, posicion, audioId, subtitulo, abrirControl = false)
+  }
+
   /**
    * Mandar una película o episodio al Chromecast desde `desde` segundos, y
    * abrir la pantalla de control. El progreso se va apuntando en el servidor
    * cada quince segundos mientras la aplicación siga abierta.
    */
-  fun emitir(context: Context, fileId: Int, itemId: Int, episodioId: Int?, titulo: String, desde: Double) {
+  fun emitir(
+    context: Context,
+    fileId: Int,
+    itemId: Int,
+    episodioId: Int?,
+    titulo: String,
+    desde: Double,
+    audioId: Int? = null,
+    subtituloPuesto: Long? = null,
+    abrirControl: Boolean = true,
+  ) {
     val s = sesion(context) ?: return
     val cliente = s.remoteMediaClient ?: return
     val base = Servidor.baseParaCast()
@@ -104,8 +183,25 @@ object Cast {
     CoroutineScope(Dispatchers.Main).launch {
     // Los subtítulos, como pistas aparte. Si esto falla no se emite sin ellos
     // en silencio: se emite igual, que es lo que importa.
+    // Una sola consulta: de ella salen los subtítulos y la pista de audio.
+    val infoPistas = try {
+      withContext(Dispatchers.IO) { Api.infoDeReproduccion(fileId) }
+    } catch (e: Exception) {
+      Registro.w("cast", "no se pudo pedir la lista de pistas: ${e.javaClass.simpleName}: ${e.message}")
+      null
+    }
+    // Cast manda siempre el audio reconvertido por el servidor: aquí manda el
+    // idioma, no si el móvil sabe leer el códec.
+    val eleccion = EleccionDePistas.tomar(fileId)
+    val audio = infoPistas?.let { Pistas.elegirAudio(it.audio, eleccion?.audioId ?: audioId, soloLasQueSeLeen = false) }
+    // Los subtítulos de Cast se numeran por posición (1, 2, ...), igual que más abajo.
+    val subtituloActivo = subtituloPuesto ?: eleccion?.subtitulo?.let { s ->
+      infoPistas?.subtitles?.indexOfFirst { it.id == s.id }?.takeIf { it >= 0 }?.let { (it + 1).toLong() }
+    }
+    emision = Emision(fileId, itemId, episodioId, titulo, audio?.id)
+    if (infoPistas != null) Registro.i("pistas", "cast: " + Pistas.describir(infoPistas.audio, audio))
     val pistas = try {
-      withContext(Dispatchers.IO) { Api.infoDeReproduccion(fileId) }.subtitles.mapIndexed { i, st ->
+      infoPistas!!.subtitles.mapIndexed { i, st ->
         com.google.android.gms.cast.MediaTrack.Builder((i + 1).toLong(), com.google.android.gms.cast.MediaTrack.TYPE_TEXT)
           .setSubtype(com.google.android.gms.cast.MediaTrack.SUBTYPE_SUBTITLES)
           .setName(casa.tvwatch.ui.idiomaLegible(st.language) + (if (st.forced) " (forzados)" else ""))
@@ -123,7 +219,11 @@ object Cast {
       addImage(WebImage(Uri.parse("$base/api/items/$itemId/poster?w=600&token=$token")))
       addImage(WebImage(Uri.parse("$base/api/items/$itemId/fanart?w=1280&token=$token")))
     }
-    val info = MediaInfo.Builder("$base/api/play/$fileId/hls/master.m3u8?token=$token" + (if (surround) "&surround=1" else ""))
+    val info = MediaInfo.Builder(
+      "$base/api/play/$fileId/hls/master.m3u8?token=$token" +
+        (if (surround) "&surround=1" else "") +
+        (audio?.let { "&audio=${it.id}" } ?: ""),
+    )
       .setStreamType(MediaInfo.STREAM_TYPE_BUFFERED)
       .setContentType("application/x-mpegURL")
       .setMetadata(meta)
@@ -143,10 +243,11 @@ object Cast {
         .setMediaInfo(info)
         .setAutoplay(true)
         .setCurrentTime((desde * 1000).toLong())
+        .apply { if (subtituloActivo != null) setActiveTrackIds(longArrayOf(subtituloActivo)) }
         .build(),
     )
     apuntarProgreso(cliente, itemId, episodioId)
-    context.startActivity(Intent(context, ControlDeCast::class.java))
+    if (abrirControl) context.startActivity(Intent(context, ControlDeCast::class.java))
     }
   }
 

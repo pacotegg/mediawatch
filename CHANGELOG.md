@@ -12,6 +12,13 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.37 — 09/10/2026
+
+- La ficha sigue el estilo de la app de la tele: solo «Reproducir» lleva texto; el resto son iconos con su nombre debajo.
+- Audio y subtítulos se eligen desde la ficha antes de reproducir, y la elección pasa al reproductor y a Cast.
+- El idioma de audio preferido (Ajustes → «Idioma de audio») ahora se aplica de verdad: por defecto, español si existe.
+- Cast: nuevo botón de audio en el control ampliado, junto al de subtítulos.
+
 ## 3.36 — 08/10/2026
 - Arreglo de un fallo que dejaba la portada en blanco y cerraba la app al entrar solo desde fuera de casa con el dominio.
 - Si el servidor no responde, la portada lo dice con la dirección a la que intenta conectar y deja de esperar.

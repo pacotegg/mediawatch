@@ -62,6 +62,7 @@ fun PantallaAjustes(
   var calidadDescarga by remember { mutableStateOf(Ajustes.calidadDescargaDefecto) }
 
   var modoAudio by remember { mutableStateOf(Ajustes.modoAudio) }
+  var idiomaAudio by remember { mutableStateOf(if (Ajustes.idiomaAudioPreferido == "spa") "spa" else "orig") }
   var informesTecnicos by remember { mutableStateOf(Ajustes.informesTecnicos) }
 
   // Diálogo selector genérico
@@ -243,6 +244,25 @@ fun PantallaAjustes(
 
     // 3. MODO DE AUDIO
     SeccionAjustes("Modo de Audio") {
+      val opcionesIdiomaAudio = listOf(
+        "spa" to "Español (si el fichero lo trae)",
+        "orig" to "El primero del fichero",
+      )
+      FilaSeleccion(
+        titulo = "Idioma de audio",
+        valor = opcionesIdiomaAudio.firstOrNull { it.first == idiomaAudio }?.second ?: "Español",
+      ) {
+        dialogoOpciones = DialogoConfig(
+          titulo = "Idioma de audio",
+          seleccionado = idiomaAudio,
+          opciones = opcionesIdiomaAudio,
+          alElegir = {
+            idiomaAudio = it
+            Ajustes.idiomaAudioPreferido = it
+          },
+        )
+      }
+
       val opcionesModoAudio = listOf(
         "normal" to "Normal (mezcla original)",
         "dialogue" to "Realzar diálogos",
