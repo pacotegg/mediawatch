@@ -277,7 +277,9 @@ button {
 .heroe {
   position: relative;
   width: 1920px;
-  height: 500px;
+  /* 620 y no 500 (09/10/2026): más imagen, que baja hasta las carátulas y se funde con ellas. El texto
+     y los puntos conservan su sitio en pantalla: su `bottom` sube lo mismo que crece la altura. */
+  height: 620px;
   overflow: hidden;
 }
 
@@ -286,7 +288,7 @@ button {
   top: 0;
   left: 0;
   width: 1920px;
-  height: 500px;
+  height: 620px;
   opacity: 0;
   transition: opacity 0.9s ease-in-out;
 }
@@ -321,7 +323,7 @@ button {
   top: 0;
   left: 0;
   width: 1300px;
-  height: 500px;
+  height: 620px;
   background: linear-gradient(to right, rgba(22, 23, 28, 0.94) 6%, rgba(22, 23, 28, 0.7) 38%, rgba(22, 23, 28, 0));
 }
 
@@ -335,7 +337,7 @@ button {
 .heroe-texto {
   position: absolute;
   left: 122px;
-  bottom: 14px;
+  bottom: 134px;
   width: 900px;
   padding: 24px 28px 22px;
   border-radius: 20px;
@@ -387,7 +389,7 @@ button {
 .puntos {
   position: absolute;
   right: 90px;
-  bottom: 46px;
+  bottom: 166px;
 }
 
 .punto {
@@ -1748,7 +1750,7 @@ body.rend-rapido .velo-izq {
 /* El de abajo no puede faltar: sin él la imagen del destacado acababa en un corte seco contra
    las carátulas (09/10/2026). Es una franja baja y estática de tres paradas: casi no cuesta. */
 body.rend-rapido .velo-abajo {
-  height: 240px;
+  height: 300px;
   background: linear-gradient(to top, #16171c 0%, rgba(22, 23, 28, 0.75) 42%, rgba(22, 23, 28, 0) 100%);
 }
 
