@@ -24,19 +24,48 @@ const IMAGENES = 'https://image.tmdb.org/t/p';
 const CACHE_DIR = join(DATA_DIR, 'cache', 'plataformas');
 
 /**
- * Las tres del usuario (30/09/2026). Netflix y Disney+ se dieron de baja.
- * `id` es el `provider_id` de TMDb; se comprueba con
- * `/watch/providers/movie?watch_region=ES`.
+ * Las plataformas que un perfil puede marcar como suyas («Mis plataformas»); cada
+ * perfil elige las suyas y solo ve «también en…» de esas (tabla `usuario_plataformas`).
+ * `id` es el `provider_id` de TMDb; los de esta lista están comprobados el 09/10/2026
+ * contra `/watch/providers/{movie,tv}?watch_region=ES` (todas salen en cine y series).
+ * Para añadir una: comprobar el id así, añadir su `source_id` de Watchmode abajo si lo
+ * tiene (`/sources/?regions=ES`) y volver a lanzar el refresco (`/api/plataformas/refrescar`
+ * con `dias: 0`), porque `item_plataformas` solo guarda las que están en esta lista.
  */
 export const PLATAFORMAS = [
   { clave: 'movistar', id: 2241, nombre: 'Movistar Plus+' },
   { clave: 'prime', id: 119, nombre: 'Prime Video' },
   { clave: 'apple', id: 350, nombre: 'Apple TV+' },
+  { clave: 'netflix', id: 8, nombre: 'Netflix' },
+  { clave: 'disney', id: 337, nombre: 'Disney+' },
+  { clave: 'hbomax', id: 1899, nombre: 'HBO Max' },
+  { clave: 'skyshowtime', id: 1773, nombre: 'SkyShowtime' },
+  { clave: 'filmin', id: 63, nombre: 'Filmin' },
+  { clave: 'atresplayer', id: 62, nombre: 'Atresplayer' },
+  { clave: 'rtve', id: 541, nombre: 'RTVE Play' },
+  { clave: 'rakuten', id: 35, nombre: 'Rakuten TV' },
+  { clave: 'crunchyroll', id: 283, nombre: 'Crunchyroll' },
+  { clave: 'mubi', id: 11, nombre: 'MUBI' },
 ] as const;
 
 const PROVEEDORES = new Map(PLATAFORMAS.map((p) => [p.id, p]));
 
 db.exec(`
+CREATE TABLE IF NOT EXISTS usuario_plataformas (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  clave   TEXT NOT NULL,
+  PRIMARY KEY (user_id, clave)
+);
+-- Quién ya ha elegido (aunque sea «ninguna»): sin esta fila, el perfil aún no ha configurado nada.
+CREATE TABLE IF NOT EXISTS usuario_plataformas_cfg (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS plataformas_meta (
+  clave TEXT PRIMARY KEY,
+  valor TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS item_plataformas (
   item_id     INTEGER PRIMARY KEY REFERENCES items(id) ON DELETE CASCADE,
   suscripcion TEXT NOT NULL,
@@ -72,6 +101,15 @@ const FUENTES_WATCHMODE: Record<string, number[]> = {
   prime: [26],
   // 371 es Apple TV+ (suscripción); 349 es la tienda de Apple (alquiler y compra).
   apple: [371, 349],
+  // Comprobados el 09/10/2026 con `/sources/?regions=ES`. RTVE Play, Rakuten TV y MUBI no
+  // salen como suscripción en Watchmode: sin enlace directo, se usa el respaldo de TMDb.
+  netflix: [203],
+  disney: [372],
+  hbomax: [387],
+  skyshowtime: [464],
+  filmin: [457],
+  atresplayer: [546],
+  crunchyroll: [80],
 };
 
 db.exec(`
@@ -107,9 +145,10 @@ type FuenteWatchmode = { source_id: number; type: string; web_url?: string | nul
  * lote, porque el cupo son 2.500 al mes y la biblioteca tiene 1.823 títulos.
  */
 export async function enlaceDirecto(kind: 'movie' | 'show', tmdbId: number, clave: string): Promise<EnlaceDirecto> {
-  const fuentes = FUENTES_WATCHMODE[clave];
-  if (!fuentes) throw new Error('Plataforma desconocida: ' + clave);
+  if (!PLATAFORMAS.some((p) => p.clave === clave)) throw new Error('Plataforma desconocida: ' + clave);
   const respaldo = respaldoTmdb(kind, tmdbId);
+  const fuentes = FUENTES_WATCHMODE[clave];
+  if (!fuentes) return { url: null, tipo: null, respaldo };
   if (!config.watchmodeApiKey) return { url: null, tipo: null, respaldo };
 
   const guardado = db
@@ -173,17 +212,54 @@ export type DondeVer = {
   enlace: string;
 };
 
+/**
+ * Las plataformas de un perfil, o `null` si aún no ha elegido ninguna vez. La primera
+ * vez que se consulta, el administrador arranca con las tres de siempre (Movistar+,
+ * Prime y Apple TV+): es el comportamiento que tenía antes de que cada perfil eligiera.
+ */
+export function misPlataformas(userId: number): string[] | null {
+  const hecho = db.prepare('SELECT 1 FROM usuario_plataformas_cfg WHERE user_id = ?').get(userId);
+  if (!hecho) {
+    const u = db.prepare('SELECT is_admin FROM users WHERE id = ?').get(userId) as { is_admin: number } | undefined;
+    if (u?.is_admin) {
+      guardarMisPlataformas(userId, ['movistar', 'prime', 'apple']);
+      return ['movistar', 'prime', 'apple'];
+    }
+    return null;
+  }
+  return (db.prepare('SELECT clave FROM usuario_plataformas WHERE user_id = ?').all(userId) as { clave: string }[]).map((f) => f.clave);
+}
+
+export function guardarMisPlataformas(userId: number, claves: string[]): string[] {
+  const validas = [...new Set(claves)].filter((k) => PLATAFORMAS.some((p) => p.clave === k));
+  db.exec('BEGIN');
+  try {
+    db.prepare('DELETE FROM usuario_plataformas WHERE user_id = ?').run(userId);
+    const ins = db.prepare('INSERT INTO usuario_plataformas (user_id, clave) VALUES (?, ?)');
+    for (const k of validas) ins.run(userId, k);
+    db.prepare('INSERT OR IGNORE INTO usuario_plataformas_cfg (user_id) VALUES (?)').run(userId);
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+  return validas;
+}
+
 const VACIO: DondeVer = { suscripcion: [], alquiler: [], enlace: '' };
 
-export function dondeVer(itemId: number): DondeVer {
+export function dondeVer(itemId: number, userId?: number): DondeVer {
+  // Con perfil: solo las plataformas que ese perfil marcó como suyas; sin elegir, ninguna.
+  const suyas = userId === undefined ? null : misPlataformas(userId) ?? [];
+  const filtro = <T extends { clave: string }>(l: T[]) => (suyas ? l.filter((p) => suyas.includes(p.clave)) : l);
   const fila = db
     .prepare('SELECT suscripcion, alquiler, enlace FROM item_plataformas WHERE item_id = ?')
     .get(itemId) as { suscripcion: string; alquiler: string; enlace: string } | undefined;
   if (!fila) return VACIO;
   try {
     return {
-      suscripcion: JSON.parse(fila.suscripcion),
-      alquiler: JSON.parse(fila.alquiler),
+      suscripcion: filtro(JSON.parse(fila.suscripcion)),
+      alquiler: filtro(JSON.parse(fila.alquiler)),
       enlace: fila.enlace,
     };
   } catch {
@@ -286,6 +362,21 @@ export function resumenPlataformas() {
   return { total: total.n, consultados: hechos.n, conPlataforma: con.n, porPlataforma };
 }
 
+/**
+ * Sube este número al cambiar `PLATAFORMAS`: al arrancar, si `item_plataformas` se rellenó con
+ * otro catálogo, se vuelve a consultar todo una vez (unos minutos de red, sin tocar el disco).
+ */
+const CATALOGO_VERSION = '2';
+
+setTimeout(() => {
+  try {
+    const hecho = db.prepare(`SELECT valor FROM plataformas_meta WHERE clave = 'catalogo'`).get() as { valor: string } | undefined;
+    if (hecho?.valor !== CATALOGO_VERSION && !jobPlataformas.running) refrescarPlataformas(0);
+  } catch {
+    /* sin clave de TMDb o ya en marcha: se hará con el refresco manual */
+  }
+}, 90_000).unref();
+
 /** Rellena la tabla. Solo red y escrituras diminutas: no pisa el disco de la biblioteca. */
 export function refrescarPlataformas(dias = 7): number {
   if (jobPlataformas.running) throw new Error('Ya hay una consulta en curso');
@@ -327,6 +418,11 @@ export function refrescarPlataformas(dias = 7): number {
       }
     } catch (err) {
       jobPlataformas.error = (err as Error).message;
+      // Un refresco completo y sin cortes deja anotado que `item_plataformas` ya conoce todo el catálogo actual.
+      if (dias === 0 && !jobPlataformas.parando && !jobPlataformas.error) {
+        db.prepare(`INSERT INTO plataformas_meta (clave, valor) VALUES ('catalogo', ?)
+                    ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor`).run(CATALOGO_VERSION);
+      }
     } finally {
       jobPlataformas.running = false;
       jobPlataformas.parando = false;

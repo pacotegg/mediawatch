@@ -988,15 +988,24 @@ async function pantallaPlataformas(clave?: string, kind?: 'movie' | 'show', pagi
   entrarEn('plataformas', () => void pantallaPlataformas(plataformaActiva, plataformaKind, plataformaPagina));
   pintar('plataformas', '<div class="vacio">Cargando…</div>');
 
-  let lista: { clave: string; nombre: string }[];
+  let todas: { clave: string; nombre: string; mia?: boolean }[];
+  let titulosPorPlataforma: { [clave: string]: number } = {};
   try {
-    lista = (await api.plataformas()).plataformas;
+    const r = await api.plataformas();
+    todas = r.plataformas;
+    (r.porPlataforma || []).forEach((x) => { titulosPorPlataforma[x.clave] = x.titulos; });
   } catch (e) {
     pintar('plataformas', '<div class="vacio">No se pudieron cargar las plataformas.</div>');
     return;
   }
-  if (!lista.length) {
+  if (!todas.length) {
     pintar('plataformas', '<div class="vacio">No hay ninguna plataforma configurada.</div>');
+    return;
+  }
+  // Solo las del perfil son pestañas; el resto se «conectan» en la pantalla de elegir (la pestaña «＋»).
+  const lista = todas.filter((p) => p.mia);
+  if (!lista.length || clave === '+') {
+    pantallaMisPlataformas(todas, titulosPorPlataforma);
     return;
   }
 
@@ -1028,6 +1037,7 @@ async function pantallaPlataformas(clave?: string, kind?: 'movie' | 'show', pagi
     lista
       .map((p) => '<button class="plat-pestanya' + (p.clave === plataformaActiva ? ' activa' : '') + '" data-nav data-plat="' + p.clave + '">' + esc(p.nombre) + '</button>')
       .join('') +
+    '<button class="plat-pestanya" data-nav data-plat="+">＋ Plataformas</button>' +
     '<span class="plat-separador"></span>' +
     (['movie', 'show'] as const)
       .map((k) => '<button class="plat-pestanya' + (k === plataformaKind ? ' activa' : '') + '" data-nav data-plat-kind="' + k + '">' + (k === 'movie' ? 'Películas' : 'Series') + '</button>')
@@ -1091,6 +1101,47 @@ async function pantallaPlataformas(clave?: string, kind?: 'movie' | 'show', pagi
   });
 
   enfocar(marco.querySelector<HTMLElement>('.rejilla [data-nav]') || marco.querySelector<HTMLElement>('.plat-barra [data-nav]'));
+  alPulsar((tecla) => (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE ? atrasHaciaMenu() : false));
+}
+
+/**
+ * Las plataformas posibles (las que JustWatch da en España) y un botón para «conectarlas».
+ * No hay inicio de sesión —van cifradas y no tienen API para terceros—: conectar es decir
+ * «tengo esta suscripción», y entonces los títulos muestran «también en…» solo de las tuyas.
+ */
+function pantallaMisPlataformas(todas: { clave: string; nombre: string; mia?: boolean }[], titulos: { [clave: string]: number }) {
+  const texto = (p: { clave: string; nombre: string; mia?: boolean }) =>
+    esc(p.nombre) + (titulos[p.clave] ? ' · ' + titulos[p.clave] + ' títulos de tu biblioteca' : '') + ' — ' + (p.mia ? 'Conectada ✓' : 'Conectar');
+  pintar(
+    'plataformas',
+    '<div class="ajustes" data-bloque>' +
+      '<h1 class="titulo-pantalla">Mis plataformas</h1>' +
+      '<p class="pista-ayuda" style="margin-bottom:26px">Marca a qué plataformas estás suscrito. Los títulos de tu biblioteca que también estén en ellas lo dirán en su ficha. Disponibilidad según JustWatch, en España.</p>' +
+      todas.map((p) => '<button class="linea' + (p.mia ? ' elegida' : '') + '" data-nav data-conectar="' + p.clave + '">' + texto(p) + '</button>').join('') +
+      '<div style="margin-top:26px"><button class="boton primario" data-nav data-listo>Listo</button></div>' +
+      '</div>',
+  );
+  marco.querySelectorAll<HTMLElement>('[data-conectar]').forEach((el) => {
+    el.addEventListener('click', () => {
+      const p = todas.filter((x) => x.clave === el.getAttribute('data-conectar'))[0];
+      if (!p) return;
+      p.mia = !p.mia;
+      el.innerHTML = texto(p);
+      if (p.mia) el.classList.add('elegida');
+      else el.classList.remove('elegida');
+      api.guardarMisPlataformas(todas.filter((x) => x.mia).map((x) => x.clave))
+        .then(() => aviso(p.mia ? p.nombre + ' conectada: verás «también en ' + p.nombre + '» en tus títulos' : p.nombre + ' quitada'))
+        .catch(() => { p.mia = !p.mia; el.innerHTML = texto(p); aviso('No se pudo guardar'); });
+    });
+  });
+  const listo = marco.querySelector<HTMLElement>('[data-listo]');
+  if (listo) {
+    listo.addEventListener('click', () => {
+      const primera = todas.filter((x) => x.mia)[0];
+      void pantallaPlataformas(primera ? primera.clave : undefined, plataformaKind, 1);
+    });
+  }
+  enfocar(marco.querySelector<HTMLElement>('[data-conectar]'));
   alPulsar((tecla) => (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE ? atrasHaciaMenu() : false));
 }
 

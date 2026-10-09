@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.items as itemsLista
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -57,6 +58,7 @@ fun PantallaPlataformas(alAbrirFicha: (Int) -> Unit, alPerderSesion: () -> Unit)
   val ctx = LocalContext.current
   val ambito = rememberCoroutineScope()
   var lista by remember { mutableStateOf<List<Plataforma>?>(null) }
+  var titulosPorPlataforma by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
   var activa by remember { mutableStateOf("") }
   var kind by remember { mutableStateOf("movie") }
   var pagina by remember { mutableStateOf(1) }
@@ -69,9 +71,11 @@ fun PantallaPlataformas(alAbrirFicha: (Int) -> Unit, alPerderSesion: () -> Unit)
   LaunchedEffect(intento) {
     if (lista != null) return@LaunchedEffect
     try {
-      val l = withContext(Dispatchers.IO) { Api.plataformas().plataformas }
-      lista = l
-      if (activa.isEmpty() && l.isNotEmpty()) activa = l[0].clave
+      val r = withContext(Dispatchers.IO) { Api.plataformas() }
+      lista = r.plataformas
+      titulosPorPlataforma = r.porPlataforma.associate { it.clave to it.titulos }
+      // Las del perfil como pestañas; si aún no tiene ninguna, directo a elegirlas.
+      if (activa.isEmpty()) activa = r.plataformas.firstOrNull { it.mia }?.clave ?: GESTIONAR
     } catch (e: Api.SinSesion) {
       alPerderSesion()
     } catch (e: Exception) {
@@ -80,7 +84,7 @@ fun PantallaPlataformas(alAbrirFicha: (Int) -> Unit, alPerderSesion: () -> Unit)
   }
 
   LaunchedEffect(activa, kind, pagina, intento) {
-    if (activa.isEmpty()) return@LaunchedEffect
+    if (activa.isEmpty() || activa == GESTIONAR) return@LaunchedEffect
     items = null
     fallo = ""
     try {
@@ -100,15 +104,39 @@ fun PantallaPlataformas(alAbrirFicha: (Int) -> Unit, alPerderSesion: () -> Unit)
   val plataformas = lista
   val nombreActiva = plataformas?.firstOrNull { it.clave == activa }?.nombre ?: ""
 
+  /** Marca o desmarca una plataforma como del perfil y lo guarda en el servidor. */
+  fun alternarPlataforma(p: Plataforma) {
+    val actual = lista ?: return
+    val nuevas = actual.map { if (it.clave == p.clave) it.copy(mia = !it.mia) else it }
+    lista = nuevas
+    ambito.launch {
+      try {
+        withContext(Dispatchers.IO) { Api.guardarMisPlataformas(nuevas.filter { it.mia }.map { it.clave }) }
+        Toast.makeText(
+          ctx,
+          if (!p.mia) "${p.nombre} conectada: verás «también en ${p.nombre}» en tus títulos" else "${p.nombre} quitada",
+          Toast.LENGTH_SHORT,
+        ).show()
+      } catch (e: Exception) {
+        lista = actual
+        Toast.makeText(ctx, e.message ?: "No se pudo guardar", Toast.LENGTH_LONG).show()
+      }
+    }
+  }
+
   Column(Modifier.fillMaxSize().background(Fondo)) {
     if (plataformas != null && plataformas.isNotEmpty()) {
       Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-          for (p in plataformas) Pestana(p.nombre, p.clave == activa) { activa = p.clave; pagina = 1 }
-          Spacer(Modifier.padding(horizontal = 2.dp))
-          Pestana("Películas", kind == "movie") { kind = "movie"; pagina = 1 }
-          Pestana("Series", kind == "show") { kind = "show"; pagina = 1 }
+          for (p in plataformas.filter { it.mia }) Pestana(p.nombre, p.clave == activa) { activa = p.clave; pagina = 1 }
+          Pestana("＋ Plataformas", activa == GESTIONAR) { activa = GESTIONAR }
+          if (activa != GESTIONAR) {
+            Spacer(Modifier.padding(horizontal = 2.dp))
+            Pestana("Películas", kind == "movie") { kind = "movie"; pagina = 1 }
+            Pestana("Series", kind == "show") { kind = "show"; pagina = 1 }
+          }
         }
+        if (activa == GESTIONAR) return@Column
         Spacer(Modifier.height(6.dp))
         Text(
           // Datos de JustWatch (vía TMDb) y de Watchmode: los dos exigen citarlos.
@@ -121,6 +149,7 @@ fun PantallaPlataformas(alAbrirFicha: (Int) -> Unit, alPerderSesion: () -> Unit)
 
     val lote = items
     when {
+      activa == GESTIONAR && plataformas != null -> GestorDePlataformas(plataformas, titulosPorPlataforma, ::alternarPlataforma)
       fallo.isNotEmpty() -> Aviso(fallo, "Reintentar") { intento++ }
       plataformas != null && plataformas.isEmpty() -> Aviso("No hay ninguna plataforma configurada.")
       lote == null -> EsqueletoDeRejilla()
@@ -169,6 +198,55 @@ fun PantallaPlataformas(alAbrirFicha: (Int) -> Unit, alPerderSesion: () -> Unit)
             if (pagina < paginas) Pestana("Siguiente", false) { pagina++ }
           }
         }
+      }
+    }
+  }
+}
+
+private const val GESTIONAR = "+"
+
+/**
+ * Las plataformas posibles (todas las que JustWatch da en España) y un botón para
+ * «conectarlas»: no hay inicio de sesión —van cifradas y no tienen API para terceros—,
+ * conectar es decir «tengo esta suscripción» y entonces los títulos muestran
+ * «también en…» solo de las tuyas.
+ */
+@Composable
+private fun GestorDePlataformas(lista: List<Plataforma>, titulos: Map<String, Int>, alAlternar: (Plataforma) -> Unit) {
+  androidx.compose.foundation.lazy.LazyColumn(
+    Modifier.fillMaxSize(),
+    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+    verticalArrangement = Arrangement.spacedBy(8.dp),
+  ) {
+    item {
+      Text(
+        "Marca a qué plataformas estás suscrito. Los títulos de tu biblioteca que también estén en ellas lo dirán en su ficha. Disponibilidad según JustWatch, en España.",
+        color = TextoSuave,
+        style = MaterialTheme.typography.bodySmall,
+        modifier = Modifier.padding(bottom = 6.dp),
+      )
+    }
+    itemsLista(lista, key = { it.clave }) { p ->
+      val n = titulos[p.clave] ?: 0
+      Row(
+        Modifier
+          .fillMaxWidth()
+          .clip(RoundedCornerShape(12.dp))
+          .background(FondoTarjeta)
+          .clickable { alAlternar(p) }
+          .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+      ) {
+        Column(Modifier.weight(1f)) {
+          Text(p.nombre, color = Texto, style = MaterialTheme.typography.titleMedium)
+          if (n > 0) Text("$n títulos de tu biblioteca", color = TextoTenue, style = MaterialTheme.typography.labelSmall)
+        }
+        Text(
+          if (p.mia) "Conectada ✓" else "Conectar",
+          color = if (p.mia) Realce else Texto,
+          style = MaterialTheme.typography.labelLarge,
+        )
       }
     }
   }

@@ -26,10 +26,24 @@ object AppsDePlataforma {
     "movistar" to listOf("movistar"),
     "prime" to listOf("primevideo", "amazonprime"),
     "apple" to listOf("appletv"),
+    "netflix" to listOf("netflix"),
+    "disney" to listOf("disney"),
+    "hbomax" to listOf("hbomax", "max"),
+    "skyshowtime" to listOf("skyshowtime"),
+    "filmin" to listOf("filmin"),
+    "atresplayer" to listOf("atresplayer"),
+    "rtve" to listOf("rtveplay", "rtve"),
+    "rakuten" to listOf("rakuten"),
+    "crunchyroll" to listOf("crunchyroll"),
+    "mubi" to listOf("mubi"),
   )
 
   /** Raíz para listar candidatas cuando no se encuentra la app: qué hay parecido. */
-  private val raices = mapOf("movistar" to "movistar", "prime" to "prime", "apple" to "apple")
+  private val raices = mapOf(
+    "movistar" to "movistar", "prime" to "prime", "apple" to "apple", "netflix" to "netflix",
+    "disney" to "disney", "hbomax" to "hbo", "skyshowtime" to "sky", "filmin" to "filmin",
+    "atresplayer" to "atres", "rtve" to "rtve", "rakuten" to "rakuten", "crunchyroll" to "crunchy", "mubi" to "mubi",
+  )
 
   private fun normalizar(s: String) = s.lowercase().filter { it.isLetterOrDigit() }
 

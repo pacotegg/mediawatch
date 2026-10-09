@@ -1,11 +1,13 @@
 import { createReadStream, statSync } from 'node:fs';
 import { extname } from 'node:path';
-import type { FastifyInstance, FastifyReply } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import {
   PLATAFORMAS,
   catalogo,
   caratula,
   dondeVer,
+  guardarMisPlataformas,
+  misPlataformas,
   enlaceDirecto,
   tmdbDeItem,
   jobPlataformas,
@@ -34,10 +36,35 @@ const ORDENES: Record<string, string> = {
 };
 
 export default async function plataformaRoutes(app: FastifyInstance) {
-  app.get('/api/plataformas', async () => ({ plataformas: PLATAFORMAS, ...resumenPlataformas(), job: jobPlataformas }));
+  /**
+   * El catálogo completo de plataformas posibles (con `mia`: si este perfil la marcó) y,
+   * en `configurado`, si el perfil ya eligió alguna vez. Para el resumen del refresco
+   * (`porPlataforma`) siguen todas.
+   */
+  app.get('/api/plataformas', async (req) => {
+    const mias = misPlataformas(requireUser(req).id);
+    return {
+      plataformas: PLATAFORMAS.map((p) => ({ ...p, mia: !!mias?.includes(p.clave) })),
+      configurado: mias !== null,
+      ...resumenPlataformas(),
+      job: jobPlataformas,
+    };
+  });
 
-  /** Dónde ver un título de la biblioteca, para la insignia de la ficha. */
-  app.get('/api/items/:id/plataformas', async (req) => dondeVer(Number((req.params as { id: string }).id)));
+  /** Lo que el perfil tiene marcado: «conectar» una plataforma es marcarla aquí. */
+  app.get('/api/mis-plataformas', async (req) => ({ claves: misPlataformas(requireUser(req).id) ?? [] }));
+  const guardarMias = async (req: FastifyRequest, reply: FastifyReply) => {
+    const { claves } = (req.body ?? {}) as { claves?: unknown };
+    if (!Array.isArray(claves) || claves.some((k) => typeof k !== 'string')) {
+      return reply.code(400).send({ error: 'Falta la lista de claves' });
+    }
+    return { claves: guardarMisPlataformas(requireUser(req).id, claves as string[]) };
+  };
+  app.put('/api/mis-plataformas', guardarMias);
+  app.post('/api/mis-plataformas', guardarMias);
+
+  /** Dónde ver un título de la biblioteca, para la insignia de la ficha: solo las plataformas de este perfil. */
+  app.get('/api/items/:id/plataformas', async (req) => dondeVer(Number((req.params as { id: string }).id), requireUser(req).id));
 
   app.get('/api/plataformas/:clave/catalogo', async (req, reply) => {
     const { clave } = req.params as { clave: string };

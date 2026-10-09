@@ -234,7 +234,10 @@ export const api = {
    * titulo y ensenya su catalogo; reproducir es abrir su app con la del sistema.
    */
   dondeVer: (itemId: number) => pedir<DondeVer>('/api/items/' + itemId + '/plataformas'),
-  plataformas: () => pedir<{ plataformas: Plataforma[] }>('/api/plataformas'),
+  plataformas: () => pedir<{ plataformas: Plataforma[]; configurado?: boolean; porPlataforma?: { clave: string; titulos: number }[] }>('/api/plataformas'),
+  /** «Conectar» una plataforma es marcarla como propia: el perfil verá «también en…» de las que marque. */
+  guardarMisPlataformas: (claves: string[]) =>
+    pedir<{ claves: string[] }>('/api/mis-plataformas', { method: 'POST', body: JSON.stringify({ claves }) }),
   catalogoPlataforma: (clave: string, kind: 'movie' | 'show', orden: string, pagina: number) =>
     pedir<{ total: number; paginas: number; items: FichaPlataforma[] }>(
       '/api/plataformas/' + clave + '/catalogo?kind=' + kind + '&orden=' + orden + '&pagina=' + pagina,
@@ -335,7 +338,7 @@ export type Extra = {
   grupo: string | null;
 };
 
-export type Plataforma = { clave: string; id: number; nombre: string };
+export type Plataforma = { clave: string; id: number; nombre: string; mia?: boolean };
 
 /** Donde ver un titulo fuera de casa. `enlace` es la pagina de TMDb. */
 export type DondeVer = {

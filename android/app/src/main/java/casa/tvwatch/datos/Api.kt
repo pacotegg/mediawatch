@@ -208,6 +208,11 @@ object Api {
    */
   fun plataformas(): RespuestaPlataformas = pedir("/api/plataformas")
   fun dondeVer(itemId: Int): DondeVer = pedir("/api/items/$itemId/plataformas")
+
+  /** «Conectar» una plataforma es marcarla como propia: este perfil verá «también en…» de las que marque. */
+  fun guardarMisPlataformas(claves: List<String>) {
+    texto("/api/mis-plataformas", "{\"claves\":[" + claves.joinToString(",") { "\"$it\"" } + "]}")
+  }
   fun catalogoPlataforma(clave: String, kind: String, orden: String, pagina: Int): CatalogoPlataforma =
     pedir("/api/plataformas/$clave/catalogo?kind=$kind&orden=$orden&pagina=$pagina")
 
@@ -419,10 +424,19 @@ data class Perfil(
 data class QuienEs(val nombre: String = "Media Watch", val publica: String = "")
 
 @Serializable
-data class Plataforma(val clave: String, val id: Int = 0, val nombre: String)
+data class Plataforma(val clave: String, val id: Int = 0, val nombre: String, val mia: Boolean = false)
+
+/** Cuántos títulos de la biblioteca están en cada plataforma (según JustWatch). */
+@Serializable
+data class ResumenPlataforma(val clave: String, val titulos: Int = 0)
 
 @Serializable
-data class RespuestaPlataformas(val plataformas: List<Plataforma> = emptyList())
+data class RespuestaPlataformas(
+  val plataformas: List<Plataforma> = emptyList(),
+  /** Si este perfil ya eligió sus plataformas alguna vez. */
+  val configurado: Boolean = false,
+  val porPlataforma: List<ResumenPlataforma> = emptyList(),
+)
 
 /** Dónde ver un título fuera de casa. `enlace` es la página de TMDb. */
 @Serializable
