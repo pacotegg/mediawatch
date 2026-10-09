@@ -12,6 +12,10 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.42 — 09/10/2026
+
+- «Reanudar» ahora dice también cuánto falta de película, además de por dónde se quedó.
+
 ## 3.41 — 09/10/2026
 
 - El destacado de la portada cambia con un fundido en vez de deslizarse: ya no se ven dos películas a medias con los textos cortados. También se cambia arrastrando de lado a lado.

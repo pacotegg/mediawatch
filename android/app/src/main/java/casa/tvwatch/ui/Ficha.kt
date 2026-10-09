@@ -364,7 +364,14 @@ fun PantallaFicha(
         Spacer(Modifier.height(18.dp))
         if (!esSerie && ficheroPelicula != null) {
           BotonReproducirIos(
-            texto = if (reanudarEn > 0) "Reanudar · ${reloj(reanudarEn)}" else "Reproducir",
+            texto = if (reanudarEn > 0) {
+              // Dónde se quedó y cuánto falta: con el total del fichero, o la duración de la ficha si no la trae.
+              val total = ficheroPelicula.duration ?: f.runtime?.times(60)
+              val faltan = total?.let { (it - reanudarEn) / 60 }?.takeIf { it >= 1 }
+              "Reanudar · ${reloj(reanudarEn)}" + (faltan?.let { " · faltan ${duracionLegible(it)}" } ?: "")
+            } else {
+              "Reproducir"
+            },
             alPulsar = {
               prepararPistas(ficheroPelicula.id)
               alReproducir(ficheroPelicula.id, null, reanudarEn)
