@@ -42,6 +42,7 @@ import casa.tvwatch.datos.Servidor
 @Composable
 fun PantallaAjustes(
   alIrADescargas: () -> Unit,
+  alOrdenarMenu: () -> Unit,
   alCerrarSesion: () -> Unit,
 ) {
   val contexto = LocalContext.current
@@ -328,6 +329,12 @@ fun PantallaAjustes(
       }
 
       Spacer(Modifier.height(10.dp))
+
+      FilaBoton(
+        titulo = "Reordenar el menú",
+        detalle = "Cambiar el orden de las secciones y bibliotecas, o esconderlas",
+        alPulsar = alOrdenarMenu,
+      )
 
       FilaBoton(
         titulo = "Cambiar de perfil o servidor",

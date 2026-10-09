@@ -128,6 +128,30 @@ object Ajustes {
     set(v) = prefs.edit().putString("calidadDescargaDefecto", v).apply()
 
   /** Idioma de audio preferido ("spa" = Español, "orig" = Versión original, "cualquiera"). */
+  /** Orden del menú (claves de `SECCIONES_FIJAS` y `lib-<id>`) y lo que se escondió. Como en la app de la tele. */
+  /** Cuenta los cambios del menú: al leerlo desde Compose, el menú se repinta solo al reordenar. */
+  private val cambiosMenu = androidx.compose.runtime.mutableIntStateOf(0)
+
+  var ordenMenu: List<String>
+    get() = cambiosMenu.intValue.let { (prefs.getString("ordenMenu", "") ?: "").split(',').filter { s -> s.isNotEmpty() } }
+    set(v) {
+      prefs.edit().putString("ordenMenu", v.joinToString(",")).apply()
+      cambiosMenu.intValue++
+    }
+
+  var menuOcultos: List<String>
+    get() = cambiosMenu.intValue.let { (prefs.getString("menuOcultos", "") ?: "").split(',').filter { s -> s.isNotEmpty() } }
+    set(v) {
+      prefs.edit().putString("menuOcultos", v.joinToString(",")).apply()
+      cambiosMenu.intValue++
+    }
+
+  /** Las claves en el orden elegido; las que no aparecen en él, al final y en su orden. */
+  fun ordenar(claves: List<String>): List<String> {
+    val o = ordenMenu
+    return claves.sortedBy { o.indexOf(it).let { i -> if (i < 0) Int.MAX_VALUE else i } }
+  }
+
   var idiomaAudioPreferido: String
     get() = prefs.getString("idiomaAudioPreferido", "spa") ?: "spa"
     set(v) = prefs.edit().putString("idiomaAudioPreferido", v).apply()

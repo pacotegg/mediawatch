@@ -186,14 +186,36 @@ fun PantallaFicha(
   val ficheroPelicula = f.files.firstOrNull { it.episodioId == null }
 
   // Las pistas del fichero, para poder elegir audio y subtítulos antes de reproducir (como en la tele).
-  val idFicheroPelicula = ficheroPelicula?.id
-  LaunchedEffect(idFicheroPelicula) {
-    if (idFicheroPelicula == null) return@LaunchedEffect
-    infoPistas = try {
-      withContext(Dispatchers.IO) { Api.infoDeReproduccion(idFicheroPelicula) }
+  // En una serie se enseñan las pistas del próximo episodio por ver (o el primero); lo elegido vale, por idioma, para todos.
+  val idFicheroDePistas = if (esSerie) {
+    val conFichero = f.episodes.filter { it.ficheroId != null }.sortedWith(compareBy({ it.season }, { it.episode }))
+    (conFichero.firstOrNull { e -> f.progress.none { it.episodioId == e.id && it.watched == 1 } } ?: conFichero.firstOrNull())?.ficheroId
+  } else {
+    ficheroPelicula?.id
+  }
+  LaunchedEffect(idFicheroDePistas) {
+    if (idFicheroDePistas == null) return@LaunchedEffect
+    val info = try {
+      withContext(Dispatchers.IO) { Api.infoDeReproduccion(idFicheroDePistas) }
     } catch (e: Exception) {
       null
     }
+    infoPistas = info
+    // Al volver a la ficha de una serie se recuerda lo elegido antes.
+    val previa = if (esSerie) EleccionDePistas.serieDe(itemId) else null
+    if (info != null && previa != null) {
+      audioElegido = previa.audioIdioma?.let { l -> info.audio.firstOrNull { Pistas.mismoIdioma(it.language, l) }?.id }
+      subElegido = previa.subtitulo?.let { Pistas.subtituloParecido(info.subtitles, it)?.id }
+    }
+  }
+
+  /** En series lo elegido se guarda por idioma para todos los episodios. */
+  fun recordarParaLaSerie(audioId: Int?, subId: String?) {
+    val i = infoPistas ?: return
+    if (!esSerie) return
+    val idioma = i.audio.firstOrNull { it.id == audioId }?.language
+    val sub = i.subtitles.firstOrNull { it.id == subId }
+    EleccionDePistas.guardarSerie(if (idioma == null && sub == null) null else EleccionDePistas.DeSerie(itemId, idioma, sub))
   }
 
   /** Deja lo elegido para que lo recoja el reproductor o Cast. Sin cambios, no deja nada. */
@@ -359,13 +381,13 @@ fun PantallaFicha(
           Modifier.horizontalScroll(rememberScrollState()),
           horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-          if (!esSerie && ficheroPelicula != null) {
-            if (reanudarEn > 0) {
-              BotonIcono("Desde el principio", "reiniciar") {
-                prepararPistas(ficheroPelicula.id)
-                alReproducir(ficheroPelicula.id, null, 0.0)
-              }
+          if (!esSerie && ficheroPelicula != null && reanudarEn > 0) {
+            BotonIcono("Desde el principio", "reiniciar") {
+              prepararPistas(ficheroPelicula.id)
+              alReproducir(ficheroPelicula.id, null, 0.0)
             }
+          }
+          if (idFicheroDePistas != null) {
             BotonIcono("Audio", "audio", activo = audioElegido != null) { dialogoPistas = "audio" }
             BotonIcono("Subtítulos", "subtitulos", activo = subElegido != null) { dialogoPistas = "subs" }
           }
@@ -440,7 +462,7 @@ fun PantallaFicha(
         }
 
         // Lo que se pondrá al reproducir, con lo elegido en ámbar (como en la tele).
-        if (!esSerie && ficheroPelicula != null) {
+        if (idFicheroDePistas != null) {
           val i = infoPistas
           if (i != null && i.audio.isNotEmpty()) {
             Spacer(Modifier.height(10.dp))
@@ -563,6 +585,7 @@ fun PantallaFicha(
         elegida = (Pistas.elegirAudio(infoDelDialogo.audio, audioElegido)?.id ?: -1).toString(),
         alElegir = {
           audioElegido = it.toIntOrNull()
+          recordarParaLaSerie(audioElegido, subElegido)
           dialogoPistas = null
         },
         alCerrar = { dialogoPistas = null },
@@ -574,6 +597,7 @@ fun PantallaFicha(
         elegida = subElegido ?: "",
         alElegir = {
           subElegido = it.ifEmpty { null }
+          recordarParaLaSerie(audioElegido, subElegido)
           dialogoPistas = null
         },
         alCerrar = { dialogoPistas = null },

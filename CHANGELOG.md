@@ -12,6 +12,11 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.38 — 09/10/2026
+
+- Audio y subtítulos también en la ficha de las series: lo que elijas vale, por idioma, para todos sus episodios (en el reproductor y en Cast).
+- Reordenar el menú: en Ajustes, «Reordenar el menú» sube, baja o esconde secciones y bibliotecas; el orden también vale para los atajos de la portada.
+
 ## 3.37 — 09/10/2026
 
 - La ficha sigue el estilo de la app de la tele: solo «Reproducir» lleva texto; el resto son iconos con su nombre debajo.

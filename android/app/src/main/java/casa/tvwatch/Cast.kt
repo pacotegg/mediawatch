@@ -193,10 +193,12 @@ object Cast {
     // Cast manda siempre el audio reconvertido por el servidor: aquí manda el
     // idioma, no si el móvil sabe leer el códec.
     val eleccion = EleccionDePistas.tomar(fileId)
-    val audio = infoPistas?.let { Pistas.elegirAudio(it.audio, eleccion?.audioId ?: audioId, soloLasQueSeLeen = false) }
+    val audio = infoPistas?.let { Pistas.elegirAudio(it.audio, eleccion?.audioId ?: audioId, soloLasQueSeLeen = false, idioma = EleccionDePistas.serieDe(itemId)?.audioIdioma) }
     // Los subtítulos de Cast se numeran por posición (1, 2, ...), igual que más abajo.
-    val subtituloActivo = subtituloPuesto ?: eleccion?.subtitulo?.let { s ->
-      infoPistas?.subtitles?.indexOfFirst { it.id == s.id }?.takeIf { it >= 0 }?.let { (it + 1).toLong() }
+    val subtituloActivo = subtituloPuesto ?: (eleccion?.subtitulo ?: EleccionDePistas.serieDe(itemId)?.subtitulo)?.let { s ->
+      val lista = infoPistas?.subtitles
+      val parecido = lista?.let { Pistas.subtituloParecido(it, s) }
+      lista?.indexOfFirst { it.id == parecido?.id }?.takeIf { it >= 0 }?.let { (it + 1).toLong() }
     }
     emision = Emision(fileId, itemId, episodioId, titulo, audio?.id)
     if (infoPistas != null) Registro.i("pistas", "cast: " + Pistas.describir(infoPistas.audio, audio))

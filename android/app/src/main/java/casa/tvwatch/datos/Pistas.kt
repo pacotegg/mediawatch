@@ -19,6 +19,21 @@ object EleccionDePistas {
     pendiente = e
   }
 
+  /**
+   * Lo elegido para una serie: va por idioma y no por número de pista, porque
+   * cada episodio es un fichero distinto con sus propios números. Vale para
+   * todos los episodios de ese título mientras la app siga abierta.
+   */
+  data class DeSerie(val itemId: Int, val audioIdioma: String?, val subtitulo: PistaSubtitulo?)
+
+  @Volatile private var deSerie: DeSerie? = null
+
+  fun guardarSerie(e: DeSerie?) {
+    deSerie = e
+  }
+
+  fun serieDe(itemId: Int): DeSerie? = deSerie?.takeIf { it.itemId == itemId }
+
   fun tomar(fileId: Int): Eleccion? {
     val e = pendiente
     if (e != null && e.fileId == fileId) {
@@ -55,6 +70,18 @@ object Pistas {
     return base in ESPANOL
   }
 
+  fun mismoIdioma(a: String?, b: String?): Boolean {
+    if (a == null || b == null) return false
+    if (esEspanol(a) && esEspanol(b)) return true
+    return a.lowercase().trim().split('-', '_').first() == b.lowercase().trim().split('-', '_').first()
+  }
+
+  /** El subtítulo de esta lista que se parece al elegido en otro fichero: el mismo, o el del mismo idioma y «forzado». */
+  fun subtituloParecido(lista: List<PistaSubtitulo>, querido: PistaSubtitulo): PistaSubtitulo? =
+    lista.firstOrNull { it.id == querido.id && mismoIdioma(it.language, querido.language) && it.forced == querido.forced }
+      ?: lista.firstOrNull { mismoIdioma(it.language, querido.language) && it.forced == querido.forced }
+      ?: lista.firstOrNull { mismoIdioma(it.language, querido.language) }
+
   /**
    * @param soloLasQueSeLeen `true` en el reproductor de la app (se prefiere una pista
    * que el aparato decodifique). `false` en Cast: el servidor reconvierte el audio de
@@ -65,9 +92,12 @@ object Pistas {
     actual: Int?,
     soloLasQueSeLeen: Boolean = true,
     preferencia: String = Ajustes.idiomaAudioPreferido,
+    idioma: String? = null,
   ): PistaAudio? {
     pistas.firstOrNull { it.id == actual }?.let { return it }
     val candidatas = if (soloLasQueSeLeen) pistas.filter { it.compatible } else pistas
+    // Un idioma elegido (en las series) manda sobre la preferencia general.
+    if (idioma != null) candidatas.firstOrNull { mismoIdioma(it.language, idioma) }?.let { return it }
     val preferida = if (preferencia == "spa") candidatas.firstOrNull { esEspanol(it.language) } else null
     return preferida ?: candidatas.firstOrNull() ?: pistas.firstOrNull()
   }

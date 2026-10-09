@@ -54,6 +54,13 @@ import casa.tvwatch.datos.Servidor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+/** Las bibliotecas en el orden elegido y sin las escondidas (ver `PantallaOrdenMenu`). */
+fun bibliotecasOrdenadas(todas: List<casa.tvwatch.datos.Biblioteca>): List<casa.tvwatch.datos.Biblioteca> {
+  val ocultos = Ajustes.menuOcultos
+  val porClave = todas.associateBy { claveDeBiblioteca(it) }
+  return Ajustes.ordenar(porClave.keys.toList()).filter { it !in ocultos }.mapNotNull { porClave[it] }
+}
+
 /** A dónde puede llevar el menú. La ruta de verdad la pone quien navega. */
 sealed class Destino {
   data object Inicio : Destino()
@@ -117,19 +124,25 @@ fun Menu(rutaActual: String?, bibliotecaActual: Int?, alIr: (Destino) -> Unit) {
       )
       Spacer(Modifier.height(18.dp))
 
-      Entrada("Inicio", activa = rutaActual == "portada", alPulsar = { alIr(Destino.Inicio) }) { IconoInicio(it) }
-      Entrada("Buscar", activa = rutaActual == "buscar", alPulsar = { alIr(Destino.Buscar) }) { IconoBuscar(it) }
-      Entrada("Favoritas", activa = rutaActual == "favoritas", alPulsar = { alIr(Destino.Favoritas) }) {
-        IconoEstrella(it, rellena = rutaActual == "favoritas", tamano = 20.dp)
+      val ocultos = Ajustes.menuOcultos
+      for (clave in Ajustes.ordenar(SECCIONES_FIJAS.map { it.first })) {
+        if (clave in ocultos) continue
+        when (clave) {
+          "inicio" -> Entrada("Inicio", activa = rutaActual == "portada", alPulsar = { alIr(Destino.Inicio) }) { IconoInicio(it) }
+          "buscar" -> Entrada("Buscar", activa = rutaActual == "buscar", alPulsar = { alIr(Destino.Buscar) }) { IconoBuscar(it) }
+          "favoritos" -> Entrada("Favoritas", activa = rutaActual == "favoritas", alPulsar = { alIr(Destino.Favoritas) }) {
+            IconoEstrella(it, rellena = rutaActual == "favoritas", tamano = 20.dp)
+          }
+          "descargas" -> Entrada("Descargas", activa = rutaActual == "descargas", alPulsar = { alIr(Destino.Descargas) }) { IconoDescarga(it) }
+          "sagas" -> Entrada("Sagas", activa = rutaActual == "sagas", alPulsar = { alIr(Destino.Sagas) }) { IconoSagas(it) }
+          "plataformas" -> Entrada("Plataformas", activa = rutaActual == "plataformas", alPulsar = { alIr(Destino.Plataformas) }) { IconoPlataformas(it) }
+        }
       }
-      Entrada("Descargas", activa = rutaActual == "descargas", alPulsar = { alIr(Destino.Descargas) }) { IconoDescarga(it) }
-      Entrada("Sagas", activa = rutaActual == "sagas", alPulsar = { alIr(Destino.Sagas) }) { IconoSagas(it) }
-      Entrada("Plataformas", activa = rutaActual == "plataformas", alPulsar = { alIr(Destino.Plataformas) }) { IconoPlataformas(it) }
       Entrada("Ajustes", activa = rutaActual == "ajustes", alPulsar = { alIr(Destino.Ajustes) }) { IconoAjustes(it) }
 
-      if (bibliotecas.isNotEmpty()) {
+      if (bibliotecasOrdenadas(bibliotecas).isNotEmpty()) {
         Seccion("Bibliotecas")
-        for (b in bibliotecas) {
+        for (b in bibliotecasOrdenadas(bibliotecas)) {
           Entrada(
             b.name,
             detalle = b.count.toString(),

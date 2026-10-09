@@ -55,4 +55,17 @@ class PistasTest {
   @Test fun sinPistasNoHayNada() {
     assertNull(Pistas.elegirAudio(emptyList(), null, preferencia = "spa"))
   }
+
+  @Test fun unIdiomaElegidoEnUnaSerieManda() {
+    // Otro episodio, con los números de pista cambiados: manda el idioma.
+    val otro = listOf(pista(7, "spa"), pista(8, "eng"))
+    assertEquals(8, Pistas.elegirAudio(otro, null, preferencia = "spa", idioma = "eng")?.id)
+    assertEquals(7, Pistas.elegirAudio(otro, null, preferencia = "spa", idioma = "xxx")?.id)
+  }
+
+  @Test fun elSubtituloSeBuscaPorIdiomaYForzadosEnOtroFichero() {
+    val querido = PistaSubtitulo(id = "0", language = "spa", forced = false)
+    val lista = listOf(PistaSubtitulo("0", "eng"), PistaSubtitulo("1", "es", forced = true), PistaSubtitulo("2", "spa"))
+    assertEquals("2", Pistas.subtituloParecido(lista, querido)?.id)
+  }
 }

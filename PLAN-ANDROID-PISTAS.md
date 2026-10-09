@@ -26,11 +26,15 @@ Regla de audio (`Pistas.elegirAudio`): elegida a mano > preferida («spa» → e
 - El HLS de Cast lleva **una sola pista de audio** (`...master.m3u8?...&surround=1&audio=<streamIndex>`): cambiar de audio en Cast **recarga el stream** en la posición actual (corte breve).
 
 ## Verificado
-- `gradle :app:testDebugUnitTest` → 9 tests, 0 fallos.
+- `gradle :app:testDebugUnitTest` → 11 tests, 0 fallos.
 - Emulador con servidor aislado (copia de la BD, puerto 8731): ficha con iconos, selector de audio (cambia la etiqueta a «Inglés · EAC3 5.1…»), fila de etiquetas. **Cast no se pudo probar** (sin dispositivo): solo compila. Hipótesis sin medir: que el botón del control ampliado aparezca en el hueco 1 y recargue bien.
 
+## 3.38 (09/10/2026)
+- **Series:** la ficha muestra Audio/Subtítulos con las pistas del próximo episodio por ver (o el primero). Lo elegido se guarda **por idioma** en memoria (`EleccionDePistas.DeSerie`, vive mientras la app esté abierta) y reproductor y Cast lo aplican a cualquier episodio de ese título (`Pistas.elegirAudio(..., idioma=)`, `Pistas.subtituloParecido`). Verificado en emulador solo que los iconos y las etiquetas salen; **no probado** reproducir un episodio con la elección puesta.
+- **Reordenar menú:** `ui/OrdenDelMenu.kt`, claves como en la tele (`inicio`, `buscar`, `favoritos`, `descargas`, `sagas`, `plataformas`, `lib-<id>`); se guarda en `Ajustes.ordenMenu` / `menuOcultos` (local al móvil, no se sincroniza con el servidor). «Ajustes» no se puede esconder. Verificado en emulador: el orden y lo escondido persisten y se reflejan en menú y atajos tras reabrir; el repintado en vivo con el menú abierto **no se vio**.
+- Por hacer: el orden no se comparte entre móvil y tele (la tele lo guarda en su localStorage).
+
 ## Limitaciones conocidas (por hacer)
-- Selectores solo para **películas**; los episodios de series no los tienen.
 - «En la tele» (mando a Tizen) **no transmite** la elección de pistas.
 - Subtítulo elegido → se busca por heurística (idioma + forzados); si hay dos del mismo idioma puede escoger otro.
 - Audio múltiple real en Cast requeriría HLS con `EXT-X-MEDIA` en el servidor (cambio grande).

@@ -376,7 +376,7 @@ private fun Reproduciendo(
       // La pista que se pone al empezar: la primera que el aparato sepa leer.
       // Si ninguna vale, la primera y que el servidor la convierta. Al
       // recargar por un cambio de calidad se conserva la que ya estaba.
-      val elegida = Pistas.elegirAudio(i.audio, pistaAudio)
+      val elegida = Pistas.elegirAudio(i.audio, pistaAudio, idioma = EleccionDePistas.serieDe(itemId)?.audioIdioma)
       Registro.i("pistas", "reproductor: " + Pistas.describir(i.audio, elegida))
       pistaAudio = elegida?.id
       /*
@@ -483,7 +483,7 @@ private fun Reproduciendo(
       .build()
 
     // ...salvo que en la ficha se haya elegido uno.
-    val querido = eleccion?.subtitulo
+    val querido = eleccion?.subtitulo ?: EleccionDePistas.serieDe(itemId)?.subtitulo
     if (querido != null) {
       val pista = buscarSubtitulo(pistas, querido)
       if (pista != null) {

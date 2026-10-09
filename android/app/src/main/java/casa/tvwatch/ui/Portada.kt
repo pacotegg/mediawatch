@@ -155,7 +155,7 @@ fun PantallaPortada(
       contentPadding = PaddingValues(bottom = 30.dp),
     ) {
       item { Destacado(d.hero, alAbrirFicha, alBuscar) }
-      item { AtajosDeBiblioteca(bibliotecas, alAbrirBiblioteca) }
+      item { AtajosDeBiblioteca(bibliotecasOrdenadas(bibliotecas), alAbrirBiblioteca) }
       items(d.rows, key = { it.key }) { fila -> Fila(fila.title, fila.items, alAbrirFicha) }
     }
   }
