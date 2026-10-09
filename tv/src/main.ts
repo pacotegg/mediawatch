@@ -1110,14 +1110,16 @@ async function pantallaPlataformas(clave?: string, kind?: 'movie' | 'show', pagi
  * «tengo esta suscripción», y entonces los títulos muestran «también en…» solo de las tuyas.
  */
 function pantallaMisPlataformas(todas: { clave: string; nombre: string; mia?: boolean }[], titulos: { [clave: string]: number }) {
-  const texto = (p: { clave: string; nombre: string; mia?: boolean }) =>
-    esc(p.nombre) + (titulos[p.clave] ? ' · ' + titulos[p.clave] + ' títulos de tu biblioteca' : '') + ' — ' + (p.mia ? 'Conectada ✓' : 'Conectar');
   pintar(
     'plataformas',
     '<div class="ajustes" data-bloque>' +
       '<h1 class="titulo-pantalla">Mis plataformas</h1>' +
-      '<p class="pista-ayuda" style="margin-bottom:26px">Marca a qué plataformas estás suscrito. Los títulos de tu biblioteca que también estén en ellas lo dirán en su ficha. Disponibilidad según JustWatch, en España.</p>' +
-      todas.map((p) => '<button class="linea' + (p.mia ? ' elegida' : '') + '" data-nav data-conectar="' + p.clave + '">' + texto(p) + '</button>').join('') +
+      '<p class="pista-ayuda" style="margin-bottom:26px">Abre la aplicación de cada plataforma, y marca «Conectar» en las que tengas contratadas: los títulos de tu biblioteca que estén en ellas lo dirán en su ficha. Disponibilidad según JustWatch, en España.</p>' +
+      todas.map((p) =>
+        '<div class="orden-fila' + (p.mia ? '' : ' oculta') + '"><span class="nom-menu">' + esc(p.nombre) + (titulos[p.clave] ? ' · ' + titulos[p.clave] + ' títulos' : '') + '</span>' +
+        '<button class="mini" data-nav data-abrir-app="' + p.clave + '">Abrir</button>' +
+        '<button class="mini" data-nav data-conectar="' + p.clave + '">' + (p.mia ? 'Conectada ✓' : 'Conectar') + '</button></div>',
+      ).join('') +
       '<div style="margin-top:26px"><button class="boton primario" data-nav data-listo>Listo</button></div>' +
       '</div>',
   );
@@ -1125,13 +1127,25 @@ function pantallaMisPlataformas(todas: { clave: string; nombre: string; mia?: bo
     el.addEventListener('click', () => {
       const p = todas.filter((x) => x.clave === el.getAttribute('data-conectar'))[0];
       if (!p) return;
+      const pintarEstado = () => {
+        el.textContent = p.mia ? 'Conectada ✓' : 'Conectar';
+        if (el.parentElement) {
+          if (p.mia) el.parentElement.classList.remove('oculta');
+          else el.parentElement.classList.add('oculta');
+        }
+      };
       p.mia = !p.mia;
-      el.innerHTML = texto(p);
-      if (p.mia) el.classList.add('elegida');
-      else el.classList.remove('elegida');
+      pintarEstado();
       api.guardarMisPlataformas(todas.filter((x) => x.mia).map((x) => x.clave))
         .then(() => aviso(p.mia ? p.nombre + ' conectada: verás «también en ' + p.nombre + '» en tus títulos' : p.nombre + ' quitada'))
-        .catch(() => { p.mia = !p.mia; el.innerHTML = texto(p); aviso('No se pudo guardar'); });
+        .catch(() => { p.mia = !p.mia; pintarEstado(); aviso('No se pudo guardar'); });
+    });
+  });
+  marco.querySelectorAll<HTMLElement>('[data-abrir-app]').forEach((el) => {
+    el.addEventListener('click', () => {
+      const clave = el.getAttribute('data-abrir-app') || '';
+      const p = todas.filter((x) => x.clave === clave)[0];
+      if (!abrirApp(clave)) aviso('Para abrirla, instala ' + (p ? p.nombre : 'la aplicación') + ' en la tele');
     });
   });
   const listo = marco.querySelector<HTMLElement>('[data-listo]');

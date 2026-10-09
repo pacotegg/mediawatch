@@ -32,6 +32,16 @@ const NOMBRES: Record<string, string[]> = {
   movistar: ['movistar'],
   prime: ['prime video', 'amazon prime', 'primevideo'],
   apple: ['apple tv', 'appletv'],
+  netflix: ['netflix'],
+  disney: ['disney'],
+  hbomax: ['hbo max', 'hbomax'],
+  skyshowtime: ['skyshowtime'],
+  filmin: ['filmin'],
+  atresplayer: ['atresplayer', 'atres player'],
+  rtve: ['rtve'],
+  rakuten: ['rakuten'],
+  crunchyroll: ['crunchyroll'],
+  mubi: ['mubi'],
 };
 
 let listado: AppInfo[] | null = null;

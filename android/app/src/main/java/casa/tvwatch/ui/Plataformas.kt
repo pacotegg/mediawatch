@@ -33,6 +33,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -149,7 +150,11 @@ fun PantallaPlataformas(alAbrirFicha: (Int) -> Unit, alPerderSesion: () -> Unit)
 
     val lote = items
     when {
-      activa == GESTIONAR && plataformas != null -> GestorDePlataformas(plataformas, titulosPorPlataforma, ::alternarPlataforma)
+      activa == GESTIONAR && plataformas != null -> GestorDePlataformas(plataformas, titulosPorPlataforma, ::alternarPlataforma) { p ->
+        // Pulsar la plataforma abre su aplicación, y nada más.
+        val motivo = AppsDePlataforma.abrir(ctx, p.clave, p.nombre)
+        if (motivo != null) Toast.makeText(ctx, motivo, Toast.LENGTH_LONG).show()
+      }
       fallo.isNotEmpty() -> Aviso(fallo, "Reintentar") { intento++ }
       plataformas != null && plataformas.isEmpty() -> Aviso("No hay ninguna plataforma configurada.")
       lote == null -> EsqueletoDeRejilla()
@@ -212,7 +217,12 @@ private const val GESTIONAR = "+"
  * «también en…» solo de las tuyas.
  */
 @Composable
-private fun GestorDePlataformas(lista: List<Plataforma>, titulos: Map<String, Int>, alAlternar: (Plataforma) -> Unit) {
+private fun GestorDePlataformas(
+  lista: List<Plataforma>,
+  titulos: Map<String, Int>,
+  alAlternar: (Plataforma) -> Unit,
+  alAbrir: (Plataforma) -> Unit,
+) {
   androidx.compose.foundation.lazy.LazyColumn(
     Modifier.fillMaxSize(),
     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
@@ -220,7 +230,7 @@ private fun GestorDePlataformas(lista: List<Plataforma>, titulos: Map<String, In
   ) {
     item {
       Text(
-        "Marca a qué plataformas estás suscrito. Los títulos de tu biblioteca que también estén en ellas lo dirán en su ficha. Disponibilidad según JustWatch, en España.",
+        "Pulsa una plataforma para abrir su aplicación. Marca «Conectar» en las que tengas contratadas: los títulos de tu biblioteca que estén en ellas lo dirán en su ficha. Disponibilidad según JustWatch, en España.",
         color = TextoSuave,
         style = MaterialTheme.typography.bodySmall,
         modifier = Modifier.padding(bottom = 6.dp),
@@ -233,12 +243,12 @@ private fun GestorDePlataformas(lista: List<Plataforma>, titulos: Map<String, In
           .fillMaxWidth()
           .clip(RoundedCornerShape(12.dp))
           .background(FondoTarjeta)
-          .clickable { alAlternar(p) }
-          .padding(horizontal = 14.dp, vertical = 12.dp),
+          .padding(start = 14.dp, top = 4.dp, bottom = 4.dp, end = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
       ) {
-        Column(Modifier.weight(1f)) {
+        // El nombre abre la aplicación; el botón de la derecha marca o desmarca la suscripción.
+        Column(Modifier.weight(1f).clickable { alAbrir(p) }.padding(vertical = 8.dp)) {
           Text(p.nombre, color = Texto, style = MaterialTheme.typography.titleMedium)
           if (n > 0) Text("$n títulos de tu biblioteca", color = TextoTenue, style = MaterialTheme.typography.labelSmall)
         }
@@ -246,6 +256,11 @@ private fun GestorDePlataformas(lista: List<Plataforma>, titulos: Map<String, In
           if (p.mia) "Conectada ✓" else "Conectar",
           color = if (p.mia) Realce else Texto,
           style = MaterialTheme.typography.labelLarge,
+          modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(if (p.mia) Realce.copy(alpha = 0.16f) else Color(0x18FFFFFF))
+            .clickable { alAlternar(p) }
+            .padding(horizontal = 14.dp, vertical = 10.dp),
         )
       }
     }

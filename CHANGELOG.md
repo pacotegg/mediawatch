@@ -12,6 +12,10 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.43 — 09/10/2026
+
+- «Mis plataformas»: en Plataformas, la pestaña «＋ Plataformas» lista todas las que hay en España (Netflix, Disney+, HBO Max, SkyShowtime, Filmin…). Al pulsar una, se abre su aplicación; con «Conectar» marcas las que tienes contratadas y los títulos dirán «también en…» solo de las tuyas.
+
 ## 3.42 — 09/10/2026
 
 - «Reanudar» ahora dice también cuánto falta de película, además de por dónde se quedó.
