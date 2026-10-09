@@ -58,7 +58,6 @@ import casa.tvwatch.ui.Movimiento
 import casa.tvwatch.ui.NovedadesDialogo
 import casa.tvwatch.ui.AvisoDeVersionNueva
 import casa.tvwatch.ui.PantallaAjustes
-import casa.tvwatch.ui.PantallaOrdenMenu
 import casa.tvwatch.ui.PantallaBiblioteca
 import casa.tvwatch.ui.PantallaBuscar
 import casa.tvwatch.ui.PantallaConexion
@@ -140,7 +139,6 @@ private object Rutas {
   const val SAGA = "saga/{nombre}"
   const val PERSONA = "persona/{id}"
   const val AJUSTES = "ajustes"
-  const val ORDEN_MENU = "orden_menu"
   const val REPRODUCTOR_LOCAL = "ver_local/{uriEncoded}/{tituloEncoded}"
 
   fun saga(nombre: String) = "saga/" + URLEncoder.encode(nombre, "UTF-8")
@@ -318,17 +316,11 @@ private fun Navegacion(nav: NavHostController) {
         Pantalla(titulo = "Opciones", nav = nav, alMenu = ::abrirMenu) {
           PantallaAjustes(
             alIrADescargas = { nav.navigate(Rutas.DESCARGAS) },
-            alOrdenarMenu = { nav.navigate(Rutas.ORDEN_MENU) },
             alCerrarSesion = { aConexion() },
           )
         }
       }
 
-      composable(Rutas.ORDEN_MENU) {
-        Pantalla(titulo = "Orden del menú", nav = nav, alMenu = ::abrirMenu) {
-          PantallaOrdenMenu()
-        }
-      }
 
       composable(Rutas.PLATAFORMAS) {
         Pantalla(titulo = "Plataformas", nav = nav, alMenu = ::abrirMenu) {

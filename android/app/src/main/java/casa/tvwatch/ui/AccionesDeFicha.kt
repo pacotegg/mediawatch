@@ -94,6 +94,12 @@ private val ACCIONES: Map<String, List<Trazo>> = mapOf(
   "descargar" to listOf(Trazo("M12 4v11M7.5 10.8l4.5 4.5 4.5-4.5M5 19.5h14")),
   "tele" to listOf(Trazo("M4 5h16v11H4zM9 20h6M12 16v4"), Trazo("M10.5 8.2v4.6l3.6-2.3z", relleno = true)),
   "plataforma" to listOf(Trazo("M4 5h16v10H4zM9 19h6M12 15v4")),
+  // Ojo abierto / tachado (Feather, MIT): esconder o mostrar en el menú.
+  "ojo" to listOf(Trazo("M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"), Trazo("M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z")),
+  "ojoTachado" to listOf(
+    Trazo("M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"),
+    Trazo("M1 1l22 22"),
+  ),
   "imagenes" to listOf(Trazo("M4 5h16v14H4z"), Trazo("M4 16l4.5-4.5 4 4 3-3 4.5 4.5")),
 )
 

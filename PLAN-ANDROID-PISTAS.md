@@ -1,14 +1,13 @@
-# Android: audio y subtítulos en la ficha y en Cast (3.37 / 3.38)
+# Android: audio y subtítulos en la ficha y en Cast (3.37 / 3.38 / 3.39)
 
 Para quien continúe (Claude o Gemini). Estado a 09/10/2026.
 
 ## DÓNDE LO DEJO (leer primero)
-Última versión publicada: **3.38** (GitHub release `v3.38`, APK en `web/public` y `web/dist`, `instalar.html` apuntando a ella). Todo está commiteado y empujado.
+Última versión publicada: **3.39** (GitHub release `v3.38`, APK en `web/public` y `web/dist`, `instalar.html` apuntando a ella). Todo está commiteado y empujado.
 
 **Lo único que queda por hacer es probar en un móvil real con Chromecast** (yo no tengo dispositivo):
 1. Cast: el botón de audio del control ampliado (hueco 1, `ControlDeCast`) y que el cambio recargue el stream en la posición actual; subtítulos de Cast tras elegirlos en la ficha.
 2. Una serie: elegir audio/subtítulo en la ficha y reproducir un episodio (reproductor y Cast) — solo está compilado, no visto.
-3. Menú: reordenar con el menú lateral abierto y ver que se repinta (tras reabrir la app sí se ve bien).
 Si algo falla, arreglarlo en `Cast.kt` / `Pistas.kt` / `ui/Ficha.kt`; las pistas y el reproductor tienen tests en `src/test/.../PistasTest.kt` (11).
 
 **Decisiones del usuario (no reabrir):**
@@ -55,7 +54,7 @@ Regla de audio (`Pistas.elegirAudio`): elegida a mano > preferida («spa» → e
 
 ## 3.38 (09/10/2026)
 - **Series:** la ficha muestra Audio/Subtítulos con las pistas del próximo episodio por ver (o el primero). Lo elegido se guarda **por idioma** en memoria (`EleccionDePistas.DeSerie`, vive mientras la app esté abierta) y reproductor y Cast lo aplican a cualquier episodio de ese título (`Pistas.elegirAudio(..., idioma=)`, `Pistas.subtituloParecido`). Verificado en emulador solo que los iconos y las etiquetas salen; **no probado** reproducir un episodio con la elección puesta.
-- **Reordenar menú:** `ui/OrdenDelMenu.kt`, claves como en la tele (`inicio`, `buscar`, `favoritos`, `descargas`, `sagas`, `plataformas`, `lib-<id>`); se guarda en `Ajustes.ordenMenu` / `menuOcultos` (local al móvil, no se sincroniza con el servidor). «Ajustes» no se puede esconder. Verificado en emulador: el orden y lo escondido persisten y se reflejan en menú y atajos tras reabrir; el repintado en vivo con el menú abierto **no se vio**.
+- **Reordenar menú (3.39):** arrastrando en el propio menú lateral, sin pantalla en Ajustes (`ui/Menu.kt`): pulsación larga en una entrada → modo edición (ojo abierto/tachado para esconder, «Listo» para salir; las escondidas se ven atenuadas solo en edición). Cada grupo (secciones / bibliotecas) se ordena aparte; «Ajustes» ni se mueve ni se esconde. Claves como en la tele (`inicio`, `buscar`, `favoritos`, `descargas`, `sagas`, `plataformas`, `lib-<id>`), guardadas en `Ajustes.ordenMenu` / `menuOcultos` (local al móvil; son `mutableIntStateOf`-observables). Verificado en emulador: arrastre, ojo, «Listo», persistencia y repintado en vivo del menú y de los atajos de la portada.
 - Por hacer: el orden no se comparte entre móvil y tele (la tele lo guarda en su localStorage).
 
 ## Limitaciones conocidas (por hacer)
