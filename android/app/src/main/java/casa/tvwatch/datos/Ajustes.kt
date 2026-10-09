@@ -161,15 +161,10 @@ object Ajustes {
     get() = prefs.getString("modoAudio", "normal") ?: "normal"
     set(v) = prefs.edit().putString("modoAudio", v).apply()
 
-  /** Subtítulos automáticos ("auto", "always", "never"). */
-  var modoSubtitulos: String
-    get() = prefs.getString("modoSubtitulos", "never") ?: "never"
-    set(v) = prefs.edit().putString("modoSubtitulos", v).apply()
-
-  /** Idioma de subtítulos preferido ("spa", "eng"). */
-  var idiomaSubtitulosPreferido: String
-    get() = prefs.getString("idiomaSubtitulosPreferido", "spa") ?: "spa"
-    set(v) = prefs.edit().putString("idiomaSubtitulosPreferido", v).apply()
+  /*
+   * Subtítulos: sin ajuste por defecto, a propósito. Se eligen en la ficha o durante
+   * la reproducción (el usuario lo pidió así el 09/10/2026); empiezan apagados.
+   */
 
   val configurado: Boolean get() = servidor.isNotEmpty() && !token.isNullOrEmpty()
 

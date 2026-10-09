@@ -1,6 +1,30 @@
-# Android: audio y subtítulos en la ficha y en Cast (3.37)
+# Android: audio y subtítulos en la ficha y en Cast (3.37 / 3.38)
 
 Para quien continúe (Claude o Gemini). Estado a 09/10/2026.
+
+## DÓNDE LO DEJO (leer primero)
+Última versión publicada: **3.38** (GitHub release `v3.38`, APK en `web/public` y `web/dist`, `instalar.html` apuntando a ella). Todo está commiteado y empujado.
+
+**Lo único que queda por hacer es probar en un móvil real con Chromecast** (yo no tengo dispositivo):
+1. Cast: el botón de audio del control ampliado (hueco 1, `ControlDeCast`) y que el cambio recargue el stream en la posición actual; subtítulos de Cast tras elegirlos en la ficha.
+2. Una serie: elegir audio/subtítulo en la ficha y reproducir un episodio (reproductor y Cast) — solo está compilado, no visto.
+3. Menú: reordenar con el menú lateral abierto y ver que se repinta (tras reabrir la app sí se ve bien).
+Si algo falla, arreglarlo en `Cast.kt` / `Pistas.kt` / `ui/Ficha.kt`; las pistas y el reproductor tienen tests en `src/test/.../PistasTest.kt` (11).
+
+**Decisiones del usuario (no reabrir):**
+- Los subtítulos **no tienen ajuste por defecto**: se eligen en la ficha o durante la reproducción y empiezan apagados. Por eso se **borraron** `modoSubtitulos` e `idiomaSubtitulosPreferido` de `Ajustes.kt`. No añadir ajustes de subtítulos.
+- El idioma de audio preferido (Ajustes → «Idioma de audio») sí se queda.
+- La tele no necesita recibir la elección de pistas desde el móvil.
+- Se olvida la Samsung de 2024.
+- Los iconos de la ficha (Audio/Subtítulos) van en **todo lo que tenga fichero**, series incluidas.
+
+**Qué es «audio múltiple en Cast»:** el HLS que el servidor da a Cast lleva **una sola pista de audio** (`...master.m3u8?...&audio=<id>`: el servidor elige una al generarlo). Por eso cambiar de audio en Cast hace pedir otro HLS y recargar (corte breve). Un cambio sin corte exigiría que el servidor generase un HLS con **todas** las pistas de audio declaradas (`#EXT-X-MEDIA TYPE=AUDIO`) y que Cast cambiara de pista sin recargar. Es un cambio en `server/src/media/hls.ts`, no en la app; **no hace falta** si el corte breve vale.
+
+**Otros pendientes verificados el 09/10/2026:**
+- **luzapp** (`ComparadorLuz-Semanal`): la ejecución del 08/10 abortó (`ABORTADO: hay cambios fuera de los ficheros de datos publicos`, por `AGENTS.md`). Hoy `git status` solo muestra los dos JSON de datos permitidos, así que la del 10/10 09:00 debería pasar. **No ejecutada para comprobarlo** (publicaría). Mirar `C:\luzapp\actualizar-semanal.log` el 10/10. Ojo: la tarea usa `powershell.exe` (5.1), no pwsh 7.
+- **Caddy, retardo de 30 s al arrancar:** no verificable sin administrador (la tarea que lo lanza es de SYSTEM y `Get-ScheduledTask`/`schtasks` no la muestran; Caddy cuelga de `svchost`). Hecho comprobado en una sesión anterior: si el IP de Tailscale (`bind` del Caddyfile) aún no existe al arrancar, Caddy falla y **cae también el dominio público**; se recuperó solo en ~1 min. Se puede dejar así (el coste es ~1 min de corte tras reiniciar); el retardo solo lo acortaría.
+- **Instalador de Intel Arc** `C:\Users\HTPC\Downloads\gfx_win_101.9034.exe`: la herramienta denegó el `rm`; hay que borrarlo a mano.
+- MediaBox: el usuario ya instaló el APK con la corrección de colores.
 
 ## Qué pedía el usuario
 1. La ficha de la app Android debe parecerse a la de la tele (Tizen): **solo «Reproducir» lleva texto**; el resto de acciones son iconos redondos con su nombre debajo.
@@ -22,7 +46,7 @@ Regla de audio (`Pistas.elegirAudio`): elegida a mano > preferida («spa» → e
 
 ## Lo que se encontró
 - La preferencia `idiomaAudioPreferido` existía pero **nadie la leía**. Ahora sí.
-- `modoSubtitulos` e `idiomaSubtitulosPreferido` **siguen sin usarse**.
+- `modoSubtitulos` / `idiomaSubtitulosPreferido`: eran código muerto; **borrados** (decisión del usuario).
 - El HLS de Cast lleva **una sola pista de audio** (`...master.m3u8?...&surround=1&audio=<streamIndex>`): cambiar de audio en Cast **recarga el stream** en la posición actual (corte breve).
 
 ## Verificado
@@ -35,10 +59,9 @@ Regla de audio (`Pistas.elegirAudio`): elegida a mano > preferida («spa» → e
 - Por hacer: el orden no se comparte entre móvil y tele (la tele lo guarda en su localStorage).
 
 ## Limitaciones conocidas (por hacer)
-- «En la tele» (mando a Tizen) **no transmite** la elección de pistas.
+- «En la tele» (mando a Tizen) no transmite la elección de pistas: aceptado por el usuario.
 - Subtítulo elegido → se busca por heurística (idioma + forzados); si hay dos del mismo idioma puede escoger otro.
 - Audio múltiple real en Cast requeriría HLS con `EXT-X-MEDIA` en el servidor (cambio grande).
-- Usar `modoSubtitulos` / `idiomaSubtitulosPreferido` (ver arriba).
 
 ## Referencias en la app de la tele
 `tv/src/main.ts`: `ACCIONES` (~l.90), botones de la ficha (~1448-1470), etiquetas (~1676-1712), panel de pistas (~2018-2062). Si se cambia un icono allí, cambiarlo en `AccionesDeFicha.kt`.
