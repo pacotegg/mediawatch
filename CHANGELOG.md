@@ -12,6 +12,10 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.41 — 09/10/2026
+
+- El destacado de la portada cambia con un fundido en vez de deslizarse: ya no se ven dos películas a medias con los textos cortados. También se cambia arrastrando de lado a lado.
+
 ## 3.40 — 09/10/2026
 
 - Reordenar el menú: ahora se puede arrastrar una entrada varios puestos de una vez y por todo el menú (se desplaza solo al llegar al borde).

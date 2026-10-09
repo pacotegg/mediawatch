@@ -6,6 +6,10 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.tween
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.pager.HorizontalPager
@@ -206,40 +210,48 @@ private const val SEGUNDOS_POR_DESTACADO = 8
  *
  * Va rotando: el servidor manda seis al azar entre películas y series, y aquí
  * se pasa de una a otra cada ocho segundos, o antes si se arrastra con el
- * dedo, que es el gesto que todo el mundo prueba primero. Es un carrusel de
- * páginas con muchas vueltas para que se pueda arrastrar en los dos sentidos
- * sin llegar nunca al final. Cada cambio —a mano o solo— vuelve a contar los
+ * dedo, que es el gesto que todo el mundo prueba primero (cambia con un fundido
+ * en los dos sentidos, sin llegar nunca al final). Cada cambio —a mano o solo— vuelve a contar los
  * ocho segundos, y al volver de una ficha sigue por donde iba. La siguiente
  * imagen se pide antes de que toque, para que no se vea un hueco.
  */
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun Destacado(heroes: List<Titulo>, alAbrirFicha: (Int) -> Unit, alBuscar: () -> Unit) {
   if (heroes.isEmpty()) return
-  val vueltas = 400
-  val paginas = heroes.size * vueltas
-  val estado = rememberPagerState(
-    initialPage = paginas / 2 + (Cache.indiceDelDestacado % heroes.size),
-    pageCount = { paginas },
-  )
-  val indice = estado.currentPage % heroes.size
+  var indice by remember { mutableIntStateOf(Cache.indiceDelDestacado % heroes.size) }
 
-  LaunchedEffect(estado.currentPage) {
+  LaunchedEffect(indice) {
     Cache.indiceDelDestacado = indice
     delay(SEGUNDOS_POR_DESTACADO * 1_000L)
-    if (!estado.isScrollInProgress) estado.animateScrollToPage(estado.currentPage + 1)
+    indice = (indice + 1) % heroes.size
   }
   val siguiente = heroes[(indice + 1) % heroes.size]
   if (siguiente.tieneFondo == 1) precargarImagen(recordarUrl(siguiente.id, "fanart", 1280))
   if (siguiente.tieneLogo == 1) precargarImagen(recordarUrl(siguiente.id, "logo", 560))
 
   /*
-   * «Buscar» va FUERA del pager y fijo: dentro de cada página se deslizaba con ella y,
-   * al cambiar de destacado, se veían dos botones cruzándose.
+   * Fundido y no deslizamiento: al pasar solo de uno a otro, el desplazamiento
+   * dejaba a media transición dos fotogramas distintos lado a lado con los textos
+   * cortados (se veía desordenado). Con el fundido nunca hay dos a medias a la vez
+   * en pantalla. Un gesto de lado a lado también cambia (con el mismo fundido).
+   * «Buscar» va fijo, fuera del fundido.
    */
-  Box {
-    HorizontalPager(state = estado, beyondViewportPageCount = 1) { pagina ->
-      TarjetaDestacada(heroes[pagina % heroes.size], alAbrirFicha)
+  Box(
+    Modifier.pointerInput(heroes.size) {
+      var acumulado = 0f
+      detectHorizontalDragGestures(
+        onDragStart = { acumulado = 0f },
+        onDragEnd = {
+          val n = heroes.size
+          if (acumulado < -80f) indice = (indice + 1) % n else if (acumulado > 80f) indice = (indice - 1 + n) % n
+        },
+        onDragCancel = { acumulado = 0f },
+        onHorizontalDrag = { _, delta -> acumulado += delta },
+      )
+    },
+  ) {
+    Crossfade(targetState = indice, animationSpec = tween(700), label = "destacado") { i ->
+      TarjetaDestacada(heroes[i % heroes.size], alAbrirFicha)
     }
     Pastilla(
       "Buscar",
