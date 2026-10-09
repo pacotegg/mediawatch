@@ -12,6 +12,11 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.44 — 09/10/2026
+
+- Cast: si le das al icono de Cast con la película ya en marcha en el móvil, ahora la manda a la tele desde donde va (antes conectaba y no enviaba nada).
+- Cast: si la tele no acepta el vídeo, la app lo dice y deja el motivo en el informe técnico.
+
 ## 3.43 — 09/10/2026
 
 - «Mis plataformas»: en Plataformas, la pestaña «＋ Plataformas» lista todas las que hay en España (Netflix, Disney+, HBO Max, SkyShowtime, Filmin…). Al pulsar una, se abre su aplicación; con «Conectar» marcas las que tienes contratadas y los títulos dirán «también en…» solo de las tuyas.

@@ -1,9 +1,9 @@
-# Android: audio y subtítulos en la ficha y en Cast (3.37 – 3.43)
+# Android: audio y subtítulos en la ficha y en Cast (3.37 – 3.44)
 
 Para quien continúe (Claude o Gemini). Estado a 09/10/2026.
 
 ## DÓNDE LO DEJO (leer primero)
-Última versión publicada: **3.43** (GitHub release `v3.38`, APK en `web/public` y `web/dist`, `instalar.html` apuntando a ella). Todo está commiteado y empujado.
+Última versión publicada: **3.44** (GitHub release `v3.38`, APK en `web/public` y `web/dist`, `instalar.html` apuntando a ella). Todo está commiteado y empujado.
 
 **Lo único que queda por hacer es probar en un móvil real con Chromecast** (yo no tengo dispositivo):
 1. Cast: el botón de audio del control ampliado (hueco 1, `ControlDeCast`) y que el cambio recargue el stream en la posición actual; subtítulos de Cast tras elegirlos en la ficha.
@@ -11,6 +11,8 @@ Para quien continúe (Claude o Gemini). Estado a 09/10/2026.
 Si algo falla, arreglarlo en `Cast.kt` / `Pistas.kt` / `ui/Ficha.kt`; las pistas y el reproductor tienen tests en `src/test/.../PistasTest.kt` (11).
 
 **HECHO (09/10/2026, v3.43 + tele): «También en X plataforma» por perfil.** No hay cuentas que conectar (TMDb/JustWatch por región, DRM): «Conectar» = el perfil marca a qué está suscrito; **pulsar el nombre de una plataforma abre su aplicación y nada más** (decisión del usuario). Servidor: `server/src/media/plataformas.ts` + `routes/plataformas.ts` (13 plataformas con `provider_id` de TMDb y `source_id` de Watchmode verificados el 09/10/2026; tablas `usuario_plataformas`, `usuario_plataformas_cfg`, `plataformas_meta`; `GET /api/plataformas` con `mia`/`configurado`; `GET/POST/PUT /api/mis-plataformas`; `dondeVer` filtrado por perfil; el administrador arranca con Movistar+/Prime/Apple y los demás sin ninguna; refresco completo automático a los 90 s del arranque si cambia `CATALOGO_VERSION`). Android: `ui/Plataformas.kt` (pestañas del perfil + «＋ Plataformas»). Tele: `pantallaMisPlataformas` (`Abrir` y `Conectar`). Servidor reiniciado y desplegado el 09/10. Pendiente: ver en una ficha real la insignia de una plataforma recién conectada; fila «Mis plataformas» en Ajustes (hoy se llega por Plataformas → «＋ Plataformas»); comprobar en la tele real que `abrirApp` abre cada app nueva (`tv/src/plataformas.ts` busca por nombre; solo probado con las tres de antes).
+
+**LG del betatester (09/10/2026, sin dispositivo para probar):** `[LG] webOS TV UA73006LA` (LG 2024; Test-Achats lo da con Google Cast). Síntoma: «No se ha seleccionado contenido» al castear. Diagnóstico por la captura: la sesión se conectaba con el vídeo ya reproduciéndose en el móvil y la app **solo emitía al pulsar «Reproducir» con la sesión ya abierta** → no se enviaba nada. Arreglo en 3.44: `Reproductor.kt` escucha `onSessionStarted` y pasa la película a la tele (`Cast.emitir`) desde donde va; `Cast.kt` registra tele/modelo y el resultado de `load` y avisa si falla. Él tenía la 3.36 (sin registro de Cast): tras actualizar, mirar `data/clientes/3-Ernesto/*.log` líneas `cast`. Web en el navegador de la LG (vídeo y controles negros hasta alternar pantalla completa): **hipótesis, no verificada** — `backdrop-filter` sobre el plano de vídeo y `color-mix` (Chromium < 111 en webOS) sin reserva; se quitó el desenfoque dentro del reproductor (`[data-reproductor]`) y se añadieron fondos de reserva en `glass`/`glass-strong` (`web/src/styles.css`). Si sigue, pedir captura y versión de webOS.
 
 **Decisiones del usuario (no reabrir):**
 - Los subtítulos **no tienen ajuste por defecto**: se eligen en la ficha o durante la reproducción y empiezan apagados. Por eso se **borraron** `modoSubtitulos` e `idiomaSubtitulosPreferido` de `Ajustes.kt`. No añadir ajustes de subtítulos.

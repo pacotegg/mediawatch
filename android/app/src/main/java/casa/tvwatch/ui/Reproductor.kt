@@ -88,6 +88,10 @@ import androidx.media3.session.SessionToken
 import casa.tvwatch.BotonDeCast
 import casa.tvwatch.ReproduccionService
 import com.google.common.util.concurrent.MoreExecutors
+import casa.tvwatch.Cast
+import com.google.android.gms.cast.framework.SessionManagerListener
+import com.google.android.gms.cast.framework.CastSession
+import com.google.android.gms.cast.framework.CastContext
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import casa.tvwatch.datos.Ajustes
@@ -546,6 +550,38 @@ private fun Reproduciendo(
     } else {
       alSalirActual()
     }
+  }
+
+  /*
+   * Darle al icono de Cast con la película ya en marcha en el móvil conectaba con la tele y
+   * nada más: el diálogo de Google decía «No se ha seleccionado contenido» y en la tele no salía
+   * nada (un LG, 09/10/2026). Ahora, al conectarse una sesión estando aquí, se manda la película
+   * a la tele desde donde va y se sale del reproductor del móvil.
+   */
+  val posicionActual by rememberUpdatedState { desfase + reproductor.currentPosition / 1000.0 }
+  DisposableEffect(fileId) {
+    val gestor = try { CastContext.getSharedInstance(contexto).sessionManager } catch (e: Exception) { null }
+    val oyente = object : SessionManagerListener<CastSession> {
+      override fun onSessionStarted(s: CastSession, id: String) {
+        val donde = posicionActual()
+        Registro.i("cast", "sesión nueva con la película en marcha: se pasa a la tele desde el segundo ${donde.toInt()}")
+        val titulo = Cache.fichaGuardada(itemId)?.title ?: "Media Watch"
+        Cast.emitir(contexto, fileId, itemId, episodioId, titulo, donde)
+        salir()
+      }
+      override fun onSessionStarting(s: CastSession) {}
+      override fun onSessionStartFailed(s: CastSession, error: Int) {
+        Registro.w("cast", "no se pudo conectar con la tele (código $error)")
+      }
+      override fun onSessionEnding(s: CastSession) {}
+      override fun onSessionEnded(s: CastSession, error: Int) {}
+      override fun onSessionResuming(s: CastSession, id: String) {}
+      override fun onSessionResumed(s: CastSession, wasSuspended: Boolean) {}
+      override fun onSessionResumeFailed(s: CastSession, error: Int) {}
+      override fun onSessionSuspended(s: CastSession, reason: Int) {}
+    }
+    gestor?.addSessionManagerListener(oyente, CastSession::class.java)
+    onDispose { gestor?.removeSessionManagerListener(oyente, CastSession::class.java) }
   }
 
   /*

@@ -489,6 +489,7 @@ export default function Player() {
       ref={containerRef}
       onMouseMove={showControls}
       onDoubleClick={() => (document.fullscreenElement ? document.exitFullscreen() : containerRef.current?.requestFullscreen())}
+      data-reproductor
       className={`fixed inset-0 z-100 bg-black ${controls ? '' : 'cursor-none'}`}
     >
       <style>{subtitleCss(prefs.subtitles)}</style>

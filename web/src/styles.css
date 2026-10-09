@@ -65,6 +65,8 @@ body {
 
 /* Infuse-style frosted material: translucent, blurred, hairline top highlight. */
 @utility glass {
+  /* Reserva para navegadores de tele sin `color-mix` (webOS con Chromium < 111): sin ella el fondo no se pinta. */
+  background: rgb(22 22 31 / 0.78);
   background: color-mix(in oklab, var(--color-ink-800) 62%, transparent);
   backdrop-filter: blur(28px) saturate(180%);
   -webkit-backdrop-filter: blur(28px) saturate(180%);
@@ -117,6 +119,7 @@ body {
 }
 
 @utility glass-strong {
+  background: rgb(11 11 17 / 0.9);
   background: color-mix(in oklab, var(--color-ink-900) 82%, transparent);
   backdrop-filter: blur(40px) saturate(200%);
   -webkit-backdrop-filter: blur(40px) saturate(200%);
@@ -250,4 +253,16 @@ video::-webkit-media-controls {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/*
+ * En el reproductor no hay desenfoque de fondo: en el navegador de algunas teles (LG webOS)
+ * el vídeo va en un plano aparte por debajo de la página y un `backdrop-filter` encima se pinta
+ * en negro hasta que se alterna la pantalla completa. Fondos translúcidos planos, que se leen igual.
+ */
+[data-reproductor] .glass,
+[data-reproductor] .glass-strong,
+[data-reproductor] .backdrop-blur {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }

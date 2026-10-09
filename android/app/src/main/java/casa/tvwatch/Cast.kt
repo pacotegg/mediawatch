@@ -240,6 +240,9 @@ object Cast {
       )
       .build()
 
+    // Qué tele es y a qué se le manda (sin el token), para poder leerlo en el registro si algo falla.
+    val tele = s.castDevice
+    Registro.i("cast", "emitiendo a «${tele?.friendlyName}» (${tele?.modelName}) · fichero=$fileId desde=${desde.toInt()}s · servidor=$base")
     cliente.load(
       MediaLoadRequestData.Builder()
         .setMediaInfo(info)
@@ -247,7 +250,26 @@ object Cast {
         .setCurrentTime((desde * 1000).toLong())
         .apply { if (subtituloActivo != null) setActiveTrackIds(longArrayOf(subtituloActivo)) }
         .build(),
-    )
+    ).setResultCallback { r ->
+      if (r.status.isSuccess) {
+        Registro.i("cast", "la tele aceptó el contenido")
+      } else {
+        Registro.e("cast", "la tele NO aceptó el contenido: código ${r.status.statusCode} ${r.status.statusMessage ?: ""}", null)
+        android.widget.Toast.makeText(context, "La tele no ha aceptado el vídeo (código ${r.status.statusCode})", android.widget.Toast.LENGTH_LONG).show()
+      }
+    }
+    // Si la tele lo acepta pero no consigue ponerlo, el receptor lo dice al quedarse parado por error.
+    cliente.registerCallback(object : RemoteMediaClient.Callback() {
+      override fun onStatusUpdated() {
+        val st = cliente.mediaStatus ?: return
+        if (st.playerState == com.google.android.gms.cast.MediaStatus.PLAYER_STATE_IDLE &&
+          st.idleReason == com.google.android.gms.cast.MediaStatus.IDLE_REASON_ERROR
+        ) {
+          Registro.e("cast", "la tele no ha podido reproducirlo (receptor parado por error)", null)
+          cliente.unregisterCallback(this)
+        }
+      }
+    })
     apuntarProgreso(cliente, itemId, episodioId)
     if (abrirControl) context.startActivity(Intent(context, ControlDeCast::class.java))
     }
