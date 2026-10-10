@@ -379,9 +379,7 @@ export default function Detail() {
 
   const directores = item.cast
     .filter((c) => c.role === 'director')
-    .map((c) => c.name)
-    .slice(0, 2)
-    .join(', ');
+    .slice(0, 2);
 
   const audioLanguages = [...new Set(movieFile?.audio.map((a) => a.language).filter(Boolean) ?? [])] as string[];
   const subLanguages = [...new Set(movieFile?.subtitles.map((s) => s.language).filter(Boolean) ?? [])] as string[];
@@ -518,7 +516,19 @@ export default function Detail() {
                 {plotAbierta ? 'Menos' : 'Más'}
               </button>
             )}
-            {directores && <div className="mb-5 text-[13.5px] text-mist-500">Dirigida por {directores}</div>}
+            {directores.length > 0 && (
+              <div className="mb-5 text-[13.5px] text-mist-500">
+                Dirigida por{' '}
+                {directores.map((d, i) => (
+                  <span key={d.id}>
+                    <Link to={`/person/${d.id}`} className="font-medium text-mist-200 transition-colors hover:text-white hover:underline underline-offset-2">
+                      {d.name}
+                    </Link>
+                    {i < directores.length - 1 ? ', ' : ''}
+                  </span>
+                ))}
+              </div>
+            )}
 
             {item.versions && item.versions.length > 1 && (
               <div className="mb-5 flex flex-wrap items-center gap-2">

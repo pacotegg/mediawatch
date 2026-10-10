@@ -1222,89 +1222,9 @@ async function pantallaSaga(nombre: string) {
     const datos = await api.coleccion(nombre);
     pantallaRejilla('sagas', datos.name, datos.items.length + ' títulos, en orden cronológico', datos.items);
 
-    /*
-     * El boton se injerta en la cabecera DESPUES de pintar la rejilla, en vez de
-     * anyadir un parametro mas a `pantallaRejilla`, que la comparten las
-     * bibliotecas, los favoritos y las busquedas y no tienen imagen que elegir.
-     * Hay que reindexar: el foco no conoce lo que aparece despues de pintar.
-     */
-    const cabecera = marco.querySelector<HTMLElement>('.cabecera');
-    if (soyAdmin && cabecera) {
-      cabecera.insertAdjacentHTML(
-        'beforeend',
-        '<button class="boton" data-nav data-arte-saga>Cambiar la imagen</button>',
-      );
-      const b = marco.querySelector<HTMLElement>('[data-arte-saga]');
-      if (b) b.addEventListener('click', () => void menuArteSaga(datos.name, datos.items, datos.arteItemId));
-      indexar();
-    }
   } catch (e) {
     void pantallaSagas();
   }
-}
-
-/**
- * Que pelicula presta la caratula y el fondo de la saga.
- *
- * Por defecto sale el poster de la mas antigua, que en «Alien» o «Terminator»
- * no es la imagen por la que se reconoce la saga. Se elige entre las que ya
- * estan, sin bajar arte nuevo: solo se guarda de cual se cogen las dos.
- */
-async function menuArteSaga(nombre: string, items: Titulo[], elegida: number | null) {
-  const teclasAntes = manejadorActual();
-
-  /*
-   * Los ficheros del buzon van con valores por debajo de -100, y el nombre se
-   * saca del indice: `menuLista` trabaja con numeros, y meter cadenas ahi
-   * obligaria a tocar un menu que usan el audio, los subtitulos y los
-   * capitulos. Si el buzon no se puede leer, se sigue sin el: elegir entre las
-   * peliculas tiene que funcionar igual.
-   */
-  const DESDE_BUZON = -100;
-  let buzon: { nombre: string; bytes: number }[] = [];
-  try {
-    buzon = (await api.buzonArte()).imagenes;
-  } catch (e) {
-    buzon = [];
-  }
-
-  const opciones: OpcionLista[] = [{ valor: -1, texto: 'Automática', nota: 'la más antigua con carátula' }];
-  buzon.forEach((img, i) => {
-    opciones.push({ valor: DESDE_BUZON - i, texto: 'Mi imagen: ' + img.nombre, nota: Math.round(img.bytes / 1024) + ' kB' });
-  });
-  for (const t of items) {
-    opciones.push({ valor: t.id, texto: t.title + (t.year ? ' (' + t.year + ')' : '') });
-  }
-  if (buzon.length === 0) {
-    opciones.push({ valor: -2, texto: 'Para usar una imagen tuya…', nota: 'déjala en la carpeta data/arte-entrada del servidor' });
-  }
-
-  menuLista(
-    'Imagen de ' + nombre,
-    opciones,
-    elegida ?? -1,
-    (valor) => {
-      if (valor === -2) return;
-      const hecho = (texto: string) => () => {
-        aviso(texto);
-        // Se repinta la saga: la cabecera y la rejilla no cambian, pero la
-        // lista de sagas de detras si, y al volver tiene que salir la nueva.
-        void pantallaSaga(nombre);
-      };
-      const fallo = (e: unknown) => aviso((e as Error).message || 'No se pudo cambiar');
-      if (valor <= DESDE_BUZON) {
-        const img = buzon[DESDE_BUZON - valor];
-        if (!img) return;
-        api.arteSagaDelBuzon(nombre, img.nombre).then(hecho('Imagen de la saga cambiada')).catch(fallo);
-        return;
-      }
-      api
-        .fijarArteSaga(nombre, valor < 0 ? null : valor)
-        .then(hecho(valor < 0 ? 'Imagen automática' : 'Imagen de la saga cambiada'))
-        .catch(fallo);
-    },
-    () => alPulsar(teclasAntes),
-  );
 }
 
 /* -------------------------------------------------------------- buscador */
@@ -1492,9 +1412,10 @@ async function pantallaFicha(id: number) {
   const etiquetas: string[] = [];
   if (fichero) {
     const alto = fichero.height || 0;
-    if (alto >= 1900) etiquetas.push('4K');
-    else if (alto >= 1000) etiquetas.push('1080p');
-    else if (alto >= 700) etiquetas.push('720p');
+    const ancho = fichero.width || 0;
+    if (ancho >= 3500 || alto >= 1600) etiquetas.push('4K');
+    else if (ancho >= 1900 || alto >= 800) etiquetas.push('1080p');
+    else if (ancho >= 1200 || alto >= 700) etiquetas.push('720p');
     if (fichero.video_codec) etiquetas.push(fichero.video_codec.toUpperCase());
     if (fichero.hdr) etiquetas.push(fichero.hdr);
 
@@ -1546,7 +1467,9 @@ async function pantallaFicha(id: number) {
     botonIcono('data-favorito', esFavorita ? 'favoritoSi' : 'favorito', esFavorita ? 'Quitar de favoritos' : 'Añadir a favoritos', esFavorita ? ' activo' : '') +
     (soyAdmin ? botonIcono('data-borrar', 'eliminar', 'Eliminar', ' peligro') : '');
 
-  const reparto = (ficha.cast || []).filter((c) => c.role === 'actor').slice(0, 10);
+  const directores = (ficha.cast || []).filter((c) => c.role === 'director');
+  const actores = (ficha.cast || []).filter((c) => c.role === 'actor').slice(0, 10);
+  const reparto = directores.map((d) => ({ ...d, character: 'Dirección' })).concat(actores);
 
   // Duración en horas y minutos: «1h 34m» se lee de un vistazo desde el sofá,
   // «94 min» hay que traducirlo mentalmente.
@@ -1655,6 +1578,7 @@ async function pantallaFicha(id: number) {
 
   cuerpo += '<div data-bloque-resenas></div>';
 
+  if (ficha.collectionItems && ficha.collectionItems.length > 1) cuerpo += filaHtml(ficha.collection || 'En la misma saga', ficha.collectionItems);
   if (ficha.similar && ficha.similar.length) cuerpo += filaHtml('Relacionadas', ficha.similar);
 
   cuerpo += '</div>';

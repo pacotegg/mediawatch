@@ -35,10 +35,12 @@ export const fileSize = (bytes?: number | null) =>
   !bytes ? '' : bytes >= 1 << 30 ? `${(bytes / 2 ** 30).toFixed(1)} GB` : `${Math.round(bytes / 2 ** 20)} MB`;
 
 export function resolutionLabel(width?: number | null, height?: number | null): string | null {
-  if (!height) return null;
-  if (height >= 1900 || (width ?? 0) >= 3500) return '4K';
-  if (height >= 1000) return '1080p';
-  if (height >= 700) return '720p';
+  const w = width ?? 0;
+  const h = height ?? 0;
+  if (!w && !h) return null;
+  if (w >= 3500 || h >= 1600) return '4K';
+  if (w >= 1900 || h >= 800) return '1080p';
+  if (w >= 1200 || h >= 700) return '720p';
   return 'SD';
 }
 

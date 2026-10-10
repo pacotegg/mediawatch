@@ -281,7 +281,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
     const cast = db
       .prepare(`SELECT p.id, p.name, ip.character, ip.role, (p.thumb IS NOT NULL OR pd.profile IS NOT NULL) AS has_thumb
                 FROM item_people ip JOIN people p ON p.id = ip.person_id LEFT JOIN people_details pd ON pd.person_id = p.id
-                WHERE ip.item_id = ? ORDER BY ip.role = 'actor' DESC, ip.ord IS NULL, ip.ord LIMIT 40`)
+                WHERE ip.item_id = ? ORDER BY ip.role = 'director' DESC, ip.role = 'actor' DESC, ip.ord IS NULL, ip.ord LIMIT 50`)
       .all(id) as any[];
 
     const files = db

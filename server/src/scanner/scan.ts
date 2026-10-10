@@ -452,7 +452,8 @@ function scanMovieFolder(libId: number, dir: string, files: Entry[], now: string
   const base = basename(main.name, extname(main.name));
   const nfoPath =
     files.find((f) => f.name.toLowerCase() === `${base.toLowerCase()}.nfo`)?.path ??
-    (suelto ? undefined : files.find((f) => f.name.toLowerCase() === 'movie.nfo')?.path);
+    (suelto ? undefined : files.find((f) => f.name.toLowerCase() === 'movie.nfo')?.path) ??
+    (suelto ? undefined : files.find((f) => f.name.toLowerCase().endsWith('.nfo'))?.path);
   const nfo = nfoPath ? parseNfo(nfoPath) : null;
   const fromFolder = suelto ? parseTitleYear(tituloDeSuelto(base)) : parseTitleYear(basename(dir));
   const title = nfo?.title ?? fromFolder.title;
