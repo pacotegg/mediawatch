@@ -282,6 +282,8 @@ fun PantallaFicha(
               escala = ContentScale.Fit,
               alineacion = Alignment.BottomStart,
             )
+            Spacer(Modifier.height(6.dp))
+            Text(f.title, color = Texto, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
           } else {
             Text(f.title, color = Texto, style = MaterialTheme.typography.headlineMedium)
           }

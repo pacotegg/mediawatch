@@ -441,6 +441,12 @@ export default function Detail() {
 
             {item.tagline && <p className="mb-3 text-sm text-mist-300 italic">{item.tagline}</p>}
 
+            {item.has_logo && (
+              <p className="mb-2 text-[15px] font-medium text-mist-200">
+                {item.title}
+              </p>
+            )}
+
             <div className="mb-1.5 flex flex-wrap items-center gap-x-4 gap-y-2 text-[15px] font-semibold text-mist-100">
               {item.year && <span>{item.year}</span>}
               {item.kind === 'movie' && item.runtime ? <span>{runtime(item.runtime)}</span> : null}

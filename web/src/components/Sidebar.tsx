@@ -17,7 +17,23 @@ const ICONS = {
   download: 'M12 3v12m0 0 4.5-4.5M12 15l-4.5-4.5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2',
   collapse: 'M15 5 8 12l7 7',
   plataformas: 'M4 5h16v10H4zM9 19h6M12 15v4',
+  animacion: 'M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09zM12 15l-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2zM9 12H4s.55-3.03 2-4.5c1.45-1.45 4.5-2 4.5-2M15 9V4s3.03.55 4.5 2c1.45 1.45 2 4.5 2 4.5M15 9l-6 6',
+  peques: 'M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10zM8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01',
+  documentales: 'M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10zM2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z',
+  conciertos: 'M9 18V5l12-2v13M9 9l12-2M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 19a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
+  monologos: 'M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3zM19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8',
 } as const;
+
+function iconoBiblioteca(nombre: string, kind: string): string {
+  const n = nombre.toLowerCase();
+  if (n.includes('animaci')) return ICONS.animacion;
+  if (n.includes('peque') || n.includes('infantil') || n.includes('niño')) return ICONS.peques;
+  if (n.includes('concierto') || n.includes('música') || n.includes('musica')) return ICONS.conciertos;
+  if (n.includes('monólog') || n.includes('monolog') || n.includes('comedia') || n.includes('stand')) return ICONS.monologos;
+  if (n.includes('docu')) return ICONS.documentales;
+  if (kind === 'show' || n.includes('serie')) return ICONS.show;
+  return ICONS.movie;
+}
 
 function Icon({ path }: { path: string }) {
   return (
@@ -90,7 +106,7 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
               {!collapsed && <div className="px-3 pt-5 pb-1.5 text-[10.5px] font-semibold tracking-wider text-mist-600 uppercase">Películas</div>}
               {collapsed && <div className="my-3 h-px bg-white/8" />}
               {movieLibs.map((lib) => (
-                <Item key={lib.id} to={`/biblioteca/${lib.id}`} icon={ICONS.movie} label={lib.name} collapsed={collapsed} />
+                <Item key={lib.id} to={`/biblioteca/${lib.id}`} icon={iconoBiblioteca(lib.name, lib.kind)} label={lib.name} collapsed={collapsed} />
               ))}
             </>
           )}
@@ -100,7 +116,7 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
               {!collapsed && <div className="px-3 pt-5 pb-1.5 text-[10.5px] font-semibold tracking-wider text-mist-600 uppercase">Series</div>}
               {collapsed && <div className="my-3 h-px bg-white/8" />}
               {showLibs.map((lib) => (
-                <Item key={lib.id} to={`/biblioteca/${lib.id}`} icon={ICONS.show} label={lib.name} collapsed={collapsed} />
+                <Item key={lib.id} to={`/biblioteca/${lib.id}`} icon={iconoBiblioteca(lib.name, lib.kind)} label={lib.name} collapsed={collapsed} />
               ))}
             </>
           )}
@@ -274,7 +290,7 @@ export function MobileDrawer({ open, onClose }: { open: boolean; onClose: () => 
           <Item to="/favoritos" icon={ICONS.heart} label="Favoritos" collapsed={false} />
           <div className="px-3 pt-4 pb-1.5 text-[10.5px] font-semibold tracking-wider text-mist-600 uppercase">Bibliotecas</div>
           {libraries?.map((lib) => (
-            <Item key={lib.id} to={`/biblioteca/${lib.id}`} icon={lib.kind === 'movie' ? ICONS.movie : ICONS.show} label={lib.name} collapsed={false} />
+            <Item key={lib.id} to={`/biblioteca/${lib.id}`} icon={iconoBiblioteca(lib.name, lib.kind)} label={lib.name} collapsed={false} />
           ))}
           <div className="pt-4">
             <Item to="/plataformas" icon={ICONS.plataformas} label="Plataformas" collapsed={false} />

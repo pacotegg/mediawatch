@@ -204,9 +204,12 @@ object Cast {
     if (infoPistas != null) Registro.i("pistas", "cast: " + Pistas.describir(infoPistas.audio, audio))
     val pistas = try {
       infoPistas!!.subtitles.mapIndexed { i, st ->
+        val nombre = casa.tvwatch.ui.idiomaLegible(st.language) +
+          (st.title?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: "") +
+          (if (st.forced) " (forzados)" else "")
         com.google.android.gms.cast.MediaTrack.Builder((i + 1).toLong(), com.google.android.gms.cast.MediaTrack.TYPE_TEXT)
           .setSubtype(com.google.android.gms.cast.MediaTrack.SUBTYPE_SUBTITLES)
-          .setName(casa.tvwatch.ui.idiomaLegible(st.language) + (if (st.forced) " (forzados)" else ""))
+          .setName(nombre)
           .setLanguage(st.language ?: "und")
           .setContentType("text/vtt")
           .setContentId("$base/api/play/$fileId/subtitle/${st.id}.vtt?token=$token")

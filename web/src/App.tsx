@@ -1,6 +1,6 @@
-import { lazy, Suspense, useState } from 'react';
+import { Component, type ErrorInfo, type ReactNode, lazy, Suspense, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { AnimatePresence, MotionConfig, motion, useReducedMotion } from 'motion/react';
+import { MotionConfig, motion, useReducedMotion } from 'motion/react';
 import { Route, Routes, useLocation } from 'react-router-dom';
 import { MobileDrawer, Sidebar, TopBar, useSidebar } from './components/Sidebar.tsx';
 import Home from './pages/Home.tsx';
@@ -26,16 +26,36 @@ const Plataformas = lazy(() => import('./pages/Plataformas.tsx'));
 const CollectionsIndex = lazy(() => import('./pages/Collections.tsx').then((m) => ({ default: m.CollectionsIndex })));
 const CollectionDetail = lazy(() => import('./pages/Collections.tsx').then((m) => ({ default: m.CollectionDetail })));
 
+class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: Error | null }> {
+  state = { hasError: false, error: null };
+  static getDerivedStateFromError(error: Error) { return { hasError: true, error }; }
+  componentDidCatch(error: Error, info: ErrorInfo) { console.error('[ErrorBoundary]', error, info); }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex min-h-[60vh] flex-col items-center justify-center p-6 text-center">
+          <p className="mb-2 text-base font-medium text-mist-100">No se pudo cargar esta sección</p>
+          <p className="mb-4 text-xs text-mist-500">{this.state.error?.message || 'Error inesperado'}</p>
+          <button
+            onClick={() => { this.setState({ hasError: false, error: null }); window.location.reload(); }}
+            className="rounded-xl bg-accent px-4 py-2 text-xs font-semibold text-ink-950 hover:brightness-110"
+          >
+            Recargar
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function Page({ children }: { children: React.ReactNode }) {
-  // Skipping the fade entirely for reduced-motion users also guarantees the page
-  // is never left invisible if the animation frame loop is throttled.
   const reduce = useReducedMotion();
   return (
     <motion.div
       initial={reduce ? false : { opacity: 0 }}
       animate={{ opacity: 1 }}
-      exit={reduce ? undefined : { opacity: 0 }}
-      transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+      transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
     >
       {children}
     </motion.div>
@@ -72,9 +92,9 @@ export default function App() {
           style={{ ['--sidebar' as string]: `${width}px` }}
         >
           <div className={isPlayer ? '' : 'md:ml-(--sidebar)'}>
-            <Suspense fallback={<div className="grid min-h-screen place-items-center text-mist-600">Cargando…</div>}>
-              <AnimatePresence mode="wait">
-                <Routes location={location} key={location.pathname.split('/').slice(0, 3).join('/')}>
+            <ErrorBoundary>
+              <Suspense fallback={<div className="grid min-h-screen place-items-center text-mist-600">Cargando…</div>}>
+                <Routes location={location}>
                   <Route path="/" element={<Page><Home /></Page>} />
                   <Route path="/biblioteca/:id" element={<Page><Library /></Page>} />
                   <Route path="/titulo/:id" element={<Page><Detail /></Page>} />
@@ -92,8 +112,8 @@ export default function App() {
                   <Route path="/ver/:fileId" element={<Player />} />
                   <Route path="*" element={<Page><Home /></Page>} />
                 </Routes>
-              </AnimatePresence>
-            </Suspense>
+              </Suspense>
+            </ErrorBoundary>
           </div>
         </div>
       </div>

@@ -11,7 +11,7 @@
  * la red primero: si se sirviera la caché antes, una versión nueva del servidor
  * tardaría días en llegar al móvil.
  */
-const CACHE = 'tvwatch-v1';
+const CACHE = 'tvwatch-v2';
 const BASICOS = ['/', '/icon-512.png', '/manifest.webmanifest'];
 
 self.addEventListener('install', (evento) => {

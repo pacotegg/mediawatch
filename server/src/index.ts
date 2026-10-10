@@ -476,9 +476,17 @@ if (existsSync(webDist)) {
     maxAge: '365d',
     immutable: true,
   });
-  await app.register(fastifyStatic, { root: webDist });
+  await app.register(fastifyStatic, {
+    root: webDist,
+    setHeaders: (res, path) => {
+      if (path.endsWith('index.html') || path.endsWith('sw.js')) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      }
+    },
+  });
   app.setNotFoundHandler((req, reply) => {
     if (req.url.startsWith('/api')) return reply.code(404).send({ error: 'No encontrado' });
+    reply.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     return reply.sendFile('index.html');
   });
 }

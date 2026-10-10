@@ -159,6 +159,8 @@ fun FichaTele(
         Column(Modifier.padding(horizontal = AireTele.lado).width(560.dp)) {
           if (f.tieneLogo == 1) {
             Imagen(recordarUrl(f.id, "logo", 560), f.title, Modifier.heightIn(max = 90.dp).width(360.dp), escala = ContentScale.Fit, alineacion = Alignment.CenterStart)
+            Spacer(Modifier.height(8.dp))
+            Text(f.title, color = Texto, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
           } else {
             Text(f.title, color = Texto, fontSize = 34.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
           }

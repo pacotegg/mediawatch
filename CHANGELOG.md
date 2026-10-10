@@ -12,6 +12,11 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.45 — 10/10/2026
+
+- Título en español en la ficha: en películas con logotipo gráfico se muestra su título en español justo sobre el año y duración, tanto en móvil como en Google TV.
+- Subtítulos en Cast más claros: la lista de pistas muestra el nombre descriptivo del subtítulo (p. ej. comentarios, forzados, versión) además del idioma para distinguirlos de un vistazo.
+
 ## 3.44 — 09/10/2026
 
 - Cast: si le das al icono de Cast con la película ya en marcha en el móvil, ahora la manda a la tele desde donde va (antes conectaba y no enviaba nada).
