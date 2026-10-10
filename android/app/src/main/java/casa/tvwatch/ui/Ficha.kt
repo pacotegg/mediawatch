@@ -86,6 +86,7 @@ fun PantallaFicha(
   alCambiarImagenes: (kind: String, titulo: String, anio: Int?) -> Unit,
   alPerderSesion: () -> Unit,
   alAbrirPersona: (Int) -> Unit = {},
+  alAbrirFicha: (Int) -> Unit = {},
 ) {
   val contexto = LocalContext.current
   val ambitoTele = rememberCoroutineScope()
@@ -340,6 +341,23 @@ fun PantallaFicha(
           Text(f.genres.take(4).joinToString(", "), color = TextoTenue, fontSize = 13.sp)
         }
 
+        val directores = remember(f) { f.cast.filter { it.role.equals("director", ignoreCase = true) } }
+        if (directores.isNotEmpty()) {
+          Spacer(Modifier.height(8.dp))
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Dirección: ", color = TextoTenue, fontSize = 13.sp)
+            directores.forEachIndexed { idx, d ->
+              Text(
+                d.name + if (idx < directores.size - 1) ", " else "",
+                color = Texto,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.clickable { alAbrirPersona(d.id) },
+              )
+            }
+          }
+        }
+
         f.plot?.let { sinopsis ->
           Spacer(Modifier.height(12.dp))
           Text(
@@ -560,6 +578,20 @@ fun PantallaFicha(
             }
           }
         }
+      }
+    }
+
+    if (f.coleccionItems.size > 1) {
+      item {
+        Spacer(Modifier.height(16.dp))
+        Fila(f.collection ?: "Colección", f.coleccionItems, alPulsar = alAbrirFicha)
+      }
+    }
+
+    if (f.similares.isNotEmpty()) {
+      item {
+        Spacer(Modifier.height(16.dp))
+        Fila("Títulos similares", f.similares, alPulsar = alAbrirFicha)
       }
     }
 
@@ -789,10 +821,11 @@ private fun etiquetasTecnicas(f: Ficha): List<String> {
   val fichero = f.files.firstOrNull { it.episodioId == null } ?: f.files.firstOrNull() ?: return emptyList()
   val out = mutableListOf<String>()
   val alto = fichero.height ?: 0
+  val ancho = fichero.width ?: 0
   when {
-    alto >= 1900 -> out += "4K"
-    alto >= 1000 -> out += "1080p"
-    alto >= 700 -> out += "720p"
+    ancho >= 3800 || alto >= 1600 -> out += "4K"
+    ancho >= 1900 || alto >= 800 -> out += "1080p"
+    ancho >= 1200 || alto >= 700 -> out += "720p"
   }
   fichero.codec?.let { out += it.uppercase() }
   fichero.hdr?.let { out += it }

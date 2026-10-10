@@ -12,6 +12,14 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.47 — 10/10/2026
+
+- Sagas y colecciones completas en la ficha: carrusel interactivo con las películas de la misma saga (en orden cronológico) para saltar de una a otra al instante.
+- Títulos similares: recomendaciones directas de películas y series relacionadas por género y temática debajo del reparto.
+- Dirección interactiva: el nombre del director en la ficha ahora es pulsable para explorar directamente toda su filmografía en la biblioteca.
+- Detección precisa de 4K y 1080p: soporte de resoluciones panorámicas/cinemascope (2.39:1 / 21:9) en las etiquetas técnicas de calidad.
+- Disponible en móvil y en la interfaz adaptada para Google TV.
+
 ## 3.46 — 10/10/2026
 
 - Respuesta táctil física (háptica): respuesta de vibración sutil al desenganchar y mover elementos al reordenar el menú.

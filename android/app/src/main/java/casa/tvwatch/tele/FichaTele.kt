@@ -84,6 +84,7 @@ fun FichaTele(
   itemId: Int,
   alReproducir: (fileId: Int, episodioId: Int?, desde: Double) -> Unit,
   alPerderSesion: () -> Unit,
+  alAbrirFicha: (Int) -> Unit = {},
 ) {
   val contexto = LocalContext.current
   val ambito = rememberCoroutineScope()
@@ -179,6 +180,11 @@ fun FichaTele(
             Spacer(Modifier.height(6.dp))
             Text(f.genres.take(4).joinToString(" · "), color = TextoSuave, fontSize = 14.sp)
           }
+          val directores = remember(f) { f.cast.filter { it.role.equals("director", ignoreCase = true) } }
+          if (directores.isNotEmpty()) {
+            Spacer(Modifier.height(4.dp))
+            Text("Dirección: " + directores.joinToString(", ") { it.name }, color = TextoTenue, fontSize = 13.sp)
+          }
           f.plot?.takeIf { it.isNotBlank() }?.let {
             Spacer(Modifier.height(12.dp))
             Text(it, color = TextoSuave, fontSize = 15.sp, lineHeight = 22.sp, maxLines = 5, overflow = TextOverflow.Ellipsis)
@@ -264,6 +270,50 @@ fun FichaTele(
               TarjetaEpisodio(f, e, Modifier.focusRequester(pedir)) {
                 ultimoEpisodio = e.id
                 alReproducir(e.ficheroId!!, e.id, posicionDe(f, e.id))
+              }
+            }
+          }
+        }
+      }
+
+      if (f.coleccionItems.size > 1) {
+        item {
+          Column(Modifier.padding(top = 16.dp)) {
+            Text(
+              f.collection ?: "En la misma saga",
+              color = Texto,
+              fontSize = 18.sp,
+              fontWeight = FontWeight.Bold,
+              modifier = Modifier.padding(horizontal = AireTele.lado, vertical = 8.dp),
+            )
+            LazyRow(
+              contentPadding = PaddingValues(horizontal = AireTele.lado, vertical = 8.dp),
+              horizontalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+              items(f.coleccionItems, key = { it.id }) { c ->
+                CartelTele(c, ancho = 120.dp, alPulsar = alAbrirFicha)
+              }
+            }
+          }
+        }
+      }
+
+      if (f.similares.isNotEmpty()) {
+        item {
+          Column(Modifier.padding(top = 16.dp)) {
+            Text(
+              "Títulos similares",
+              color = Texto,
+              fontSize = 18.sp,
+              fontWeight = FontWeight.Bold,
+              modifier = Modifier.padding(horizontal = AireTele.lado, vertical = 8.dp),
+            )
+            LazyRow(
+              contentPadding = PaddingValues(horizontal = AireTele.lado, vertical = 8.dp),
+              horizontalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+              items(f.similares, key = { it.id }) { s ->
+                CartelTele(s, ancho = 120.dp, alPulsar = alAbrirFicha)
               }
             }
           }

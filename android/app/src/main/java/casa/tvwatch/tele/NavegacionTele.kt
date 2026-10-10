@@ -155,6 +155,7 @@ fun NavegacionTele() {
           itemId = id,
           alReproducir = { fileId, episodio, desde -> nav.navigate(RutasTele.reproductor(fileId, id, episodio, desde)) },
           alPerderSesion = ::aConexion,
+          alAbrirFicha = { nav.navigate(RutasTele.ficha(it)) },
         )
       }
       composable(

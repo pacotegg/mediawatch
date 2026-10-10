@@ -639,6 +639,9 @@ data class Ficha(
   @SerialName("has_poster") val tienePoster: Int = 0,
   /** El disco redondo (carátula del Blu-ray): gira en la pausa del reproductor. */
   @SerialName("has_discart") val tieneDisco: Int = 0,
+  val collection: String? = null,
+  @SerialName("collectionItems") val coleccionItems: List<Titulo> = emptyList(),
+  @SerialName("similar") val similares: List<Titulo> = emptyList(),
 )
 
 @Serializable

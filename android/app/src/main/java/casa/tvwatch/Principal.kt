@@ -366,6 +366,7 @@ private fun Navegacion(nav: NavHostController) {
             alCambiarImagenes = { kind, titulo, anio -> nav.navigate(Rutas.arte(id, kind, titulo, anio)) },
             alPerderSesion = { aConexion() },
             alAbrirPersona = { nav.navigate("persona/$it") },
+            alAbrirFicha = { nav.navigate(Rutas.ficha(it)) },
           )
         }
       }
