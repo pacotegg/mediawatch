@@ -12,6 +12,12 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.46 — 10/10/2026
+
+- Respuesta táctil física (háptica): respuesta de vibración sutil al desenganchar y mover elementos al reordenar el menú.
+- Mayor fluidez de scroll en bibliotecas grandes: claves fijas de memoria y disco en Coil para un reciclaje instantáneo de carátulas sin parpadeos.
+- Acabado visual unificado: radio de esquinas a 14 dp en todas las carátulas (móvil y Google TV) con filete antirreflejo para títulos con fondos oscuros.
+
 ## 3.45 — 10/10/2026
 
 - Título en español en la ficha: en películas con logotipo gráfico se muestra su título en español justo sobre el año y duración, tanto en móvil como en Google TV.

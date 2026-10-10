@@ -134,7 +134,7 @@ object Aire {
 
 /** Esquinas: las tarjetas algo más suaves que los paneles, como en iOS. */
 object Esquinas {
-  val tarjeta = 12.dp
+  val tarjeta = 14.dp
   val panel = 18.dp
   val pastilla = 100.dp
 }

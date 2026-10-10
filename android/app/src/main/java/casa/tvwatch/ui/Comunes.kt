@@ -96,7 +96,8 @@ fun Cartel(t: Titulo, ancho: Int = 128, alPulsar: (Int) -> Unit) {
         .fillMaxWidth()
         .aspectRatio(2f / 3f)
         .clip(RoundedCornerShape(Esquinas.tarjeta))
-        .background(FondoTarjeta),
+        .background(FondoTarjeta)
+        .border(0.75.dp, Color(0x18FFFFFF), RoundedCornerShape(Esquinas.tarjeta)),
       contentAlignment = Alignment.Center,
     ) {
       if (t.tienePoster == 1) {
@@ -192,6 +193,8 @@ fun Imagen(
   val peticion = remember(url) {
     ImageRequest.Builder(ctx)
       .data(url)
+      .memoryCacheKey(url)
+      .diskCacheKey(url)
       .apply { Ajustes.token?.let { addHeader("Authorization", "Bearer $it") } }
       // Aparecer en 180 ms en vez de dar un salto: es lo que quita la sensación
       // de que la rejilla «parpadea» al bajar.
@@ -224,6 +227,8 @@ fun precargarImagen(url: String) {
   LaunchedEffect(url) {
     val peticion = ImageRequest.Builder(ctx)
       .data(url)
+      .memoryCacheKey(url)
+      .diskCacheKey(url)
       .apply { Ajustes.token?.let { addHeader("Authorization", "Bearer $it") } }
       .memoryCachePolicy(CachePolicy.ENABLED)
       .diskCachePolicy(CachePolicy.ENABLED)

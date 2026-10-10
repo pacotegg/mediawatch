@@ -57,7 +57,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
@@ -128,6 +130,7 @@ fun Menu(rutaActual: String?, bibliotecaActual: Int?, alIr: (Destino) -> Unit) {
   var contenidoY by remember { mutableFloatStateOf(0f) }
   var cajaArriba by remember { mutableFloatStateOf(0f) }
   var cajaAbajo by remember { mutableFloatStateOf(0f) }
+  val haptico = LocalHapticFeedback.current
 
   LaunchedEffect(Unit) {
     if (bibliotecas.isNotEmpty()) return@LaunchedEffect
@@ -158,6 +161,7 @@ fun Menu(rutaActual: String?, bibliotecaActual: Int?, alIr: (Destino) -> Unit) {
       grupo[i] = grupo[j]
       grupo[j] = clave
       Ajustes.ordenMenu = if (enFijas) grupo + libs else fijas + grupo
+      haptico.performHapticFeedback(HapticFeedbackType.TextHandleMove)
       return true
     }
 
@@ -238,6 +242,7 @@ fun Menu(rutaActual: String?, bibliotecaActual: Int?, alIr: (Destino) -> Unit) {
               onDragStart = { inicio ->
                 val golpe = limites.entries.firstOrNull { inicio.y >= it.value.first && inicio.y <= it.value.second }
                 if (golpe != null) {
+                  haptico.performHapticFeedback(HapticFeedbackType.LongPress)
                   editando = true
                   arrastrada = golpe.key
                   desplazamiento = 0f

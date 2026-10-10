@@ -202,9 +202,10 @@ fun CartelTele(
       focoModifier
         .fillMaxWidth()
         .aspectRatio(2f / 3f)
-        .enfocable(RoundedCornerShape(10.dp), alFoco = { foco = it }) { alPulsar(t.id) }
-        .clip(RoundedCornerShape(10.dp))
-        .background(FondoTarjeta),
+        .enfocable(RoundedCornerShape(14.dp), alFoco = { foco = it }) { alPulsar(t.id) }
+        .clip(RoundedCornerShape(14.dp))
+        .background(FondoTarjeta)
+        .border(0.75.dp, if (foco) Color.Transparent else Color(0x18FFFFFF), RoundedCornerShape(14.dp)),
       contentAlignment = Alignment.Center,
     ) {
       if (t.tienePoster == 1) {
