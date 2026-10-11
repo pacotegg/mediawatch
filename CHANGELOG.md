@@ -12,6 +12,12 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.50 — 11/10/2026
+
+- Estuche 3D interactivo coleccionista: escaparate 3D de alta definición, rotación táctil libre en tiempo real, disco extraíble holgado sin cortes en pantalla y distinción 4K UHD / Blu-ray.
+- Borrado y edición de metadatos para administradores: botones dedicados de «Editar» y «Eliminar» (en rojo con diálogo de confirmación de seguridad) en Android, Google TV y Web.
+- Paridad en Google TV: integración del estuche 3D panorámico en ficha y herramientas de administración directa.
+
 ## 3.49 — 11/10/2026
 
 - Hora de fin en el reproductor: muestra la hora estimada a la que terminará la reproducción en tiempo real («Termina a las HH:MM»), recalculada al pausar o avanzar.

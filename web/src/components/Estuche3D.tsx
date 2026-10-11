@@ -16,7 +16,7 @@ export default function Estuche3D({ posterUrl, discartUrl, title }: Estuche3DPro
 
   return (
     <div
-      className="group relative select-none cursor-pointer"
+      className="group relative select-none cursor-pointer pr-14"
       style={{ perspective: '1100px' }}
       onMouseEnter={() => setExtraido(true)}
       onMouseLeave={() => setExtraido(false)}

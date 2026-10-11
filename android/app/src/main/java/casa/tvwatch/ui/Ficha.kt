@@ -15,7 +15,9 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -36,6 +38,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -90,6 +97,7 @@ fun PantallaFicha(
   alPerderSesion: () -> Unit,
   alAbrirPersona: (Int) -> Unit = {},
   alAbrirFicha: (Int) -> Unit = {},
+  alVolver: () -> Unit = {},
 ) {
   val contexto = LocalContext.current
   val ambitoTele = rememberCoroutineScope()
@@ -109,6 +117,9 @@ fun PantallaFicha(
   var intento by remember(itemId) { mutableStateOf(0) }
   var temporada by remember(itemId) { mutableStateOf<Int?>(null) }
   var sinopsisAbierta by remember(itemId) { mutableStateOf(false) }
+  var dialogoBorrar by remember(itemId) { mutableStateOf(false) }
+  var dialogoEditar by remember(itemId) { mutableStateOf(false) }
+  var borrando by remember(itemId) { mutableStateOf(false) }
   /*
    * Favorito y visto se pintan al instante y se mandan después. Esperar a que
    * conteste el servidor para que la estrella cambie de color hace que la
@@ -310,11 +321,10 @@ fun PantallaFicha(
             .align(Alignment.BottomStart)
             .fillMaxWidth()
             .padding(horizontal = Aire.borde)
-            .padding(bottom = 4.dp),
+            .padding(bottom = 6.dp),
           verticalAlignment = Alignment.Bottom,
-          horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-          Column(Modifier.weight(1f, fill = false)) {
+          Column(Modifier.fillMaxWidth()) {
             if (f.tieneLogo == 1) {
               Imagen(
                 recordarUrl(f.id, "logo", 560),
@@ -332,10 +342,6 @@ fun PantallaFicha(
               Spacer(Modifier.height(8.dp))
               Text(it, color = TextoSuave, style = MaterialTheme.typography.bodyMedium)
             }
-          }
-          if (Ajustes.estuche3D && f.tienePoster == 1) {
-            Spacer(Modifier.width(12.dp))
-            Estuche3DAndroid(f.id, f.tieneDisco == 1, Modifier.padding(bottom = 4.dp))
           }
         }
       }
@@ -529,8 +535,11 @@ fun PantallaFicha(
             BotonIcono("Descargar", "descargar") { fileIdDescargaDialogo = ficheroPelicula.id }
             BotonIcono("En la tele", "tele") { mandarALaTele(ficheroPelicula.id, null, reanudarEn) }
           }
-          // Cambiar las imágenes: solo administrador
-          if (Ajustes.esAdmin) BotonIcono("Imágenes", "imagenes") { alCambiarImagenes(f.kind, f.title, f.year) }
+          // Acciones de administración: editar metadatos y eliminar (el último en rojo)
+          if (Ajustes.esAdmin) {
+            BotonIcono("Editar", "metadatos") { dialogoEditar = true }
+            BotonIcono("Eliminar", "eliminar", peligro = true) { dialogoBorrar = true }
+          }
         }
 
         // Lo que se pondrá al reproducir, con lo elegido en ámbar (como en la tele).
@@ -553,6 +562,18 @@ fun PantallaFicha(
         }
 
         Spacer(Modifier.height(24.dp))
+      }
+    }
+
+    if (Ajustes.estuche3D && f.tienePoster == 1) {
+      item {
+        val es4k = remember(f) { etiquetasTecnicas(f).any { it.contains("4K", ignoreCase = true) || it.contains("UHD", ignoreCase = true) } }
+        Estuche3DAndroid(
+          itemId = f.id,
+          tieneDisco = f.tieneDisco == 1,
+          es4k = es4k,
+          modifier = Modifier.padding(vertical = 10.dp),
+        )
       }
     }
 
@@ -775,6 +796,127 @@ fun PantallaFicha(
       confirmButton = {},
       dismissButton = {
         TextButton(onClick = { fileIdDescargaDialogo = null }) {
+          Text("Cancelar", color = TextoSuave, fontSize = 14.sp)
+        }
+      }
+    )
+  }
+
+  if (dialogoEditar) {
+    AlertDialog(
+      onDismissRequest = { dialogoEditar = false },
+      containerColor = Color(0xFF14141A),
+      shape = RoundedCornerShape(24.dp),
+      title = {
+        Text("Editar metadatos / Arte", color = Texto, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+      },
+      text = {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+          Box(
+            Modifier
+              .fillMaxWidth()
+              .clip(RoundedCornerShape(12.dp))
+              .background(Color(0x0AFFFFFF))
+              .clickable {
+                dialogoEditar = false
+                ambito.launch {
+                  Toast.makeText(contexto, "Buscando en TMDb…", Toast.LENGTH_SHORT).show()
+                  try {
+                    val res = withContext(Dispatchers.IO) { Api.buscarEnTmdb(f.title, if (esSerie) "show" else "movie", f.year) }
+                    val primero = res.results.firstOrNull()
+                    if (primero != null) {
+                      withContext(Dispatchers.IO) { Api.aplicarMetadatos(f.id, primero.tmdbId, if (esSerie) "show" else "movie") }
+                      Toast.makeText(contexto, "Metadatos actualizados desde TMDb", Toast.LENGTH_SHORT).show()
+                      Cache.olvidarFicha(f.id)
+                      intento++
+                    } else {
+                      Toast.makeText(contexto, "No se encontraron resultados en TMDb", Toast.LENGTH_SHORT).show()
+                    }
+                  } catch (e: Exception) {
+                    Toast.makeText(contexto, e.message ?: "Error al actualizar metadatos", Toast.LENGTH_LONG).show()
+                  }
+                }
+              }
+              .padding(horizontal = 14.dp, vertical = 12.dp)
+          ) {
+            Column {
+              Text("Actualizar metadatos desde TMDb", color = Texto, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+              Text("Sinopsis, géneros, puntuación y año", color = TextoSuave, fontSize = 12.sp)
+            }
+          }
+
+          Box(
+            Modifier
+              .fillMaxWidth()
+              .clip(RoundedCornerShape(12.dp))
+              .background(Color(0x0AFFFFFF))
+              .clickable {
+                dialogoEditar = false
+                alCambiarImagenes(f.kind, f.title, f.year)
+              }
+              .padding(horizontal = 14.dp, vertical = 12.dp)
+          ) {
+            Column {
+              Text("Cambiar imágenes", color = Texto, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+              Text("Póster, fondo fanart, logotipo y disco", color = TextoSuave, fontSize = 12.sp)
+            }
+          }
+        }
+      },
+      confirmButton = {},
+      dismissButton = {
+        TextButton(onClick = { dialogoEditar = false }) {
+          Text("Cancelar", color = TextoSuave, fontSize = 14.sp)
+        }
+      }
+    )
+  }
+
+  if (dialogoBorrar) {
+    AlertDialog(
+      onDismissRequest = { if (!borrando) dialogoBorrar = false },
+      containerColor = Color(0xFF1A1214),
+      shape = RoundedCornerShape(24.dp),
+      title = {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+          IconoAccion("eliminar", Color(0xFFEF4444), tamano = 22.dp)
+          Text("Eliminar «${f.title}»", color = Color(0xFFEF4444), fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        }
+      },
+      text = {
+        Text(
+          "${if (esSerie) "Se borrará la serie ENTERA con su carpeta" else "Se borrará la carpeta de la película"} en el servidor, sin papelera. Esta acción es definitiva.",
+          color = TextoSuave,
+          fontSize = 14.sp,
+          lineHeight = 20.sp,
+        )
+      },
+      confirmButton = {
+        Button(
+          onClick = {
+            ambito.launch {
+              borrando = true
+              try {
+                val res = withContext(Dispatchers.IO) { Api.borrarItem(f.id, f.title) }
+                Toast.makeText(contexto, "Eliminada: ${res.titulo}", Toast.LENGTH_SHORT).show()
+                Cache.olvidarFicha(f.id)
+                dialogoBorrar = false
+                alVolver()
+              } catch (e: Exception) {
+                Toast.makeText(contexto, e.message ?: "No se pudo eliminar", Toast.LENGTH_LONG).show()
+              } finally {
+                borrando = false
+              }
+            }
+          },
+          enabled = !borrando,
+          colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+        ) {
+          Text(if (borrando) "Eliminando…" else "Sí, eliminar", color = Color.White, fontWeight = FontWeight.Bold)
+        }
+      },
+      dismissButton = {
+        TextButton(onClick = { dialogoBorrar = false }, enabled = !borrando) {
           Text("Cancelar", color = TextoSuave, fontSize = 14.sp)
         }
       }
@@ -1020,68 +1162,172 @@ private fun estimarDescargas(duracionSegundos: Double, bytesOriginal: Long?, cod
 private fun Estuche3DAndroid(
   itemId: Int,
   tieneDisco: Boolean,
+  es4k: Boolean = false,
   modifier: Modifier = Modifier,
 ) {
   var extraido by remember { mutableStateOf(false) }
-  val offsetDisco by animateFloatAsState(if (extraido) 36f else 0f, label = "disco")
-  val giroDisco by animateFloatAsState(if (extraido) 180f else 0f, label = "giro")
+  var arrastreX by remember { mutableStateOf(0f) }
+  val rotacionY by animateFloatAsState(
+    targetValue = (if (extraido) -8f else -18f) + (arrastreX * 0.15f).coerceIn(-25f, 25f),
+    animationSpec = spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessMediumLow),
+    label = "rotY",
+  )
+  val rotacionX by animateFloatAsState(
+    targetValue = if (extraido) 2f else 4f,
+    label = "rotX",
+  )
+  val offsetDisco by animateFloatAsState(
+    targetValue = if (extraido) 72f else 8f,
+    animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessLow),
+    label = "disco",
+  )
+  val giroDisco by animateFloatAsState(
+    targetValue = if (extraido) 210f else 25f,
+    animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessLow),
+    label = "giro",
+  )
 
-  Box(
-    modifier
-      .clickable(
-        interactionSource = remember { MutableInteractionSource() },
-        indication = null,
-      ) { extraido = !extraido }
-      .graphicsLayer {
-        rotationY = -14f
-        rotationX = 3f
-        cameraDistance = 16f * density
-      }
+  Column(
+    modifier = modifier.fillMaxWidth(),
+    horizontalAlignment = Alignment.CenterHorizontally,
   ) {
-    if (tieneDisco) {
+    Box(
+      modifier = Modifier
+        .pointerInput(Unit) {
+          detectHorizontalDragGestures(
+            onDragEnd = { arrastreX = 0f },
+            onDragCancel = { arrastreX = 0f },
+            onHorizontalDrag = { _, dragAmount ->
+              arrastreX += dragAmount
+            },
+          )
+        }
+        .clickable(
+          interactionSource = remember { MutableInteractionSource() },
+          indication = null,
+        ) { extraido = !extraido }
+        .graphicsLayer {
+          this.rotationY = rotacionY
+          this.rotationX = rotacionX
+          cameraDistance = 14f * density
+        },
+      contentAlignment = Alignment.Center,
+    ) {
+      val anchoCaja = 138.dp
+      val altoCaja = 205.dp
+      val tamanoDisco = 158.dp
+
       Box(
         Modifier
-          .size(76.dp)
-          .align(Alignment.CenterEnd)
-          .graphicsLayer {
-            translationX = offsetDisco.dp.toPx()
-            rotationZ = giroDisco
-          }
+          .width(anchoCaja + 80.dp)
+          .height(altoCaja + 16.dp),
+        contentAlignment = Alignment.CenterStart,
       ) {
-        Imagen(
-          Api.imagen(itemId, "discart", 300),
-          "Disco",
-          Modifier.fillMaxSize().clip(CircleShape),
-          escala = ContentScale.Fit,
-        )
+        if (tieneDisco) {
+          Box(
+            Modifier
+              .size(tamanoDisco)
+              .align(Alignment.CenterStart)
+              .graphicsLayer {
+                translationX = offsetDisco.dp.toPx()
+                rotationZ = giroDisco
+              }
+              .shadow(16.dp, CircleShape)
+          ) {
+            Imagen(
+              Api.imagen(itemId, "discart", 600),
+              "Disco",
+              Modifier.fillMaxSize().clip(CircleShape),
+              escala = ContentScale.Fit,
+            )
+            Box(
+              Modifier
+                .fillMaxSize()
+                .clip(CircleShape)
+                .background(
+                  Brush.sweepGradient(
+                    listOf(
+                      Color(0x35FFFFFF),
+                      Color(0x05FFFFFF),
+                      Color(0x30FFFFFF),
+                      Color(0x05FFFFFF),
+                      Color(0x35FFFFFF),
+                    ),
+                  ),
+                ),
+            )
+          }
+        }
+
+        Box(
+          Modifier
+            .width(anchoCaja)
+            .height(altoCaja)
+            .shadow(20.dp, RoundedCornerShape(7.dp))
+            .clip(RoundedCornerShape(7.dp))
+            .background(Color(0xFF0C0C10))
+            .border(1.dp, Color(0x38FFFFFF), RoundedCornerShape(7.dp)),
+        ) {
+          Imagen(
+            Api.imagen(itemId, "poster", 500),
+            "Póster",
+            Modifier.fillMaxSize(),
+            escala = ContentScale.Crop,
+          )
+
+          Box(
+            Modifier
+              .fillMaxWidth()
+              .height(18.dp)
+              .background(if (es4k) Color(0xDD111111) else Color(0x550284C7))
+              .border(0.6.dp, Color(0x33FFFFFF))
+              .align(Alignment.TopCenter),
+            contentAlignment = Alignment.Center,
+          ) {
+            Text(
+              if (es4k) "4K ULTRA HD" else "Blu-ray",
+              color = if (es4k) Color(0xFFE2B755) else Color(0xEEFFFFFF),
+              fontSize = 9.sp,
+              fontWeight = FontWeight.Bold,
+              letterSpacing = 1.sp,
+            )
+          }
+
+          Box(
+            Modifier
+              .fillMaxSize()
+              .background(
+                Brush.linearGradient(
+                  0f to Color(0x38FFFFFF),
+                  0.42f to Color(0x08FFFFFF),
+                  0.58f to Color.Transparent,
+                  1f to Color(0x35000000),
+                ),
+              ),
+          )
+
+          Box(
+            Modifier
+              .fillMaxHeight()
+              .width(7.dp)
+              .background(
+                Brush.horizontalGradient(
+                  0f to Color(0x40FFFFFF),
+                  0.5f to Color(0x25000000),
+                  1f to Color.Transparent,
+                ),
+              ),
+          )
+        }
       }
     }
-    Box(
-      Modifier
-        .width(74.dp)
-        .height(110.dp)
-        .shadow(8.dp, RoundedCornerShape(5.dp))
-        .clip(RoundedCornerShape(5.dp))
-        .background(FondoTarjeta)
-        .border(0.6.dp, Color(0x33FFFFFF), RoundedCornerShape(5.dp))
-    ) {
-      Imagen(
-        Api.imagen(itemId, "poster", 300),
-        "Póster",
-        Modifier.fillMaxSize(),
-        escala = ContentScale.Crop,
-      )
-      Box(
-        Modifier
-          .fillMaxSize()
-          .background(
-            Brush.linearGradient(
-              0f to Color(0x35FFFFFF),
-              0.45f to Color(0x08FFFFFF),
-              1f to Color(0x25000000),
-            )
-          )
-      )
-    }
+
+    Spacer(Modifier.height(8.dp))
+    Text(
+      if (tieneDisco) (if (extraido) "Toca para guardar el disco · Arrastra para girar" else "Edición física · Toca para extraer el disco") else "Edición física · Arrastra para girar",
+      color = TextoTenue,
+      fontSize = 11.5.sp,
+      textAlign = TextAlign.Center,
+    )
   }
 }

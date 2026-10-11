@@ -159,12 +159,14 @@ fun BotonTele(
 fun BotonIcono(
   nombre: String,
   activo: Boolean = false,
+  colorPeligro: Boolean = false,
   alPulsar: () -> Unit,
   dibujo: @Composable (Color) -> Unit,
 ) {
   var foco by remember { mutableStateOf(false) }
   val tinta = when {
-    foco -> Color(0xFF111114)
+    foco -> if (colorPeligro) Color.White else Color(0xFF111114)
+    colorPeligro -> Color(0xFFEF4444)
     activo -> Realce
     else -> Texto
   }
@@ -173,7 +175,7 @@ fun BotonIcono(
       .height(44.dp)
       .enfocable(RoundedCornerShape(100.dp), escala = 1.06f, aro = Color.Transparent, alFoco = { foco = it }, alPulsar = alPulsar)
       .clip(RoundedCornerShape(100.dp))
-      .background(if (foco) Color.White else Color(0x33FFFFFF))
+      .background(if (foco) (if (colorPeligro) Color(0xFFDC2626) else Color.White) else (if (colorPeligro) Color(0x35DC2626) else Color(0x33FFFFFF)))
       .padding(horizontal = 11.dp),
     verticalAlignment = Alignment.CenterVertically,
   ) {

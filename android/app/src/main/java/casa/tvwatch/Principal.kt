@@ -370,6 +370,7 @@ private fun Navegacion(nav: NavHostController) {
             alPerderSesion = { aConexion() },
             alAbrirPersona = { nav.navigate("persona/$it") },
             alAbrirFicha = { nav.navigate(Rutas.ficha(it)) },
+            alVolver = { nav.popBackStack() },
           )
         }
       }

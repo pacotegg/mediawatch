@@ -315,6 +315,11 @@ export const api = {
     return request<{ total: number; items: ItemSummary[] }>(`/api/items?${qs}`);
   },
   item: (id: number) => request<ItemDetail>(`/api/items/${id}`),
+  deleteItem: (id: number, confirmar: string) =>
+    request<{ borrado: true; titulo: string; ficheros: number }>(`/api/items/${id}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ confirmar }),
+    }),
   person: (id: number) => request<{ id: number; name: string; has_thumb: number; credits: ItemSummary[] }>(`/api/people/${id}`),
   search: (q: string) =>
     request<{ items: ItemSummary[]; people: { id: number; name: string; has_thumb: number; count: number }[] }>(

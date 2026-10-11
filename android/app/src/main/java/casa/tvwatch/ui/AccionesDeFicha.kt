@@ -101,6 +101,13 @@ private val ACCIONES: Map<String, List<Trazo>> = mapOf(
     Trazo("M1 1l22 22"),
   ),
   "imagenes" to listOf(Trazo("M4 5h16v14H4z"), Trazo("M4 16l4.5-4.5 4 4 3-3 4.5 4.5")),
+  "metadatos" to listOf(
+    Trazo("M12 20h9"),
+    Trazo("M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"),
+  ),
+  "eliminar" to listOf(
+    Trazo("M4.5 7h15M9.5 7V4.6h5V7M6.6 7l.9 12.4h9l.9-12.4M10.2 10.8v5.4M13.8 10.8v5.4"),
+  ),
 )
 
 @Composable
@@ -127,7 +134,13 @@ fun IconoAccion(nombre: String, color: Color, tamano: Dp = 24.dp, colorContraste
  * como el resto de botones de la casa (`Pastilla`).
  */
 @Composable
-fun BotonIcono(rotulo: String, icono: String, activo: Boolean = false, alPulsar: () -> Unit) {
+fun BotonIcono(
+  rotulo: String,
+  icono: String,
+  activo: Boolean = false,
+  peligro: Boolean = false,
+  alPulsar: () -> Unit,
+) {
   val pulsacion = remember { MutableInteractionSource() }
   val pulsada by pulsacion.collectIsPressedAsState()
   val escala by animateFloatAsState(
@@ -135,13 +148,26 @@ fun BotonIcono(rotulo: String, icono: String, activo: Boolean = false, alPulsar:
     animationSpec = Movimiento.resorte(),
     label = "escala del boton de icono",
   )
+  val colorPeligro = Color(0xFFEF4444)
   val fondo by animateColorAsState(
-    targetValue = if (activo) Realce.copy(alpha = 0.2f) else Color(0x18FFFFFF),
+    targetValue = when {
+      peligro -> colorPeligro.copy(alpha = 0.18f)
+      activo -> Realce.copy(alpha = 0.2f)
+      else -> Color(0x18FFFFFF)
+    },
     animationSpec = Movimiento.aparecer(180),
     label = "fondo del boton de icono",
   )
-  val color = if (activo) Realce else Texto
-  val borde = if (activo) Realce.copy(alpha = 0.45f) else Color(0x1FFFFFFF)
+  val color = when {
+    peligro -> colorPeligro
+    activo -> Realce
+    else -> Texto
+  }
+  val borde = when {
+    peligro -> colorPeligro.copy(alpha = 0.5f)
+    activo -> Realce.copy(alpha = 0.45f)
+    else -> Color(0x1FFFFFFF)
+  }
 
   Column(Modifier.width(72.dp), horizontalAlignment = Alignment.CenterHorizontally) {
     Box(
@@ -159,7 +185,7 @@ fun BotonIcono(rotulo: String, icono: String, activo: Boolean = false, alPulsar:
     Spacer(Modifier.height(5.dp))
     Text(
       rotulo,
-      color = if (activo) Realce else TextoSuave,
+      color = if (peligro) colorPeligro else if (activo) Realce else TextoSuave,
       fontSize = 11.sp,
       lineHeight = 13.sp,
       textAlign = TextAlign.Center,

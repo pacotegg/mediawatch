@@ -303,6 +303,8 @@ export default function Detail() {
   const [descargando, setDescargando] = useState(false);
   const [avisoDescarga, setAvisoDescarga] = useState<string | null>(null);
   const [codecDescarga, setCodecDescarga] = useState<CodecDescarga>('h265');
+  const [dialogoBorrar, setDialogoBorrar] = useState(false);
+  const [borrando, setBorrando] = useState(false);
 
   const { data: item, isLoading } = useQuery({ queryKey: ['item', itemId], queryFn: () => api.item(itemId) });
   /*
@@ -457,6 +459,45 @@ export default function Detail() {
       </AnimatePresence>
       <AnimatePresence>{numerando && <NumeracionFixer showId={itemId} onClose={() => setNumerando(false)} />}</AnimatePresence>
       <AnimatePresence>{anime && <AnimeFixer itemId={itemId} onClose={() => setAnime(false)} />}</AnimatePresence>
+      <AnimatePresence>
+        {dialogoBorrar && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
+            <div className="w-full max-w-md rounded-2xl border border-red-500/30 bg-ink-950 p-6 shadow-2xl">
+              <h3 className="mb-2 text-lg font-bold text-red-400">
+                Eliminar «{item.title}»
+              </h3>
+              <p className="mb-6 text-sm text-mist-300 leading-relaxed">
+                {item.kind === 'show' ? 'Se borrará la serie ENTERA con su carpeta' : 'Se borrará la carpeta de la película'} en el servidor, sin papelera. Esta acción no se puede deshacer.
+              </p>
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setDialogoBorrar(false)}
+                  disabled={borrando}
+                  className="rounded-full bg-white/10 px-4 py-2 text-sm font-medium hover:bg-white/15"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={async () => {
+                    setBorrando(true);
+                    try {
+                      await api.deleteItem(itemId, item.title);
+                      navigate('/', { replace: true });
+                    } catch (err) {
+                      alert((err as Error).message || 'No se pudo eliminar');
+                      setBorrando(false);
+                    }
+                  }}
+                  disabled={borrando}
+                  className="rounded-full bg-red-600 px-5 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-50"
+                >
+                  {borrando ? 'Eliminando…' : 'Sí, eliminar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
       <div className="relative h-[58vh] min-h-[380px] w-full overflow-hidden">
         {item.has_fanart && (
           <motion.img
@@ -771,11 +812,33 @@ export default function Detail() {
                   </svg>
                 </button>
               )}
+
+              {me?.is_admin === 1 && (
+                <button
+                  onClick={() => setDialogoBorrar(true)}
+                  title={`Eliminar «${item.title}» (aviso: sin papelera)`}
+                  className="grid h-10 w-10 place-items-center rounded-full bg-red-500/20 text-red-400 border border-red-500/40 transition-transform duration-200 hover:scale-110 active:scale-95 hover:bg-red-500/30"
+                >
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4.5 7h15M9.5 7V4.6h5V7M6.6 7l.9 12.4h9l.9-12.4M10.2 10.8v5.4M13.8 10.8v5.4" />
+                  </svg>
+                </button>
+              )}
             </div>
           </motion.div>
 
           {prefs.interface.case3D && item.has_poster && (
             <div className="hidden lg:block shrink-0 pt-2 pr-4">
+              <Estuche3D
+                posterUrl={img.poster(itemId, 500, item.arte_actualizado)}
+                discartUrl={item.has_discart === 1 ? img.discart(itemId, 600, item.arte_actualizado) : null}
+                title={item.title}
+              />
+            </div>
+          )}
+
+          {prefs.interface.case3D && item.has_poster && (
+            <div className="mt-8 flex justify-center lg:hidden">
               <Estuche3D
                 posterUrl={img.poster(itemId, 500, item.arte_actualizado)}
                 discartUrl={item.has_discart === 1 ? img.discart(itemId, 600, item.arte_actualizado) : null}

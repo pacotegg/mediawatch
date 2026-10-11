@@ -427,6 +427,29 @@ object Api {
     http.newCall(req).execute().use { }
   }
 
+  @kotlinx.serialization.Serializable
+  data class RespuestaBorradoItem(val borrado: Boolean, val titulo: String, val carpeta: String? = null, val ficheros: Int = 0)
+
+  fun borrarItem(id: Int, confirmar: String): RespuestaBorradoItem {
+    val cuerpo = """{"confirmar":"${confirmar.replace("\\", "\\\\").replace("\"", "\\\"")}"}"""
+    val req = okhttp3.Request.Builder()
+      .url(Servidor.base() + "/api/items/$id")
+      .delete(cuerpo.toRequestBody("application/json".toMediaType()))
+      .apply { Ajustes.token?.let { header("Authorization", "Bearer $it") } }
+      .build()
+    val resp = http.newCall(req).execute()
+    val txt = resp.body?.string() ?: ""
+    if (!resp.isSuccessful) {
+      val err = try {
+        org.json.JSONObject(txt).optString("error", "Error del servidor (${resp.code})")
+      } catch (_: Exception) {
+        "Error ${resp.code}"
+      }
+      throw Exception(err)
+    }
+    return json.decodeFromString(txt)
+  }
+
   fun urlFicheroDescarga(id: Int): String {
     return Servidor.base() + "/api/descargas/$id/fichero"
   }

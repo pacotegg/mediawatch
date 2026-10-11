@@ -1,5 +1,6 @@
 package casa.tvwatch.tele
 
+import casa.tvwatch.datos.Ajustes
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
@@ -26,8 +27,23 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.border
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -85,6 +101,7 @@ fun FichaTele(
   alReproducir: (fileId: Int, episodioId: Int?, desde: Double) -> Unit,
   alPerderSesion: () -> Unit,
   alAbrirFicha: (Int) -> Unit = {},
+  alVolver: () -> Unit = {},
 ) {
   val contexto = LocalContext.current
   val ambito = rememberCoroutineScope()
@@ -99,6 +116,8 @@ fun FichaTele(
   var trailer by remember(itemId) { mutableStateOf<Trailer?>(null) }
   var resenas by remember(itemId) { mutableStateOf<List<Resena>>(emptyList()) }
   var viendoResenas by remember { mutableStateOf(false) }
+  var dialogoBorrar by remember(itemId) { mutableStateOf(false) }
+  var borrando by remember(itemId) { mutableStateOf(false) }
 
   // Se vuelve a pedir siempre (también al volver del reproductor): el progreso cambia.
   LaunchedEffect(itemId, intento) {
@@ -154,6 +173,16 @@ fun FichaTele(
     if (f.tieneFondo == 1) Imagen(recordarUrl(f.id, "fanart", 1280), null, Modifier.fillMaxSize())
     Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to Fondo, 0.5f to Color(0xCC09090C), 1f to Color(0x2209090C))))
     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.4f to Color.Transparent, 1f to Fondo)))
+
+    if (Ajustes.estuche3D && f.tienePoster == 1) {
+      Box(
+        Modifier
+          .align(Alignment.TopEnd)
+          .padding(top = 56.dp, end = AireTele.lado)
+      ) {
+        Estuche3DTele(f.id, f.tieneDisco == 1)
+      }
+    }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = 56.dp, bottom = 60.dp)) {
       item {
@@ -244,6 +273,31 @@ fun FichaTele(
               try { withContext(Dispatchers.IO) { Api.favorito(itemId, nuevo) } } catch (_: Exception) { esFavorita = !nuevo }
             }
           }) { IconoEstrella(it, rellena = esFavorita, tamano = 20.dp) }
+
+          if (Ajustes.esAdmin) {
+            BotonIcono("Editar", alPulsar = {
+              ambito.launch {
+                Toast.makeText(contexto, "Actualizando metadatos desde TMDb…", Toast.LENGTH_SHORT).show()
+                try {
+                  val res = withContext(Dispatchers.IO) { Api.buscarEnTmdb(f.title, if (esSerie) "show" else "movie", f.year) }
+                  val primero = res.results.firstOrNull()
+                  if (primero != null) {
+                    withContext(Dispatchers.IO) { Api.aplicarMetadatos(f.id, primero.tmdbId, if (esSerie) "show" else "movie") }
+                    Toast.makeText(contexto, "Metadatos actualizados", Toast.LENGTH_SHORT).show()
+                    intento++
+                  } else {
+                    Toast.makeText(contexto, "No se encontraron en TMDb", Toast.LENGTH_SHORT).show()
+                  }
+                } catch (e: Exception) {
+                  Toast.makeText(contexto, e.message ?: "Error", Toast.LENGTH_LONG).show()
+                }
+              }
+            }) { Icon(Icons.Default.Edit, null, tint = it) }
+
+            BotonIcono("Eliminar", colorPeligro = true, alPulsar = { dialogoBorrar = true }) {
+              Icon(Icons.Default.Delete, null, tint = Color(0xFFEF4444))
+            }
+          }
         }
       }
 
@@ -322,6 +376,57 @@ fun FichaTele(
     }
 
     if (viendoResenas) PanelResenas(resenas) { viendoResenas = false }
+
+    if (dialogoBorrar) {
+      AlertDialog(
+        onDismissRequest = { if (!borrando) dialogoBorrar = false },
+        containerColor = Color(0xFF1A1214),
+        shape = RoundedCornerShape(24.dp),
+        title = {
+          Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Icon(Icons.Default.Delete, null, tint = Color(0xFFEF4444))
+            Text("Eliminar «${f.title}»", color = Color(0xFFEF4444), fontWeight = FontWeight.Bold, fontSize = 20.sp)
+          }
+        },
+        text = {
+          Text(
+            "${if (esSerie) "Se borrará la serie ENTERA con su carpeta" else "Se borrará la carpeta de la película"} en el servidor, sin papelera. Esta acción es definitiva.",
+            color = TextoSuave,
+            fontSize = 15.sp,
+            lineHeight = 22.sp,
+          )
+        },
+        confirmButton = {
+          Button(
+            onClick = {
+              ambito.launch {
+                borrando = true
+                try {
+                  val res = withContext(Dispatchers.IO) { Api.borrarItem(f.id, f.title) }
+                  Toast.makeText(contexto, "Eliminada: ${res.titulo}", Toast.LENGTH_SHORT).show()
+                  Cache.olvidarFicha(f.id)
+                  dialogoBorrar = false
+                  alVolver()
+                } catch (e: Exception) {
+                  Toast.makeText(contexto, e.message ?: "No se pudo eliminar", Toast.LENGTH_LONG).show()
+                } finally {
+                  borrando = false
+                }
+              }
+            },
+            enabled = !borrando,
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+          ) {
+            Text(if (borrando) "Eliminando…" else "Sí, eliminar", color = Color.White, fontWeight = FontWeight.Bold)
+          }
+        },
+        dismissButton = {
+          TextButton(onClick = { dialogoBorrar = false }, enabled = !borrando) {
+            Text("Cancelar", color = TextoSuave, fontSize = 15.sp)
+          }
+        }
+      )
+    }
   }
 }
 
@@ -441,3 +546,79 @@ private fun PanelResenas(resenas: List<Resena>, alCerrar: () -> Unit) {
     }
   }
 }
+
+@Composable
+private fun Estuche3DTele(itemId: Int, tieneDisco: Boolean) {
+  val transicion = rememberInfiniteTransition(label = "giro")
+  val angulo by transicion.animateFloat(
+    initialValue = 0f,
+    targetValue = 360f,
+    animationSpec = infiniteRepeatable(
+      animation = tween(25000, easing = LinearEasing),
+    ),
+    label = "angulo",
+  )
+
+  Box(
+    Modifier
+      .width(320.dp)
+      .height(370.dp)
+      .graphicsLayer {
+        cameraDistance = 18f * density
+      },
+    contentAlignment = Alignment.CenterStart,
+  ) {
+    if (tieneDisco) {
+      Box(
+        Modifier
+          .size(280.dp)
+          .align(Alignment.CenterEnd)
+          .graphicsLayer {
+            rotationZ = angulo
+          }
+          .shadow(20.dp, CircleShape)
+      ) {
+        Imagen(Api.imagen(itemId, "discart", 600), "Disco", Modifier.fillMaxSize().clip(CircleShape), escala = ContentScale.Fit)
+      }
+    }
+
+    Box(
+      Modifier
+        .width(245.dp)
+        .height(360.dp)
+        .graphicsLayer {
+          rotationY = -16f
+          rotationX = 2f
+        }
+        .shadow(24.dp, RoundedCornerShape(8.dp))
+        .clip(RoundedCornerShape(8.dp))
+        .background(Color(0xFF09090C))
+        .border(1.dp, Color(0x38FFFFFF), RoundedCornerShape(8.dp)),
+    ) {
+      Imagen(Api.imagen(itemId, "poster", 500), "Póster", Modifier.fillMaxSize(), escala = ContentScale.Crop)
+      // Banda superior Blu-ray
+      Box(
+        Modifier
+          .fillMaxWidth()
+          .height(18.dp)
+          .background(Color(0x550284C7))
+          .border(0.6.dp, Color(0x33FFFFFF))
+          .align(Alignment.TopCenter),
+      )
+      // Brillo diagonal
+      Box(
+        Modifier
+          .fillMaxSize()
+          .background(
+            Brush.linearGradient(
+              0f to Color(0x38FFFFFF),
+              0.45f to Color(0x08FFFFFF),
+              0.6f to Color.Transparent,
+              1f to Color(0x35000000),
+            ),
+          ),
+      )
+    }
+  }
+}
+
