@@ -898,6 +898,17 @@ o un desfase tan grande que ninguna ventana cae donde toca.
   - Ejecutado `ANALYZE` (56 registros en `sqlite_stat1`) para optimizar el planificador de consultas.
 - **Protección de fotos de actores TMDb**: corregido `server/src/scanner/scan.ts` con `COALESCE(people.thumb, excluded.thumb)` para blindar las fotos verificadas de TMDb frente a imágenes corruptas o genéricas de `.actors/` generadas por tinyMediaManager en los reescaneos.
 
+### 9.2 Persistencia de pistas y edición de metadatos en clientes (11/10/2026)
+
+- **Persistencia de pistas de audio y subtítulos en todos los clientes**:
+  - Añadidas columnas `audio_track` y `subtitle_track` en la tabla `progress` con migración automática `prepararColumnasDeProgreso()`.
+  - Integrada persistencia periódica y recuperación automática en Web (HTML5/HLS), Samsung TV (AVPlay nativo) y Android (ExoPlayer/Cast), recordando la elección en películas y entre episodios encadenados.
+- **Edición y re-escrapeo de metadatos y arte en la app TV**:
+  - Botón integrado en la barra de acciones de `pantallaFicha` inmediatamente anterior al botón de «Eliminar».
+  - Menú D-pad para búsqueda y sobreescritura automática de sinopsis, géneros, puntuación y arte desde TMDb (`api.enrichApply`) y selector de imágenes oficiales y locales de buzón (`api.enrichArte` y `api.enrichArteBuzon`).
+- **Fluidez y aceleración por GPU en Samsung TV**:
+  - Transición suave de fanart en ficha (`transition: opacity 0.35s ease-out; will-change: opacity`).
+  - Aceleración por GPU con `transform: translateZ(0)` y `will-change: transform` en `.rejilla-ventana` y `.panel`.
 
 ## 10. Claves, credenciales y dónde viven
 
