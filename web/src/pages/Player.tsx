@@ -138,6 +138,11 @@ export default function Player() {
   const [scrubbing, setScrubbing] = useState(false);
   const [autoSubApplied, setAutoSubApplied] = useState(false);
   const [hover, setHover] = useState<{ time: number; x: number } | null>(null);
+  const trackInitRef = useRef(false);
+  const audioTrackRef = useRef(audioTrack);
+  audioTrackRef.current = audioTrack;
+  const subtitleRef = useRef(subtitle);
+  subtitleRef.current = subtitle;
   const [subDelayMs, setSubDelayMs] = useState(0);
   const [audioDelayMs, setAudioDelayMs] = useState(0);
   const [syncing, setSyncing] = useState(false);
@@ -208,10 +213,21 @@ export default function Player() {
   const virtual = (isTimeshift ? offset : 0) + current;
   const duration = info?.duration ?? 0;
 
-  // Arrancar con la pista marcada por defecto o la primera; subtítulos apagados salvo elección manual.
+  // Arrancar con la pista guardada, la marcada por defecto o la primera; restaurar subtítulos si se eligieron.
   useEffect(() => {
-    if (!info || audioTrack !== null) return;
-    setAudioTrack(info.audio.find((a) => a.default)?.id ?? info.audio[0]?.id ?? 0);
+    if (!info) return;
+    if (audioTrack === null) {
+      const savedId = info.savedAudio != null ? Number(info.savedAudio) : null;
+      const exists = savedId !== null && info.audio.some((a) => a.id === savedId);
+      setAudioTrack(exists ? savedId! : (info.audio.find((a) => a.default)?.id ?? info.audio[0]?.id ?? 0));
+    }
+    if (!trackInitRef.current) {
+      trackInitRef.current = true;
+      if (info.savedSubtitle && info.savedSubtitle !== 'off') {
+        const exists = info.subtitles.some((s) => s.id === info.savedSubtitle);
+        if (exists) setSubtitle(info.savedSubtitle);
+      }
+    }
   }, [info, audioTrack]);
 
   const src =
@@ -385,7 +401,16 @@ export default function Player() {
     if (!itemId) return;
     const save = () => {
       const position = (isTimeshift ? offset : 0) + (videoRef.current?.currentTime ?? 0);
-      if (position > 5) api.saveProgress({ itemId, episodeId, position, duration }).catch(() => undefined);
+      if (position > 5) {
+        api.saveProgress({
+          itemId,
+          episodeId,
+          position,
+          duration,
+          audio: audioTrackRef.current,
+          subtitle: subtitleRef.current ?? 'off',
+        }).catch(() => undefined);
+      }
     };
     const timer = window.setInterval(save, SAVE_EVERY_MS);
     window.addEventListener('beforeunload', save);
@@ -505,7 +530,17 @@ export default function Player() {
         onCanPlay={() => setBuffering(false)}
         onTimeUpdate={(e) => !scrubbing && setCurrent(e.currentTarget.currentTime)}
         onEnded={() => {
-          if (itemId) api.saveProgress({ itemId, episodeId, position: duration, duration, watched: true }).catch(() => undefined);
+          if (itemId) {
+            api.saveProgress({
+              itemId,
+              episodeId,
+              position: duration,
+              duration,
+              watched: true,
+              audio: audioTrackRef.current,
+              subtitle: subtitleRef.current ?? 'off',
+            }).catch(() => undefined);
+          }
           if (prefs.playback.autoPlayNext && nextEpisode?.file_id) {
             navigate(`/ver/${nextEpisode.file_id}?item=${itemId}&ep=${nextEpisode.id}&t=0`, { replace: true });
           } else {

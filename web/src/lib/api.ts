@@ -114,13 +114,15 @@ export type PlayInfo = {
   duration: number;
   video: { codec: string; width: number; height: number; hdr?: string; profile?: string } | null;
   plan: { mode: 'direct' | 'remux' | 'transcode'; videoAction: string; audioAction: string; reasons: string[] };
+  savedAudio?: string | null;
+  savedSubtitle?: string | null;
   audio: { id: number; codec: string; language: string | null; channels: number | null; title: string | null; default: boolean }[];
   subtitles: { id: string; language: string | null; title: string | null; forced: boolean; source: 'embedded' | 'external' }[];
   /** Cabecera y créditos; en una película salen de los capítulos del fichero. */
   skip?: SkipRange[];
 };
 
-export type PapelArte = 'poster' | 'fanart' | 'clearlogo' | 'landscape';
+export type PapelArte = 'poster' | 'fanart' | 'clearlogo' | 'landscape' | 'discart';
 
 export type ImagenDisponible = {
   url: string;
@@ -319,7 +321,7 @@ export const api = {
   sessions: () => request<{ id: string; title: string; mode: string; reasons: string[]; startedAt: string }[]>('/api/sessions'),
 
   playInfo: (fileId: number) => request<PlayInfo>(`/api/play/${fileId}/info?${capsQuery()}`),
-  saveProgress: (body: { itemId: number; episodeId?: number | null; position: number; duration?: number; watched?: boolean }) =>
+  saveProgress: (body: { itemId: number; episodeId?: number | null; position: number; duration?: number; watched?: boolean; audio?: number | string | null; subtitle?: string | null }) =>
     post<{ ok: true }>('/api/progress', body),
   setWatched: (itemId: number, watched: boolean, episodeId?: number | null) =>
     post<{ ok: true }>(`/api/items/${itemId}/watched`, { watched, episodeId }),

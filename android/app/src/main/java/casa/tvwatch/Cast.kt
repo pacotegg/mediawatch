@@ -137,7 +137,7 @@ object Cast {
   fun emitiendo(context: Context): Boolean = sesion(context) != null
 
   /** Lo que se está emitiendo ahora, para poder recargarlo con otro audio. */
-  data class Emision(val fileId: Int, val itemId: Int, val episodioId: Int?, val titulo: String, val audioId: Int?)
+  data class Emision(val fileId: Int, val itemId: Int, val episodioId: Int?, val titulo: String, val audioId: Int?, val subtituloId: String? = null)
 
   @Volatile var emision: Emision? = null
 
@@ -193,14 +193,20 @@ object Cast {
     // Cast manda siempre el audio reconvertido por el servidor: aquí manda el
     // idioma, no si el móvil sabe leer el códec.
     val eleccion = EleccionDePistas.tomar(fileId)
-    val audio = infoPistas?.let { Pistas.elegirAudio(it.audio, eleccion?.audioId ?: audioId, soloLasQueSeLeen = false, idioma = EleccionDePistas.serieDe(itemId)?.audioIdioma) }
+    val audioDeseado = eleccion?.audioId ?: audioId ?: infoPistas?.savedAudio?.toIntOrNull()
+    val audio = infoPistas?.let { Pistas.elegirAudio(it.audio, audioDeseado, soloLasQueSeLeen = false, idioma = EleccionDePistas.serieDe(itemId)?.audioIdioma) }
     // Los subtítulos de Cast se numeran por posición (1, 2, ...), igual que más abajo.
     val subtituloActivo = subtituloPuesto ?: (eleccion?.subtitulo ?: EleccionDePistas.serieDe(itemId)?.subtitulo)?.let { s ->
       val lista = infoPistas?.subtitles
       val parecido = lista?.let { Pistas.subtituloParecido(it, s) }
       lista?.indexOfFirst { it.id == parecido?.id }?.takeIf { it >= 0 }?.let { (it + 1).toLong() }
+    } ?: run {
+      if (infoPistas?.savedSubtitle != null && infoPistas.savedSubtitle != "off") {
+        infoPistas.subtitles.indexOfFirst { it.id == infoPistas.savedSubtitle }.takeIf { it >= 0 }?.let { (it + 1).toLong() }
+      } else null
     }
-    emision = Emision(fileId, itemId, episodioId, titulo, audio?.id)
+    val subtituloIdStr = subtituloActivo?.let { idx -> infoPistas?.subtitles?.getOrNull((idx - 1).toInt())?.id } ?: "off"
+    emision = Emision(fileId, itemId, episodioId, titulo, audio?.id, subtituloIdStr)
     if (infoPistas != null) Registro.i("pistas", "cast: " + Pistas.describir(infoPistas.audio, audio))
     val pistas = try {
       infoPistas!!.subtitles.mapIndexed { i, st ->
@@ -286,7 +292,7 @@ object Cast {
       if (posicionMs > 5_000 && duracionMs > 0) {
         CoroutineScope(Dispatchers.IO).launch {
           try {
-            Api.guardarProgreso(itemId, episodioId, posicionMs / 1000.0, duracionMs / 1000.0)
+            Api.guardarProgreso(itemId, episodioId, posicionMs / 1000.0, duracionMs / 1000.0, audio = emision?.audioId?.toString(), subtitulo = emision?.subtituloId ?: "off")
           } catch (e: Exception) { /* al siguiente */ }
         }
       }

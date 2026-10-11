@@ -269,6 +269,8 @@ CREATE TABLE IF NOT EXISTS progress (
   duration   REAL,
   watched    INTEGER NOT NULL DEFAULT 0,
   updated_at TEXT NOT NULL,
+  audio_track TEXT,
+  subtitle_track TEXT,
   PRIMARY KEY (user_id, item_id, episode_id)
 );
 CREATE INDEX IF NOT EXISTS idx_progress_user ON progress(user_id, updated_at DESC);
@@ -330,6 +332,17 @@ CREATE TABLE IF NOT EXISTS favorites (
  * «Álvarez» solo por casualidad —porque esos estaban guardados sin tilde—. Se
  * rellena aqui al arrancar y lo mantiene el escaner.
  */
+function prepararColumnasDeProgreso() {
+  const columnas = db.prepare('PRAGMA table_info(progress)').all() as { name: string }[];
+  if (!columnas.some((c) => c.name === 'audio_track')) {
+    db.exec('ALTER TABLE progress ADD COLUMN audio_track TEXT');
+  }
+  if (!columnas.some((c) => c.name === 'subtitle_track')) {
+    db.exec('ALTER TABLE progress ADD COLUMN subtitle_track TEXT');
+  }
+}
+prepararColumnasDeProgreso();
+
 function prepararBusquedaDePersonas() {
   const columnas = db.prepare('PRAGMA table_info(people)').all() as { name: string }[];
   if (!columnas.some((c) => c.name === 'search_name')) {

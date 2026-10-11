@@ -347,12 +347,20 @@ export default async function playRoutes(app: FastifyInstance) {
       .prepare('SELECT id, language, forced, external FROM sub_tracks WHERE file_id = ? AND external IS NOT NULL ORDER BY language')
       .all(fileId) as any[];
 
-    // Tamaño y tasa de bits para la pantalla de informacion del reproductor:
-    // es lo que Plex ensena ahi y lo unico que no estaba ya en `mediaInfo`.
-    const bytes = statFichero.size;
+    // Pistas guardadas para este usuario y fichero (o serie)
+    const guardado = user && row
+      ? (db.prepare('SELECT audio_track, subtitle_track FROM progress WHERE user_id = ? AND item_id = ? AND episode_id IS ?')
+          .get(user.id, row.parent_id, row.episode_id) as { audio_track: string | null; subtitle_track: string | null } | undefined)
+      : null;
+    const deLaSerie = user && row && row.episode_id && (!guardado || !guardado.audio_track)
+      ? (db.prepare('SELECT audio_track, subtitle_track FROM progress WHERE user_id = ? AND item_id = ? AND audio_track IS NOT NULL ORDER BY updated_at DESC LIMIT 1')
+          .get(user.id, row.parent_id) as { audio_track: string | null; subtitle_track: string | null } | undefined)
+      : null;
 
     return {
       fileId,
+      savedAudio: guardado?.audio_track ?? deLaSerie?.audio_track ?? null,
+      savedSubtitle: guardado?.subtitle_track ?? deLaSerie?.subtitle_track ?? null,
       title: row.title,
       duration: info.duration,
       container: info.container,

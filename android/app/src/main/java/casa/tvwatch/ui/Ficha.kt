@@ -202,11 +202,20 @@ fun PantallaFicha(
       null
     }
     infoPistas = info
-    // Al volver a la ficha de una serie se recuerda lo elegido antes.
+    // Al volver a la ficha de una serie se recuerda lo elegido antes; si no, lo guardado en el servidor.
     val previa = if (esSerie) EleccionDePistas.serieDe(itemId) else null
-    if (info != null && previa != null) {
-      audioElegido = previa.audioIdioma?.let { l -> info.audio.firstOrNull { Pistas.mismoIdioma(it.language, l) }?.id }
-      subElegido = previa.subtitulo?.let { Pistas.subtituloParecido(info.subtitles, it)?.id }
+    if (info != null) {
+      if (previa != null) {
+        audioElegido = previa.audioIdioma?.let { l -> info.audio.firstOrNull { Pistas.mismoIdioma(it.language, l) }?.id }
+        subElegido = previa.subtitulo?.let { Pistas.subtituloParecido(info.subtitles, it)?.id }
+      } else {
+        if (audioElegido == null && info.savedAudio != null) {
+          audioElegido = info.savedAudio.toIntOrNull()?.takeIf { id -> info.audio.any { it.id == id } }
+        }
+        if (subElegido == null && info.savedSubtitle != null) {
+          subElegido = if (info.savedSubtitle == "off") null else info.subtitles.firstOrNull { it.id == info.savedSubtitle }?.id
+        }
+      }
     }
   }
 

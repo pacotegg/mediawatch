@@ -380,7 +380,9 @@ private fun Reproduciendo(
       // La pista que se pone al empezar: la primera que el aparato sepa leer.
       // Si ninguna vale, la primera y que el servidor la convierta. Al
       // recargar por un cambio de calidad se conserva la que ya estaba.
-      val elegida = Pistas.elegirAudio(i.audio, pistaAudio, idioma = EleccionDePistas.serieDe(itemId)?.audioIdioma)
+      val savedAudioId = i.savedAudio?.toIntOrNull()
+      val audioDeseado = pistaAudio ?: savedAudioId
+      val elegida = Pistas.elegirAudio(i.audio, audioDeseado, idioma = EleccionDePistas.serieDe(itemId)?.audioIdioma)
       Registro.i("pistas", "reproductor: " + Pistas.describir(i.audio, elegida))
       pistaAudio = elegida?.id
       /*
@@ -486,8 +488,13 @@ private fun Reproduciendo(
       .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
       .build()
 
-    // ...salvo que en la ficha se haya elegido uno.
-    val querido = eleccion?.subtitulo ?: EleccionDePistas.serieDe(itemId)?.subtitulo
+    // ...salvo que en la ficha se haya elegido uno o esté guardado en el servidor.
+    val querido = eleccion?.subtitulo ?: EleccionDePistas.serieDe(itemId)?.subtitulo ?: run {
+      val i = info
+      if (i?.savedSubtitle != null && i.savedSubtitle != "off") {
+        i.subtitles.firstOrNull { it.id == i.savedSubtitle }
+      } else null
+    }
     if (querido != null) {
       val pista = buscarSubtitulo(pistas, querido)
       if (pista != null) {
@@ -508,6 +515,26 @@ private fun Reproduciendo(
   val duracionConocida = info?.duration ?: 0.0
   val desfase = if (porTuberia) desdeDeLaTuberia else 0.0
 
+  fun subtituloPuesto(): String {
+    val tracks = reproductor.currentTracks
+    val i = info ?: return "off"
+    for (grupo in tracks.groups) {
+      if (grupo.type != C.TRACK_TYPE_TEXT || !grupo.isSelected) continue
+      for (idx in 0 until grupo.length) {
+        if (grupo.isTrackSelected(idx)) {
+          val f = grupo.getTrackFormat(idx)
+          val forzado = (f.selectionFlags and C.SELECTION_FLAG_FORCED) != 0
+          val mat = i.subtitles.firstOrNull { s ->
+            val langMatch = s.language?.take(2)?.equals(f.language?.take(2), ignoreCase = true) == true
+            langMatch && s.forced == forzado
+          }
+          if (mat != null) return mat.id
+        }
+      }
+    }
+    return "off"
+  }
+
   LaunchedEffect(fileId, porTuberia) {
     while (true) {
       delay(5_000)
@@ -518,7 +545,7 @@ private fun Reproduciendo(
         if (((enSegundos.toInt()) % 15) < 6) {
           try {
             withContext(Dispatchers.IO) {
-              Api.guardarProgreso(itemId, episodioId, enSegundos, duracionConocida)
+              Api.guardarProgreso(itemId, episodioId, enSegundos, duracionConocida, audio = pistaAudio?.toString(), subtitulo = subtituloPuesto())
             }
           } catch (e: Exception) { /* ya se reintentará al siguiente */ }
         }
@@ -542,7 +569,7 @@ private fun Reproduciendo(
       ambito.launch {
         try {
           withContext(Dispatchers.IO) {
-            Api.guardarProgreso(itemId, episodioId, enSegundos, total)
+            Api.guardarProgreso(itemId, episodioId, enSegundos, total, audio = pistaAudio?.toString(), subtitulo = subtituloPuesto())
           }
         } catch (e: Exception) { /* da igual: se sale igualmente */ }
         alSalirActual()
@@ -619,7 +646,7 @@ private fun Reproduciendo(
     reproductor.pause()
     ambito.launch {
       try {
-        withContext(Dispatchers.IO) { Api.guardarProgreso(itemId, episodioId, duracionConocida, duracionConocida, vista = true) }
+        withContext(Dispatchers.IO) { Api.guardarProgreso(itemId, episodioId, duracionConocida, duracionConocida, vista = true, audio = pistaAudio?.toString(), subtitulo = subtituloPuesto()) }
       } catch (e: Exception) { /* se pasa igual */ }
       alSiguiente(fichero, sig.id)
     }
@@ -643,7 +670,7 @@ private fun Reproduciendo(
     reproductor.pause()
     ambito.launch {
       try {
-        withContext(Dispatchers.IO) { Api.guardarProgreso(itemId, episodioId, donde, duracionConocida) }
+        withContext(Dispatchers.IO) { Api.guardarProgreso(itemId, episodioId, donde, duracionConocida, audio = pistaAudio?.toString(), subtitulo = subtituloPuesto()) }
       } catch (e: Exception) { /* se cambia igual */ }
       alSiguiente(fichero, destino.id)
     }

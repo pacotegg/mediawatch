@@ -374,13 +374,28 @@ object Api {
     texto("/api/items/$itemId/watched", cuerpo)
   }
 
-  fun guardarProgreso(itemId: Int, episodioId: Int?, posicion: Double, duracion: Double?, vista: Boolean = false) {
+  fun aplicarMetadatos(itemId: Int, tmdbId: Int, kind: String) {
+    val cuerpo = """{"itemId":$itemId,"tmdbId":$tmdbId,"kind":"$kind","fields":["poster","fanart","logo","plot","rating","genres"],"overwrite":true}"""
+    texto("/api/enrich/apply", cuerpo)
+  }
+
+  fun guardarProgreso(
+    itemId: Int,
+    episodioId: Int?,
+    posicion: Double,
+    duracion: Double?,
+    vista: Boolean = false,
+    audio: String? = null,
+    subtitulo: String? = null,
+  ) {
     val cuerpo = buildString {
       append("{\"itemId\":").append(itemId)
       if (episodioId != null) append(",\"episodeId\":").append(episodioId)
       append(",\"position\":").append(posicion.toInt())
       if (duracion != null && duracion > 0) append(",\"duration\":").append(duracion.toInt())
       if (vista) append(",\"watched\":true")
+      if (audio != null) append(",\"audio\":\"").append(audio.replace("\"", "\\\"")).append('"')
+      if (subtitulo != null) append(",\"subtitle\":\"").append(subtitulo.replace("\"", "\\\"")).append('"')
       append('}')
     }
     texto("/api/progress", cuerpo)
@@ -702,6 +717,8 @@ data class InfoReproduccion(
   val bitrate: Long = 0,
   val video: Video? = null,
   val plan: Plan = Plan(),
+  val savedAudio: String? = null,
+  val savedSubtitle: String? = null,
   val audio: List<PistaAudio> = emptyList(),
   val subtitles: List<PistaSubtitulo> = emptyList(),
   val chapters: List<Capitulo> = emptyList(),

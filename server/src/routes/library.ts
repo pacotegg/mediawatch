@@ -308,7 +308,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
     }
 
     const progress = user
-      ? db.prepare('SELECT episode_id, position, duration, watched FROM progress WHERE user_id = ? AND item_id = ?').all(user.id, id)
+      ? db.prepare('SELECT episode_id, position, duration, watched, audio_track, subtitle_track FROM progress WHERE user_id = ? AND item_id = ?').all(user.id, id)
       : [];
 
     if (item.kind === 'show') {
@@ -805,17 +805,20 @@ export default async function libraryRoutes(app: FastifyInstance) {
     position: number,
     duration: number | null,
     watched: number,
+    audioTrack?: string | null,
+    subtitleTrack?: string | null,
   ) => {
     const ahora = new Date().toISOString();
     const cambio = db
-      .prepare(`UPDATE progress SET position = ?, duration = COALESCE(?, duration), watched = ?, updated_at = ?
+      .prepare(`UPDATE progress SET position = ?, duration = COALESCE(?, duration), watched = ?, updated_at = ?,
+                 audio_track = COALESCE(?, audio_track), subtitle_track = COALESCE(?, subtitle_track)
                  WHERE user_id = ? AND item_id = ? AND episode_id IS ?`)
-      .run(position, duration, watched, ahora, userId, itemId, episodeId);
+      .run(position, duration, watched, ahora, audioTrack ?? null, subtitleTrack ?? null, userId, itemId, episodeId);
 
     if (cambio.changes === 0) {
-      db.prepare(`INSERT INTO progress (user_id, item_id, episode_id, position, duration, watched, updated_at)
-                  VALUES (?,?,?,?,?,?,?)`)
-        .run(userId, itemId, episodeId, position, duration, watched, ahora);
+      db.prepare(`INSERT INTO progress (user_id, item_id, episode_id, position, duration, watched, updated_at, audio_track, subtitle_track)
+                  VALUES (?,?,?,?,?,?,?,?,?)`)
+        .run(userId, itemId, episodeId, position, duration, watched, ahora, audioTrack ?? null, subtitleTrack ?? null);
     }
   };
 
@@ -844,8 +847,9 @@ export default async function libraryRoutes(app: FastifyInstance) {
   app.post('/api/progress', async (req) => {
     marcarActividad();
     const user = requireUser(req);
-    const { itemId, episodeId, position, duration, watched } = req.body as {
+    const { itemId, episodeId, position, duration, watched, audio, subtitle } = req.body as {
       itemId: number; episodeId?: number | null; position: number; duration?: number; watched?: boolean;
+      audio?: number | string | null; subtitle?: string | null;
     };
     /*
      * Un cero no es una duración, es que el cliente no la sabía. Como el
@@ -861,6 +865,8 @@ export default async function libraryRoutes(app: FastifyInstance) {
       position,
       duracion,
       watched ? 1 : duracion && position > duracion * 0.95 ? 1 : 0,
+      audio !== undefined ? (audio !== null ? String(audio) : null) : undefined,
+      subtitle !== undefined ? (subtitle !== null ? String(subtitle) : 'off') : undefined,
     );
     avanzar({ userId: user.id, itemId, episodeId: episodeId ?? null, position, duracion: duration ?? null, vista: Boolean(watched), sesion: sesionDe(req) });
     return { ok: true };
