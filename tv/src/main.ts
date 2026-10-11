@@ -16,6 +16,7 @@ import {
   type Tira,
   type Titulo,
   type DialogoHit,
+  type CandidatoSubtitulo,
 } from './api.ts';
 import { ajustes, cargarAjustes, guardarAjustes, ordenar, type Rendimiento } from './ajustes.ts';
 import { actual, ajustarListaEpisodios, ajustarVentanaRejilla, alEnfocar, alPulsar, anadirPorArriba, situarFila, avisarDeFallos, enfocables, enfocar, indexar, indexarAdemas, iniciarNavegacion, manejadorActual, TECLA } from './nav.ts';
@@ -3805,6 +3806,11 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
       });
     });
     opciones.push({
+      valor: -5,
+      texto: '🔍 Buscar subtítulos en internet…',
+      nota: 'SubSource / OpenSubtitles',
+    });
+    opciones.push({
       valor: -3,
       texto: 'Ajustar el desfase…',
       nota: retardoSubs ? 'ahora: ' + (retardoSubs / 1000).toFixed(1) + ' s' : 'ahora: sincronizados',
@@ -3812,8 +3818,68 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     menuLista('Subtítulos', opciones, subOrdinal, cambiarSubtitulo, () => alPulsar(manejarTeclas));
   };
 
+  const buscarSubtitulosInternet = async () => {
+    aviso('Buscando subtítulos (ES e EN)…');
+    try {
+      const res = await api.buscarCandidatosSubtitulos(fileId, 'es,en');
+      if (!res.ok || !res.candidates || res.candidates.length === 0) {
+        aviso('No se encontraron subtítulos en internet');
+        return;
+      }
+      mostrarSelectorCandidatos(res.candidates);
+    } catch (e) {
+      aviso('Error buscando subtítulos: ' + (e as Error).message);
+    }
+  };
+
+  const mostrarSelectorCandidatos = (candidatos: CandidatoSubtitulo[]) => {
+    const opciones: OpcionLista[] = candidatos.map((c, i) => {
+      const flag = c.language === 'es' ? '🇪🇸' : '🇬🇧';
+      const forz = c.forced ? ' (forzados)' : '';
+      const sdh = c.hearingImpaired ? ' [SDH]' : '';
+      const notaPartes: string[] = [`[${c.provider}]`];
+      if (c.rating > 0) notaPartes.push(`⭐ ${c.rating}`);
+      if (c.downloads > 0) notaPartes.push(`${c.downloads} descargas`);
+      if (c.comment) notaPartes.push(c.comment);
+
+      return {
+        valor: i,
+        texto: `${flag} ${c.language.toUpperCase()}${forz}${sdh}: ${c.release}`,
+        nota: notaPartes.join(' · '),
+      };
+    });
+
+    menuLista('Elegir subtítulo para descargar', opciones, 0, async (idx) => {
+      const elegido = candidatos[idx];
+      if (!elegido) return;
+      aviso('Descargando subtítulo…');
+      try {
+        const dlRes = await api.descargarCandidatoSubtitulo(fileId, elegido);
+        if (dlRes.ok) {
+          aviso('¡Subtítulo descargado!');
+          infoServidor = await api.pistas(fileId);
+          const extTracks = infoServidor.subtitles.filter((s) => s.source === 'external');
+          const extIdx = extTracks.findIndex((s) => dlRes.trackId ? s.id === dlRes.trackId : (dlRes.fileName ? s.title === dlRes.fileName : false));
+          if (extIdx >= 0) {
+            cambiarSubtitulo(-(10 + extIdx));
+          } else if (extTracks.length > 0) {
+            cambiarSubtitulo(-10);
+          }
+        } else {
+          aviso('Fallo al descargar el subtítulo');
+        }
+      } catch (err) {
+        aviso('Error al descargar: ' + (err as Error).message);
+      }
+    }, () => alPulsar(manejarTeclas));
+  };
+
   function cambiarSubtitulo(n: number) {
     if (n === -4) return;
+    if (n === -5) {
+      void buscarSubtitulosInternet();
+      return;
+    }
     if (n === -3) {
       panelDesfase();
       return;
@@ -3832,6 +3898,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
       const extTracks = infoServidor.subtitles.filter((s) => s.source === 'external');
       const tr = extTracks[-(n + 10)];
       if (tr) {
+        if (tr.offsetMs !== undefined) retardoSubs = tr.offsetMs;
         reproductor.elegirSubtitulo(-1);
         cargarSubExterno(tr.id);
         avisoRapido('Subtítulo externo puesto');
@@ -3839,6 +3906,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     } else if (infoServidor) {
       const delServidor = infoServidor.subtitles.filter((x) => x.source === 'embedded');
       const tr = delServidor[n];
+      if (tr && tr.offsetMs !== undefined) retardoSubs = tr.offsetMs;
       if (tr && tr.codec === 'hdmv_pgs_subtitle') {
         reproductor.elegirSubtitulo(-1);
         cargarSubExterno(tr.id);
@@ -3858,24 +3926,19 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
   }
 
   /**
-   * Desfase de los subtítulos, con las flechas y en caliente.
-   *
-   * Se aplica en cada pulsación en vez de al aceptar: así se ve enseguida si va
-   * bien, que es la única manera de acertar con esto.
+   * Desfase de los subtítulos en vivo (HUD translúcido en cabecera sin tapar vídeo ni texto).
    */
   function panelDesfase() {
     const capa = document.createElement('div');
-    capa.className = 'capa';
+    capa.className = 'capa capa-desfase-hud';
     capa.innerHTML =
-      '<div class="panel"><h3>Desfase de los subtítulos</h3>' +
-      '<p class="dato">Si van adelantados, súbelo; si van con retraso, bájalo.</p>' +
+      '<div class="panel-desfase-hud">' +
+      '<div class="desfase-titulo">Sincronía de subtítulos (en vivo)</div>' +
       '<div class="desfase">◀ <b data-valor>0,0 s</b> ▶</div>' +
-      '<p class="pista-ayuda">Enter lo deja puesto para toda la casa · Volver lo deja solo para esta película</p></div>';
+      '<p class="pista-ayuda">◄ / ► ajustar en vivo · Enter guardar · Volver salir</p></div>';
     marco.appendChild(capa);
     const etiqueta = capa.querySelector<HTMLElement>('[data-valor]')!;
     const pintarValor = () => {
-      // Dos decimales porque el paso es de 250 ms: con uno solo, «+0,25» salía
-      // como «+0,3» y parecía que el número no cuadraba con las pulsaciones.
       const segundos = Math.abs(retardoSubs / 1000);
       const texto = retardoSubs % 1000 === 0 ? segundos.toFixed(1) : segundos.toFixed(2);
       etiqueta.textContent = (retardoSubs >= 0 ? '+' : '−') + texto.replace('.', ',') + ' s';
@@ -3888,7 +3951,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
       pintarValor();
       if (!reproductor.retardoSubtitulos(retardoSubs) && !avisadoSinSoporte) {
         avisadoSinSoporte = true;
-        aviso('Esta tele no deja mover los subtítulos');
+        aviso('Esta tele no deja mover los subtítulos nativos');
       }
     };
     const cerrar = () => {
@@ -3899,7 +3962,23 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     alPulsar((tecla) => {
       if (tecla === TECLA.DERECHA) { mover(250); return true; }
       if (tecla === TECLA.IZQUIERDA) { mover(-250); return true; }
-      if (tecla === TECLA.ENTRAR) { guardarAjustes({ retardoSubtitulos: retardoSubs }); aviso('Desfase guardado'); cerrar(); return true; }
+      if (tecla === TECLA.ENTRAR) {
+        guardarAjustes({ retardoSubtitulos: retardoSubs });
+        let pistaId: string | null = null;
+        if (subOrdinal <= -10 && infoServidor) {
+          const extTracks = infoServidor.subtitles.filter((s) => s.source === 'external');
+          pistaId = extTracks[-(subOrdinal + 10)]?.id ?? null;
+        } else if (subOrdinal >= 0 && infoServidor) {
+          const delServidor = infoServidor.subtitles.filter((x) => x.source === 'embedded');
+          pistaId = delServidor[subOrdinal]?.id ?? null;
+        }
+        if (pistaId) {
+          api.guardarOffsetSubtitulo(fileId, pistaId, retardoSubs).catch(() => {});
+        }
+        aviso('Desfase guardado para esta pista');
+        cerrar();
+        return true;
+      }
       if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE) { cerrar(); return true; }
       return true;
     });

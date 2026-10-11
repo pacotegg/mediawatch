@@ -468,6 +468,29 @@ export function siguiente(direccion: number): HTMLElement | null {
     if (contenido) return contenido.el;
   }
 
+  // Navegación de la ficha con estuche 3D:
+  // 1. Desde la barra de acciones (.acciones), pulsar a la derecha desde el último botón
+  // salta directamente al estuche 3D / carátula, en vez de derivar en diagonal al reparto.
+  if (foco.closest('.acciones') && direccion === TECLA.DERECHA) {
+    const acciones = foco.closest('.acciones')!;
+    const botones = Array.from(acciones.querySelectorAll<HTMLElement>('[data-nav]'));
+    const esUltimo = botones.length > 0 && botones[botones.length - 1] === foco;
+    if (esUltimo) {
+      const estuche = document.querySelector<HTMLElement>('[data-estuche]');
+      if (estuche) return estuche;
+    }
+  }
+
+  // 2. Desde el estuche 3D:
+  //    - Pulsar izquierda: vuelve al último botón de la fila de acciones.
+  //    - Pulsar abajo: desciende a la fila de acciones (evitando saltar directamente al reparto).
+  if (foco.hasAttribute('data-estuche') || foco.closest('[data-estuche]')) {
+    if (direccion === TECLA.IZQUIERDA || direccion === TECLA.ABAJO) {
+      const botones = Array.from(document.querySelectorAll<HTMLElement>('.acciones [data-nav]'));
+      if (botones.length > 0) return botones[botones.length - 1];
+    }
+  }
+
   const lista = foco.closest('[data-lista-episodios]') as HTMLElement | null;
   const vertical = direccion === TECLA.ARRIBA || direccion === TECLA.ABAJO;
 

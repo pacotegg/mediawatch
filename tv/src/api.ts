@@ -194,7 +194,21 @@ export type InfoReproduccion = {
   savedAudio?: string | null;
   savedSubtitle?: string | null;
   audio: { id: number; codec: string; language: string | null; channels: number | null; title?: string | null; default?: boolean; compatible?: boolean; atmos?: boolean }[];
-  subtitles: { id: string; language: string | null; title?: string | null; forced: boolean; source?: string; codec?: string }[];
+  subtitles: { id: string; language: string | null; title?: string | null; forced: boolean; source?: string; codec?: string; offsetMs?: number }[];
+};
+
+export type CandidatoSubtitulo = {
+  id: string;
+  provider: string;
+  providerId: string | number;
+  language: string;
+  languageLabel: string;
+  release: string;
+  downloads: number;
+  rating: number;
+  forced: boolean;
+  hearingImpaired: boolean;
+  comment?: string;
 };
 
 type Saga = {
@@ -338,6 +352,26 @@ export const api = {
     if (!res.ok) throw new Error('No se pudo descargar el subtítulo');
     return await res.text();
   },
+  guardarOffsetSubtitulo: (fileId: number, trackId: string, offsetMs: number) =>
+    pedir<{ ok: true; offsetMs: number }>('/api/play/' + fileId + '/offsets/' + trackId, {
+      method: 'POST',
+      body: JSON.stringify({ offsetMs }),
+    }),
+  buscarSubtitulos: (fileId: number) =>
+    pedir<{ ok: boolean; exitCode: number | null; outcome?: string; title?: string }>('/api/subtitles/fetch', {
+      method: 'POST',
+      body: JSON.stringify({ fileId, languages: 'es,en', wait: true }),
+    }),
+  buscarCandidatosSubtitulos: (fileId: number, languages = 'es,en') =>
+    pedir<{ ok: boolean; candidates: CandidatoSubtitulo[] }>('/api/subtitles/search', {
+      method: 'POST',
+      body: JSON.stringify({ fileId, languages }),
+    }),
+  descargarCandidatoSubtitulo: (fileId: number, c: CandidatoSubtitulo) =>
+    pedir<{ ok: boolean; trackId?: string; fileName?: string }>('/api/subtitles/download', {
+      method: 'POST',
+      body: JSON.stringify({ fileId, provider: c.provider, subId: c.providerId, language: c.language, release: c.release, forced: c.forced }),
+    }),
   // Devuelve 202 con `{generating}` mientras el servidor la fabrica.
   // `solo=1`: mirar si ya está hecha, sin pedir que la fabrique. Generarla
   // mientras se ve la película deja al vídeo sin disco.

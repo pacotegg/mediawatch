@@ -1722,6 +1722,49 @@ body.rend-rapido .lamina img {
   color: var(--texto);
 }
 
+/* HUD de desfase en vivo: sin oscurecer pantalla para ver subtítulos y labios */
+.capa-desfase-hud {
+  background: transparent !important;
+  pointer-events: none;
+}
+
+.panel-desfase-hud {
+  position: absolute;
+  top: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(14, 16, 22, 0.92);
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 16px 36px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.8);
+  text-align: center;
+  z-index: 100;
+}
+
+.panel-desfase-hud .desfase-titulo {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--texto);
+  margin-bottom: 4px;
+}
+
+.panel-desfase-hud .desfase {
+  margin: 8px 0 6px;
+  font-size: 32px;
+}
+
+.panel-desfase-hud .desfase b {
+  font-size: 38px;
+  min-width: 160px;
+}
+
+.panel-desfase-hud .pista-ayuda {
+  margin: 4px 0 0;
+  font-size: 15px;
+  color: var(--texto-sec);
+}
+
 /* Con los controles a la vista los subtitulos suben para no quedar tapados. */
 .osd.visible ~ .subtitulos-tv {
   bottom: calc(420px + var(--subir, 0px));
