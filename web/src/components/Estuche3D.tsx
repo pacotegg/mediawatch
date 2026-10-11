@@ -16,7 +16,7 @@ export default function Estuche3D({ posterUrl, discartUrl, title }: Estuche3DPro
 
   return (
     <div
-      className="group relative select-none cursor-pointer pr-14"
+      className="group relative select-none cursor-pointer pr-36"
       style={{ perspective: '1100px' }}
       onMouseEnter={() => setExtraido(true)}
       onMouseLeave={() => setExtraido(false)}
@@ -32,15 +32,15 @@ export default function Estuche3D({ posterUrl, discartUrl, title }: Estuche3DPro
             : 'rotateY(-18deg) rotateX(4deg)',
         }}
       >
-        {/* Disco (discart) extraíble si existe */}
+        {/* Disco (discart) extraíble si existe - siempre orientado a 0° para máxima legibilidad */}
         {discartUrl && (
           <div
             className="absolute top-6 bottom-6 right-0 w-[240px] h-[240px] rounded-full transition-all duration-700 pointer-events-none"
             style={{
               transformStyle: 'preserve-3d',
               transform: extraido
-                ? 'translateX(105px) rotate(220deg)'
-                : 'translateX(8px) rotate(25deg)',
+                ? 'translateX(160px) rotate(0deg)'
+                : 'translateX(10px) rotate(0deg)',
               zIndex: extraido ? 20 : 0,
               filter: 'drop-shadow(0 12px 20px rgba(0,0,0,0.65))',
             }}

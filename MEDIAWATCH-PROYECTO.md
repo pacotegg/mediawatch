@@ -22,7 +22,7 @@ tinyMediaManager en `E:\`, y la sirve a tres clientes:
 |---|---|---|---|
 | **Web** | `web/` | React 19 + Vite + Tailwind 4 + motion | Cualquier navegador; PWA instalable |
 | **Tele** | `tv/` | TypeScript plano + CSS plano, ES2016/iife | Samsung QN93A (Tizen 6.0 ≈ Chrome 76), reproductor nativo AVPlay |
-| **Android** | `android/` | Kotlin + Jetpack Compose + Media3/ExoPlayer + Cast SDK | Móvil (Android 8+, pensado para 13+). Versión actual **3.51** |
+| **Android** | `android/` | Kotlin + Jetpack Compose + Media3/ExoPlayer + Cast SDK | Móvil (Android 8+, pensado para 13+). Versión actual **3.52** |
 
 Nombres: empezó como **Cineteca** (04/09), se renombró a **TvWatch** (05/09) y a
 **Media Watch** (16/09). El código y el paquete Android siguen llamándose
@@ -596,7 +596,7 @@ Hechos desde los commits (`git log`). El detalle de cada cambio está en el mens
 - Repositorio en `C:\tvwatch`, público en GitHub (`pacotegg/mediawatch`). Un solo repo para
   servidor, web, tele y Android. Unos 50 commits desde `737dede` (16/09/2026).
 - **Releases con APK** (`gh release`, tag `v<ver>` en el commit de esa versión): 3.7 (`abea11f`),
-  3.8 (`7714c1e`), 3.13 (`2daee24`), 3.17 (`dfb72f8`), 3.23 (`5b036d3`), 3.25–3.51.
+  3.8 (`7714c1e`), 3.13 (`2daee24`), 3.17 (`dfb72f8`), 3.23 (`5b036d3`), 3.25–3.52.
   El APK no entra en git: `*.apk` está en `.gitignore` y el repo es público. Los 367 MB de
   APK no caben en el historial.
 - **Versiones documentadas en CHANGELOG.md**: 3.2, 3.7, 3.8, 3.13, 3.14, 3.17, 3.22, 3.23, 3.24, 3.25, así como los bloques de iteración intermedia (3.3–3.6, 3.9–3.12, 3.15–3.16, 3.18–3.21).

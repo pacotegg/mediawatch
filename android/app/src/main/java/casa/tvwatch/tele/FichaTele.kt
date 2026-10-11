@@ -599,7 +599,7 @@ private fun Estuche3DTele(
   )
 
   val separacionDisco by animateDpAsState(
-    targetValue = if (enfocado) 65.dp else 42.dp,
+    targetValue = if (enfocado) 115.dp else 42.dp,
     animationSpec = spring(dampingRatio = 0.8f, stiffness = 300f),
     label = "separacionDisco",
   )
@@ -609,7 +609,7 @@ private fun Estuche3DTele(
   ) {
     Box(
       Modifier
-        .width(320.dp)
+        .width(370.dp)
         .height(370.dp)
         .graphicsLayer {
           scaleX = escalaAnimada

@@ -28,6 +28,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
@@ -49,6 +50,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -119,6 +121,7 @@ fun PantallaFicha(
   var sinopsisAbierta by remember(itemId) { mutableStateOf(false) }
   var dialogoBorrar by remember(itemId) { mutableStateOf(false) }
   var dialogoEditar by remember(itemId) { mutableStateOf(false) }
+  var mostrarColeccionista by remember(itemId) { mutableStateOf(false) }
   var borrando by remember(itemId) { mutableStateOf(false) }
   /*
    * Favorito y visto se pintan al instante y se mandan después. Esperar a que
@@ -572,6 +575,7 @@ fun PantallaFicha(
           itemId = f.id,
           tieneDisco = f.tieneDisco == 1,
           es4k = es4k,
+          alAbrirColeccionista = { mostrarColeccionista = true },
           modifier = Modifier.padding(vertical = 10.dp),
         )
       }
@@ -922,6 +926,16 @@ fun PantallaFicha(
       }
     )
   }
+
+  if (mostrarColeccionista && ficha != null) {
+    val f = ficha!!
+    val es4k = remember(f) { etiquetasTecnicas(f).any { it.contains("4K", ignoreCase = true) || it.contains("UHD", ignoreCase = true) } }
+    ModalColeccionistaAndroid(
+      ficha = f,
+      es4k = es4k,
+      alCerrar = { mostrarColeccionista = false },
+    )
+  }
 }
 
 
@@ -1163,6 +1177,7 @@ private fun Estuche3DAndroid(
   itemId: Int,
   tieneDisco: Boolean,
   es4k: Boolean = false,
+  alAbrirColeccionista: (() -> Unit)? = null,
   modifier: Modifier = Modifier,
 ) {
   var extraido by remember { mutableStateOf(false) }
@@ -1177,14 +1192,9 @@ private fun Estuche3DAndroid(
     label = "rotX",
   )
   val offsetDisco by animateFloatAsState(
-    targetValue = if (extraido) 72f else 8f,
+    targetValue = if (extraido) 115f else 10f,
     animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessLow),
     label = "disco",
-  )
-  val giroDisco by animateFloatAsState(
-    targetValue = if (extraido) 210f else 25f,
-    animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessLow),
-    label = "giro",
   )
 
   Column(
@@ -1205,7 +1215,13 @@ private fun Estuche3DAndroid(
         .clickable(
           interactionSource = remember { MutableInteractionSource() },
           indication = null,
-        ) { extraido = !extraido }
+        ) {
+          if (extraido && alAbrirColeccionista != null) {
+            alAbrirColeccionista()
+          } else {
+            extraido = !extraido
+          }
+        }
         .graphicsLayer {
           this.rotationY = rotacionY
           this.rotationX = rotacionX
@@ -1219,7 +1235,7 @@ private fun Estuche3DAndroid(
 
       Box(
         Modifier
-          .width(anchoCaja + 80.dp)
+          .width(anchoCaja + 135.dp)
           .height(altoCaja + 16.dp),
         contentAlignment = Alignment.CenterStart,
       ) {
@@ -1230,9 +1246,19 @@ private fun Estuche3DAndroid(
               .align(Alignment.CenterStart)
               .graphicsLayer {
                 translationX = offsetDisco.dp.toPx()
-                rotationZ = giroDisco
+                rotationZ = 0f
               }
               .shadow(16.dp, CircleShape)
+              .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+              ) {
+                if (alAbrirColeccionista != null) {
+                  alAbrirColeccionista()
+                } else {
+                  extraido = !extraido
+                }
+              }
           ) {
             Imagen(
               Api.imagen(itemId, "discart", 600),
@@ -1323,11 +1349,310 @@ private fun Estuche3DAndroid(
     }
 
     Spacer(Modifier.height(8.dp))
-    Text(
-      if (tieneDisco) (if (extraido) "Toca para guardar el disco · Arrastra para girar" else "Edición física · Toca para extraer el disco") else "Edición física · Arrastra para girar",
-      color = TextoTenue,
-      fontSize = 11.5.sp,
-      textAlign = TextAlign.Center,
-    )
+    Row(
+      horizontalArrangement = Arrangement.spacedBy(8.dp),
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      Text(
+        if (tieneDisco) (if (extraido) "Toca para guardar" else "Toca para extraer") else "Edición física",
+        color = TextoTenue,
+        fontSize = 11.5.sp,
+        textAlign = TextAlign.Center,
+      )
+      if (alAbrirColeccionista != null) {
+        Text("·", color = TextoTenue, fontSize = 12.sp)
+        Text(
+          "Ver en grande",
+          color = Realce,
+          fontSize = 11.5.sp,
+          fontWeight = FontWeight.SemiBold,
+          modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .clickable { alAbrirColeccionista() }
+            .padding(horizontal = 4.dp, vertical = 2.dp),
+        )
+      }
+    }
+  }
+}
+
+/**
+ * Modal inmersivo a pantalla completa para móvil que expone el Steelbook abierto
+ * con carátula a la izquierda, lomo central, bandeja con disco a la derecha (a 0° de rotación)
+ * y rotación 3D interactiva arrastrando con el dedo.
+ */
+@Composable
+private fun ModalColeccionistaAndroid(
+  ficha: Ficha,
+  es4k: Boolean,
+  alCerrar: () -> Unit,
+) {
+  androidx.activity.compose.BackHandler { alCerrar() }
+
+  var anguloY by remember { mutableFloatStateOf(-6f) }
+  val anguloYAnimado by animateFloatAsState(
+    targetValue = anguloY,
+    animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
+    label = "anguloY",
+  )
+
+  val resolucionTexto = if (es4k) "4K ULTRA HD" else "BLU-RAY 1080P"
+  val hdrTexto = ficha.files.firstOrNull()?.hdr?.takeIf { it.isNotBlank() }
+
+  Box(
+    Modifier
+      .fillMaxSize()
+      .background(Color(0xF506070A))
+      .pointerInput(Unit) {
+        detectHorizontalDragGestures { _, dragAmount ->
+          anguloY = (anguloY + dragAmount * 0.22f).coerceIn(-30f, 30f)
+        }
+      },
+    contentAlignment = Alignment.Center,
+  ) {
+    if (ficha.tieneFondo == 1) {
+      Imagen(
+        Api.imagen(ficha.id, "fanart", 1280),
+        null,
+        Modifier.fillMaxSize().alpha(0.12f),
+        escala = ContentScale.Crop,
+      )
+    }
+
+    // Botón de cerrar superior derecho
+    Box(
+      Modifier
+        .align(Alignment.TopEnd)
+        .padding(top = 40.dp, end = 20.dp)
+        .size(40.dp)
+        .clip(CircleShape)
+        .background(Color(0x33FFFFFF))
+        .clickable { alCerrar() },
+      contentAlignment = Alignment.Center,
+    ) {
+      Text("✕", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+    }
+
+    Column(
+      horizontalAlignment = Alignment.CenterHorizontally,
+      verticalArrangement = Arrangement.Center,
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(horizontal = 16.dp, vertical = 24.dp),
+    ) {
+      Text(
+        "EDICIÓN COLECCIONISTA",
+        color = if (es4k) Color(0xFFE2B755) else Realce,
+        fontSize = 11.5.sp,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 2.sp,
+      )
+
+      Spacer(Modifier.height(20.dp))
+
+      // Steelbook abierto en 3D
+      Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+          .graphicsLayer {
+            rotationY = anguloYAnimado
+            rotationX = 2f
+            cameraDistance = 16f * density
+          }
+          .shadow(32.dp, RoundedCornerShape(10.dp)),
+      ) {
+        // Portada izquierda
+        Box(
+          Modifier
+            .size(width = 145.dp, height = 220.dp)
+            .clip(RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp))
+            .background(Color(0xFF09090C))
+            .border(1.dp, Color(0x38FFFFFF), RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp)),
+        ) {
+          Imagen(
+            Api.imagen(ficha.id, "poster", 600),
+            ficha.title,
+            Modifier.fillMaxSize(),
+            escala = ContentScale.Crop,
+          )
+
+          // Header 4K / Blu-ray
+          Box(
+            Modifier
+              .fillMaxWidth()
+              .height(18.dp)
+              .background(if (es4k) Color(0xEE111116) else Color(0x880284C7))
+              .border(0.6.dp, if (es4k) Color(0x88E2B755) else Color(0x44FFFFFF))
+              .align(Alignment.TopCenter),
+            contentAlignment = Alignment.Center,
+          ) {
+            Text(
+              if (es4k) "4K ULTRA HD" else "Blu-ray",
+              color = if (es4k) Color(0xFFE2B755) else Color.White,
+              fontSize = 9.sp,
+              fontWeight = FontWeight.Bold,
+              letterSpacing = 1.sp,
+            )
+          }
+
+          // Brillo reflectante
+          Box(
+            Modifier
+              .fillMaxSize()
+              .background(
+                Brush.linearGradient(
+                  0f to Color(0x35FFFFFF),
+                  0.45f to Color(0x06FFFFFF),
+                  0.6f to Color.Transparent,
+                  1f to Color(0x40000000),
+                ),
+              ),
+          )
+        }
+
+        // Bisagra / Lomo central
+        Box(
+          Modifier
+            .size(width = 10.dp, height = 220.dp)
+            .background(
+              Brush.horizontalGradient(
+                listOf(Color(0xFF111116), Color(0xFF2D2E38), Color(0xFF111116)),
+              ),
+            )
+            .border(0.5.dp, Color(0x30FFFFFF)),
+        )
+
+        // Bandeja derecha con disco (orientado a 0°)
+        Box(
+          Modifier
+            .size(width = 175.dp, height = 220.dp)
+            .clip(RoundedCornerShape(topEnd = 8.dp, bottomEnd = 8.dp))
+            .background(Color(0xFF0E0F16))
+            .border(1.dp, Color(0x38FFFFFF), RoundedCornerShape(topEnd = 8.dp, bottomEnd = 8.dp)),
+          contentAlignment = Alignment.Center,
+        ) {
+          if (ficha.tieneFondo == 1) {
+            Imagen(
+              Api.imagen(ficha.id, "fanart", 600),
+              null,
+              Modifier.fillMaxSize().alpha(0.20f),
+              escala = ContentScale.Crop,
+            )
+          }
+
+          // Circunferencia de la bandeja
+          Box(
+            Modifier
+              .size(165.dp)
+              .clip(CircleShape)
+              .border(1.dp, Color(0x18FFFFFF), CircleShape),
+          )
+
+          // Disco a gran resolución orientado derecho (0°)
+          if (ficha.tieneDisco == 1) {
+            Imagen(
+              Api.imagen(ficha.id, "discart", 600),
+              "Disco",
+              Modifier
+                .size(165.dp)
+                .clip(CircleShape)
+                .shadow(12.dp, CircleShape),
+              escala = ContentScale.Fit,
+            )
+          } else {
+            Imagen(
+              Api.imagen(ficha.id, "poster", 600),
+              "Disco",
+              Modifier
+                .size(165.dp)
+                .clip(CircleShape)
+                .shadow(12.dp, CircleShape),
+              escala = ContentScale.Crop,
+            )
+          }
+
+          // Pivote central / hub
+          Box(
+            Modifier
+              .size(20.dp)
+              .clip(CircleShape)
+              .background(Color(0xFF1B1C24))
+              .border(1.2.dp, Color(0x55FFFFFF), CircleShape),
+          )
+        }
+      }
+
+      Spacer(Modifier.height(18.dp))
+
+      Text(
+        "Arrastra horizontalmente para inclinar en 3D",
+        color = TextoTenue,
+        fontSize = 11.5.sp,
+        textAlign = TextAlign.Center,
+      )
+
+      Spacer(Modifier.height(14.dp))
+
+      Text(
+        ficha.title,
+        color = Color.White,
+        fontSize = 20.sp,
+        fontWeight = FontWeight.Bold,
+        textAlign = TextAlign.Center,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+      )
+
+      Spacer(Modifier.height(10.dp))
+
+      Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
+        Text(
+          resolucionTexto,
+          color = if (es4k) Color(0xFFE2B755) else Color.White,
+          fontSize = 11.5.sp,
+          fontWeight = FontWeight.Bold,
+          modifier = Modifier
+            .background(
+              if (es4k) Color(0x33E2B755) else Color(0x22FFFFFF),
+              RoundedCornerShape(6.dp),
+            )
+            .border(
+              0.8.dp,
+              if (es4k) Color(0x88E2B755) else Color(0x44FFFFFF),
+              RoundedCornerShape(6.dp),
+            )
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+        )
+
+        if (hdrTexto != null) {
+          Text(
+            hdrTexto,
+            color = Color(0xFFE2E8F0),
+            fontSize = 11.5.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier
+              .background(Color(0x22FFFFFF), RoundedCornerShape(6.dp))
+              .border(0.8.dp, Color(0x33FFFFFF), RoundedCornerShape(6.dp))
+              .padding(horizontal = 10.dp, vertical = 4.dp),
+          )
+        }
+
+        if (ficha.runtime != null && ficha.runtime > 0) {
+          Text(
+            duracionLegible(ficha.runtime),
+            color = Color(0xFF94A3B8),
+            fontSize = 11.5.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier
+              .background(Color(0x18FFFFFF), RoundedCornerShape(6.dp))
+              .border(0.8.dp, Color(0x22FFFFFF), RoundedCornerShape(6.dp))
+              .padding(horizontal = 10.dp, vertical = 4.dp),
+          )
+        }
+      }
+    }
   }
 }

@@ -12,6 +12,12 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.52 — 12/10/2026
+
+- Estuche 3D y disco completamente recto a 0° en Android, Google TV, Smart TV y Web: orientación cuadrada y nivelada en todo momento para máxima legibilidad de títulos y personajes.
+- Desplazamiento ampliado del disco: extracción holgada y destacada al lado de la carátula sin recortes ni colisiones.
+- Visor «Edición Coleccionista» en móvil: Steelbook abierto interactivo con carátula, lomo bisagra, bandeja con disco completo, inclinación 3D táctil y especificaciones técnicas.
+
 ## 3.51 — 11/10/2026
 
 - Estuche 3D interactivo en TV y Google TV: disco estático a 0° siempre derecho y legible (sin voltearse de cabeza) con destello holográfico iridiscente.
