@@ -37,10 +37,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -104,6 +108,7 @@ import casa.tvwatch.datos.Episodio
 import casa.tvwatch.datos.InfoReproduccion
 import casa.tvwatch.datos.EleccionDePistas
 import casa.tvwatch.datos.PistaSubtitulo
+import casa.tvwatch.datos.CandidatoSubtitulo
 import casa.tvwatch.datos.Pistas
 import casa.tvwatch.datos.Registro
 import casa.tvwatch.datos.RangoSalto
@@ -278,6 +283,11 @@ private fun Reproduciendo(
    * `.srt` va corrido o no va corrido.
    */
   var retardoSubsMs by remember(fileId) { mutableStateOf(0) }
+  var dialogoCandidatosVisible by remember { mutableStateOf(false) }
+  var cargandoCandidatos by remember { mutableStateOf(false) }
+  var listaCandidatos by remember { mutableStateOf<List<CandidatoSubtitulo>>(emptyList()) }
+  var descargandoCandidatoId by remember { mutableStateOf<String?>(null) }
+  var hudSincroniaVisible by remember { mutableStateOf(false) }
 
   /** Con el audio o el vídeo convertidos el flujo no admite rangos: buscar es reabrir. */
   var porTuberia by remember(fileId) { mutableStateOf(false) }
@@ -1241,7 +1251,69 @@ private fun Reproduciendo(
         // El menú no se cierra: así se ve el número moverse y se puede
         // ajustar de seguido. La recarga la dispara el efecto con retardo.
         alCambiarRetardoSubs = { retardoSubsMs = it },
+        alBuscarSubtitulos = {
+          menuAbierto = false
+          dialogoCandidatosVisible = true
+          cargandoCandidatos = true
+          listaCandidatos = emptyList()
+          ambito.launch {
+            val res = withContext(Dispatchers.IO) { Api.buscarCandidatosSubtitulos(fileId, "es,en") }
+            listaCandidatos = res
+            cargandoCandidatos = false
+          }
+        },
+        alAbrirSyncEnVivo = {
+          menuAbierto = false
+          hudSincroniaVisible = true
+        },
         alCerrar = { menuAbierto = false },
+      )
+    }
+
+    if (dialogoCandidatosVisible) {
+      DialogoSelectorSubtitulos(
+        cargando = cargandoCandidatos,
+        candidatos = listaCandidatos,
+        descargandoId = descargandoCandidatoId,
+        alElegir = { c ->
+          descargandoCandidatoId = c.id
+          ambito.launch {
+            val ok = withContext(Dispatchers.IO) { Api.descargarCandidatoSubtitulo(fileId, c) }
+            descargandoCandidatoId = null
+            dialogoCandidatosVisible = false
+            if (ok) {
+              mensajeAdmin = "Subtítulo descargado con éxito"
+              val donde = (if (porTuberia) desdeDeLaTuberia else 0.0) + reproductor.currentPosition / 1000.0
+              cargar(donde)
+            } else {
+              mensajeAdmin = "No se pudo descargar el subtítulo"
+            }
+            delay(4000)
+            mensajeAdmin = ""
+          }
+        },
+        alCerrar = { dialogoCandidatosVisible = false },
+      )
+    }
+
+    if (hudSincroniaVisible) {
+      HudSincroniaSubtitulos(
+        retardoMs = retardoSubsMs,
+        alCambiar = { retardoSubsMs = it.coerceIn(-10_000, 10_000) },
+        alGuardar = {
+          val pista = info?.subtitles?.firstOrNull { it.source == "external" }?.id
+            ?: info?.subtitles?.firstOrNull()?.id
+          if (pista != null) {
+            ambito.launch {
+              withContext(Dispatchers.IO) { Api.guardarDesfaseSubtitulo(fileId, pista, retardoSubsMs) }
+              mensajeAdmin = "Sincronía guardada"
+              delay(3000)
+              mensajeAdmin = ""
+            }
+          }
+          hudSincroniaVisible = false
+        },
+        alCerrar = { hudSincroniaVisible = false },
       )
     }
   }
@@ -1497,6 +1569,8 @@ private fun MenuDePistas(
   alElegirEncaje: (Encaje) -> Unit,
   retardoSubsMs: Int,
   alCambiarRetardoSubs: (Int) -> Unit,
+  alBuscarSubtitulos: () -> Unit,
+  alAbrirSyncEnVivo: () -> Unit,
   alCerrar: () -> Unit,
 ) {
   // En la tele el foco entra por la pista que suena; sin él, el mando no llega al menú.
@@ -1595,6 +1669,21 @@ private fun MenuDePistas(
       if (subtitulos.isEmpty()) {
         Text("     Este fichero no trae ninguno", color = TextoTenue, fontSize = 12.sp)
       }
+      Spacer(Modifier.height(4.dp))
+      Text(
+        "     🔍 Buscar subtítulos en internet…",
+        color = Realce,
+        fontSize = 13.sp,
+        fontWeight = FontWeight.Medium,
+        modifier = Modifier
+          .fillMaxWidth()
+          .resaltarFoco()
+          .clickable {
+            alBuscarSubtitulos()
+            alCerrar()
+          }
+          .padding(vertical = 8.dp),
+      )
 
       /*
        * Desfase. Solo se enseña si hay algún subtítulo en fichero aparte: los
@@ -1638,6 +1727,20 @@ private fun MenuDePistas(
           "     Si van adelantados, súbelo; si van atrasados, bájalo.",
           color = TextoTenue,
           fontSize = 11.sp,
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+          "     ⏱️ Ajustar en vivo (sin tapar el vídeo)…",
+          color = Realce,
+          fontSize = 13.sp,
+          fontWeight = FontWeight.Medium,
+          modifier = Modifier
+            .fillMaxWidth()
+            .resaltarFoco()
+            .clickable {
+              alAbrirSyncEnVivo()
+            }
+            .padding(vertical = 6.dp),
         )
       }
 
@@ -2216,4 +2319,218 @@ private fun pistasDeAudio(pistas: Tracks): List<Triple<Tracks.Group, Int, String
     }
   }
   return salida
+}
+
+@Composable
+private fun DialogoSelectorSubtitulos(
+  cargando: Boolean,
+  candidatos: List<CandidatoSubtitulo>,
+  descargandoId: String?,
+  alElegir: (CandidatoSubtitulo) -> Unit,
+  alCerrar: () -> Unit,
+) {
+  Box(
+    modifier = Modifier
+      .fillMaxSize()
+      .background(Color(0xCC000000))
+      .clickable { alCerrar() },
+    contentAlignment = Alignment.Center,
+  ) {
+    Column(
+      modifier = Modifier
+        .fillMaxWidth(0.85f)
+        .fillMaxHeight(0.82f)
+        .clip(RoundedCornerShape(16.dp))
+        .background(Color(0xFF16161C))
+        .clickable(enabled = false) {}
+        .padding(20.dp),
+    ) {
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
+        Text("Subtítulos en internet (ES / EN)", color = Texto, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        Text(
+          "Cerrar ✕",
+          color = TextoTenue,
+          fontSize = 13.sp,
+          modifier = Modifier
+            .resaltarFoco()
+            .clickable { alCerrar() }
+            .padding(4.dp),
+        )
+      }
+
+      Spacer(Modifier.height(12.dp))
+
+      if (cargando) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+          Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            CircularProgressIndicator(color = Realce, modifier = Modifier.size(36.dp))
+            Spacer(Modifier.height(12.dp))
+            Text("Buscando en SubSource y OpenSubtitles…", color = TextoTenue, fontSize = 13.sp)
+          }
+        }
+      } else if (candidatos.isEmpty()) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+          Text("No se encontraron subtítulos para este título.", color = TextoTenue, fontSize = 13.sp)
+        }
+      } else {
+        LazyColumn(
+          modifier = Modifier.fillMaxSize(),
+          verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+          items(candidatos) { c ->
+            val estaDescargando = descargandoId == c.id
+            Row(
+              modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color(0xFF22232B))
+                .resaltarFoco()
+                .clickable(enabled = descargandoId == null) { alElegir(c) }
+                .padding(12.dp),
+              verticalAlignment = Alignment.CenterVertically,
+            ) {
+              val flag = if (c.language == "es") "🇪🇸" else "🇬🇧"
+              Text(flag, fontSize = 20.sp)
+              Spacer(Modifier.width(10.dp))
+              Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                  Text(
+                    c.language.uppercase() + (if (c.forced) " (forzados)" else "") + (if (c.hearingImpaired) " [SDH]" else ""),
+                    color = Realce,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                  )
+                  Spacer(Modifier.width(8.dp))
+                  Text(
+                    "[${c.provider}]",
+                    color = TextoTenue,
+                    fontSize = 11.sp,
+                  )
+                  if (c.rating > 0) {
+                    Spacer(Modifier.width(8.dp))
+                    Text("⭐ ${c.rating}", color = Color(0xFFFBBF24), fontSize = 11.sp)
+                  }
+                  if (c.downloads > 0) {
+                    Spacer(Modifier.width(8.dp))
+                    Text("📥 ${c.downloads}", color = TextoTenue, fontSize = 11.sp)
+                  }
+                }
+                Spacer(Modifier.height(3.dp))
+                Text(
+                  c.release.ifBlank { c.comment.ifBlank { "Subtítulo estándar" } },
+                  color = Texto,
+                  fontSize = 13.sp,
+                  maxLines = 2,
+                  overflow = TextOverflow.Ellipsis,
+                )
+              }
+              if (estaDescargando) {
+                Spacer(Modifier.width(8.dp))
+                CircularProgressIndicator(color = Realce, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+@Composable
+private fun HudSincroniaSubtitulos(
+  retardoMs: Int,
+  alCambiar: (Int) -> Unit,
+  alGuardar: () -> Unit,
+  alCerrar: () -> Unit,
+) {
+  Box(
+    modifier = Modifier
+      .fillMaxSize()
+      .padding(top = 28.dp),
+    contentAlignment = Alignment.TopCenter,
+  ) {
+    Column(
+      modifier = Modifier
+        .clip(RoundedCornerShape(16.dp))
+        .background(Color(0xEE161822))
+        .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(16.dp))
+        .padding(horizontal = 20.dp, vertical = 12.dp),
+      horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+      Text(
+        "Sincronía de subtítulos (en vivo)",
+        color = Texto,
+        fontSize = 14.sp,
+        fontWeight = FontWeight.SemiBold,
+      )
+      Spacer(Modifier.height(8.dp))
+      Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+      ) {
+        Text(
+          "◀ −250 ms",
+          color = Texto,
+          fontSize = 13.sp,
+          fontWeight = FontWeight.Medium,
+          modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color(0x33FFFFFF))
+            .resaltarFoco()
+            .clickable { alCambiar(retardoMs - 250) }
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        )
+        Text(
+          text = if (retardoMs == 0) "0,00 s" else String.format("%+.2f s", retardoMs / 1000.0).replace('.', ','),
+          color = if (retardoMs == 0) Texto else Realce,
+          fontSize = 18.sp,
+          fontWeight = FontWeight.Bold,
+        )
+        Text(
+          "+250 ms ▶",
+          color = Texto,
+          fontSize = 13.sp,
+          fontWeight = FontWeight.Medium,
+          modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color(0x33FFFFFF))
+            .resaltarFoco()
+            .clickable { alCambiar(retardoMs + 250) }
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        )
+      }
+      Spacer(Modifier.height(10.dp))
+      Row(
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
+        Text(
+          "Guardar",
+          color = Color.Black,
+          fontSize = 12.sp,
+          fontWeight = FontWeight.Bold,
+          modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(Realce)
+            .resaltarFoco()
+            .clickable { alGuardar() }
+            .padding(horizontal = 14.dp, vertical = 6.dp),
+        )
+        Text(
+          "Cerrar",
+          color = TextoTenue,
+          fontSize = 12.sp,
+          modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .resaltarFoco()
+            .clickable { alCerrar() }
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        )
+      }
+    }
+  }
 }

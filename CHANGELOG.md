@@ -12,6 +12,12 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.53 — 12/10/2026
+
+- Búsqueda y descarga directa de subtítulos desde la app y la tele: descarga online multifuente (SubSource y OpenSubtitles con comprobación de correlación cruzada contra el audio) y guardado automático en el servidor sin tocar la biblioteca en disco.
+- Persistencia de desfase y sincronía de subtítulos: cualquier ajuste de retardo (±ms) se guarda en la base de datos del servidor y se reutiliza automáticamente en futuras reproducciones en Android, Google TV, Smart TV y Web.
+- Corrección de navegación espacial D-pad en Smart TV: salto limpio y directo desde el último botón de acciones a la carátula 3D, y retorno directo a los botones de acción sin desviarse al reparto.
+
 ## 3.52 — 12/10/2026
 
 - Estuche 3D y disco completamente recto a 0° en Android, Google TV, Smart TV y Web: orientación cuadrada y nivelada en todo momento para máxima legibilidad de títulos y personajes.

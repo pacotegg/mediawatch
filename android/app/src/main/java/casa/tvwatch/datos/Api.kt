@@ -345,6 +345,38 @@ object Api {
     false
   }
 
+  fun buscarSubtitulos(fileId: Int): Boolean = try {
+    texto("/api/subtitles/fetch", "{\"fileId\":$fileId,\"wait\":true}")
+    true
+  } catch (e: Exception) {
+    false
+  }
+
+  fun buscarCandidatosSubtitulos(fileId: Int, languages: String = "es,en"): List<CandidatoSubtitulo> = try {
+    val res = json.decodeFromString<RespuestaBusquedaSubtitulos>(
+      texto("/api/subtitles/search", "{\"fileId\":$fileId,\"languages\":\"$languages\"}")
+    )
+    res.candidates
+  } catch (e: Exception) {
+    emptyList()
+  }
+
+  fun descargarCandidatoSubtitulo(fileId: Int, c: CandidatoSubtitulo): Boolean = try {
+    val cuerpo = buildString {
+      append("{\"fileId\":").append(fileId)
+      append(",\"provider\":\"").append(c.provider.replace("\"", "\\\"")).append('"')
+      append(",\"subId\":").append(c.providerId)
+      append(",\"language\":\"").append(c.language).append('"')
+      append(",\"release\":\"").append(c.release.replace("\"", "\\\"")).append('"')
+      if (c.forced) append(",\"forced\":true")
+      append('}')
+    }
+    val res = json.decodeFromString<RespuestaDescargaSubtitulo>(texto("/api/subtitles/download", cuerpo))
+    res.ok
+  } catch (e: Exception) {
+    false
+  }
+
   /* --------------------------------------------------------- imagenes */
 
   fun buscarEnTmdb(titulo: String, kind: String, anio: Int?): ResultadosTmdb {
@@ -712,6 +744,36 @@ data class PistaSubtitulo(
   val title: String? = null,
   val forced: Boolean = false,
   val source: String = "embedded",
+  val offsetMs: Int = 0,
+)
+
+@Serializable
+data class CandidatoSubtitulo(
+  val id: String,
+  val provider: String,
+  val providerId: Long,
+  val language: String,
+  val languageLabel: String = "",
+  val release: String = "",
+  val downloads: Int = 0,
+  val rating: Double = 0.0,
+  val forced: Boolean = false,
+  val hearingImpaired: Boolean = false,
+  val comment: String = "",
+)
+
+@Serializable
+data class RespuestaBusquedaSubtitulos(
+  val ok: Boolean = false,
+  val candidates: List<CandidatoSubtitulo> = emptyList(),
+)
+
+@Serializable
+data class RespuestaDescargaSubtitulo(
+  val ok: Boolean = false,
+  val trackId: String? = null,
+  val fileName: String? = null,
+  val error: String? = null,
 )
 
 @Serializable

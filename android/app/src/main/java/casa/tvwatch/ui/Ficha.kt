@@ -1192,7 +1192,7 @@ private fun Estuche3DAndroid(
     label = "rotX",
   )
   val offsetDisco by animateFloatAsState(
-    targetValue = if (extraido) 115f else 10f,
+    targetValue = if (extraido) 142f else 10f,
     animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessLow),
     label = "disco",
   )
@@ -1221,11 +1221,6 @@ private fun Estuche3DAndroid(
           } else {
             extraido = !extraido
           }
-        }
-        .graphicsLayer {
-          this.rotationY = rotacionY
-          this.rotationX = rotacionX
-          cameraDistance = 14f * density
         },
       contentAlignment = Alignment.Center,
     ) {
@@ -1235,7 +1230,7 @@ private fun Estuche3DAndroid(
 
       Box(
         Modifier
-          .width(anchoCaja + 135.dp)
+          .width(anchoCaja + 155.dp)
           .height(altoCaja + 16.dp),
         contentAlignment = Alignment.CenterStart,
       ) {
@@ -1246,7 +1241,6 @@ private fun Estuche3DAndroid(
               .align(Alignment.CenterStart)
               .graphicsLayer {
                 translationX = offsetDisco.dp.toPx()
-                rotationZ = 0f
               }
               .shadow(16.dp, CircleShape)
               .clickable(
@@ -1289,6 +1283,11 @@ private fun Estuche3DAndroid(
           Modifier
             .width(anchoCaja)
             .height(altoCaja)
+            .graphicsLayer {
+              this.rotationY = rotacionY
+              this.rotationX = rotacionX
+              cameraDistance = 14f * density
+            }
             .shadow(20.dp, RoundedCornerShape(7.dp))
             .clip(RoundedCornerShape(7.dp))
             .background(Color(0xFF0C0C10))
