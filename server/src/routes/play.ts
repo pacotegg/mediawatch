@@ -384,26 +384,38 @@ export default async function playRoutes(app: FastifyInstance) {
         atmos: a.atmos,
         compatible: audioCompatible((req.query as { perfil?: string }).perfil, a.codec),
       })),
-      subtitles: [
-        ...info.subs
-          .filter((s) => s.textual || s.codec === 'hdmv_pgs_subtitle')
-          .map((s) => ({
-            id: `embedded-${s.streamIndex}`,
-            language: s.language,
-            title: s.title,
-            forced: s.forced,
-            codec: s.codec,
-            source: 'embedded' as const,
-          })),
-        ...external.map((s) => ({
-          id: `external-${s.id}`,
-          language: s.language,
-          title: s.external.split(/[\\/]/).pop(),
-          forced: Boolean(s.forced),
-          codec: 'srt',
-          source: 'external' as const,
-        })),
-      ],
+      subtitles: (() => {
+        const storedOffsets = db.prepare('SELECT track_id, offset_ms FROM sub_offsets WHERE file_id = ?').all(fileId) as { track_id: string; offset_ms: number }[];
+        const offsetsMap = new Map(storedOffsets.map((o) => [o.track_id, o.offset_ms]));
+        return [
+          ...info.subs
+            .filter((s) => s.textual || s.codec === 'hdmv_pgs_subtitle')
+            .map((s) => {
+              const tid = `embedded-${s.streamIndex}`;
+              return {
+                id: tid,
+                language: s.language,
+                title: s.title,
+                forced: s.forced,
+                codec: s.codec,
+                source: 'embedded' as const,
+                offsetMs: offsetsMap.get(tid) ?? 0,
+              };
+            }),
+          ...external.map((s) => {
+            const tid = `external-${s.id}`;
+            return {
+              id: tid,
+              language: s.language,
+              title: s.external.split(/[\\/]/).pop(),
+              forced: Boolean(s.forced),
+              codec: 'srt',
+              source: 'external' as const,
+              offsetMs: offsetsMap.get(tid) ?? offsetsMap.get(String(s.id)) ?? 0,
+            };
+          }),
+        ];
+      })(),
     };
   });
 
@@ -781,7 +793,10 @@ export default async function playRoutes(app: FastifyInstance) {
      * que el ajuste de la tele. Se suma al corte de la tubería, que va
      * restado, así que el ajuste final es uno solo.
      */
-    const retardoMs = Math.max(-10_000, Math.min(10_000, Number(consulta.retardo ?? 0) || 0));
+    const storedOffset = (db.prepare('SELECT offset_ms FROM sub_offsets WHERE file_id = ? AND (track_id = ? OR track_id = ?)').get(Number(fileId), id, trackId) as { offset_ms: number } | undefined)?.offset_ms ?? 0;
+    const retardoMs = consulta.retardo !== undefined
+      ? Math.max(-10_000, Math.min(10_000, Number(consulta.retardo) || 0))
+      : storedOffset;
     const ajuste = retardoMs / 1000 - desde;
     reply.header('Content-Type', 'text/vtt; charset=utf-8').header('Cache-Control', 'public, max-age=86400');
 
@@ -889,7 +904,7 @@ export default async function playRoutes(app: FastifyInstance) {
    * sesiones ajenas.
    */
   app.post('/api/play/:fileId/offsets/:trackId', async (req, reply) => {
-    if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'Solo un administrador' });
+    requireUser(req);
     const { fileId, trackId } = req.params as { fileId: string; trackId: string };
     const { offsetMs } = req.body as { offsetMs: number };
     if (offsetMs === 0) clearOffset(Number(fileId), trackId);

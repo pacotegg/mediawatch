@@ -3,7 +3,7 @@ import { readdirSync, statSync } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';
 import { Worker } from 'node:worker_threads';
 import { db, normalize } from '../db.ts';
-import { config, type LibraryConfig } from '../config.ts';
+import { config, DATA_DIR, type LibraryConfig } from '../config.ts';
 import { parseNfo, type NfoData } from './nfo.ts';
 import { indexarExtras } from '../media/extras.ts';
 import { descargarTema } from './themes.ts';
@@ -290,6 +290,24 @@ const stmt = {
   deleteItem: db.prepare('DELETE FROM items WHERE id = ?'),
 };
 
+function subtitulosDescargados(fileId: number) {
+  const dir = join(DATA_DIR, 'subtitles', String(fileId));
+  if (!existsSync(dir)) return [];
+  const out: { language?: string; forced: boolean; path: string; codec: string }[] = [];
+  try {
+    for (const name of readdirSync(dir)) {
+      const ext = extname(name).toLowerCase();
+      if (!SUB_EXT.has(ext)) continue;
+      const lower = name.toLowerCase();
+      const parts = lower.slice(0, lower.length - ext.length).split('.').filter(Boolean);
+      const forced = parts.some((p) => p === 'forced' || p === 'forzado');
+      const code = parts.find((p) => p !== 'forced' && p !== 'forzado' && p !== 'sdh' && p !== 'default');
+      out.push({ language: lang(code), forced, path: join(dir, name), codec: ext.slice(1) });
+    }
+  } catch {}
+  return out;
+}
+
 function saveTracks(fileId: number, nfo: NfoData | null, subs: ReturnType<typeof externalSubs>) {
   stmt.clearTracks.run(fileId);
   stmt.clearSubs.run(fileId);
@@ -314,18 +332,18 @@ function saveTracks(fileId: number, nfo: NfoData | null, subs: ReturnType<typeof
    * habría que transcribir. Además oscilaba: `mediaInfo()` corrige las filas
    * al reproducir y el siguiente escaneo las volvía a pisar.
    *
-   * Si el idioma ya lo cubre un fichero de al lado, se da por hecho que la
-   * entrada del NFO es ese mismo fichero y no una pista del contenedor. Lo
-   * que quede sin `.srt` equivalente sigue apuntándose como antes, para no
-   * perder la información de los miles de ficheros que aún no se han probado
-   * con `ffprobe`.
+   * Si el idioma ya lo cubre un fichero de al lado (o uno descargado en data/subtitles),
+   * se da por hecho que la entrada del NFO es ese mismo fichero y no una pista del
+   * contenedor. Lo que quede sin `.srt` equivalente sigue apuntándose como antes, para no
+   * perder la información de los miles de ficheros que aún no se han probado con `ffprobe`.
    */
-  const idiomasExternos = new Set(subs.map((s) => s.language ?? '?'));
+  const todosSubs = [...subs, ...subtitulosDescargados(fileId)];
+  const idiomasExternos = new Set(todosSubs.map((s) => s.language ?? '?'));
   nfo?.subtitles.forEach((s, i) => {
     if (idiomasExternos.has(lang(s.language) ?? '?')) return;
     stmt.addSub.run(fileId, i, s.codec ?? 'embedded', lang(s.language) ?? null, 0, null);
   });
-  for (const s of subs) {
+  for (const s of todosSubs) {
     stmt.addSub.run(fileId, null, s.codec, s.language ?? null, s.forced ? 1 : 0, s.path);
   }
 }
