@@ -1376,11 +1376,25 @@ private fun Controles(
             }
           },
         )
-        Text(
-          if (duracion > 0) "\u2212" + tiempo(duracion - posicion) else "",
-          color = Color(0xCCFFFFFF),
-          fontSize = 13.sp,
-        )
+        Column(horizontalAlignment = Alignment.End) {
+          Text(
+            if (duracion > 0) "\u2212" + tiempo(duracion - posicion) else "",
+            color = Color(0xCCFFFFFF),
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+          )
+          if (duracion > 0) {
+            val restanteSeg = (duracion - posicion).coerceAtLeast(0.0).toLong()
+            val finMs = System.currentTimeMillis() + restanteSeg * 1000L
+            val cal = java.util.Calendar.getInstance().apply { timeInMillis = finMs }
+            val horaFin = String.format("%02d:%02d", cal.get(java.util.Calendar.HOUR_OF_DAY), cal.get(java.util.Calendar.MINUTE))
+            Text(
+              "Fin $horaFin",
+              color = Color(0x99FFFFFF),
+              fontSize = 10.sp,
+            )
+          }
+        }
       }
     }
   }

@@ -6,6 +6,7 @@ import { stat as statAsync } from 'node:fs/promises';
 import { extname, join, resolve, sep } from 'node:path';
 import { ficheroDelBuzon } from '../media/buzon.ts';
 import { descargar, formatoDeImagen, imagenesDeSaga } from '../scanner/tmdb.ts';
+import { rutaTema, tieneTema } from '../scanner/themes.ts';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { db, normalize } from '../db.ts';
 import { thumbnail } from '../media/images.ts';
@@ -223,8 +224,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
       .get(id, ...cr.params) as any;
     if (!item) return reply.code(404).send({ error: 'No encontrado' });
 
-    const folderPath = item.folder as string | undefined;
-    item.has_theme = folderPath && existsSync(join(folderPath, 'theme.mp3')) ? 1 : 0;
+    item.has_theme = tieneTema(id, item.folder as string | undefined) ? 1 : 0;
 
     for (const k of ['poster', 'fanart', 'clearlogo', 'landscape', 'folder', 'search_title']) delete item[k];
 
@@ -982,9 +982,8 @@ export default async function libraryRoutes(app: FastifyInstance) {
   app.get('/api/items/:id/theme', async (req, reply) => {
     const id = Number((req.params as { id: string }).id);
     const row = db.prepare('SELECT folder FROM items WHERE id = ?').get(id) as { folder: string } | undefined;
-    if (!row?.folder) return reply.code(404).send({ error: 'No encontrado' });
-    const themePath = join(row.folder, 'theme.mp3');
-    if (!existsSync(themePath)) return reply.code(404).send({ error: 'Sin tema' });
+    const themePath = rutaTema(id, row?.folder);
+    if (!themePath) return reply.code(404).send({ error: 'Sin tema' });
     let stat;
     try {
       stat = await statAsync(themePath);

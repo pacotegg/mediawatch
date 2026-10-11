@@ -9,7 +9,8 @@
     "scan": "node src/cli/scan.ts",
     "arte": "node src/cli/completar-arte.ts",
     "personas": "node src/cli/completar-personas.ts",
-    "detalles": "node src/cli/completar-detalles.ts"
+    "detalles": "node src/cli/completar-detalles.ts",
+    "temas": "node src/cli/completar-temas.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",

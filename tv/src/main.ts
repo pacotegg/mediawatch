@@ -3001,6 +3001,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
   };
 
   const mostrar = () => {
+    pintarTiempos(destinoSalto !== null ? destinoSalto : reproductor.tiempo());
     osd.classList.add('visible');
     // Cinco segundos y se va todo, disco incluido; en pausa se queda (el
     // reloj del reproductor no avisa y esto no se vuelve a evaluar).

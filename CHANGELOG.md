@@ -12,6 +12,11 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.49 — 11/10/2026
+
+- Hora de fin en el reproductor: muestra la hora estimada a la que terminará la reproducción en tiempo real («Termina a las HH:MM»), recalculada al pausar o avanzar.
+- Descarga automatizada de sintonías: soporte integrado de temas de cabecera musicales para títulos de la biblioteca (Plex CDN y ThemerrDB) guardados en servidor.
+
 ## 3.48 — 11/10/2026
 
 - Modo Maratón: salto automático configurable de intros y cabeceras en series.

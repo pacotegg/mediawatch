@@ -212,6 +212,12 @@ export default function Player() {
   const isTimeshift = usaHls ? false : info ? info.plan.mode !== 'direct' : true;
   const virtual = (isTimeshift ? offset : 0) + current;
   const duration = info?.duration ?? 0;
+  const finishTime = (() => {
+    if (!duration || duration <= virtual) return null;
+    const remainingSecs = Math.max(0, duration - virtual);
+    const date = new Date(Date.now() + remainingSecs * 1000);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  })();
 
   // Arrancar con la pista guardada, la marcada por defecto o la primera; restaurar subtítulos si se eligieron.
   useEffect(() => {
@@ -613,9 +619,14 @@ export default function Player() {
               <div className="min-w-0 pt-1.5">
                 <div className="truncate text-lg font-semibold text-shadow-hero">{info?.title}</div>
                 {info && (
-                  <div className="mt-0.5 text-[11px] text-mist-400">
-                    {info.plan.mode === 'direct' ? 'Reproducción directa' : info.plan.mode === 'remux' ? 'Remultiplexado' : 'Transcodificando'}
-                    {info.video ? ` · ${info.video.width}×${info.video.height} ${info.video.codec.toUpperCase()}` : ''}
+                  <div className="mt-0.5 text-[11px] text-mist-400 flex flex-wrap items-center gap-x-2">
+                    <span>
+                      {info.plan.mode === 'direct' ? 'Reproducción directa' : info.plan.mode === 'remux' ? 'Remultiplexado' : 'Transcodificando'}
+                      {info.video ? ` · ${info.video.width}×${info.video.height} ${info.video.codec.toUpperCase()}` : ''}
+                    </span>
+                    {finishTime && (
+                      <span className="text-mist-200 font-medium">· Termina a las {finishTime}</span>
+                    )}
                   </div>
                 )}
               </div>
@@ -687,8 +698,13 @@ export default function Player() {
                   />
                 </div>
 
-                <div className="ml-1 shrink-0 font-mono text-[12px] sm:text-[12.5px] text-mist-300 tabular-nums">
-                  {clock(virtual)} <span className="text-mist-600">/ {clock(duration)}</span>
+                <div className="ml-1 shrink-0 font-mono text-[12px] sm:text-[12.5px] text-mist-300 tabular-nums flex items-center gap-2">
+                  <span>{clock(virtual)} <span className="text-mist-600">/ {clock(duration)}</span></span>
+                  {finishTime && (
+                    <span className="hidden sm:inline-flex items-center rounded-md bg-white/10 px-2 py-0.5 text-[11px] font-sans text-mist-200">
+                      Termina {finishTime}
+                    </span>
+                  )}
                 </div>
 
                 <div className="flex-1" />

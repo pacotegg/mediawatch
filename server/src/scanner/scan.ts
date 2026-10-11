@@ -6,6 +6,7 @@ import { db, normalize } from '../db.ts';
 import { config, type LibraryConfig } from '../config.ts';
 import { parseNfo, type NfoData } from './nfo.ts';
 import { indexarExtras } from '../media/extras.ts';
+import { descargarTema } from './themes.ts';
 
 const VIDEO_EXT = new Set(['.mkv', '.mp4', '.avi', '.m4v', '.mov', '.wmv', '.mpg', '.mpeg', '.ts', '.webm']);
 const SUB_EXT = new Set(['.srt', '.ass', '.ssa', '.vtt', '.sub']);
@@ -481,6 +482,7 @@ function scanMovieFolder(libId: number, dir: string, files: Entry[], now: string
   saveGenresAndPeople(item.id, nfo, actorThumbs(dir));
   // Un suelto no tiene carpeta propia: sus vecinos de la raiz no son sus extras.
   if (!suelto) indexarExtras(item.id, dir, title, now);
+  void descargarTema(item.id, null, nfo?.tmdbId, 'movie', clave).catch(() => {});
   return 1;
 }
 
@@ -531,6 +533,7 @@ function scanShowFolder(libId: number, dir: string, files: Entry[], now: string)
   saveRatings(item.id, nfo);
   saveGenresAndPeople(item.id, nfo, actorThumbs(dir));
   indexarExtras(item.id, dir, title, now);
+  void descargarTema(item.id, nfo?.tvdbId, nfo?.tmdbId, 'show', dir).catch(() => {});
 
   const seasonDirs = files.filter((f) => f.isDir && seasonNumber(f.name) !== null);
   let episodes = 0;
