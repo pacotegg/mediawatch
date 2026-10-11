@@ -22,6 +22,7 @@ const PAPELES: { clave: PapelArte; etiqueta: string; proporcion: string }[] = [
   { clave: 'fanart', etiqueta: 'Fondo', proporcion: 'aspect-video' },
   { clave: 'clearlogo', etiqueta: 'Logotipo', proporcion: 'aspect-video' },
   { clave: 'landscape', etiqueta: 'Apaisada', proporcion: 'aspect-video' },
+  { clave: 'discart', etiqueta: 'Disco (CD/Blu-ray)', proporcion: 'aspect-square' },
 ];
 
 export default function SelectorDeArte({
@@ -71,7 +72,15 @@ export default function SelectorDeArte({
     mutationFn: (url: string | null) => api.ponerArte(itemId, papel, url),
     onSuccess: () => {
       setAviso(
-        papel === 'poster' ? 'Carátula cambiada.' : papel === 'fanart' ? 'Fondo cambiado.' : 'Logotipo cambiado.',
+        papel === 'poster'
+          ? 'Carátula cambiada.'
+          : papel === 'fanart'
+          ? 'Fondo cambiado.'
+          : papel === 'clearlogo'
+          ? 'Logotipo cambiado.'
+          : papel === 'discart'
+          ? 'Disco cambiado.'
+          : 'Imagen cambiada.',
       );
       /*
        * El fichero en disco se llama siempre igual (`poster.jpg`…), así que la
@@ -185,7 +194,13 @@ export default function SelectorDeArte({
 
       {lista.length > 0 && (
         <div
-          className={`grid gap-2.5 ${papel === 'poster' ? 'grid-cols-[repeat(auto-fill,minmax(96px,1fr))]' : 'grid-cols-[repeat(auto-fill,minmax(170px,1fr))]'}`}
+          className={`grid gap-2.5 ${
+            papel === 'poster'
+              ? 'grid-cols-[repeat(auto-fill,minmax(96px,1fr))]'
+              : papel === 'discart'
+              ? 'grid-cols-[repeat(auto-fill,minmax(120px,1fr))]'
+              : 'grid-cols-[repeat(auto-fill,minmax(170px,1fr))]'
+          }`}
         >
           {lista.slice(0, 40).map((img) => (
             <button
@@ -195,7 +210,12 @@ export default function SelectorDeArte({
               title={`${img.ancho}×${img.alto}${img.idioma ? ` · ${img.idioma}` : ' · sin texto'}`}
               className={`group relative overflow-hidden rounded-lg bg-ink-800 ring-1 ring-white/10 transition-all hover:ring-white/40 disabled:opacity-50 ${forma}`}
             >
-              <img src={img.vista} alt="" loading="lazy" className="h-full w-full object-cover" />
+              <img
+                src={img.vista}
+                alt=""
+                loading="lazy"
+                className={`h-full w-full ${papel === 'discart' ? 'object-contain p-2' : 'object-cover'}`}
+              />
               <span className="absolute inset-x-0 bottom-0 bg-black/70 px-1 py-0.5 text-[9.5px] text-mist-300 opacity-0 transition-opacity group-hover:opacity-100">
                 {img.ancho}×{img.alto} {img.idioma || 'sin texto'}
               </span>

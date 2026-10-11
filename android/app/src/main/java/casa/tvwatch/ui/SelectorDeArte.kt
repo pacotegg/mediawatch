@@ -127,6 +127,21 @@ fun PantallaSelectorDeArte(
     }
   }
 
+  fun aplicarTodos() {
+    val id = tmdbId ?: return
+    ocupado = true
+    estado = "Aplicando todos los metadatos desde TMDb…"
+    ambito.launch {
+      try {
+        withContext(Dispatchers.IO) { Api.aplicarMetadatos(itemId, id, kind) }
+        alTerminar()
+      } catch (e: Exception) {
+        estado = e.message ?: "No se pudieron aplicar los metadatos."
+        ocupado = false
+      }
+    }
+  }
+
   val lista = imagenes[papel] ?: emptyList()
   val forma = PAPELES.first { it.first == papel }.third
 
@@ -227,6 +242,19 @@ fun PantallaSelectorDeArte(
       Modifier.fillMaxWidth().padding(16.dp),
       horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+      if (tmdbId != null) {
+        Text(
+          "⚡ Aplicar metadatos",
+          color = Color(0xFF15100A),
+          fontSize = 13.sp,
+          fontWeight = FontWeight.SemiBold,
+          modifier = Modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(Realce)
+            .clickable(enabled = !ocupado) { aplicarTodos() }
+            .padding(horizontal = 14.dp, vertical = 9.dp),
+        )
+      }
       Text(
         "Quitar la elegida",
         color = TextoSuave,

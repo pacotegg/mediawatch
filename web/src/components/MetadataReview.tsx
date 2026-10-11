@@ -137,7 +137,25 @@ export function CandidateRow({
 
           {overwriteMode && (
             <div className="mt-3">
-              <div className="mb-2 text-[11.5px] text-mist-500">Qué sustituir (lo marcado se sobrescribe aunque ya tenga datos):</div>
+              <div className="mb-2 flex items-center justify-between text-[11.5px] text-mist-500">
+                <span>Qué sustituir (lo marcado se sobrescribe):</span>
+                <div className="flex gap-2 text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => setFields(ALL_FIELDS.map((f) => f.key))}
+                    className="font-medium text-accent hover:underline underline-offset-2"
+                  >
+                    ⚡ Escrapeo completo (todo)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFields([])}
+                    className="text-mist-500 hover:underline underline-offset-2"
+                  >
+                    Limpiar
+                  </button>
+                </div>
+              </div>
               <div className="flex flex-wrap gap-1.5">
                 {ALL_FIELDS.map((f) => {
                   const active = fields.includes(f.key);

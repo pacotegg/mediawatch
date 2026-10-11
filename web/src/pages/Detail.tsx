@@ -28,8 +28,19 @@ function opcionesDescarga(duracionSegundos?: number | null, bytesOriginal?: numb
   ];
 }
 
-function MetadataFixer({ itemId, item, onClose }: { itemId: number; item: ItemDetail; onClose: () => void }) {
+function MetadataFixer({
+  itemId,
+  item,
+  modoInicial = 'arte',
+  onClose,
+}: {
+  itemId: number;
+  item: ItemDetail;
+  modoInicial?: 'arte' | 'metadatos';
+  onClose: () => void;
+}) {
   const queryClient = useQueryClient();
+  const [pestana, setPestana] = useState<'arte' | 'metadatos'>(modoInicial);
   const { data, isLoading, error } = useQuery({ queryKey: ['enrich-item', itemId], queryFn: () => api.enrichItem(itemId), retry: false });
 
   return (
@@ -49,9 +60,30 @@ function MetadataFixer({ itemId, item, onClose }: { itemId: number; item: ItemDe
       >
         <div className="mb-4 flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-[15px] font-semibold tracking-tight">Corregir metadatos</h2>
-            <p className="mt-1 text-[12.5px] text-mist-500">
-              Comprueba que la película propuesta es la correcta antes de guardar. Solo se sustituye lo que marques.
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setPestana('arte')}
+                className={`rounded-full px-3.5 py-1.5 text-[12.5px] font-medium transition-colors ${
+                  pestana === 'arte' ? 'bg-accent font-semibold text-ink-950' : 'bg-white/8 text-mist-300 hover:bg-white/14'
+                }`}
+              >
+                🎨 Imágenes y Discos
+              </button>
+              <button
+                type="button"
+                onClick={() => setPestana('metadatos')}
+                className={`rounded-full px-3.5 py-1.5 text-[12.5px] font-medium transition-colors ${
+                  pestana === 'metadatos' ? 'bg-accent font-semibold text-ink-950' : 'bg-white/8 text-mist-300 hover:bg-white/14'
+                }`}
+              >
+                🔍 Escrapeo / Metadatos
+              </button>
+            </div>
+            <p className="mt-2 text-[12px] text-mist-500">
+              {pestana === 'arte'
+                ? 'Elige carátulas, fondos, logotipos y discos CD/Blu-ray oficiales o sube los tuyos.'
+                : 'Identifica o busca en TMDb para actualizar sinopsis, valoraciones, géneros y datos.'}
             </p>
           </div>
           <button onClick={onClose} className="shrink-0 rounded-full bg-white/8 px-3 py-1.5 text-[12px] hover:bg-white/14">
@@ -59,31 +91,33 @@ function MetadataFixer({ itemId, item, onClose }: { itemId: number; item: ItemDe
           </button>
         </div>
 
-        {isLoading && <p className="text-[13px] text-mist-500">Buscando en TMDb…</p>}
-        {error && <p className="text-[13px] text-red-400">{(error as Error).message}</p>}
-        {data && (
-          <CandidateRow
-            candidate={data}
-            overwriteMode
-            onDone={() => {
-              queryClient.invalidateQueries({ queryKey: ['item', itemId] });
-              queryClient.invalidateQueries({ queryKey: ['home'] });
-              onClose();
-            }}
-          />
+        {pestana === 'metadatos' && (
+          <>
+            {isLoading && <p className="text-[13px] text-mist-500">Buscando en TMDb…</p>}
+            {error && <p className="text-[13px] text-red-400">{(error as Error).message}</p>}
+            {data && (
+              <CandidateRow
+                candidate={data}
+                overwriteMode
+                onDone={() => {
+                  queryClient.invalidateQueries({ queryKey: ['item', itemId] });
+                  queryClient.invalidateQueries({ queryKey: ['home'] });
+                  onClose();
+                }}
+              />
+            )}
+          </>
         )}
 
-        <SelectorDeArte
-          itemId={itemId}
-          kind={item.kind === 'show' ? 'show' : 'movie'}
-          titulo={item.title}
-          anio={item.year ?? null}
-          // La propuesta recién buscada manda; si aún no ha llegado (o no
-          // encontró nada), se usa el id que ya tenía guardado el título —
-          // así las imágenes aparecen sin depender de que la corrección de
-          // metadatos encuentre nada nuevo.
-          tmdbId={data?.proposal?.tmdbId ?? (item.tmdb_id ? Number(item.tmdb_id) : null)}
-        />
+        {pestana === 'arte' && (
+          <SelectorDeArte
+            itemId={itemId}
+            kind={item.kind === 'show' ? 'show' : 'movie'}
+            titulo={item.title}
+            anio={item.year ?? null}
+            tmdbId={data?.proposal?.tmdbId ?? (item.tmdb_id ? Number(item.tmdb_id) : null)}
+          />
+        )}
       </motion.div>
     </motion.div>
   );
@@ -261,7 +295,7 @@ export default function Detail() {
   const queryClient = useQueryClient();
   const { prefs } = usePreferences();
   const [tint, setTint] = useState('40 40 60');
-  const [fixing, setFixing] = useState(false);
+  const [modalEdicion, setModalEdicion] = useState<'arte' | 'metadatos' | null>(null);
   const [plotAbierta, setPlotAbierta] = useState(false);
   const [numerando, setNumerando] = useState(false);
   const [anime, setAnime] = useState(false);
@@ -386,7 +420,16 @@ export default function Detail() {
 
   return (
     <div className="tinted min-h-screen pb-24" style={{ ['--tint' as string]: tint }}>
-      <AnimatePresence>{fixing && <MetadataFixer itemId={itemId} item={item} onClose={() => setFixing(false)} />}</AnimatePresence>
+      <AnimatePresence>
+        {modalEdicion && (
+          <MetadataFixer
+            itemId={itemId}
+            item={item}
+            modoInicial={modalEdicion}
+            onClose={() => setModalEdicion(null)}
+          />
+        )}
+      </AnimatePresence>
       <AnimatePresence>{numerando && <NumeracionFixer showId={itemId} onClose={() => setNumerando(false)} />}</AnimatePresence>
       <AnimatePresence>{anime && <AnimeFixer itemId={itemId} onClose={() => setAnime(false)} />}</AnimatePresence>
       <div className="relative h-[58vh] min-h-[380px] w-full overflow-hidden">
@@ -597,15 +640,28 @@ export default function Detail() {
               </button>
 
               {me?.is_admin === 1 && (
-                <button
-                  onClick={() => setFixing(true)}
-                  title="Corregir metadatos desde TMDb"
-                  className="glass grid h-10 w-10 place-items-center rounded-full transition-transform duration-200 hover:scale-110 active:scale-95"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                  </svg>
-                </button>
+                <>
+                  <button
+                    onClick={() => setModalEdicion('arte')}
+                    title="Cambiar imágenes: carátula, fondo, logo o disco (CD/Blu-ray)"
+                    className="glass grid h-10 w-10 place-items-center rounded-full transition-transform duration-200 hover:scale-110 active:scale-95"
+                  >
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => setModalEdicion('metadatos')}
+                    title="Identificar / Escrapear metadatos en TMDb"
+                    className="glass grid h-10 w-10 place-items-center rounded-full transition-transform duration-200 hover:scale-110 active:scale-95"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="11" cy="11" r="8" />
+                      <path d="m21 21-4.3-4.3" />
+                    </svg>
+                  </button>
+                </>
               )}
 
               {item.kind === 'movie' && movieFile && (
