@@ -176,6 +176,8 @@ export type InfoReproduccion = {
   skip: RangoSalto[];
   video: { codec: string; width: number; height: number; hdr?: string; profile?: string; fps: number } | null;
   plan: { mode: 'direct' | 'remux' | 'transcode'; reasons?: string[] };
+  savedAudio?: string | null;
+  savedSubtitle?: string | null;
   audio: { id: number; codec: string; language: string | null; channels: number | null; title?: string | null; default?: boolean; compatible?: boolean; atmos?: boolean }[];
   subtitles: { id: string; language: string | null; title?: string | null; forced: boolean; source?: string; codec?: string }[];
 };
@@ -219,6 +221,24 @@ export const api = {
     }),
   /** Lo que hay en el buzón, para poder elegirlo con el mando. */
   buzonArte: () => pedir<{ carpeta: string; imagenes: { nombre: string; bytes: number }[] }>('/api/enrich/arte/buzon'),
+  /** Búsqueda de alternativas en TMDb para escrapeo. */
+  enrichSearch: (query: string, kind: 'movie' | 'show', year?: number | null) =>
+    pedir<{ results: { tmdbId: number; title: string; year?: number | null; overview?: string; posterUrl?: string }[] }>(
+      '/api/enrich/search',
+      { method: 'POST', body: JSON.stringify({ query, kind, year }) },
+    ),
+  /** Sobrescribir metadatos de un título desde una propuesta de TMDb. */
+  enrichApply: (body: { itemId: number; tmdbId: number; kind: 'movie' | 'show'; fields: string[]; overwrite?: boolean }) =>
+    pedir<{ applied: string[]; title: string }>('/api/enrich/apply', { method: 'POST', body: JSON.stringify(body) }),
+  /** Todas las imágenes de TMDb para un título por papeles (poster, fanart, clearlogo, landscape, discart). */
+  enrichImagenes: (kind: 'movie' | 'show', tmdbId: number) =>
+    pedir<Record<string, { url: string; vista: string; idioma: string }[]>>('/api/enrich/imagenes/' + kind + '/' + tmdbId),
+  /** Fijar una imagen oficial de TMDb o soltarla (null). */
+  enrichArte: (body: { itemId: number; papel: string; url?: string | null }) =>
+    pedir<{ papel: string }>('/api/enrich/arte', { method: 'POST', body: JSON.stringify(body) }),
+  /** Fijar una imagen del buzón local. */
+  enrichArteBuzon: (body: { itemId: number; papel: string; nombre: string }) =>
+    pedir<{ papel: string }>('/api/enrich/arte/buzon', { method: 'POST', body: JSON.stringify(body) }),
 
   /** Featurettes, «como se hizo» y demas videos que acompanyan a un titulo. */
   extras: (itemId: number) => pedir<{ extras: Extra[] }>('/api/items/' + itemId + '/extras'),

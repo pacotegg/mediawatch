@@ -628,6 +628,8 @@ body.rend-rapido .lamina img {
   /* Se atenúa la imagen entera en vez de poner una caja detrás del texto: así
      el fotograma sigue viéndose y la sinopsis se lee sobre él. */
   opacity: 0.3;
+  transition: opacity 0.35s ease-out;
+  will-change: opacity;
 }
 
 /* Dos degradados: el horizontal apoya el texto de la izquierda, y el vertical
@@ -1538,6 +1540,8 @@ body.rend-rapido .lamina img {
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.85);
   overflow-y: auto;
   overflow-x: hidden;
+  transform: translateZ(0);
+  will-change: transform;
 }
 
 .panel h3 {
@@ -1706,13 +1710,13 @@ body.rend-rapido * {
 .osd .disco {
   display: block;
   /*
-   * 260 y no 200: la app se dibuja a 1920x1080 lógicos y la tele lo escala a
-   * sus 3840x2160, así que estos 260 son 520 píxeles de verdad en el panel, y
+   * 320 y no 260: la app se dibuja a 1920x1080 lógicos y la tele lo escala a
+   * sus 3840x2160, así que estos 320 son 640 píxeles de verdad en el panel, y
    * se piden 600 en `imagen.disco(id, 600)`: siempre sobra resolución, nunca
-   * se estira. Un 30% más, que a 65 pulgadas se nota, sin comerse el OSD.
+   * se estira. Agranda el disco para darle más presencia sin comerse el OSD.
    */
-  width: 260px;
-  height: 260px;
+  width: 320px;
+  height: 320px;
   margin-bottom: 18px;
   pointer-events: none;
 }
@@ -2341,6 +2345,8 @@ body.viendo-extra .marco * {
 .rejilla-ventana {
   position: relative;
   overflow: hidden;
+  transform: translateZ(0);
+  will-change: transform;
 }
 
 .rejilla {
@@ -2351,7 +2357,7 @@ body.viendo-extra .marco * {
 .rejilla .tarjeta {
   width: 216px;
   margin-right: 24px;
-  margin-bottom: 16px;
+  margin-bottom: 20px;
   font-size: 18px;
 }
 
@@ -2372,7 +2378,7 @@ body.viendo-extra .marco * {
 }
 
 .rejilla .tarjeta .nombre {
-  margin-top: 8px;
+  margin-top: 20px;
   font-size: 19px;
   line-height: 23px;
   max-height: 23px;
