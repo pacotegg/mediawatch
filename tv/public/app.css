@@ -662,8 +662,14 @@ body.rend-rapido .lamina img {
   width: 250px;
   height: 365px;
   perspective: 1200px;
-  pointer-events: none;
+  cursor: pointer;
+  outline: none;
   z-index: 10;
+  transition: transform 0.28s cubic-bezier(0.2, 0, 0.2, 1);
+}
+
+.estuche-3d-tv.enfocado {
+  transform: scale(1.06);
 }
 
 .estuche-caja-tv {
@@ -675,8 +681,14 @@ body.rend-rapido .lamina img {
   border: 1px solid rgba(255, 255, 255, 0.22);
   background: #09090c;
   box-shadow: 0 24px 50px rgba(0, 0, 0, 0.85), -12px 12px 30px rgba(0, 0, 0, 0.6);
-  transform: rotateY(-16deg) rotateX(2deg);
+  transform: rotateY(-14deg) rotateX(2deg);
   transform-style: preserve-3d;
+  transition: border-color 0.25s, box-shadow 0.25s;
+}
+
+.estuche-3d-tv.enfocado .estuche-caja-tv {
+  border-color: rgba(56, 189, 248, 0.8);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.5), 0 30px 65px rgba(0, 0, 0, 0.95);
 }
 
 .estuche-lomo-sup-tv {
@@ -684,10 +696,30 @@ body.rend-rapido .lamina img {
   top: 0;
   left: 0;
   right: 0;
-  height: 18px;
-  background: rgba(14, 165, 233, 0.3);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+  height: 20px;
+  background: rgba(2, 132, 199, 0.7);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   z-index: 5;
+}
+
+.estuche-lomo-sup-tv.es-4k {
+  background: rgba(18, 18, 22, 0.96);
+  border-bottom: 1px solid rgba(226, 183, 85, 0.7);
+}
+
+.estuche-lomo-texto-tv {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: #fff;
+  text-transform: uppercase;
+}
+
+.estuche-lomo-sup-tv.es-4k .estuche-lomo-texto-tv {
+  color: #e2b755;
 }
 
 .estuche-poster-tv {
@@ -700,27 +732,227 @@ body.rend-rapido .lamina img {
 .estuche-brillo-tv {
   position: absolute;
   inset: 0;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.32) 0%, rgba(255, 255, 255, 0.05) 45%, transparent 60%, rgba(0, 0, 0, 0.3) 100%);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.28) 0%, rgba(255, 255, 255, 0.04) 45%, transparent 60%, rgba(0, 0, 0, 0.35) 100%);
   pointer-events: none;
   z-index: 6;
 }
 
-.estuche-disco-tv {
+.estuche-haz-luz-tv {
   position: absolute;
-  top: 35px;
-  right: -55px;
-  width: 290px;
-  height: 290px;
-  border-radius: 50%;
-  object-fit: contain;
-  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.7);
-  z-index: 2;
-  animation: girarDiscoTv 25s linear infinite;
+  inset: -60%;
+  background: linear-gradient(115deg, transparent 40%, rgba(255, 255, 255, 0.4) 50%, transparent 60%);
+  transform: rotate(25deg) translateX(-180%);
+  animation: barridoLuzEstuche 8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  pointer-events: none;
+  z-index: 7;
 }
 
-@keyframes girarDiscoTv {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+@keyframes barridoLuzEstuche {
+  0%, 30% { transform: rotate(25deg) translateX(-180%); }
+  50%, 100% { transform: rotate(25deg) translateX(180%); }
+}
+
+.estuche-disco-tv {
+  position: absolute;
+  top: 42px;
+  right: -46px;
+  width: 275px;
+  height: 275px;
+  border-radius: 50%;
+  object-fit: contain;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.75);
+  z-index: 1;
+  transform: rotate(0deg);
+  transition: right 0.32s cubic-bezier(0.2, 0, 0, 1), transform 0.3s ease-out;
+}
+
+.estuche-3d-tv.enfocado .estuche-disco-tv {
+  right: -76px;
+}
+
+.estuche-hint-tv {
+  position: absolute;
+  bottom: -32px;
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(18, 19, 23, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #fff;
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.2s, transform 0.2s;
+  pointer-events: none;
+  z-index: 12;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.7);
+}
+
+.estuche-3d-tv.enfocado .estuche-hint-tv {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* Visor Edición Coleccionista a Pantalla Completa */
+.capa-coleccionista {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 6, 9, 0.94);
+  backdrop-filter: blur(20px);
+  z-index: 160;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  animation: aparecerColeccionista 0.3s ease-out forwards;
+}
+
+@keyframes aparecerColeccionista {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.coleccionista-escenario {
+  perspective: 1500px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 20px;
+}
+
+.coleccionista-estuche {
+  display: flex;
+  align-items: center;
+  transform-style: preserve-3d;
+  transition: transform 0.18s cubic-bezier(0.1, 0, 0.2, 1);
+  box-shadow: 0 35px 80px rgba(0, 0, 0, 0.85);
+  border-radius: 12px;
+}
+
+.coleccionista-portada {
+  position: relative;
+  width: 360px;
+  height: 520px;
+  border-radius: 10px 0 0 10px;
+  overflow: hidden;
+  background: #09090c;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-right: none;
+}
+
+.coleccionista-portada img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.coleccionista-lomo-bisagra {
+  width: 18px;
+  height: 520px;
+  background: linear-gradient(to right, #111116, #2d2e38, #111116);
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.9);
+}
+
+.coleccionista-bandeja {
+  position: relative;
+  width: 480px;
+  height: 520px;
+  border-radius: 0 10px 10px 0;
+  background: #0f1017;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-left: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.coleccionista-bandeja-fondo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.18;
+  filter: saturate(1.2);
+}
+
+.coleccionista-bandeja-circulo {
+  position: absolute;
+  width: 420px;
+  height: 420px;
+  border-radius: 50%;
+  border: 2px dashed rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.8);
+}
+
+.coleccionista-disco {
+  position: relative;
+  width: 420px;
+  height: 420px;
+  border-radius: 50%;
+  object-fit: contain;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.85);
+  transform: rotate(0deg);
+  z-index: 3;
+}
+
+.coleccionista-pivote {
+  position: absolute;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #2a2b36 0%, #101118 70%);
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
+  z-index: 5;
+}
+
+.coleccionista-info {
+  margin-top: 34px;
+  text-align: center;
+}
+
+.coleccionista-titulo {
+  font-size: 28px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 8px;
+}
+
+.coleccionista-chips {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.coleccionista-chip {
+  padding: 4px 14px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #e5e7eb;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.coleccionista-chip.dorado {
+  background: rgba(226, 183, 85, 0.18);
+  border-color: rgba(226, 183, 85, 0.6);
+  color: #e2b755;
+}
+
+.coleccionista-ayuda {
+  font-size: 15px;
+  color: var(--texto-ter);
+  font-weight: 500;
 }
 
 .ficha-logo {

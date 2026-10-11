@@ -1605,13 +1605,18 @@ async function pantallaFicha(id: number) {
     '<div data-donde-ver></div>' +
     '</div>' +
     (ajustes().estuche3D && ficha.has_poster
-      ? '<div class="estuche-3d-tv">' +
+      ? '<div class="estuche-3d-tv" data-nav data-estuche tabindex="0" role="button" aria-label="Ver edición física">' +
         (ficha.has_discart ? '<img class="estuche-disco-tv" src="' + imagen.disco(ficha.id, 600) + '" alt="">' : '') +
         '<div class="estuche-caja-tv">' +
-        '<div class="estuche-lomo-sup-tv"></div>' +
+        '<div class="estuche-lomo-sup-tv' + ((ficha.tags || []).indexOf('4K') >= 0 ? ' es-4k' : '') + '">' +
+        '<span class="estuche-lomo-texto-tv">' + ((ficha.tags || []).indexOf('4K') >= 0 ? '4K ULTRA HD' : 'Blu-ray') + '</span>' +
+        '</div>' +
         '<img class="estuche-poster-tv" src="' + imagen.poster(ficha.id, 500) + '" alt="">' +
         '<div class="estuche-brillo-tv"></div>' +
-        '</div></div>'
+        '<div class="estuche-haz-luz-tv"></div>' +
+        '</div>' +
+        '<div class="estuche-hint-tv">Edición física · Enter</div>' +
+        '</div>'
       : '') +
     '</div>';
 
@@ -1717,6 +1722,13 @@ async function pantallaFicha(id: number) {
             .catch((e) => aviso((e as Error).message || 'No se pudo eliminar'));
         },
       );
+    });
+  }
+
+  const bEstuche = marco.querySelector<HTMLElement>('[data-estuche]');
+  if (bEstuche) {
+    bEstuche.addEventListener('click', () => {
+      dialogoEdicionColeccionista(ficha);
     });
   }
 
@@ -2435,6 +2447,93 @@ function dialogoResena(autor: string, fuente: string, contenido: string) {
   alPulsar((tecla) => {
     if (tecla === TECLA.ABAJO) { panel.scrollTop += 80; return true; }
     if (tecla === TECLA.ARRIBA) { panel.scrollTop -= 80; return true; }
+    if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE || tecla === TECLA.ENTRAR) {
+      cerrar();
+      return true;
+    }
+    return true;
+  });
+}
+
+/** Modal inmersivo a pantalla completa para admirar la edición física coleccionista en la TV. */
+function dialogoEdicionColeccionista(ficha: Ficha) {
+  const teclasAntes = manejadorActual();
+  const focoAntes = actual();
+
+  let rotacionY = -8;
+  const es4k = (ficha.tags || []).indexOf('4K') >= 0;
+  const chips: string[] = [];
+  chips.push(es4k ? '4K ULTRA HD' : 'BLU-RAY 1080P');
+  const hdrTag = (ficha.tags || []).find((t) => t.indexOf('HDR') === 0 || t === 'DV');
+  if (hdrTag) chips.push(hdrTag);
+  const audioTag = (ficha.tags || []).find((t) => t === 'Atmos' || t === 'DTS-HD' || t === 'TrueHD' || t === '5.1' || t === '7.1');
+  if (audioTag) chips.push(audioTag);
+  if (ficha.runtime) {
+    const horas = Math.floor(ficha.runtime / 60);
+    const mins = Math.round(ficha.runtime % 60);
+    chips.push(horas > 0 ? horas + 'h ' + mins + 'm' : mins + 'm');
+  }
+
+  const capa = document.createElement('div');
+  capa.className = 'capa capa-coleccionista';
+  capa.innerHTML =
+    '<div class="coleccionista-escenario">' +
+    '<div class="coleccionista-estuche" style="transform: rotateY(' + rotacionY + 'deg) rotateX(2deg);">' +
+    // Portada izquierda
+    '<div class="coleccionista-portada">' +
+    '<div class="estuche-lomo-sup-tv' + (es4k ? ' es-4k' : '') + '" style="height: 26px;">' +
+    '<span class="estuche-lomo-texto-tv" style="font-size: 11px;">' + (es4k ? '4K ULTRA HD' : 'Blu-ray') + '</span>' +
+    '</div>' +
+    '<img src="' + imagen.poster(ficha.id, 1000) + '" alt="' + esc(ficha.title) + '">' +
+    '<div class="estuche-brillo-tv"></div>' +
+    '<div class="estuche-haz-luz-tv"></div>' +
+    '</div>' +
+    // Bisagra central
+    '<div class="coleccionista-lomo-bisagra"></div>' +
+    // Bandeja derecha con disco
+    '<div class="coleccionista-bandeja">' +
+    (ficha.has_fanart ? '<img class="coleccionista-bandeja-fondo" src="' + imagen.fondo(ficha.id, 1280) + '" alt="">' : '') +
+    '<div class="coleccionista-bandeja-circulo"></div>' +
+    (ficha.has_discart
+      ? '<img class="coleccionista-disco" src="' + imagen.disco(ficha.id, 800) + '" alt="Disco ' + esc(ficha.title) + '">'
+      : '<img class="coleccionista-disco" src="' + imagen.poster(ficha.id, 800) + '" style="border-radius:50%; object-fit:cover;" alt="Disco">') +
+    '<div class="coleccionista-pivote"></div>' +
+    '</div>' +
+    '</div>' +
+    '</div>' +
+    '<div class="coleccionista-info">' +
+    '<div class="coleccionista-titulo">' + esc(ficha.title) + '</div>' +
+    '<div class="coleccionista-chips">' +
+    chips.map((c) => '<span class="coleccionista-chip' + (c.indexOf('4K') >= 0 ? ' dorado' : '') + '">' + esc(c) + '</span>').join('') +
+    '</div>' +
+    '<div class="coleccionista-ayuda">◀ ▶ Inclinar perspectiva 3D · Enter o Volver para cerrar</div>' +
+    '</div>';
+
+  marco.appendChild(capa);
+
+  const estuche = capa.querySelector<HTMLElement>('.coleccionista-estuche')!;
+
+  const actualizarPerspectiva = () => {
+    estuche.style.transform = 'rotateY(' + rotacionY + 'deg) rotateX(2deg)';
+  };
+
+  const cerrar = () => {
+    if (capa.parentElement) capa.parentElement.removeChild(capa);
+    alPulsar(teclasAntes);
+    if (focoAntes) enfocar(focoAntes);
+  };
+
+  alPulsar((tecla) => {
+    if (tecla === TECLA.IZQUIERDA) {
+      rotacionY = Math.max(-28, rotacionY - 5);
+      actualizarPerspectiva();
+      return true;
+    }
+    if (tecla === TECLA.DERECHA) {
+      rotacionY = Math.min(28, rotacionY + 5);
+      actualizarPerspectiva();
+      return true;
+    }
     if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE || tecla === TECLA.ENTRAR) {
       cerrar();
       return true;

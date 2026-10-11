@@ -35,11 +35,25 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.border
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.offset
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
+import android.view.KeyEvent
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -174,13 +188,16 @@ fun FichaTele(
     Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to Fondo, 0.5f to Color(0xCC09090C), 1f to Color(0x2209090C))))
     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.4f to Color.Transparent, 1f to Fondo)))
 
+    var mostrarColeccionista by remember { mutableStateOf(false) }
+    val es4k = remember(f) { f.files.any { (it.width ?: 0) >= 3800 || (it.height ?: 0) >= 2000 } }
+
     if (Ajustes.estuche3D && f.tienePoster == 1) {
       Box(
         Modifier
           .align(Alignment.TopEnd)
           .padding(top = 56.dp, end = AireTele.lado)
       ) {
-        Estuche3DTele(f.id, f.tieneDisco == 1)
+        Estuche3DTele(f.id, f.tieneDisco == 1, es4k = es4k, alAbrir = { mostrarColeccionista = true })
       }
     }
 
@@ -427,6 +444,14 @@ fun FichaTele(
         }
       )
     }
+
+    if (mostrarColeccionista) {
+      ModalColeccionistaTele(
+        ficha = f,
+        es4k = es4k,
+        alCerrar = { mostrarColeccionista = false },
+      )
+    }
   }
 }
 
@@ -548,75 +573,402 @@ private fun PanelResenas(resenas: List<Resena>, alCerrar: () -> Unit) {
 }
 
 @Composable
-private fun Estuche3DTele(itemId: Int, tieneDisco: Boolean) {
-  val transicion = rememberInfiniteTransition(label = "giro")
-  val angulo by transicion.animateFloat(
-    initialValue = 0f,
-    targetValue = 360f,
+private fun Estuche3DTele(
+  itemId: Int,
+  tieneDisco: Boolean,
+  es4k: Boolean = false,
+  alAbrir: () -> Unit,
+) {
+  var enfocado by remember { mutableStateOf(false) }
+
+  val transicionInf = rememberInfiniteTransition(label = "brillo")
+  val desplazamientoBrillo by transicionInf.animateFloat(
+    initialValue = -1.5f,
+    targetValue = 2.5f,
     animationSpec = infiniteRepeatable(
-      animation = tween(25000, easing = LinearEasing),
+      animation = tween(6500, easing = LinearEasing),
+      repeatMode = RepeatMode.Restart,
     ),
-    label = "angulo",
+    label = "desplazamientoBrillo",
   )
 
-  Box(
-    Modifier
-      .width(320.dp)
-      .height(370.dp)
-      .graphicsLayer {
-        cameraDistance = 18f * density
-      },
-    contentAlignment = Alignment.CenterStart,
+  val escalaAnimada by animateFloatAsState(
+    targetValue = if (enfocado) 1.07f else 1f,
+    animationSpec = spring(dampingRatio = 0.8f, stiffness = 300f),
+    label = "escala",
+  )
+
+  val separacionDisco by animateDpAsState(
+    targetValue = if (enfocado) 65.dp else 42.dp,
+    animationSpec = spring(dampingRatio = 0.8f, stiffness = 300f),
+    label = "separacionDisco",
+  )
+
+  Column(
+    horizontalAlignment = Alignment.CenterHorizontally,
   ) {
-    if (tieneDisco) {
+    Box(
+      Modifier
+        .width(320.dp)
+        .height(370.dp)
+        .graphicsLayer {
+          scaleX = escalaAnimada
+          scaleY = escalaAnimada
+          cameraDistance = 18f * density
+        }
+        .enfocable(
+          RoundedCornerShape(12.dp),
+          escala = 1.0f,
+          aro = if (es4k) Color(0xFFE2B755) else Color(0xFF38BDF8),
+          alFoco = { enfocado = it },
+        ) { alAbrir() },
+      contentAlignment = Alignment.CenterStart,
+    ) {
+      if (tieneDisco) {
+        Box(
+          Modifier
+            .size(280.dp)
+            .align(Alignment.CenterStart)
+            .offset(x = separacionDisco)
+            .shadow(20.dp, CircleShape)
+        ) {
+          Imagen(Api.imagen(itemId, "discart", 600), "Disco", Modifier.fillMaxSize().clip(CircleShape), escala = ContentScale.Fit)
+        }
+      }
+
       Box(
         Modifier
-          .size(280.dp)
-          .align(Alignment.CenterEnd)
+          .width(245.dp)
+          .height(360.dp)
           .graphicsLayer {
-            rotationZ = angulo
+            rotationY = -14f
+            rotationX = 2f
           }
-          .shadow(20.dp, CircleShape)
+          .shadow(24.dp, RoundedCornerShape(8.dp))
+          .clip(RoundedCornerShape(8.dp))
+          .background(Color(0xFF09090C))
+          .border(
+            if (enfocado) 2.dp else 1.dp,
+            if (enfocado) (if (es4k) Color(0xFFE2B755) else Color(0xFF38BDF8)) else Color(0x38FFFFFF),
+            RoundedCornerShape(8.dp),
+          ),
       ) {
-        Imagen(Api.imagen(itemId, "discart", 600), "Disco", Modifier.fillMaxSize().clip(CircleShape), escala = ContentScale.Fit)
+        Imagen(Api.imagen(itemId, "poster", 500), "Póster", Modifier.fillMaxSize(), escala = ContentScale.Crop)
+
+        // Banda superior Blu-ray / 4K UHD
+        Box(
+          Modifier
+            .fillMaxWidth()
+            .height(18.dp)
+            .background(if (es4k) Color(0xEE111116) else Color(0x770284C7))
+            .border(0.6.dp, if (es4k) Color(0x88E2B755) else Color(0x33FFFFFF))
+            .align(Alignment.TopCenter),
+          contentAlignment = Alignment.Center,
+        ) {
+          Text(
+            if (es4k) "4K ULTRA HD" else "Blu-ray",
+            color = if (es4k) Color(0xFFE2B755) else Color.White,
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp,
+          )
+        }
+
+        // Reflejo holográfico dinámico (haz de luz que recorre suavemente la carátula)
+        Box(
+          Modifier
+            .fillMaxSize()
+            .background(
+              Brush.linearGradient(
+                (desplazamientoBrillo - 0.4f) to Color.Transparent,
+                desplazamientoBrillo to Color(0x35FFFFFF),
+                (desplazamientoBrillo + 0.4f) to Color.Transparent,
+              ),
+            ),
+        )
       }
     }
 
-    Box(
-      Modifier
-        .width(245.dp)
-        .height(360.dp)
-        .graphicsLayer {
-          rotationY = -16f
-          rotationX = 2f
-        }
-        .shadow(24.dp, RoundedCornerShape(8.dp))
-        .clip(RoundedCornerShape(8.dp))
-        .background(Color(0xFF09090C))
-        .border(1.dp, Color(0x38FFFFFF), RoundedCornerShape(8.dp)),
-    ) {
-      Imagen(Api.imagen(itemId, "poster", 500), "Póster", Modifier.fillMaxSize(), escala = ContentScale.Crop)
-      // Banda superior Blu-ray
-      Box(
-        Modifier
-          .fillMaxWidth()
-          .height(18.dp)
-          .background(Color(0x550284C7))
-          .border(0.6.dp, Color(0x33FFFFFF))
-          .align(Alignment.TopCenter),
+    if (enfocado) {
+      Spacer(Modifier.height(8.dp))
+      Text(
+        "Edición física · Enter",
+        color = Color(0xDDFFFFFF),
+        fontSize = 12.sp,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier
+          .clip(RoundedCornerShape(99.dp))
+          .background(Color(0xCC181A20))
+          .border(0.5.dp, Color(0x44FFFFFF), RoundedCornerShape(99.dp))
+          .padding(horizontal = 10.dp, vertical = 4.dp),
       )
-      // Brillo diagonal
-      Box(
-        Modifier
-          .fillMaxSize()
-          .background(
-            Brush.linearGradient(
-              0f to Color(0x38FFFFFF),
-              0.45f to Color(0x08FFFFFF),
-              0.6f to Color.Transparent,
-              1f to Color(0x35000000),
-            ),
-          ),
+    }
+  }
+}
+
+/**
+ * Modal inmersivo a pantalla completa para Google TV que expone la edición física / Steelbook.
+ */
+@Composable
+private fun ModalColeccionistaTele(
+  ficha: Ficha,
+  es4k: Boolean,
+  alCerrar: () -> Unit,
+) {
+  androidx.activity.compose.BackHandler { alCerrar() }
+
+  var anguloY by remember { mutableFloatStateOf(-8f) }
+  val focoModal = remember { FocusRequester() }
+  LaunchedEffect(Unit) { runCatching { focoModal.requestFocus() } }
+
+  val anguloYAnimado by animateFloatAsState(
+    targetValue = anguloY,
+    animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
+    label = "anguloY",
+  )
+
+  val resolucionTexto = if (es4k) "4K ULTRA HD" else "BLU-RAY 1080P"
+  val hdrTexto = ficha.files.firstOrNull()?.hdr?.takeIf { it.isNotBlank() }
+
+  Box(
+    Modifier
+      .fillMaxSize()
+      .background(Color(0xF406070A))
+      .focusRequester(focoModal)
+      .focusable()
+      .onKeyEvent { evt ->
+        if (evt.type == KeyEventType.KeyDown) {
+          when (evt.nativeKeyEvent.keyCode) {
+            KeyEvent.KEYCODE_DPAD_LEFT -> {
+              anguloY = (anguloY - 5f).coerceIn(-28f, 28f)
+              true
+            }
+            KeyEvent.KEYCODE_DPAD_RIGHT -> {
+              anguloY = (anguloY + 5f).coerceIn(-28f, 28f)
+              true
+            }
+            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_BACK -> {
+              alCerrar()
+              true
+            }
+            else -> false
+          }
+        } else false
+      },
+    contentAlignment = Alignment.Center,
+  ) {
+    if (ficha.tieneFondo == 1) {
+      Imagen(
+        Api.imagen(ficha.id, "fanart", 1280),
+        null,
+        Modifier.fillMaxSize().alpha(0.12f),
+        escala = ContentScale.Crop,
+      )
+    }
+
+    Column(
+      horizontalAlignment = Alignment.CenterHorizontally,
+      verticalArrangement = Arrangement.Center,
+      modifier = Modifier.padding(24.dp),
+    ) {
+      // Escenario 3D
+      Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+          .graphicsLayer {
+            rotationY = anguloYAnimado
+            rotationX = 2f
+            cameraDistance = 22f * density
+          }
+          .shadow(40.dp, RoundedCornerShape(12.dp)),
+      ) {
+        // Portada izquierda
+        Box(
+          Modifier
+            .size(width = 330.dp, height = 480.dp)
+            .clip(RoundedCornerShape(topStart = 10.dp, bottomStart = 10.dp))
+            .background(Color(0xFF09090C))
+            .border(1.dp, Color(0x38FFFFFF), RoundedCornerShape(topStart = 10.dp, bottomStart = 10.dp)),
+        ) {
+          Imagen(
+            Api.imagen(ficha.id, "poster", 1000),
+            ficha.title,
+            Modifier.fillMaxSize(),
+            escala = ContentScale.Crop,
+          )
+
+          // Header 4K / Blu-ray
+          Box(
+            Modifier
+              .fillMaxWidth()
+              .height(24.dp)
+              .background(if (es4k) Color(0xEE111116) else Color(0x880284C7))
+              .border(0.6.dp, if (es4k) Color(0x88E2B755) else Color(0x44FFFFFF))
+              .align(Alignment.TopCenter),
+            contentAlignment = Alignment.Center,
+          ) {
+            Text(
+              if (es4k) "4K ULTRA HD" else "Blu-ray",
+              color = if (es4k) Color(0xFFE2B755) else Color.White,
+              fontSize = 11.sp,
+              fontWeight = FontWeight.Bold,
+              letterSpacing = 1.sp,
+            )
+          }
+
+          // Brillo reflectante
+          Box(
+            Modifier
+              .fillMaxSize()
+              .background(
+                Brush.linearGradient(
+                  0f to Color(0x35FFFFFF),
+                  0.45f to Color(0x06FFFFFF),
+                  0.6f to Color.Transparent,
+                  1f to Color(0x40000000),
+                ),
+              ),
+          )
+        }
+
+        // Bisagra central
+        Box(
+          Modifier
+            .size(width = 16.dp, height = 480.dp)
+            .background(
+              Brush.horizontalGradient(
+                listOf(Color(0xFF111116), Color(0xFF2D2E38), Color(0xFF111116)),
+              ),
+            )
+            .border(0.5.dp, Color(0x30FFFFFF)),
+        )
+
+        // Bandeja derecha con disco
+        Box(
+          Modifier
+            .size(width = 440.dp, height = 480.dp)
+            .clip(RoundedCornerShape(topEnd = 10.dp, bottomEnd = 10.dp))
+            .background(Color(0xFF0E0F16))
+            .border(1.dp, Color(0x38FFFFFF), RoundedCornerShape(topEnd = 10.dp, bottomEnd = 10.dp)),
+          contentAlignment = Alignment.Center,
+        ) {
+          if (ficha.tieneFondo == 1) {
+            Imagen(
+              Api.imagen(ficha.id, "fanart", 1280),
+              null,
+              Modifier.fillMaxSize().alpha(0.20f),
+              escala = ContentScale.Crop,
+            )
+          }
+
+          // Circunferencia de la bandeja
+          Box(
+            Modifier
+              .size(390.dp)
+              .clip(CircleShape)
+              .border(1.dp, Color(0x18FFFFFF), CircleShape),
+          )
+
+          // Disco a gran resolución orientado derecho (0°)
+          if (ficha.tieneDisco == 1) {
+            Imagen(
+              Api.imagen(ficha.id, "discart", 800),
+              "Disco",
+              Modifier
+                .size(390.dp)
+                .clip(CircleShape)
+                .shadow(16.dp, CircleShape),
+              escala = ContentScale.Fit,
+            )
+          } else {
+            Imagen(
+              Api.imagen(ficha.id, "poster", 800),
+              "Disco",
+              Modifier
+                .size(390.dp)
+                .clip(CircleShape)
+                .shadow(16.dp, CircleShape),
+              escala = ContentScale.Crop,
+            )
+          }
+
+          // Pivote central / hub
+          Box(
+            Modifier
+              .size(30.dp)
+              .clip(CircleShape)
+              .background(Color(0xFF1B1C24))
+              .border(1.5.dp, Color(0x55FFFFFF), CircleShape),
+          )
+        }
+      }
+
+      Spacer(Modifier.height(28.dp))
+
+      Text(
+        ficha.title,
+        color = Color.White,
+        fontSize = 26.sp,
+        fontWeight = FontWeight.Bold,
+      )
+
+      Spacer(Modifier.height(10.dp))
+
+      Row(
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
+        Text(
+          resolucionTexto,
+          color = if (es4k) Color(0xFFE2B755) else Color.White,
+          fontSize = 13.sp,
+          fontWeight = FontWeight.Bold,
+          modifier = Modifier
+            .background(
+              if (es4k) Color(0x33E2B755) else Color(0x22FFFFFF),
+              RoundedCornerShape(6.dp),
+            )
+            .border(
+              0.8.dp,
+              if (es4k) Color(0x88E2B755) else Color(0x44FFFFFF),
+              RoundedCornerShape(6.dp),
+            )
+            .padding(horizontal = 12.dp, vertical = 5.dp),
+        )
+
+        if (hdrTexto != null) {
+          Text(
+            hdrTexto,
+            color = Color(0xFFE2E8F0),
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier
+              .background(Color(0x22FFFFFF), RoundedCornerShape(6.dp))
+              .border(0.8.dp, Color(0x33FFFFFF), RoundedCornerShape(6.dp))
+              .padding(horizontal = 12.dp, vertical = 5.dp),
+          )
+        }
+
+        if (ficha.runtime != null && ficha.runtime > 0) {
+          Text(
+            duracionLegible(ficha.runtime),
+            color = Color(0xFF94A3B8),
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier
+              .background(Color(0x18FFFFFF), RoundedCornerShape(6.dp))
+              .border(0.8.dp, Color(0x22FFFFFF), RoundedCornerShape(6.dp))
+              .padding(horizontal = 12.dp, vertical = 5.dp),
+          )
+        }
+      }
+
+      Spacer(Modifier.height(14.dp))
+
+      Text(
+        "◀ ▶ Inclinar perspectiva 3D · Enter o Atrás para volver",
+        color = Color(0x88FFFFFF),
+        fontSize = 14.sp,
       )
     }
   }

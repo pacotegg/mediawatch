@@ -12,6 +12,12 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.51 — 11/10/2026
+
+- Estuche 3D interactivo en TV y Google TV: disco estático a 0° siempre derecho y legible (sin voltearse de cabeza) con destello holográfico iridiscente.
+- Navegación espacial D-pad en Smart TV y Google TV: salto directo a la carátula 3D desde la fila de acciones con realce y deslizamiento dinámico.
+- Visor «Edición Coleccionista» a pantalla completa: apertura inmersiva tipo Steelbook con carátula en alta definición, disco gigante en bandeja e inclinación 3D en tiempo real con las flechas del mando.
+
 ## 3.50 — 11/10/2026
 
 - Estuche 3D interactivo coleccionista: escaparate 3D de alta definición, rotación táctil libre en tiempo real, disco extraíble holgado sin cortes en pantalla y distinción 4K UHD / Blu-ray.
