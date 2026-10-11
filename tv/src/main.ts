@@ -634,9 +634,12 @@ function montarHeroe(heroes: Titulo[]) {
         '<div data-heroe-cabecera></div><div class="heroe-meta" data-heroe-meta></div>' +
         '<div class="heroe-sinopsis" data-heroe-sinopsis></div>' +
         '<button class="boton primario" data-nav data-heroe-ver>Ver ficha</button>' +
+        '<button class="boton" data-nav data-heroe-anterior>Anterior</button>' +
         '<button class="boton" data-nav data-heroe-siguiente>Siguiente</button>';
       const ver = caja.querySelector<HTMLElement>('[data-heroe-ver]');
       if (ver) ver.addEventListener('click', () => void pantallaFicha(heroes[indice].id));
+      const ant = caja.querySelector<HTMLElement>('[data-heroe-anterior]');
+      if (ant) ant.addEventListener('click', () => cambiar((indice - 1 + heroes.length) % heroes.length));
       const sig = caja.querySelector<HTMLElement>('[data-heroe-siguiente]');
       if (sig) sig.addEventListener('click', () => cambiar((indice + 1) % heroes.length));
       indexar();

@@ -12,6 +12,16 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.48 — 11/10/2026
+
+- Modo Maratón: salto automático configurable de intros y cabeceras en series.
+- Música de cabecera: reproducción ambiental sutil de la banda sonora al abrir la ficha de una película o serie (desactivable en Ajustes).
+- Modos de audio dinámicos y capítulos visuales: selector en caliente en el reproductor (Normal, Modo noche y Realce de diálogos) junto a navegación por capítulos con miniaturas.
+- Estuche 3D interactivo: visualización de la caja física en 3D con disco extraíble (4K UHD, Blu-ray, DVD) animado según el formato original del título.
+- Mando virtual para Smart TV: control remoto interactivo con cruceta direccional y envío de texto directo desde la app Android a la tele del salón.
+- Búsqueda por diálogo: localización de películas y episodios por frases exactas habladas en sus subtítulos con salto al segundo exacto.
+- Desplazamiento en Héroe: navegación táctil fluida hacia delante y atrás en el carrusel de portada.
+
 ## 3.47 — 10/10/2026
 
 - Sagas y colecciones completas en la ficha: carrusel interactivo con las películas de la misma saga (en orden cronológico) para saltar de una a otra al instante.

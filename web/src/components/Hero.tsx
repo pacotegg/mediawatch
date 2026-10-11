@@ -38,8 +38,31 @@ export default function Hero({ items }: { items: ItemSummary[] }) {
     };
   }, [item?.id]);
 
+  const [touchStart, setTouchStart] = useState<number | null>(null);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchStart(e.touches[0].clientX);
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStart === null) return;
+    const diff = touchStart - e.changedTouches[0].clientX;
+    if (Math.abs(diff) > 50) {
+      if (diff > 0) {
+        setIndex((i) => (i + 1) % items.length);
+      } else {
+        setIndex((i) => (i - 1 + items.length) % items.length);
+      }
+    }
+    setTouchStart(null);
+  };
+
   return (
-    <div className="relative h-[62vh] min-h-[420px] w-full overflow-hidden">
+    <div
+      className="group/hero relative h-[62vh] min-h-[420px] w-full overflow-hidden"
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+    >
       <AnimatePresence mode="sync">
         <motion.div
           key={item.id}
@@ -121,16 +144,36 @@ export default function Hero({ items }: { items: ItemSummary[] }) {
       </div>
 
       {items.length > 1 && (
-        <div className="absolute right-8 bottom-14 hidden gap-1.5 sm:flex">
-          {items.map((it, i) => (
-            <button
-              key={it.id}
-              onClick={() => setIndex(i)}
-              aria-label={`Ir a ${it.title}`}
-              className={`h-1 rounded-full transition-all duration-300 ${i === index ? 'w-7 bg-mist-100' : 'w-3 bg-white/30 hover:bg-white/50'}`}
-            />
-          ))}
-        </div>
+        <>
+          <button
+            onClick={() => setIndex((i) => (i - 1 + items.length) % items.length)}
+            aria-label="Película anterior"
+            className="absolute left-4 top-1/2 -translate-y-1/2 z-10 hidden sm:flex h-11 w-11 items-center justify-center rounded-full bg-ink-950/40 text-mist-100 backdrop-blur-md transition-all hover:bg-ink-950/70 hover:scale-110 active:scale-95 opacity-0 group-hover/hero:opacity-100 focus:opacity-100 border border-white/10"
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+          </button>
+          <button
+            onClick={() => setIndex((i) => (i + 1) % items.length)}
+            aria-label="Película siguiente"
+            className="absolute right-4 top-1/2 -translate-y-1/2 z-10 hidden sm:flex h-11 w-11 items-center justify-center rounded-full bg-ink-950/40 text-mist-100 backdrop-blur-md transition-all hover:bg-ink-950/70 hover:scale-110 active:scale-95 opacity-0 group-hover/hero:opacity-100 focus:opacity-100 border border-white/10"
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+          </button>
+          <div className="absolute right-8 bottom-14 hidden gap-1.5 sm:flex">
+            {items.map((it, i) => (
+              <button
+                key={it.id}
+                onClick={() => setIndex(i)}
+                aria-label={`Ir a ${it.title}`}
+                className={`h-1 rounded-full transition-all duration-300 ${i === index ? 'w-7 bg-mist-100' : 'w-3 bg-white/30 hover:bg-white/50'}`}
+              />
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
