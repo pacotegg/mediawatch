@@ -148,7 +148,67 @@ export default function Player() {
   const [syncing, setSyncing] = useState(false);
   const [syncNote, setSyncNote] = useState('');
 
-  const { data: info } = useQuery<PlayInfo>({ queryKey: ['play', fileId], queryFn: () => api.playInfo(fileId), staleTime: Infinity });
+  const { data: info, refetch: refetchInfo } = useQuery<PlayInfo>({ queryKey: ['play', fileId], queryFn: () => api.playInfo(fileId), staleTime: Infinity });
+  interface CandidatoSubtitulo {
+    id: string;
+    provider: string;
+    providerId: number;
+    language: string;
+    release: string;
+    downloads: number;
+    rating: number;
+    forced: boolean;
+    hearingImpaired: boolean;
+    comment: string;
+  }
+  const [modalCandidatos, setModalCandidatos] = useState(false);
+  const [candidatos, setCandidatos] = useState<CandidatoSubtitulo[]>([]);
+  const [descargandoId, setDescargandoId] = useState<string | null>(null);
+  const [buscandoSubs, setBuscandoSubs] = useState(false);
+
+  const buscarSubtitulos = async () => {
+    setBuscandoSubs(true);
+    setModalCandidatos(true);
+    setCandidatos([]);
+    try {
+      const res = await api.post<{ ok: boolean; candidates: CandidatoSubtitulo[] }>('/api/subtitles/search', {
+        fileId,
+        languages: 'es,en',
+      });
+      if (res.ok && res.candidates) {
+        setCandidatos(res.candidates);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setBuscandoSubs(false);
+    }
+  };
+
+  const descargarCandidato = async (c: CandidatoSubtitulo) => {
+    setDescargandoId(c.id);
+    try {
+      const res = await api.post<{ ok: boolean; trackId?: string }>('/api/subtitles/download', {
+        fileId,
+        provider: c.provider,
+        subId: c.providerId,
+        language: c.language,
+        release: c.release,
+        forced: c.forced,
+      });
+      if (res.ok) {
+        await refetchInfo();
+        if (res.trackId) {
+          setSubtitle(res.trackId);
+        }
+        setModalCandidatos(false);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setDescargandoId(null);
+    }
+  };
   // Quién mira: la medición automática de subtítulos se guarda para todos, así que es cosa del administrador.
   const { data: yo } = useQuery({ queryKey: ['me'], queryFn: api.me, staleTime: Infinity });
 
@@ -844,6 +904,16 @@ export default function Player() {
                         {syncNote && <div className="px-3 pt-1 pb-2 text-[11px] leading-relaxed text-mist-500">{syncNote}</div>}
                       </div>
                     )}
+
+                    <div className="mt-2 border-t border-white/8 pt-2">
+                      <button
+                        onClick={buscarSubtitulos}
+                        disabled={buscandoSubs}
+                        className="w-full rounded-xl px-3 py-2 text-left text-[13px] text-accent hover:bg-white/8 disabled:opacity-50"
+                      >
+                        {buscandoSubs ? 'Buscando en internet…' : '🔍 Buscar subtítulos en internet'}
+                      </button>
+                    </div>
                   </Menu>
                 </div>
 
@@ -932,6 +1002,65 @@ export default function Player() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {modalCandidatos && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+          <div className="w-full max-w-xl max-h-[80vh] flex flex-col rounded-2xl bg-[#14151b] border border-white/10 shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-white/8">
+              <h3 className="text-base font-semibold text-white">Subtítulos en internet (ES / EN)</h3>
+              <button
+                onClick={() => setModalCandidatos(false)}
+                className="text-mist-400 hover:text-white text-sm"
+              >
+                ✕ Cerrar
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {buscandoSubs ? (
+                <div className="py-12 text-center text-sm text-mist-400">
+                  <div className="animate-spin inline-block w-6 h-6 border-2 border-accent border-t-transparent rounded-full mb-3" />
+                  <div>Buscando en SubSource y OpenSubtitles…</div>
+                </div>
+              ) : candidatos.length === 0 ? (
+                <div className="py-12 text-center text-sm text-mist-400">
+                  No se encontraron subtítulos para este título.
+                </div>
+              ) : (
+                candidatos.map((c) => (
+                  <button
+                    key={c.id}
+                    disabled={descargandoId !== null}
+                    onClick={() => descargarCandidato(c)}
+                    className="w-full text-left rounded-xl p-3 bg-white/4 hover:bg-white/8 border border-white/6 transition-colors flex items-center justify-between gap-3 disabled:opacity-50"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-base">{c.language === 'es' ? '🇪🇸' : '🇬🇧'}</span>
+                        <span className="text-xs font-bold text-accent">
+                          {c.language.toUpperCase()}
+                          {c.forced ? ' (forzados)' : ''}
+                          {c.hearingImpaired ? ' [SDH]' : ''}
+                        </span>
+                        <span className="text-[11px] text-mist-400">[{c.provider}]</span>
+                        {c.rating > 0 && <span className="text-[11px] text-amber-400 font-medium">⭐ {c.rating}</span>}
+                        {c.downloads > 0 && <span className="text-[11px] text-mist-400">📥 {c.downloads}</span>}
+                      </div>
+                      <div className="text-xs text-mist-200 truncate font-mono">
+                        {c.release || c.comment || 'Subtítulo estándar'}
+                      </div>
+                    </div>
+                    {descargandoId === c.id ? (
+                      <div className="animate-spin w-4 h-4 border-2 border-accent border-t-transparent rounded-full shrink-0" />
+                    ) : (
+                      <span className="text-xs text-accent font-medium shrink-0">Descargar</span>
+                    )}
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

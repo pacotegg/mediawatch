@@ -16,31 +16,22 @@ export default function Estuche3D({ posterUrl, discartUrl, title }: Estuche3DPro
 
   return (
     <div
-      className="group relative select-none cursor-pointer pr-36"
+      className="group relative select-none cursor-pointer pr-44"
       style={{ perspective: '1100px' }}
       onMouseEnter={() => setExtraido(true)}
       onMouseLeave={() => setExtraido(false)}
       onClick={() => setExtraido((prev) => !prev)}
       title={`${title} (Haz clic para extraer el disco)`}
     >
-      <div
-        className="relative w-[210px] h-[310px] transition-transform duration-500 ease-out"
-        style={{
-          transformStyle: 'preserve-3d',
-          transform: extraido
-            ? 'rotateY(-6deg) rotateX(1deg) translateY(-4px)'
-            : 'rotateY(-18deg) rotateX(4deg)',
-        }}
-      >
-        {/* Disco (discart) extraíble si existe - siempre orientado a 0° para máxima legibilidad */}
+      <div className="relative w-[210px] h-[310px]">
+        {/* Disco (discart) extraíble si existe - siempre plano a 0° para máxima legibilidad */}
         {discartUrl && (
           <div
             className="absolute top-6 bottom-6 right-0 w-[240px] h-[240px] rounded-full transition-all duration-700 pointer-events-none"
             style={{
-              transformStyle: 'preserve-3d',
               transform: extraido
-                ? 'translateX(160px) rotate(0deg)'
-                : 'translateX(10px) rotate(0deg)',
+                ? 'translateX(175px)'
+                : 'translateX(10px)',
               zIndex: extraido ? 20 : 0,
               filter: 'drop-shadow(0 12px 20px rgba(0,0,0,0.65))',
             }}
@@ -55,11 +46,14 @@ export default function Estuche3D({ posterUrl, discartUrl, title }: Estuche3DPro
           </div>
         )}
 
-        {/* Caja / Estuche con carátula */}
+        {/* Caja / Estuche con carátula con perspectiva 3D */}
         <div
-          className="relative z-10 w-full h-full overflow-hidden rounded-[8px] border border-white/20 bg-ink-950 shadow-[0_24px_45px_-8px_rgba(0,0,0,0.9),-10px_10px_25px_rgba(0,0,0,0.6)]"
+          className="relative z-10 w-full h-full overflow-hidden rounded-[8px] border border-white/20 bg-ink-950 shadow-[0_24px_45px_-8px_rgba(0,0,0,0.9),-10px_10px_25px_rgba(0,0,0,0.6)] transition-transform duration-500 ease-out"
           style={{
-            transform: 'translateZ(10px)',
+            transformStyle: 'preserve-3d',
+            transform: extraido
+              ? 'rotateY(-6deg) rotateX(1deg) translateY(-4px)'
+              : 'rotateY(-18deg) rotateX(4deg)',
           }}
         >
           {/* Banda superior de estuche translúcido tipo Blu-ray */}
