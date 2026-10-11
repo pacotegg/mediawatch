@@ -64,6 +64,9 @@ fun PantallaAjustes(
   var modoAudio by remember { mutableStateOf(Ajustes.modoAudio) }
   var idiomaAudio by remember { mutableStateOf(if (Ajustes.idiomaAudioPreferido == "spa") "spa" else "orig") }
   var informesTecnicos by remember { mutableStateOf(Ajustes.informesTecnicos) }
+  var modoMaraton by remember { mutableStateOf(Ajustes.modoMaraton) }
+  var musicaCabecera by remember { mutableStateOf(Ajustes.musicaCabecera) }
+  var estuche3D by remember { mutableStateOf(Ajustes.estuche3D) }
 
   // Diálogo selector genérico
   var dialogoOpciones by remember { mutableStateOf<DialogoConfig?>(null) }
@@ -194,6 +197,16 @@ fun PantallaAjustes(
           Ajustes.castCincoUno = it
         },
       )
+
+      FilaInterruptor(
+        titulo = "Modo maratón (saltar intro)",
+        subtitulo = "Salta la cabecera automáticamente al encadenar episodios de series.",
+        activo = modoMaraton,
+        alCambiar = {
+          modoMaraton = it
+          Ajustes.modoMaraton = it
+        },
+      )
     }
 
     Spacer(Modifier.height(16.dp))
@@ -286,7 +299,31 @@ fun PantallaAjustes(
 
     Spacer(Modifier.height(16.dp))
 
-    // 4. SERVIDOR Y CUENTA
+    // 4. EXPERIENCIA Y PRESENTACIÓN
+    SeccionAjustes("Experiencia y Presentación") {
+      FilaInterruptor(
+        titulo = "Música de cabecera en ficha",
+        subtitulo = "Reproduce la sintonía oficial al abrir la ficha de un título.",
+        activo = musicaCabecera,
+        alCambiar = {
+          musicaCabecera = it
+          Ajustes.musicaCabecera = it
+        },
+      )
+      FilaInterruptor(
+        titulo = "Estuche 3D interactivo",
+        subtitulo = "Muestra el cartel en perspectiva 3D con disco (discart) físico extraíble.",
+        activo = estuche3D,
+        alCambiar = {
+          estuche3D = it
+          Ajustes.estuche3D = it
+        },
+      )
+    }
+
+    Spacer(Modifier.height(16.dp))
+
+    // 5. SERVIDOR Y CUENTA
     SeccionAjustes("Servidor y Cuenta") {
       val enCasa = Servidor.enCasa()
       val direccion = Servidor.baseCacheada().removePrefix("https://").removePrefix("http://")

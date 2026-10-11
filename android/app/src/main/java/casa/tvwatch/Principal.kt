@@ -64,6 +64,7 @@ import casa.tvwatch.ui.PantallaConexion
 import casa.tvwatch.ui.PantallaDescargas
 import casa.tvwatch.ui.PantallaFavoritas
 import casa.tvwatch.ui.PantallaFicha
+import casa.tvwatch.ui.PantallaMandoVirtual
 import casa.tvwatch.ui.PantallaPersona
 import casa.tvwatch.ui.PantallaPlataformas
 import casa.tvwatch.ui.PantallaPortada
@@ -138,6 +139,7 @@ private object Rutas {
   const val PLATAFORMAS = "plataformas"
   const val SAGA = "saga/{nombre}"
   const val PERSONA = "persona/{id}"
+  const val MANDO = "mando"
   const val AJUSTES = "ajustes"
   const val REPRODUCTOR_LOCAL = "ver_local/{uriEncoded}/{tituloEncoded}"
 
@@ -196,6 +198,7 @@ private fun Navegacion(nav: NavHostController) {
       Destino.Sagas -> encimaDeLaPortada(Rutas.SAGAS)
       Destino.Plataformas -> encimaDeLaPortada(Rutas.PLATAFORMAS)
       is Destino.Biblioteca -> encimaDeLaPortada(Rutas.biblioteca(destino.id, destino.nombre))
+      Destino.Mando -> encimaDeLaPortada(Rutas.MANDO)
       Destino.Ajustes -> encimaDeLaPortada(Rutas.AJUSTES)
       Destino.Salir -> aConexion()
     }
@@ -438,6 +441,12 @@ private fun Navegacion(nav: NavHostController) {
           desdeSegundos = a.getInt("desde").toDouble(),
           alSalir = { nav.popBackStack() },
         )
+      }
+
+      composable(Rutas.MANDO) {
+        Pantalla(titulo = "Mando de la tele", nav = nav, alMenu = ::abrirMenu) {
+          PantallaMandoVirtual()
+        }
       }
 
       composable(

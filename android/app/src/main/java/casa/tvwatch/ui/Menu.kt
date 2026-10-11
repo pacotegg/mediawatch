@@ -99,6 +99,7 @@ sealed class Destino {
   data object Plataformas : Destino()
   data object Descargas : Destino()
   data class Biblioteca(val id: Int, val nombre: String) : Destino()
+  data object Mando : Destino()
   data object Ajustes : Destino()
   data object Salir : Destino()
 }
@@ -352,6 +353,7 @@ fun Menu(rutaActual: String?, bibliotecaActual: Int?, alIr: (Destino) -> Unit) {
           }
         }
       }
+      Entrada("Mando de la tele", activa = rutaActual == "mando" && !editando, alPulsar = { if (!editando) alIr(Destino.Mando) }) { IconoMando(it) }
       Entrada("Ajustes", activa = rutaActual == "ajustes" && !editando, alPulsar = { if (!editando) alIr(Destino.Ajustes) }) { IconoAjustes(it) }
 
       if (bibliotecas.isNotEmpty()) {

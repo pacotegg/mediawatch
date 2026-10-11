@@ -335,3 +335,23 @@ fun IconoDeBiblioteca(nombre: String, kind: String, color: Color, tamano: Dp = 2
     else -> IconoPeliculas(color, tamano)
   }
 }
+
+@Composable
+fun IconoMando(color: Color, tamano: Dp = 22.dp) {
+  Canvas(Modifier.size(tamano)) {
+    val t = size.minDimension
+    val grosor = (t * 0.09f).coerceAtLeast(1.5f)
+    drawRoundRect(
+      color = color,
+      topLeft = Offset(t * 0.22f, t * 0.08f),
+      size = androidx.compose.ui.geometry.Size(t * 0.56f, t * 0.84f),
+      cornerRadius = androidx.compose.ui.geometry.CornerRadius(t * 0.14f, t * 0.14f),
+      style = Stroke(width = grosor),
+    )
+    drawCircle(color, radius = t * 0.07f, center = Offset(t * 0.5f, t * 0.35f))
+    drawCircle(color, radius = t * 0.04f, center = Offset(t * 0.38f, t * 0.60f))
+    drawCircle(color, radius = t * 0.04f, center = Offset(t * 0.62f, t * 0.60f))
+    drawCircle(color, radius = t * 0.04f, center = Offset(t * 0.38f, t * 0.74f))
+    drawCircle(color, radius = t * 0.04f, center = Offset(t * 0.62f, t * 0.74f))
+  }
+}

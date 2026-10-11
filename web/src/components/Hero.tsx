@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
-import { img, type ItemSummary } from '../lib/api.ts';
+import { api, img, type ItemSummary } from '../lib/api.ts';
 import { certification, runtime } from '../lib/format.ts';
 
 const ROTATE_MS = 11_000;
 
 export default function Hero({ items }: { items: ItemSummary[] }) {
   const [index, setIndex] = useState(0);
+  const [trailerYoutube, setTrailerYoutube] = useState<string | null>(null);
 
   useEffect(() => {
     if (items.length < 2) return;
@@ -17,6 +18,25 @@ export default function Hero({ items }: { items: ItemSummary[] }) {
 
   if (items.length === 0) return null;
   const item = items[index];
+
+  useEffect(() => {
+    setTrailerYoutube(null);
+    if (!item) return;
+    let cancelado = false;
+    const timer = setTimeout(() => {
+      api.trailer(item.id)
+        .then((res) => {
+          if (!cancelado && res.trailer?.youtube) {
+            setTrailerYoutube(res.trailer.youtube);
+          }
+        })
+        .catch(() => {});
+    }, 2800);
+    return () => {
+      cancelado = true;
+      clearTimeout(timer);
+    };
+  }, [item?.id]);
 
   return (
     <div className="relative h-[62vh] min-h-[420px] w-full overflow-hidden">
@@ -33,8 +53,20 @@ export default function Hero({ items }: { items: ItemSummary[] }) {
         </motion.div>
       </AnimatePresence>
 
-      <div className="scrim-b absolute inset-0" />
-      <div className="scrim-l absolute inset-0" />
+      {trailerYoutube && (
+        <div className="absolute inset-0 overflow-hidden pointer-events-none transition-opacity duration-1000 z-[1]">
+          <iframe
+            src={`https://www.youtube-nocookie.com/embed/${trailerYoutube}?autoplay=1&mute=1&controls=0&loop=1&playlist=${trailerYoutube}&showinfo=0&rel=0&modestbranding=1`}
+            allow="autoplay; encrypted-media"
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120vw] h-[120vh] min-w-[100%] min-h-[100%] object-cover opacity-65 pointer-events-none"
+            tabIndex={-1}
+            title="Tráiler de fondo"
+          />
+        </div>
+      )}
+
+      <div className="scrim-b absolute inset-0 z-[2]" />
+      <div className="scrim-l absolute inset-0 z-[2]" />
 
       <div className="relative flex h-full items-end pb-14">
         <AnimatePresence mode="wait">

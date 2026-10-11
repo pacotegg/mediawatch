@@ -15,6 +15,7 @@ import {
   type RangoSalto,
   type Tira,
   type Titulo,
+  type DialogoHit,
 } from './api.ts';
 import { ajustes, cargarAjustes, guardarAjustes, ordenar, type Rendimiento } from './ajustes.ts';
 import { actual, ajustarListaEpisodios, ajustarVentanaRejilla, alEnfocar, alPulsar, anadirPorArriba, situarFila, avisarDeFallos, enfocables, enfocar, indexar, indexarAdemas, iniciarNavegacion, manejadorActual, TECLA } from './nav.ts';
@@ -314,6 +315,30 @@ let idActual = '';
 /** De dónde se vino a la pantalla de ahora. */
 let volverDesde: (() => void) | null = null;
 
+let audioTema: HTMLAudioElement | null = null;
+
+function pararTemaMusical() {
+  if (audioTema) {
+    audioTema.pause();
+    audioTema.src = '';
+    audioTema = null;
+  }
+}
+
+function reproducirTemaMusical(id: number) {
+  pararTemaMusical();
+  if (!ajustes().musicaCabecera) return;
+  try {
+    const a = new Audio(imagen.tema(id));
+    a.loop = true;
+    a.volume = 0.15;
+    a.play().catch(() => undefined);
+    audioTema = a;
+  } catch (e) {
+    // Silencioso en caso de error
+  }
+}
+
 /**
  * Anota que se entra en una pantalla y desde dónde.
  *
@@ -323,6 +348,7 @@ let volverDesde: (() => void) | null = null;
  * forma de salir de ahí — que es justo lo que pasaba.
  */
 function entrarEn(id: string, comoVolverAqui: () => void) {
+  if (!id.startsWith('ficha-')) pararTemaMusical();
   if (idActual !== id) volverDesde = reabrirActual;
   idActual = id;
   reabrirActual = comoVolverAqui;
@@ -1232,15 +1258,34 @@ function pantallaBuscar(inicial = '') {
   let consulta = inicial;
   entrarEn('buscar', () => pantallaBuscar(consulta));
   let resultados: Titulo[] = [];
+  let dialogos: DialogoHit[] = [];
   let buscando = 0;
 
   const pintarTodo = () => {
     const foco = actual();
-    const claveFoco = foco ? foco.getAttribute('data-tecla') || foco.getAttribute('data-id') : null;
+    const claveFoco = foco ? foco.getAttribute('data-tecla') || foco.getAttribute('data-id') || foco.getAttribute('data-dialogo') : null;
+
+    let htmlDialogos = '';
+    if (dialogos.length) {
+      htmlDialogos =
+        '<div class="dialogos-busqueda" data-bloque>' +
+        '<h3>Frases y diálogos (' + dialogos.length + ')</h3>' +
+        '<div class="lista-dialogos">' +
+        dialogos.map((d, i) =>
+          '<button class="linea-dialogo" data-nav data-dialogo="' + i + '">' +
+          '<div class="dialogo-texto">«' + d.snippet.replace(/«/g, '<b>').replace(/»/g, '</b>') + '»</div>' +
+          '<div class="dialogo-meta">' + esc(d.title) +
+          (d.season ? ' · T' + d.season + 'E' + d.episode : d.year ? ' · ' + d.year : '') +
+          ' <span class="dialogo-tiempo">' + reloj(Math.floor(d.startMs / 1000)) + '</span>' +
+          '</div>' +
+          '</button>',
+        ).join('') +
+        '</div></div>';
+    }
 
     const cuerpo =
       '<div class="buscador" data-bloque>' +
-      '<div class="consulta">' + (esc(consulta) || '<span class="cursor">Escribe un título…</span>') + '</div>' +
+      '<div class="consulta">' + (esc(consulta) || '<span class="cursor">Escribe un título o frase…</span>') + '</div>' +
       '<div class="teclado">' +
       TECLAS_ABC.map((c) => '<button class="tecla" data-nav data-tecla="' + c + '">' + c + '</button>').join('') +
       '<button class="tecla ancha" data-nav data-tecla="ESPACIO">espacio</button>' +
@@ -1250,9 +1295,10 @@ function pantallaBuscar(inicial = '') {
       '</div>' +
       (resultados.length
         ? '<div class="rejilla" data-bloque>' + resultados.map(tarjeta).join('') + '</div>'
-        : consulta.length >= 2
+        : consulta.length >= 2 && !dialogos.length
           ? '<div class="vacio">Sin resultados para «' + esc(consulta) + '»</div>'
-          : '');
+          : '') +
+      htmlDialogos;
 
     pintar('buscar', cuerpo);
     conectarTarjetas();
@@ -1261,11 +1307,24 @@ function pantallaBuscar(inicial = '') {
       el.addEventListener('click', () => pulsar(el.getAttribute('data-tecla') || ''));
     });
 
+    marco.querySelectorAll<HTMLElement>('[data-dialogo]').forEach((el) => {
+      el.addEventListener('click', () => {
+        const idx = Number(el.getAttribute('data-dialogo'));
+        const hit = dialogos[idx];
+        if (!hit) return;
+        aviso('Abriendo escena de «' + hit.title + '»…');
+        api.ficha(hit.itemId)
+          .then((f) => pantallaReproductor(f, hit.fileId, hit.episodeId, Math.max(0, Math.floor(hit.startMs / 1000) - 2)))
+          .catch(() => aviso('No se pudo abrir la escena'));
+      });
+    });
+
     // Al volver de una ficha, a la tarjeta que se pulsó; si no, donde estaba
     // el foco antes de repintar; si no, la primera tecla.
     const volver = claveFoco
       ? marco.querySelector<HTMLElement>('[data-tecla="' + claveFoco + '"]') ||
-        marco.querySelector<HTMLElement>('[data-id="' + claveFoco + '"]')
+        marco.querySelector<HTMLElement>('[data-id="' + claveFoco + '"]') ||
+        marco.querySelector<HTMLElement>('[data-dialogo="' + claveFoco + '"]')
       : focoBuscar
         ? marco.querySelector<HTMLElement>('[data-id="' + focoBuscar + '"]')
         : null;
@@ -1276,19 +1335,34 @@ function pantallaBuscar(inicial = '') {
 
   const buscar = () => {
     const propia = ++buscando;
-    if (consulta.trim().length < 2) {
+    const q = consulta.trim();
+    if (q.length < 2) {
       resultados = [];
+      dialogos = [];
       pintarTodo();
       return;
     }
     api
-      .buscar(consulta.trim())
+      .buscar(q)
       .then((r) => {
         if (propia !== buscando) return;   // llegó tarde: hay una búsqueda más nueva
         resultados = r.items;
         pintarTodo();
       })
       .catch(() => undefined);
+
+    if (q.length >= 3) {
+      api
+        .buscarDialogo(q)
+        .then((r) => {
+          if (propia !== buscando) return;
+          dialogos = r.hits || [];
+          pintarTodo();
+        })
+        .catch(() => undefined);
+    } else {
+      dialogos = [];
+    }
   };
 
   const pulsar = (tecla: string) => {
@@ -1368,6 +1442,11 @@ async function pantallaFicha(id: number) {
   let ficha: Ficha;
   try {
     ficha = await api.ficha(id);
+    if (ficha.has_theme) {
+      reproducirTemaMusical(ficha.id);
+    } else {
+      pararTemaMusical();
+    }
   } catch (e) {
     /*
      * Antes esto te echaba a la portada. Si el servidor tarda —porque está
@@ -1522,6 +1601,15 @@ async function pantallaFicha(id: number) {
     // el servidor, para no retrasar la ficha por un dato secundario.
     '<div data-donde-ver></div>' +
     '</div>' +
+    (ajustes().estuche3D && ficha.has_poster
+      ? '<div class="estuche-3d-tv">' +
+        (ficha.has_discart ? '<img class="estuche-disco-tv" src="' + imagen.disco(ficha.id, 600) + '" alt="">' : '') +
+        '<div class="estuche-caja-tv">' +
+        '<div class="estuche-lomo-sup-tv"></div>' +
+        '<img class="estuche-poster-tv" src="' + imagen.poster(ficha.id, 500) + '" alt="">' +
+        '<div class="estuche-brillo-tv"></div>' +
+        '</div></div>'
+      : '') +
     '</div>';
 
   // En una serie, los episodios van justo debajo de las acciones: es a lo que
@@ -2755,6 +2843,7 @@ const NOMBRE_TRAMO: Record<string, string> = { intro: 'Saltar cabecera', credits
 const MINIMO_POSTCREDITOS = 20;
 
 function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | null, desde: number) {
+  pararTemaMusical();
   window.clearInterval(temporizadorHeroe);
   alPulsar(null);
   // Deja pasar el plano de vídeo, que está por debajo de la página.
@@ -2934,6 +3023,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
       { accion: 'play', texto: reproductor.reproduciendo() ? 'Pausa' : 'Reproducir' },
       { accion: 'alante', texto: '\u25b6\u25b6' },
       { accion: 'audio', texto: 'Audio' },
+      { accion: 'escucha', texto: modoAudio === 'normal' ? 'Escucha: Normal' : modoAudio === 'night' ? 'Escucha: Noche' : 'Escucha: Voces' },
       { accion: 'subs', texto: 'Subtítulos' },
     ];
     if (infoServidor && infoServidor.chapters && infoServidor.chapters.length > 1) {
@@ -3087,6 +3177,11 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     if (!dentro) {
       botonTramo.classList.remove('visible', 'enfocado');
       enTramo = false;
+      return;
+    }
+    if (aj.modoMaraton && dentro.kind === 'intro') {
+      tramoActivo = dentro;
+      saltarTramo();
       return;
     }
     botonTramo.textContent = hayEscenaFinal(dentro) ? 'Ver escena final' : NOMBRE_TRAMO[dentro.kind] || 'Saltar';
@@ -3733,6 +3828,14 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     else if (accion === 'alante') saltar(aj.saltoLargo);
     else if (accion === 'play') { reproductor.alternarPausa(); refrescarPlay(); mostrar(); }
     else if (accion === 'audio') menuAudio();
+    else if (accion === 'escucha') {
+      const sig = modoAudio === 'normal' ? 'night' : modoAudio === 'night' ? 'dialogue' : 'normal';
+      modoAudio = sig;
+      guardarAjustes({ modoAudio: sig });
+      avisoRapido(sig === 'normal' ? 'Audio original' : sig === 'night' ? 'Volumen nocturno' : 'Voces claras');
+      construirBotones();
+      abrirFlujo(reproductor.tiempo());
+    }
     else if (accion === 'subs') menuSubtitulos();
     else if (accion === 'capitulos') menuCapitulos();
     else if (accion === 'info') alternarInfo();
@@ -3926,11 +4029,17 @@ function pantallaAjustes() {
       elecciones('heroeSegundos', [6, 9, 12, 20].map(function (n: number) { return { valor: n, texto: n + ' s' }; }), a.heroeSegundos),
     ) +
 
-    grupo('Reproducción', 'Cuánto salta cada flecha, si retomas donde lo dejaste y si se enseña a qué hora termina.',
+    grupo('Reproducción', 'Cuánto salta cada flecha, si retomas donde lo dejaste, modo maratón y hora de fin.',
       elecciones('reanudar', [{ valor: 'si', texto: 'Reanudar' }, { valor: 'no', texto: 'Empezar de cero' }], a.reanudar ? 'si' : 'no') +
+      elecciones('modoMaraton', [{ valor: 'si', texto: 'Maratón (auto-intro): Sí' }, { valor: 'no', texto: 'Maratón: No' }], a.modoMaraton ? 'si' : 'no') +
       elecciones('horaDeFin', [{ valor: 'si', texto: 'Termina a las…' }, { valor: 'no', texto: 'Solo lo que queda' }], a.horaDeFin ? 'si' : 'no') +
       elecciones('saltoCorto', [10, 15, 30].map(function (n: number) { return { valor: n, texto: 'Atrás ' + n + ' s' }; }), a.saltoCorto) +
       elecciones('saltoLargo', [30, 60, 120].map(function (n: number) { return { valor: n, texto: 'Adelante ' + n + ' s' }; }), a.saltoLargo),
+    ) +
+
+    grupo('Experiencia visual y sonora', 'Música de fondo oficial al abrir fichas y presentación de carátulas.',
+      elecciones('musicaCabecera', [{ valor: 'si', texto: 'Música de cabecera: Sí' }, { valor: 'no', texto: 'Música de cabecera: No' }], a.musicaCabecera ? 'si' : 'no') +
+      elecciones('estuche3D', [{ valor: 'si', texto: 'Estuche 3D: Sí' }, { valor: 'no', texto: 'Estuche 3D: No' }], a.estuche3D ? 'si' : 'no'),
     ) +
 
     grupo('Subtítulos', 'Los pinta la aplicación a partir de los que van dentro del vídeo: nunca se queman.',
@@ -4028,6 +4137,9 @@ function pantallaAjustes() {
       else if (campo === 'fondoSubtitulos') guardarAjustes({ fondoSubtitulos: valor === 'caja' ? 'caja' : 'sombra' });
       else if (campo === 'modoAudio') guardarAjustes({ modoAudio: valor as 'normal' | 'night' | 'dialogue' });
       else if (campo === 'saltarCabecera') guardarAjustes({ saltarCabecera: valor === 'si' });
+      else if (campo === 'modoMaraton') guardarAjustes({ modoMaraton: valor === 'si' });
+      else if (campo === 'musicaCabecera') guardarAjustes({ musicaCabecera: valor === 'si' });
+      else if (campo === 'estuche3D') guardarAjustes({ estuche3D: valor === 'si' });
       else if (campo === 'horaDeFin') guardarAjustes({ horaDeFin: valor === 'si' });
       focoAjustesDespues = campo;
       pantallaAjustes();
@@ -4662,12 +4774,35 @@ function pantallaServidor() {
  * y se recoge al salir del reproductor. Si el servidor no contesta no pasa
  * nada y no se avisa: esto es un añadido.
  */
+function despacharTeclaVirtual(tecla: string) {
+  const mapa: Record<string, number> = {
+    arriba: TECLA.ARRIBA,
+    abajo: TECLA.ABAJO,
+    izquierda: TECLA.IZQUIERDA,
+    derecha: TECLA.DERECHA,
+    ok: TECLA.ENTRAR,
+    atras: TECLA.ATRAS,
+    play_pause: TECLA.PLAY_PAUSA,
+  };
+  const codigo = mapa[tecla];
+  if (!codigo) return;
+  const evt = new KeyboardEvent('keydown', { keyCode: codigo, which: codigo, bubbles: true, cancelable: true });
+  Object.defineProperty(evt, 'keyCode', { get: () => codigo });
+  Object.defineProperty(evt, 'which', { get: () => codigo });
+  document.dispatchEvent(evt);
+}
+
 function escucharAlMovil() {
   window.setInterval(() => {
-    if (!token() || document.body.classList.contains('viendo')) return;
+    if (!token()) return;
     api
       .mando()
       .then((r) => {
+        if (r.tecla) {
+          despacharTeclaVirtual(r.tecla);
+          return;
+        }
+        if (document.body.classList.contains('viendo')) return;
         if (r.reproducir) {
           const o = r.reproducir;
           aviso('Desde el móvil: reproduciendo…');
@@ -4683,7 +4818,7 @@ function escucharAlMovil() {
         }
       })
       .catch(() => undefined);
-  }, 2000);
+  }, 1200);
 }
 
 async function arrancar() {

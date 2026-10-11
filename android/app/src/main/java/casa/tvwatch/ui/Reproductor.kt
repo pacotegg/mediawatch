@@ -552,8 +552,15 @@ private fun Reproduciendo(
       }
       // ¿Estamos dentro de una cabecera o de los créditos detectados?
       val i = info
-      tramoALaVista = i?.skip?.firstOrNull { r ->
+      val dentro = i?.skip?.firstOrNull { r ->
         enSegundos >= r.desde && enSegundos < r.hasta - 1 && (r.kind + r.desde) !in tramosSaltados
+      }
+      if (dentro != null && Ajustes.modoMaraton && dentro.kind == "intro") {
+        tramosSaltados.add(dentro.kind + dentro.desde)
+        reproductor.seekTo(((dentro.hasta - desfase) * 1000).toLong().coerceAtLeast(0L))
+        tramoALaVista = null
+      } else {
+        tramoALaVista = dentro
       }
     }
   }
@@ -1672,6 +1679,83 @@ private fun MenuDePistas(
             color = TextoTenue,
             fontSize = 11.sp,
           )
+        }
+      }
+
+      Spacer(Modifier.height(14.dp))
+      Text("Modo de escucha", color = Texto, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+      Spacer(Modifier.height(6.dp))
+      listOf(
+        "normal" to "Normal (mezcla original)",
+        "night" to "Nocturno (comprime explosiones)",
+        "dialogue" to "Voces claras (realza centro)",
+      ).forEach { (clave, etiqueta) ->
+        val activo = Ajustes.modoAudio == clave
+        Text(
+          (if (activo) "✓  " else "     ") + etiqueta,
+          color = if (activo) Realce else Texto,
+          fontSize = 14.sp,
+          modifier = Modifier
+            .fillMaxWidth()
+            .resaltarFoco()
+            .clickable {
+              Ajustes.modoAudio = clave
+              alElegirAudio(pistaAudioActual ?: 0, false)
+            }
+            .padding(vertical = 9.dp),
+        )
+      }
+
+      if (!info?.chapters.isNullOrEmpty()) {
+        Spacer(Modifier.height(14.dp))
+        Text("Capítulos", color = Texto, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(6.dp))
+        info!!.chapters.forEachIndexed { idx, cap ->
+          Row(
+            Modifier
+              .fillMaxWidth()
+              .resaltarFoco()
+              .clickable {
+                alCerrar()
+                reproductor.seekTo((cap.start * 1000).toLong())
+              }
+              .padding(vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+          ) {
+            Text(
+              "     " + (cap.title.ifEmpty { "Capítulo ${idx + 1}" }),
+              color = Texto,
+              fontSize = 14.sp,
+              modifier = Modifier.weight(1f),
+            )
+            Text(
+              tiempo(cap.start),
+              color = TextoTenue,
+              fontSize = 13.sp,
+            )
+          }
+        }
+      }
+
+      Spacer(Modifier.height(14.dp))
+      Text("Información técnica", color = Texto, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+      Spacer(Modifier.height(6.dp))
+      info?.let { inf ->
+        val lineas = listOfNotNull(
+          "Contenedor" to inf.container.ifEmpty { "MKV" },
+          if (inf.bitrate > 0) "Bitrate" to "${Math.round(inf.bitrate / 1000000.0)} Mb/s" else null,
+          inf.video?.let { v -> "Vídeo" to "${v.codec?.uppercase() ?: ""} · ${v.width}×${v.height} ${v.hdr ?: ""}".trim() },
+          if (inf.size > 0) "Tamaño" to "${(inf.size / (1024 * 1024 * 1024.0)).let { gb -> String.format(java.util.Locale.US, "%.2f GB", gb) }}" else null,
+        )
+        lineas.forEach { (eti, valo) ->
+          Row(
+            Modifier.fillMaxWidth().padding(vertical = 3.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+          ) {
+            Text("     $eti", color = TextoTenue, fontSize = 13.sp)
+            Text(valo, color = Texto, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+          }
         }
       }
     }

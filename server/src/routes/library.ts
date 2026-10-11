@@ -18,6 +18,7 @@ import { letrasDe } from '../media/letras.ts';
 import { obtenerResenas } from '../media/reviews.ts';
 import { paginaTrailer, trailerDe } from '../media/trailers.ts';
 import { toString as qrComoSvg } from 'qrcode';
+import { parsearRango } from '../media/rango.ts';
 
 const MIME: Record<string, string> = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp' };
 
@@ -221,6 +222,9 @@ export default async function libraryRoutes(app: FastifyInstance) {
                 FROM items i JOIN libraries l ON l.id = i.library_id WHERE i.id = ? ${crClause}`)
       .get(id, ...cr.params) as any;
     if (!item) return reply.code(404).send({ error: 'No encontrado' });
+
+    const folderPath = item.folder as string | undefined;
+    item.has_theme = folderPath && existsSync(join(folderPath, 'theme.mp3')) ? 1 : 0;
 
     for (const k of ['poster', 'fanart', 'clearlogo', 'landscape', 'folder', 'search_title']) delete item[k];
 
@@ -972,6 +976,36 @@ export default async function libraryRoutes(app: FastifyInstance) {
     const id = Number((req.params as { id: string }).id);
     const { temporada } = req.query as { temporada?: string };
     return { trailer: await trailerDe(id, temporada !== undefined && temporada !== '' ? Number(temporada) : undefined) };
+  });
+
+  /** Música de cabecera (theme.mp3) del ítem o serie; responde 404 si no existe. */
+  app.get('/api/items/:id/theme', async (req, reply) => {
+    const id = Number((req.params as { id: string }).id);
+    const row = db.prepare('SELECT folder FROM items WHERE id = ?').get(id) as { folder: string } | undefined;
+    if (!row?.folder) return reply.code(404).send({ error: 'No encontrado' });
+    const themePath = join(row.folder, 'theme.mp3');
+    if (!existsSync(themePath)) return reply.code(404).send({ error: 'Sin tema' });
+    let stat;
+    try {
+      stat = await statAsync(themePath);
+    } catch {
+      return reply.code(404).send({ error: 'No se pudo leer' });
+    }
+    reply
+      .header('Content-Type', 'audio/mpeg')
+      .header('Accept-Ranges', 'bytes')
+      .header('Cache-Control', 'public, max-age=86400');
+    const rango = parsearRango(req.headers.range, stat.size);
+    if (rango === null) return reply.code(416).header('Content-Range', `bytes */${stat.size}`).send();
+    if (rango) {
+      const { desde, hasta } = rango;
+      return reply
+        .code(206)
+        .header('Content-Range', `bytes ${desde}-${hasta}/${stat.size}`)
+        .header('Content-Length', hasta - desde + 1)
+        .send(createReadStream(themePath, { start: desde, end: hasta }));
+    }
+    return reply.header('Content-Length', stat.size).send(createReadStream(themePath));
   });
 
   /*

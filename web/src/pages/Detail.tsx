@@ -14,6 +14,7 @@ import { api, img, type Episode, type ItemDetail, type PerfilDescarga, type Code
 import { audioLabel, certification, clock, codecLabel, fileSize, languageName, resolutionLabel, runtime } from '../lib/format.ts';
 import { usePreferences } from '../lib/preferences.tsx';
 import { tintFrom } from '../lib/tint.ts';
+import Estuche3D from '../components/Estuche3D.tsx';
 
 function opcionesDescarga(duracionSegundos?: number | null, bytesOriginal?: number | null, codec: CodecDescarga = 'h265'): [PerfilDescarga, string, string][] {
   const d = duracionSegundos && duracionSegundos > 0 ? duracionSegundos : 5400;
@@ -320,6 +321,30 @@ export default function Detail() {
     if (item?.has_poster) tintFrom(img.poster(itemId, 200, item.arte_actualizado)).then(setTint);
   }, [item?.has_poster, item?.arte_actualizado, itemId]);
 
+  useEffect(() => {
+    if (!item?.has_theme || !prefs.interface.themeMusic) return;
+    const audio = new Audio(`/api/items/${itemId}/theme`);
+    audio.loop = true;
+    audio.volume = 0;
+    let fadeTimer: NodeJS.Timeout | null = null;
+    audio.play().then(() => {
+      let vol = 0;
+      fadeTimer = setInterval(() => {
+        vol = Math.min(0.15, vol + 0.02);
+        audio.volume = vol;
+        if (vol >= 0.15 && fadeTimer) clearInterval(fadeTimer);
+      }, 100);
+    }).catch(() => {
+      // Ignorar si el navegador bloquea el autoplay sin interacción
+    });
+
+    return () => {
+      if (fadeTimer) clearInterval(fadeTimer);
+      audio.pause();
+      audio.src = '';
+    };
+  }, [item?.has_theme, prefs.interface.themeMusic, itemId]);
+
   /*
    * Las dos escriben en el servidor y luego refrescan **todo** lo que enseña ese
    * estado: la propia ficha, la lista de favoritos y la portada. Antes solo se
@@ -467,12 +492,12 @@ export default function Detail() {
       </div>
 
       <div className="relative z-10 mx-auto -mt-52 max-w-[1500px] px-4 sm:px-8">
-        <div className="flex flex-col">
+        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between lg:gap-12">
           <motion.div
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
-            className="min-w-0 max-w-[900px] pb-1"
+            className="min-w-0 max-w-[900px] flex-1 pb-1"
           >
             {item.has_logo ? (
               <img src={img.logo(itemId, 560, item.arte_actualizado)} alt={item.title} className="mb-3 max-h-24 w-auto max-w-[min(420px,80vw)] object-contain object-left drop-shadow-[0_6px_20px_rgba(0,0,0,0.8)]" />
@@ -748,6 +773,16 @@ export default function Detail() {
               )}
             </div>
           </motion.div>
+
+          {prefs.interface.case3D && item.has_poster && (
+            <div className="hidden lg:block shrink-0 pt-2 pr-4">
+              <Estuche3D
+                posterUrl={img.poster(itemId, 500, item.arte_actualizado)}
+                discartUrl={item.has_discart === 1 ? img.discart(itemId, 600, item.arte_actualizado) : null}
+                title={item.title}
+              />
+            </div>
+          )}
         </div>
 
         <motion.div

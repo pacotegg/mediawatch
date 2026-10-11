@@ -120,7 +120,7 @@ export default function Player() {
   const cuesRef = useRef<Cue[]>([]);
   const trackRef = useRef<TextTrack | null>(null);
 
-  const { prefs } = usePreferences();
+  const { prefs, update } = usePreferences();
 
   // Always honour an explicit `t`: it also carries deep links from a dialogue
   // search, which must jump to the line whatever the resume preference says.
@@ -131,7 +131,7 @@ export default function Player() {
   const [volume, setVolume] = useState(prefs.audio.defaultVolume);
   const [muted, setMuted] = useState(false);
   const [controls, setControls] = useState(true);
-  const [menu, setMenu] = useState<'audio' | 'subs' | 'quality' | null>(null);
+  const [menu, setMenu] = useState<'audio' | 'subs' | 'quality' | 'chapters' | 'info' | null>(null);
   const [audioTrack, setAudioTrack] = useState<number | null>(null);
   const [subtitle, setSubtitle] = useState<string | null>(null);
   const [maxHeight, setMaxHeight] = useState(prefs.playback.maxHeight);
@@ -501,6 +501,15 @@ export default function Player() {
   // Los episodios piden sus rangos aparte; una película no tiene `episodeId`, así
   // que los toma de la información de reproducción.
   const activeSkip = (skip?.ranges ?? info?.skip)?.find((r) => virtual >= r.start_s && virtual < r.end_s - 2);
+  const lastAutoSkipped = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!prefs.playback.autoSkipIntro || !activeSkip || activeSkip.kind !== 'intro') return;
+    if (lastAutoSkipped.current === activeSkip.start_s) return;
+    lastAutoSkipped.current = activeSkip.start_s;
+    seek(activeSkip.end_s);
+  }, [activeSkip, prefs.playback.autoSkipIntro]);
+
   // Con metraje detrás de los créditos (escena post-créditos), el botón lleva a ella.
   const escenaFinal = activeSkip?.kind === 'credits' && duration - activeSkip.end_s > 20;
 
@@ -708,6 +717,24 @@ export default function Player() {
                     ))}
 
                     <div className="mt-2 border-t border-white/8 pt-2">
+                      <div className="px-3 pb-2 text-[11px] font-semibold tracking-wider text-mist-500 uppercase">Modo de escucha</div>
+                      {(['normal', 'night', 'dialogue'] as const).map((m) => (
+                        <MenuItem
+                          key={m}
+                          active={(prefs.audio.mode ?? 'normal') === m}
+                          onClick={() => {
+                            update('audio', { mode: m });
+                            setOffset(virtual);
+                            setCurrent(0);
+                            setMenu(null);
+                          }}
+                        >
+                          {m === 'normal' ? 'Normal (original)' : m === 'night' ? 'Nocturno (comprime)' : 'Voces claras (realza)'}
+                        </MenuItem>
+                      ))}
+                    </div>
+
+                    <div className="mt-2 border-t border-white/8 pt-2">
                       <div className="px-3 pb-2 text-[11px] font-semibold tracking-wider text-mist-500 uppercase">Desfase de audio</div>
                       <div className="flex items-center justify-between px-3 py-1.5">
                         <button
@@ -826,6 +853,55 @@ export default function Player() {
                         {q.label}
                       </MenuItem>
                     ))}
+                  </Menu>
+                </div>
+
+                {info?.chapters && info.chapters.length > 1 && (
+                  <div className="relative">
+                    <button
+                      onClick={() => setMenu(menu === 'chapters' ? null : 'chapters')}
+                      className={`rounded-lg px-2.5 py-1.5 text-[12px] transition-colors hover:bg-white/10 ${menu === 'chapters' ? 'bg-white/10' : ''}`}
+                    >
+                      Capítulos
+                    </button>
+                    <Menu open={menu === 'chapters'} onClose={() => setMenu(null)} title="Capítulos">
+                      <div className="max-h-72 overflow-y-auto">
+                        {info.chapters.map((ch, idx) => (
+                          <MenuItem
+                            key={idx}
+                            active={virtual >= ch.start && virtual < ch.end}
+                            onClick={() => {
+                              seek(ch.start);
+                              setMenu(null);
+                            }}
+                          >
+                            <div className="flex items-center justify-between w-full gap-3">
+                              <span className="truncate">{ch.title || `Capítulo ${idx + 1}`}</span>
+                              <span className="font-mono text-[11px] text-mist-500 shrink-0">{clock(ch.start)}</span>
+                            </div>
+                          </MenuItem>
+                        ))}
+                      </div>
+                    </Menu>
+                  </div>
+                )}
+
+                <div className="relative">
+                  <button
+                    onClick={() => setMenu(menu === 'info' ? null : 'info')}
+                    className={`rounded-lg px-2.5 py-1.5 text-[12px] transition-colors hover:bg-white/10 ${menu === 'info' ? 'bg-white/10' : ''}`}
+                    title="Información técnica"
+                  >
+                    Info
+                  </button>
+                  <Menu open={menu === 'info'} onClose={() => setMenu(null)} title="Información técnica">
+                    <div className="px-3 py-2 space-y-2 text-[12px] font-mono">
+                      <div className="flex justify-between text-mist-400"><span>Contenedor</span><span className="text-white">{info?.container || 'MKV'}</span></div>
+                      {info?.bitrate ? <div className="flex justify-between text-mist-400"><span>Bitrate</span><span className="text-white">{Math.round(info.bitrate / 1000000)} Mb/s</span></div> : null}
+                      {info?.video ? <div className="flex justify-between text-mist-400"><span>Vídeo</span><span className="text-white">{info.video.codec.toUpperCase()} · {info.video.width}×{info.video.height} {info.video.hdr || ''}</span></div> : null}
+                      {info?.size ? <div className="flex justify-between text-mist-400"><span>Tamaño</span><span className="text-white">{(info.size / (1024**3)).toFixed(2)} GB</span></div> : null}
+                      <div className="flex justify-between text-mist-400"><span>Modo</span><span className="text-accent">{usaHls ? 'HLS Adaptativo' : info?.plan.mode === 'direct' ? 'Directo' : 'Transcodificado'}</span></div>
+                    </div>
                   </Menu>
                 </div>
 

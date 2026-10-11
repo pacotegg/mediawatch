@@ -5,6 +5,7 @@ export type Preferences = {
     maxHeight: number;
     resume: boolean;
     autoPlayNext: boolean;
+    autoSkipIntro: boolean;
     seekStep: number;
     seekStepLarge: number;
     /** Trocear en HLS para que la calidad se adapte a la red. */
@@ -25,14 +26,16 @@ export type Preferences = {
   interface: {
     reduceMotion: boolean;
     showWatched: boolean;
+    themeMusic: boolean;
+    case3D: boolean;
   };
 };
 
 export const DEFAULTS: Preferences = {
-  playback: { maxHeight: 0, resume: true, autoPlayNext: true, seekStep: 10, seekStepLarge: 60, adaptativo: 'auto' },
+  playback: { maxHeight: 0, resume: true, autoPlayNext: true, autoSkipIntro: true, seekStep: 10, seekStepLarge: 60, adaptativo: 'auto' },
   audio: { downmixStereo: true, normalize: false, defaultVolume: 1, mode: 'normal' },
   subtitles: { size: 100, color: '#ffffff', background: 'shadow', offset: 0 },
-  interface: { reduceMotion: false, showWatched: true },
+  interface: { reduceMotion: false, showWatched: true, themeMusic: true, case3D: false },
 };
 
 const STORAGE_KEY = 'cineteca.preferences';

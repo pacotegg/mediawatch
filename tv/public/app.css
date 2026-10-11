@@ -655,6 +655,74 @@ body.rend-rapido .lamina img {
   max-width: 1020px;
 }
 
+.estuche-3d-tv {
+  position: absolute;
+  top: 70px;
+  right: 120px;
+  width: 250px;
+  height: 365px;
+  perspective: 1200px;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.estuche-caja-tv {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: #09090c;
+  box-shadow: 0 24px 50px rgba(0, 0, 0, 0.85), -12px 12px 30px rgba(0, 0, 0, 0.6);
+  transform: rotateY(-16deg) rotateX(2deg);
+  transform-style: preserve-3d;
+}
+
+.estuche-lomo-sup-tv {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 18px;
+  background: rgba(14, 165, 233, 0.3);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+  z-index: 5;
+}
+
+.estuche-poster-tv {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.estuche-brillo-tv {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.32) 0%, rgba(255, 255, 255, 0.05) 45%, transparent 60%, rgba(0, 0, 0, 0.3) 100%);
+  pointer-events: none;
+  z-index: 6;
+}
+
+.estuche-disco-tv {
+  position: absolute;
+  top: 35px;
+  right: -55px;
+  width: 290px;
+  height: 290px;
+  border-radius: 50%;
+  object-fit: contain;
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.7);
+  z-index: 2;
+  animation: girarDiscoTv 25s linear infinite;
+}
+
+@keyframes girarDiscoTv {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 .ficha-logo {
   max-width: 460px;
   max-height: 130px;
@@ -1965,10 +2033,15 @@ body.rend-medio .tarjeta.enfocado .lamina {
   stroke: #fff;
 }
 
-/* La papelera no grita en reposo: solo se pone roja al enfocarla. */
+/* El botón de borrar va el último y destacado en rojo para avisar de su efecto irreversible. */
 .boton-icono.peligro {
-  background: rgba(255, 255, 255, 0.16);
-  color: var(--texto);
+  background: rgba(214, 60, 60, 0.28);
+  color: #ff8a8a;
+}
+
+.boton-icono.peligro.enfocado {
+  background: #d63c3c;
+  color: #fff;
 }
 
 .acciones {
@@ -2592,4 +2665,70 @@ body.viendo-extra .marco * {
 /* Lo ya visto se apaga un poco, como en las carátulas. */
 .episodio.vista .ep-imagen img {
   opacity: 0.45;
+}
+
+.dialogos-busqueda {
+  margin-top: 36px;
+  padding: 0 150px 40px;
+}
+
+.dialogos-busqueda h3 {
+  font-size: 24px;
+  font-weight: 700;
+  margin-bottom: 18px;
+  color: var(--texto);
+}
+
+.lista-dialogos {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.linea-dialogo {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 16px 22px;
+  color: var(--texto);
+  cursor: pointer;
+}
+
+.linea-dialogo.enfocado {
+  background: #fff;
+  color: #111;
+  border-color: #fff;
+  transform: scale(1.015);
+}
+
+.linea-dialogo.enfocado .dialogo-texto b {
+  color: #c44000;
+}
+
+.linea-dialogo.enfocado .dialogo-meta {
+  color: #555;
+}
+
+.dialogo-texto {
+  font-size: 21px;
+  line-height: 1.35;
+  margin-bottom: 6px;
+}
+
+.dialogo-texto b {
+  color: var(--acento);
+}
+
+.dialogo-meta {
+  font-size: 16px;
+  color: var(--texto-sec);
+}
+
+.dialogo-tiempo {
+  font-weight: 600;
+  margin-left: 8px;
+  opacity: 0.85;
 }

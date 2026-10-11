@@ -27,6 +27,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -37,6 +39,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -131,6 +134,30 @@ fun PantallaFicha(
   var dialogoPistas by remember(itemId) { mutableStateOf<String?>(null) }
   var codecDescarga by remember { mutableStateOf("h265") }
   val ambito = rememberCoroutineScope()
+
+  // Música de cabecera en segundo plano si está disponible y activada
+  DisposableEffect(itemId, ficha?.tieneTema, Ajustes.musicaCabecera) {
+    var player: android.media.MediaPlayer? = null
+    if (ficha?.tieneTema == 1 && Ajustes.musicaCabecera) {
+      player = android.media.MediaPlayer().apply {
+        try {
+          setDataSource(Api.urlDeTema(itemId))
+          setVolume(0.15f, 0.15f)
+          isLooping = true
+          setOnPreparedListener { start() }
+          prepareAsync()
+        } catch (_: Exception) {
+          release()
+        }
+      }
+    }
+    onDispose {
+      try {
+        player?.stop()
+        player?.release()
+      } catch (_: Exception) {}
+    }
+  }
 
   LaunchedEffect(itemId, intento) {
     fallo = ""
@@ -278,28 +305,37 @@ fun PantallaFicha(
             ),
           ),
         )
-        Column(
+        Row(
           Modifier
             .align(Alignment.BottomStart)
+            .fillMaxWidth()
             .padding(horizontal = Aire.borde)
             .padding(bottom = 4.dp),
+          verticalAlignment = Alignment.Bottom,
+          horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-          if (f.tieneLogo == 1) {
-            Imagen(
-              recordarUrl(f.id, "logo", 560),
-              f.title,
-              Modifier.heightIn(max = 68.dp).fillMaxWidth(0.86f),
-              escala = ContentScale.Fit,
-              alineacion = Alignment.BottomStart,
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(f.title, color = Texto, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-          } else {
-            Text(f.title, color = Texto, style = MaterialTheme.typography.headlineMedium)
+          Column(Modifier.weight(1f, fill = false)) {
+            if (f.tieneLogo == 1) {
+              Imagen(
+                recordarUrl(f.id, "logo", 560),
+                f.title,
+                Modifier.heightIn(max = 68.dp).fillMaxWidth(0.86f),
+                escala = ContentScale.Fit,
+                alineacion = Alignment.BottomStart,
+              )
+              Spacer(Modifier.height(6.dp))
+              Text(f.title, color = Texto, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            } else {
+              Text(f.title, color = Texto, style = MaterialTheme.typography.headlineMedium)
+            }
+            f.tagline?.takeIf { it.isNotBlank() }?.let {
+              Spacer(Modifier.height(8.dp))
+              Text(it, color = TextoSuave, style = MaterialTheme.typography.bodyMedium)
+            }
           }
-          f.tagline?.takeIf { it.isNotBlank() }?.let {
-            Spacer(Modifier.height(8.dp))
-            Text(it, color = TextoSuave, style = MaterialTheme.typography.bodyMedium)
+          if (Ajustes.estuche3D && f.tienePoster == 1) {
+            Spacer(Modifier.width(12.dp))
+            Estuche3DAndroid(f.id, f.tieneDisco == 1, Modifier.padding(bottom = 4.dp))
           }
         }
       }
@@ -978,4 +1014,74 @@ private fun estimarDescargas(duracionSegundos: Double, bytesOriginal: Long?, cod
     Triple("fhd", "1080p (Full HD)", "Aprox. ${fmt(3000)}"),
     Triple("original", "Original", if (bytesOriginal != null && bytesOriginal > 0) "${fmtOriginal(bytesOriginal)} (intacto)" else "el fichero intacto")
   )
+}
+
+@Composable
+private fun Estuche3DAndroid(
+  itemId: Int,
+  tieneDisco: Boolean,
+  modifier: Modifier = Modifier,
+) {
+  var extraido by remember { mutableStateOf(false) }
+  val offsetDisco by animateFloatAsState(if (extraido) 36f else 0f, label = "disco")
+  val giroDisco by animateFloatAsState(if (extraido) 180f else 0f, label = "giro")
+
+  Box(
+    modifier
+      .clickable(
+        interactionSource = remember { MutableInteractionSource() },
+        indication = null,
+      ) { extraido = !extraido }
+      .graphicsLayer {
+        rotationY = -14f
+        rotationX = 3f
+        cameraDistance = 16f * density
+      }
+  ) {
+    if (tieneDisco) {
+      Box(
+        Modifier
+          .size(76.dp)
+          .align(Alignment.CenterEnd)
+          .graphicsLayer {
+            translationX = offsetDisco.dp.toPx()
+            rotationZ = giroDisco
+          }
+      ) {
+        Imagen(
+          Api.imagen(itemId, "discart", 300),
+          "Disco",
+          Modifier.fillMaxSize().clip(CircleShape),
+          escala = ContentScale.Fit,
+        )
+      }
+    }
+    Box(
+      Modifier
+        .width(74.dp)
+        .height(110.dp)
+        .shadow(8.dp, RoundedCornerShape(5.dp))
+        .clip(RoundedCornerShape(5.dp))
+        .background(FondoTarjeta)
+        .border(0.6.dp, Color(0x33FFFFFF), RoundedCornerShape(5.dp))
+    ) {
+      Imagen(
+        Api.imagen(itemId, "poster", 300),
+        "Póster",
+        Modifier.fillMaxSize(),
+        escala = ContentScale.Crop,
+      )
+      Box(
+        Modifier
+          .fillMaxSize()
+          .background(
+            Brush.linearGradient(
+              0f to Color(0x35FFFFFF),
+              0.45f to Color(0x08FFFFFF),
+              1f to Color(0x25000000),
+            )
+          )
+      )
+    }
+  }
 }

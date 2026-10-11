@@ -75,6 +75,15 @@ function PlaybackTab() {
       <Field label="Siguiente episodio automático" hint="Al terminar un episodio salta al siguiente de la temporada.">
         <Toggle checked={p.autoPlayNext} onChange={(autoPlayNext) => update('playback', { autoPlayNext })} />
       </Field>
+      <Field label="Modo maratón (saltar intro)" hint="Al encadenar episodios de series, salta la cabecera e intro automáticamente.">
+        <Toggle checked={p.autoSkipIntro} onChange={(autoSkipIntro) => update('playback', { autoSkipIntro })} />
+      </Field>
+      <Field label="Música de cabecera en ficha" hint="Suena la sintonía oficial al abrir la ficha de una película o serie.">
+        <Toggle checked={prefs.interface.themeMusic} onChange={(themeMusic) => update('interface', { themeMusic })} />
+      </Field>
+      <Field label="Estuche coleccionista 3D" hint="Muestra el cartel en perspectiva 3D con el disco (discart) físico extraíble.">
+        <Toggle checked={prefs.interface.case3D} onChange={(case3D) => update('interface', { case3D })} />
+      </Field>
       <Field label="Salto corto" hint="Flechas izquierda y derecha.">
         <Select
           value={p.seekStep}

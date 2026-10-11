@@ -111,6 +111,8 @@ export type Titulo = {
   has_logo: number;
   /** Solo en la ficha: el disco redondo, que gira en la pausa. */
   has_discart?: number;
+  /** Si tiene sintonía o tema musical oficial local. */
+  has_theme?: number;
   library_name: string;
   position?: number;
   progressDuration?: number;
@@ -166,6 +168,19 @@ export type Tira = {
 };
 export type RangoSalto = { kind: string; start_s: number; end_s: number; confidence: number };
 
+export type DialogoHit = {
+  itemId: number;
+  title: string;
+  year: number | null;
+  kind: string;
+  fileId: number;
+  episodeId: number | null;
+  season: number | null;
+  episode: number | null;
+  startMs: number;
+  snippet: string;
+};
+
 export type InfoReproduccion = {
   duration: number;
   container: string;
@@ -202,6 +217,8 @@ export const api = {
     pedir<{ total: number; items: Titulo[] }>(`/api/items?library=${biblioteca}&limit=${limite}&offset=${offset}&sort=title`),
   ficha: (id: number) => pedir<Ficha>('/api/items/' + id),
   buscar: (q: string) => pedir<{ items: Titulo[] }>('/api/search?q=' + encodeURIComponent(q)),
+  buscarDialogo: (q: string) =>
+    pedir<{ hits: DialogoHit[] }>('/api/search/dialogue?q=' + encodeURIComponent(q)),
   colecciones: () => pedir<Saga[]>('/api/collections'),
   coleccion: (nombre: string) =>
     pedir<{ name: string; items: Titulo[]; arteItemId: number | null; arteImagen: boolean }>(
@@ -393,6 +410,7 @@ export const imagen = {
    */
   plataforma: (ruta: string, w: number) => conToken(servidor() + '/api/plataformas/caratula/w' + w + ruta),
   disco: (id: number, w: number) => conToken(servidor() + '/api/items/' + id + '/discart?w=' + w),
+  tema: (id: number) => conToken(servidor() + '/api/items/' + id + '/theme'),
   persona: (id: number, w: number) => conToken(servidor() + '/api/people/' + id + '/thumb?w=' + w),
   tira: (fileId: number, hoja: number) => conToken(servidor() + '/api/play/' + fileId + '/trickplay/' + hoja),
   /** La imagen propia de una saga, la que se eligió del buzón. */

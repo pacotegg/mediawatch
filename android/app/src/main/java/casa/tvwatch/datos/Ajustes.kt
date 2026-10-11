@@ -161,6 +161,21 @@ object Ajustes {
     get() = prefs.getString("modoAudio", "normal") ?: "normal"
     set(v) = prefs.edit().putString("modoAudio", v).apply()
 
+  /** Música de cabecera en la ficha del título. */
+  var musicaCabecera: Boolean
+    get() = prefs.getBoolean("musicaCabecera", true)
+    set(v) = prefs.edit().putBoolean("musicaCabecera", v).apply()
+
+  /** Modo maratón: salta automáticamente intro al encadenar episodios. */
+  var modoMaraton: Boolean
+    get() = prefs.getBoolean("modoMaraton", true)
+    set(v) = prefs.edit().putBoolean("modoMaraton", v).apply()
+
+  /** Estuche 3D interactivo con discart extraíble. */
+  var estuche3D: Boolean
+    get() = prefs.getBoolean("estuche3D", false)
+    set(v) = prefs.edit().putBoolean("estuche3D", v).apply()
+
   /*
    * Subtítulos: sin ajuste por defecto, a propósito. Se eligen en la ficha o durante
    * la reproducción (el usuario lo pidió así el 09/10/2026); empiezan apagados.

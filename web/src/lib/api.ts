@@ -84,6 +84,8 @@ export type MovieVersion = {
 export type ItemDetail = ItemSummary & {
   /** El disco redondo del Blu-ray, si lo hay: gira en la pausa del reproductor. */
   has_discart?: number;
+  /** Si tiene sintonía o tema musical oficial local. */
+  has_theme?: number;
   plot: string | null;
   original_title: string | null;
   premiered: string | null;
@@ -120,6 +122,10 @@ export type PlayInfo = {
   subtitles: { id: string; language: string | null; title: string | null; forced: boolean; source: 'embedded' | 'external' }[];
   /** Cabecera y créditos; en una película salen de los capítulos del fichero. */
   skip?: SkipRange[];
+  chapters?: { title: string; start: number; end: number }[];
+  container?: string;
+  bitrate?: number;
+  size?: number;
 };
 
 export type PapelArte = 'poster' | 'fanart' | 'clearlogo' | 'landscape' | 'discart';

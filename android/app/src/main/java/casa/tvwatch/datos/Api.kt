@@ -227,6 +227,11 @@ object Api {
   fun caratulaPlataforma(ruta: String, ancho: Int) =
     "${Servidor.baseCacheada()}/api/plataformas/caratula/w$ancho$ruta"
   fun urlDeExtra(id: Int) = "${Servidor.baseCacheada()}/api/extras/$id/stream"
+  fun urlDeTema(itemId: Int): String {
+    val t = Ajustes.token
+    val base = "${Servidor.baseCacheada()}/api/items/$itemId/theme"
+    return if (!t.isNullOrEmpty()) "$base?token=" + java.net.URLEncoder.encode(t, "UTF-8") else base
+  }
   fun miniaturaDeExtra(id: Int) = "${Servidor.baseCacheada()}/api/extras/$id/thumb"
   fun buscar(q: String): Resultados = pedir("/api/search?q=" + java.net.URLEncoder.encode(q, "UTF-8"))
 
@@ -246,6 +251,11 @@ object Api {
   /** Manda el texto a la television, que lo recoge en su pantalla de buscar. */
   fun enviarALaTele(texto: String) {
     texto("/api/mando/buscar", "{\"texto\":\"" + texto.replace("\"", "") + "\"}")
+  }
+
+  /** Manda una pulsación del mando virtual a la televisión. */
+  fun enviarTeclaALaTele(tecla: String) {
+    texto("/api/mando/tecla", "{\"tecla\":\"$tecla\"}")
   }
 
   /** «Ver en la tele»: la aplicación de la tele lo recoge y arranca ahí. */
@@ -654,6 +664,8 @@ data class Ficha(
   @SerialName("has_poster") val tienePoster: Int = 0,
   /** El disco redondo (carátula del Blu-ray): gira en la pausa del reproductor. */
   @SerialName("has_discart") val tieneDisco: Int = 0,
+  /** Sintonía o música oficial local de cabecera. */
+  @SerialName("has_theme") val tieneTema: Int = 0,
   val collection: String? = null,
   @SerialName("collectionItems") val coleccionItems: List<Titulo> = emptyList(),
   @SerialName("similar") val similares: List<Titulo> = emptyList(),

@@ -31,6 +31,12 @@ export type Ajustes = {
   modoAudio: 'normal' | 'night' | 'dialogue';
   /** Ofrecer el botón de saltar cabecera cuando se haya detectado. */
   saltarCabecera: boolean;
+  /** Modo maratón: salta automáticamente cabeceras sin pedir confirmación. */
+  modoMaraton: boolean;
+  /** Música de cabecera en la ficha del título. */
+  musicaCabecera: boolean;
+  /** Estuche coleccionista 3D con disco extraíble. */
+  estuche3D: boolean;
   /** Enseñar en el reproductor a qué hora termina lo que se está viendo. */
   horaDeFin: boolean;
   /*
@@ -68,6 +74,9 @@ const POR_DEFECTO: Ajustes = {
   subirSubtitulos: 0,
   modoAudio: 'normal',
   saltarCabecera: true,
+  modoMaraton: true,
+  musicaCabecera: true,
+  estuche3D: false,
   horaDeFin: true,
   salvaMenu: 2,
   salvaPausa: 5,
@@ -96,6 +105,9 @@ export function cargarAjustes(): Ajustes {
         subirSubtitulos: guardado.subirSubtitulos ?? 0,
         modoAudio: guardado.modoAudio || POR_DEFECTO.modoAudio,
         saltarCabecera: guardado.saltarCabecera !== false,
+        modoMaraton: guardado.modoMaraton !== false,
+        musicaCabecera: guardado.musicaCabecera !== false,
+        estuche3D: guardado.estuche3D === true,
         horaDeFin: guardado.horaDeFin !== false,
         /*
          * Con `??`, no con `||`: cero es «apagado», un valor legítimo que `||`

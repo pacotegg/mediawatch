@@ -69,11 +69,25 @@ export function recogerBusqueda(userId: number): string | null {
   return Date.now() - orden.enviado < CADUCA_MS ? orden.texto : null;
 }
 
+export type TeclaMando = 'arriba' | 'abajo' | 'izquierda' | 'derecha' | 'ok' | 'atras' | 'play_pause';
+const teclas = new Map<number, { tecla: TeclaMando; enviado: number }>();
+
+export function enviarTecla(userId: number, tecla: TeclaMando) {
+  teclas.set(userId, { tecla, enviado: Date.now() });
+}
+
+export function recogerTecla(userId: number): TeclaMando | null {
+  const orden = teclas.get(userId);
+  if (!orden) return null;
+  teclas.delete(userId);
+  return Date.now() - orden.enviado < 10_000 ? orden.tecla : null;
+}
+
 export default async function mandoRoutes(app: FastifyInstance) {
-  /** La televisión pregunta si hay algo que escribir. */
+  /** La televisión pregunta si hay algo que escribir o pulsar. */
   app.get('/api/mando', async (req) => {
     const user = requireUser(req);
-    // Las órdenes de buscar y reproducir son para la televisión (`?tele=1`):
+    // Las órdenes de buscar, reproducir y teclas son para la televisión (`?tele=1`):
     // si las recogiera el navegador o el móvil, que también preguntan por los
     // avisos, se las llevarían sin que nadie las viera.
     const tele = (req.query as { tele?: string }).tele === '1';
@@ -82,6 +96,7 @@ export default async function mandoRoutes(app: FastifyInstance) {
     return {
       buscar: tele ? recogerBusqueda(user.id) : null,
       reproducir: tele ? recogerReproduccion(user.id) : null,
+      tecla: tele ? recogerTecla(user.id) : null,
       mensaje: avisos.mensaje,
       parar: avisos.parar,
     };
@@ -99,6 +114,15 @@ export default async function mandoRoutes(app: FastifyInstance) {
       position: Math.max(0, Number(position ?? 0) || 0),
     });
     return { enviado: true };
+  });
+
+  /** El móvil manda una tecla del mando a la tele. */
+  app.post('/api/mando/tecla', async (req, reply) => {
+    const user = requireUser(req);
+    const { tecla } = (req.body ?? {}) as { tecla?: TeclaMando };
+    if (!tecla) return reply.code(400).send({ error: 'Falta la tecla' });
+    enviarTecla(user.id, tecla);
+    return { enviado: tecla };
   });
 
   /** El móvil manda el texto. */
