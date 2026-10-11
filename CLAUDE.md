@@ -150,6 +150,8 @@ no tienen APK subido.
 **Plan abierto: app para teles LG (webOS)** → `PLAN-LG-WEBOS.md` (no empezado; valoración, hechos verificados
 de LG, fases y preguntas abiertas). «Ver en la tele» hoy solo tiene receptor en la app de Tizen (Samsung).
 
+**Mejoras premium y exclusivas frente a Netflix/Apple TV+/Plex** → `PLAN-MEJORAS-PREMIUM.md`: comparativa, roadmap e ideas exclusivas.
+
 Antes de cada push: `git status` y `git log origin/main..HEAD`. Puede haber commits ajenos en la
 rama local, y un push los sube (`bb662a7` se subió sin pedirse). Solo se empuja lo de la tarea.
 
