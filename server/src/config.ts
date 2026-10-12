@@ -124,7 +124,7 @@ function defaultConfig(): AppConfig {
     ffmpeg: localizar('ffmpeg'),
     ffprobe: localizar('ffprobe'),
     python: localizar('python'),
-    hwaccel: 'qsv',
+    hwaccel: (env('MEDIAWATCH_HWACCEL') as 'qsv' | 'none') || (PORTABLE ? 'none' : 'qsv'),
     transcodeQuality: 20,
     tonemap: true,
     tmdbApiKey: '',
@@ -147,6 +147,7 @@ const POR_ENTORNO: Partial<Record<keyof AppConfig, string>> = {
   ffmpeg: env('MEDIAWATCH_FFMPEG'),
   ffprobe: env('MEDIAWATCH_FFPROBE'),
   python: env('MEDIAWATCH_PYTHON'),
+  hwaccel: env('MEDIAWATCH_HWACCEL'),
   transcodeDir: env('MEDIAWATCH_TMP_DIR'),
 };
 let guardadoPrevio: Partial<AppConfig> = {};
