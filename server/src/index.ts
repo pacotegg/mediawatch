@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import Fastify from 'fastify';
 import cookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
-import { DATA_DIR, ROOT, config } from './config.ts';
+import { DATA_DIR, MODO_PORTABLE, ROOT, config } from './config.ts';
 import { backupBaseDeDatosEnWorker, db } from './db.ts';
 import { limpiarCache as limpiarCacheImagenes } from './media/images.ts';
 import { hayAlguienViendo } from './media/ocupado.ts';
@@ -13,6 +13,8 @@ import actividadRoutes from './routes/actividad.ts';
 import authRoutes, { currentUser, limpiarSesiones } from './routes/auth.ts';
 import descargaRoutes from './routes/descargas.ts';
 import enrichRoutes from './routes/enrich.ts';
+import identificarRoutes from './routes/identificar.ts';
+import { identificarPendientes } from './scanner/identificar.ts';
 import libraryRoutes from './routes/library.ts';
 import mandoRoutes from './routes/mando.ts';
 import mantenimientoRoutes from './routes/mantenimiento.ts';
@@ -273,6 +275,8 @@ async function escanearSiToca(motivo: string) {
       /* sin sello se reintentará dentro de una hora; no vale tumbar nada por esto */
     }
     console.log(`[escaneo ${motivo}] ${r.map((x) => `${x.name}: ${x.count}`).join(', ')} en ${((Date.now() - t0) / 1000).toFixed(0)} s`);
+    // MediaWatch Server: tras escanear, los titulos nuevos se identifican por su nombre.
+    if (MODO_PORTABLE) void identificarPendientes().catch((e) => console.error('[identificar]', (e as Error).message));
   } catch (err) {
     console.error('[escaneo] fallo:', (err as Error).message);
   } finally {
@@ -380,6 +384,7 @@ await app.register(libraryRoutes);
 await app.register(playRoutes);
 await app.register(preferenceRoutes);
 await app.register(enrichRoutes);
+await app.register(identificarRoutes);
 await app.register(subtitleRoutes);
 await app.register(animeRoutes);
 await app.register(actividadRoutes);

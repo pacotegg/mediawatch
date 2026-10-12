@@ -22,7 +22,7 @@ import subprocess
 import sys
 import tempfile
 
-SUBSFETCH = r"C:\scripts\webpanel\subsfetch.py"
+SUBSFETCH = os.environ.get("MEDIAWATCH_SUBSFETCH") or r"C:\scripts\webpanel\subsfetch.py"
 
 
 def cargar_subsfetch():

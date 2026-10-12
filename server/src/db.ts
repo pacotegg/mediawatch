@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, readdirSync, statSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { Worker } from 'node:worker_threads';
-import { DATA_DIR } from './config.ts';
+import { DATA_DIR, MODO_PORTABLE } from './config.ts';
 import { copiasAConservar } from './rotacion-copias.ts';
 
 mkdirSync(DATA_DIR, { recursive: true });
@@ -13,7 +13,9 @@ mkdirSync(DATA_DIR, { recursive: true });
 export const db = new DatabaseSync(join(DATA_DIR, 'tvwatch.db'), { timeout: 10_000 });
 
 export function parseRatingCategoria(mpaa: string | null, libraryId: number): string {
-  if (libraryId === 3 || libraryId === 9) return 'TP';
+  // Bibliotecas 3 y 9 = «Peques» y «Series Peques» del servidor original. En una instalacion
+  // nueva esos ids son bibliotecas cualquiera.
+  if (!MODO_PORTABLE && (libraryId === 3 || libraryId === 9)) return 'TP';
   if (!mpaa) return '18';
   const m = mpaa.toUpperCase();
   if (m.includes('18') || m.includes('NC-17') || m.includes('R ') || m.endsWith(' R') || m.includes('TV-MA')) return '18';
@@ -148,8 +150,6 @@ CREATE TABLE IF NOT EXISTS coleccion_imagen (
 -- estadisticas; con el indice, 0,7 ms. Ademas el sondeo borra las pistas por
 -- fichero antes de reescribirlas, asi que un escaneo completo hacia ese
 -- recorrido 5.566 veces.
-CREATE INDEX IF NOT EXISTS idx_sub_tracks_file ON sub_tracks(file_id);
-CREATE INDEX IF NOT EXISTS idx_audio_tracks_file ON audio_tracks(file_id);
 CREATE INDEX IF NOT EXISTS idx_items_search ON items(search_title);
 
 CREATE TABLE IF NOT EXISTS episodes (
@@ -204,6 +204,10 @@ CREATE TABLE IF NOT EXISTS sub_tracks (
   forced   INTEGER NOT NULL DEFAULT 0,
   external TEXT
 );
+
+-- Van aqui, despues de crear las tablas: antes de sub_tracks fallaba una BD nueva.
+CREATE INDEX IF NOT EXISTS idx_sub_tracks_file ON sub_tracks(file_id);
+CREATE INDEX IF NOT EXISTS idx_audio_tracks_file ON audio_tracks(file_id);
 
 CREATE TABLE IF NOT EXISTS genres (
   id   INTEGER PRIMARY KEY,
@@ -496,6 +500,11 @@ anadirColumna('items', 'arte_fijado', 'TEXT');
 // seguía enseñando la carátula vieja de su propia caché aunque el servidor ya
 // tuviera otra: elegir una imagen distinta «no cambiaba nada» en pantalla.
 anadirColumna('items', 'arte_actualizado', 'TEXT');
+// 'tmdb' = metadatos puestos desde TMDb (no vienen de un .nfo): el escaneo no los pisa.
+anadirColumna('items', 'meta_origen', 'TEXT');
+// Fecha del ultimo intento de identificar el titulo por su nombre (para no repetirlo cada dia).
+anadirColumna('items', 'ident_intento', 'TEXT');
+anadirColumna('episodes', 'meta_origen', 'TEXT');
 
 prepararBusquedaDePersonas();
 
