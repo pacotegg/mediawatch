@@ -910,6 +910,18 @@ o un desfase tan grande que ninguna ventana cae donde toca.
   - Transición suave de fanart en ficha (`transition: opacity 0.35s ease-out; will-change: opacity`).
   - Aceleración por GPU con `transform: translateZ(0)` y `will-change: transform` en `.rejilla-ventana` y `.panel`.
 
+### 9.3 Distribución de escritorio independiente y aceleración HEVC/x265 (12/10/2026)
+
+- **Distribución de escritorio independiente (MediaWatch Server)**:
+  - Repositorio público independiente `pacotegg/MediaWatch-Server` (Electron + core submodule `pacotegg/mediawatch`).
+  - Empaquetado multiplataforma mediante GitHub Actions para Windows (`.exe` instalador NSIS) y Linux (`.AppImage` portable y `.deb` para Debian/Ubuntu).
+  - Icono en bandeja del sistema con arranque silencioso, asistente visual de primer arranque para elegir carpetas sin tocar JSON, y ventana interactiva con código QR para conectar móviles y tablets al instante en la red local.
+- **Aceleración por hardware universal y soporte HEVC/x265**:
+  - Transcodificación HLS y progresiva extendida a Intel QSV (`hevc_qsv`), NVIDIA NVENC (`hevc_nvenc`), AMD AMF (`hevc_amf`) y CPU fallback (`libx265`).
+  - `hevc_qsv` procesa fuentes HDR de 10 bits de forma nativa en la GPU sin forzar degradación previa a NV12 de 8 bits.
+  - Selector de códec en Ajustes web (`transcodeCodec`: `'h264' | 'hevc'`).
+  - Documentación técnica y requisitos de hardware en ambos repositorios con tono personal de Paco Gámiz, en inglés (`README.md`) y español (`README.es.md`).
+
 ## 10. Claves, credenciales y dónde viven
 
 No se copian aquí. Todas están en `C:\tvwatch\data\config.json` (fuera de git):
