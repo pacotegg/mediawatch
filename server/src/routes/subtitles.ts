@@ -202,7 +202,7 @@ export default async function subtitleRoutes(app: FastifyInstance) {
 
     const langs = (languages ?? 'es,en').replace(/[^a-zA-Z,]/g, '') || 'es,en';
     const args = [SUBTITLES_API, 'buscar', '--video', file.path, '--idiomas', langs];
-    const proc = spawn(PYTHON, args, { windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
+    const proc = spawn(PYTHON, args, { windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' } });
 
     let salida = '';
     proc.stdout.on('data', (d) => { salida += d.toString('utf8'); });
@@ -227,7 +227,8 @@ export default async function subtitleRoutes(app: FastifyInstance) {
       fileId: number; provider: string; subId: string | number; language: string; release?: string; forced?: boolean;
     };
     if (!fileId || !provider || !subId) return reply.code(400).send({ error: 'Faltan parámetros' });
-    if (!['opensubtitles', 'subdivx'].includes(provider)) return reply.code(400).send({ error: 'Proveedor no soportado' });
+    const prov = (provider || '').toLowerCase();
+    if (!['opensubtitles', 'subsource', 'subdivx'].includes(prov)) return reply.code(400).send({ error: 'Proveedor no soportado' });
     if (!/^[a-zA-Z0-9_-]{1,64}$/.test(String(subId))) return reply.code(400).send({ error: 'ID de subtítulo no válido' });
 
     const file = db
@@ -253,11 +254,11 @@ export default async function subtitleRoutes(app: FastifyInstance) {
       SUBTITLES_API,
       'descargar',
       '--video', file.path,
-      '--provider', provider,
+      '--provider', prov,
       '--sub-id', String(subId),
       '--out', outFile,
     ];
-    const proc = spawn(PYTHON, args, { windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
+    const proc = spawn(PYTHON, args, { windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' } });
 
     let salida = '';
     proc.stdout.on('data', (d) => { salida += d.toString('utf8'); });
