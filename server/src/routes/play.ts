@@ -13,10 +13,10 @@ import { dialogueDownmix, planPlayback, sessions, startStream, stopSession, type
 import { clearOffset, isMeasuring, measure, offsetFor, saveOffset } from '../media/resync.ts';
 import { ensure, generarLote, isGenerating, lote, pararLote, readManifest, sheetPath } from '../media/trickplay.ts';
 import { marcarActividad } from '../media/ocupado.ts';
-import { extraPorId, extrasDe, miniatura } from '../media/extras.ts';
+import { extraPorId, extrasDe, miniatura, extrasTmdb, descargarExtraTmdb, actualizarTipoExtra } from '../media/extras.ts';
 import { detectForShow, detectarTodas, job, pararDeteccion, showsWithRanges, skipRangesFor } from '../media/intros.ts';
 import { detectarPeliculas, jobPeliculas, pararPeliculas, resumenPeliculas, skipDePelicula } from '../media/creditos-detector.ts';
-import { currentUser, requireUser, sesionDe } from './auth.ts';
+import { currentUser, deFuera, requireUser, sesionDe } from './auth.ts';
 import type { ServerResponse } from 'node:http';
 
 function caps(req: FastifyRequest): ClientCaps {
@@ -907,6 +907,9 @@ export default async function playRoutes(app: FastifyInstance) {
     requireUser(req);
     const { fileId, trackId } = req.params as { fileId: string; trackId: string };
     const { offsetMs } = req.body as { offsetMs: number };
+    if (typeof offsetMs !== 'number' || !Number.isFinite(offsetMs) || Math.abs(offsetMs) > 60000) {
+      return reply.code(400).send({ error: 'Desfase inválido' });
+    }
     if (offsetMs === 0) clearOffset(Number(fileId), trackId);
     else saveOffset(Number(fileId), trackId, offsetMs, 'manual', null);
     return { ok: true, offsetMs };
@@ -1017,6 +1020,32 @@ export default async function playRoutes(app: FastifyInstance) {
   app.get('/api/items/:id/extras', async (req) => ({
     extras: extrasDe(Number((req.params as { id: string }).id)),
   }));
+
+  app.get('/api/items/:id/extras/tmdb', async (req) => {
+    requireUser(req);
+    return { videos: await extrasTmdb(Number((req.params as { id: string }).id)) };
+  });
+
+  app.post('/api/items/:id/extras/download', async (req, reply) => {
+    const user = requireUser(req);
+    if (!user.is_admin) return reply.code(403).send({ error: 'Solo un administrador puede descargar extras' });
+    if (deFuera(req)) return reply.code(403).send({ error: 'Descargar extras a la biblioteca se hace desde la red de casa' });
+    const itemId = Number((req.params as { id: string }).id);
+    const { youtubeKey, titulo, tipo } = req.body as { youtubeKey: string; titulo: string; tipo: string };
+    if (!youtubeKey || !titulo) return reply.code(400).send({ error: 'Faltan parámetros' });
+    const res = await descargarExtraTmdb(itemId, youtubeKey, titulo, tipo || 'Featurette');
+    return res;
+  });
+
+  app.patch('/api/extras/:id', async (req, reply) => {
+    const user = requireUser(req);
+    if (!user.is_admin) return reply.code(403).send({ error: 'Solo un administrador' });
+    const id = Number((req.params as { id: string }).id);
+    const { tipo } = req.body as { tipo: string };
+    if (!tipo || typeof tipo !== 'string' || tipo.trim().length === 0 || tipo.length > 50) return reply.code(400).send({ error: 'Tipo inválido' });
+    const ok = actualizarTipoExtra(id, tipo.trim());
+    return { ok };
+  });
 
   app.get('/api/extras/:id/thumb', async (req, reply) => {
     const ruta = await miniatura(Number((req.params as { id: string }).id));

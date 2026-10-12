@@ -132,7 +132,7 @@ fun PantallaFicha(
   var estaVista by remember(itemId) { mutableStateOf(false) }
   // Los extras se piden aparte para no retrasar la ficha, que es lo que se mira.
   var extras by remember(itemId) { mutableStateOf<List<Extra>>(emptyList()) }
-  var extrasAbiertos by remember(itemId) { mutableStateOf(false) }
+  var extraViendo by remember(itemId) { mutableStateOf<Extra?>(null) }
   var resenas by remember(itemId) { mutableStateOf<List<Resena>>(emptyList()) }
   /*
    * Dónde verlo fuera de casa. Solo informa y abre la app de la plataforma: van
@@ -291,9 +291,11 @@ fun PantallaFicha(
 
   val temporadas = remember(f) { f.episodes.map { it.season }.distinct().sorted() }
   val temporadaActiva = temporada ?: temporadas.firstOrNull()
+  val estadoScroll = androidx.compose.foundation.lazy.rememberLazyListState()
 
   LazyColumn(
-    Modifier.fillMaxSize().background(Fondo),
+    state = estadoScroll,
+    modifier = Modifier.fillMaxSize().background(Fondo),
     contentPadding = PaddingValues(bottom = 36.dp),
   ) {
     /*
@@ -492,7 +494,11 @@ fun PantallaFicha(
           }
           // Solo si los hay: extras disponibles
           if (extras.isNotEmpty()) {
-            BotonIcono("Extras (${extras.size})", "extras") { extrasAbiertos = true }
+            BotonIcono("Extras (${extras.size})", "extras") {
+              ambito.launch {
+                estadoScroll.animateScrollToItem(estadoScroll.layoutInfo.totalItemsCount - 1)
+              }
+            }
           }
           // «También en tu suscripción»
           for (p in dondeVer) {
@@ -679,10 +685,17 @@ fun PantallaFicha(
         }
       }
     }
+
+    if (extras.isNotEmpty()) {
+      item {
+        Spacer(Modifier.height(18.dp))
+        SeccionExtras(extras, alVerExtra = { extraViendo = it })
+      }
+    }
   }
 
-  if (extrasAbiertos) {
-    DialogoDeExtras(extras) { extrasAbiertos = false }
+  extraViendo?.let { extra ->
+    ReproductorDeExtra(extra) { extraViendo = null }
   }
 
   // Elegir pista de audio o subtítulos para esta película (la ficha de la tele hace lo mismo).
@@ -1192,7 +1205,7 @@ private fun Estuche3DAndroid(
     label = "rotX",
   )
   val offsetDisco by animateFloatAsState(
-    targetValue = if (extraido) 142f else 10f,
+    targetValue = if (extraido) 165f else 10f,
     animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessLow),
     label = "disco",
   )
@@ -1230,7 +1243,7 @@ private fun Estuche3DAndroid(
 
       Box(
         Modifier
-          .width(anchoCaja + 155.dp)
+          .width(anchoCaja + 185.dp)
           .height(altoCaja + 16.dp),
         contentAlignment = Alignment.CenterStart,
       ) {

@@ -691,7 +691,14 @@ export default function Detail() {
 
               <Trailer itemId={item.id} />
 
-              <Extras itemId={item.id} />
+              {(item as any).extras_count > 0 && (
+                <a
+                  href="#extras"
+                  className="glass rounded-full px-4 py-2.5 text-sm transition-transform duration-200 hover:scale-105 active:scale-95"
+                >
+                  Extras ({(item as any).extras_count})
+                </a>
+              )}
 
               <button
                 onClick={() => favorite.mutate(!esFavorita)}
@@ -927,6 +934,8 @@ export default function Detail() {
               </div>
             </div>
           )}
+
+          <Extras itemId={item.id} isAdmin={me?.is_admin === 1} />
         </motion.div>
       </div>
 

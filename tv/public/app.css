@@ -3007,3 +3007,237 @@ body.viendo-extra .marco * {
   margin-left: 8px;
   opacity: 0.85;
 }
+
+/* Fila nativa de extras 16:9 en ficha TV */
+.tarjeta-extra {
+  display: inline-block;
+  vertical-align: top;
+  width: 380px;
+  margin-right: 22px;
+  cursor: pointer;
+  white-space: normal;
+  transition: transform 0.14s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+.tarjeta-extra.enfocado {
+  transform: scale(1.06);
+}
+
+.tarjeta-extra.enfocado .extra-foto {
+  box-shadow: 0 0 0 4px var(--acento), 0 14px 28px rgba(0, 0, 0, 0.8);
+}
+
+.tarjeta-extra .extra-foto {
+  position: relative;
+  width: 380px;
+  height: 214px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: box-shadow 0.14s ease-out;
+}
+
+.tarjeta-extra .extra-foto img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.tarjeta-extra .badge-tipo {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(14, 15, 20, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.tarjeta-extra .badge-dur {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.85);
+  color: #eee;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.tarjeta-extra .nombre {
+  margin-top: 10px;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--texto);
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.tarjeta-extra.enfocado .nombre {
+  color: var(--acento);
+}
+
+.tarjeta-extra .sub {
+  margin-top: 4px;
+  font-size: 16px;
+  color: var(--tenue);
+}
+
+/* Interfaz Grab & Drop para personalizar orden del menú */
+.reordenar-contenedor {
+  display: flex;
+  gap: 40px;
+  align-items: flex-start;
+  max-width: 1200px;
+}
+
+.reordenar-lista {
+  flex: 1;
+  min-width: 580px;
+}
+
+.item-reordenar {
+  display: flex;
+  align-items: center;
+  height: 64px;
+  margin-bottom: 8px;
+  padding: 0 18px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px solid transparent;
+  font-size: 22px;
+  transition: transform 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+  cursor: pointer;
+}
+
+.item-reordenar.enfocado {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.65);
+  transform: scale(1.02);
+}
+
+.item-reordenar.enganchado {
+  background: rgba(235, 160, 40, 0.18) !important;
+  border-color: var(--acento) !important;
+  box-shadow: 0 0 24px rgba(235, 160, 40, 0.35);
+  transform: scale(1.03);
+}
+
+.item-reordenar.oculta {
+  opacity: 0.55;
+}
+
+.item-reordenar.oculta.enfocado {
+  opacity: 0.85;
+}
+
+.item-reordenar .reordenar-pos {
+  width: 36px;
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--tenue);
+}
+
+.item-reordenar .reordenar-icono {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 14px;
+  color: var(--texto);
+}
+
+.item-reordenar .reordenar-icono svg {
+  width: 26px;
+  height: 26px;
+}
+
+.item-reordenar .reordenar-etiqueta {
+  flex: 1;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--texto);
+}
+
+.item-reordenar .reordenar-estado {
+  margin-left: 14px;
+}
+
+.badge-reordenar {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.badge-reordenar.badge-visible {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--texto-sec);
+}
+
+.badge-reordenar.badge-oculto {
+  background: rgba(239, 68, 68, 0.18);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.badge-reordenar.badge-moviendo {
+  background: var(--acento);
+  color: #0b0c10;
+  font-weight: 700;
+  box-shadow: 0 0 12px rgba(235, 160, 40, 0.5);
+}
+
+.reordenar-panel-ayuda {
+  width: 380px;
+  padding: 24px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.reordenar-panel-ayuda h3 {
+  margin-top: 0;
+  margin-bottom: 18px;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--texto);
+}
+
+.reordenar-panel-ayuda .ayuda-item {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 14px;
+  font-size: 16px;
+  line-height: 1.4;
+  color: var(--texto-sec);
+}
+
+.reordenar-panel-ayuda .ayuda-item .k {
+  display: inline-block;
+  min-width: 70px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--texto);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.reordenar-acciones-pie {
+  margin-top: 24px;
+  display: flex;
+  gap: 14px;
+}
+

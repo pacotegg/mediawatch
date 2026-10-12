@@ -7,7 +7,7 @@
  */
 import { execFile } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
-import { basename, extname, join } from 'node:path';
+import { basename, dirname, extname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { config, DATA_DIR } from '../config.ts';
 import { db } from '../db.ts';
@@ -87,11 +87,29 @@ function tituloDe(archivo: string, tituloItem: string): string {
   return (sinTitulo.trim() || n.trim()).replace(/[._]+/g, ' ').trim();
 }
 
+const REGLAS_NOMBRE: [RegExp, string][] = [
+  [/\b(deleted|eliminad|escena.*eliminada|alternate.*scene|alternate.*ending)\b/i, 'Escenas eliminadas'],
+  [/\b(interview|entrevista|discussion|conversation|q&a)\b/i, 'Entrevistas'],
+  [/\b(behind.*the.*scenes|making.*of|c[oó]mo.*se.*hizo|detr[aá]s.*de|diario.*rodaje)\b/i, 'Cómo se hizo'],
+  [/\b(featurette|visual.*effects|vfx|special.*effects|soundtrack|score|bso|costume|animatronic)\b/i, 'Featurette'],
+  [/\b(trailer|teaser|promo|spot)\b/i, 'Tráilers'],
+  [/\b(blooper|gag.*reel|tomas.*falsas|outtake)\b/i, 'Tomas falsas'],
+  [/\b(short|corto|cortometraje)\b/i, 'Cortos'],
+  [/\b(documentary|documental)\b/i, 'Documental'],
+];
+
 function tipoDe(dir: string, archivo: string): string | null {
-  const carpeta = CARPETAS[basename(dir).toLowerCase()];
-  if (carpeta) return carpeta;
   const n = basename(archivo, extname(archivo)).toLowerCase();
-  return SUFIJOS.find(([suf]) => n.endsWith(suf))?.[1] ?? null;
+  const porRegla = REGLAS_NOMBRE.find(([rx]) => rx.test(n))?.[1];
+  if (porRegla) return porRegla;
+
+  const carpeta = CARPETAS[basename(dir).toLowerCase()];
+  if (carpeta && carpeta !== 'Extra') return carpeta;
+
+  const porSufijo = SUFIJOS.find(([suf]) => n.endsWith(suf))?.[1];
+  if (porSufijo) return porSufijo;
+
+  return carpeta ?? null;
 }
 
 function listar(dir: string): { path: string; isDir: boolean; name: string }[] {
@@ -128,7 +146,7 @@ export function indexarExtras(itemId: number, carpeta: string, tituloItem: strin
         continue;
       }
       if (!VIDEO_EXT.has(extname(e.name).toLowerCase())) continue;
-      const tipo = heredado ?? tipoDe(dir, e.name);
+      const tipo = tipoDe(dir, e.name) ?? (heredado && heredado !== 'Extra' ? heredado : null) ?? heredado;
       if (!tipo) continue;
       let size: number | null = null;
       try {
@@ -224,3 +242,89 @@ export async function miniatura(id: number): Promise<string | null> {
   }
   return existsSync(destino) ? destino : null;
 }
+
+export function reclasificarExtrasExistentes(): number {
+  const filas = db.prepare('SELECT id, titulo, path FROM extras WHERE tipo = \'Extra\'').all() as { id: number; titulo: string; path: string }[];
+  let cambiados = 0;
+  const upd = db.prepare('UPDATE extras SET tipo = ? WHERE id = ?');
+  for (const f of filas) {
+    const texto = `${f.titulo} ${basename(f.path)}`.toLowerCase();
+    const regla = REGLAS_NOMBRE.find(([rx]) => rx.test(texto))?.[1];
+    if (regla) {
+      upd.run(regla, f.id);
+      cambiados++;
+    }
+  }
+  return cambiados;
+}
+
+export function actualizarTipoExtra(id: number, nuevoTipo: string): boolean {
+  const res = db.prepare('UPDATE extras SET tipo = ? WHERE id = ?').run(nuevoTipo, id);
+  return res.changes > 0;
+}
+
+export async function extrasTmdb(itemId: number) {
+  const item = db.prepare('SELECT tmdb_id, kind FROM items WHERE id = ?').get(itemId) as { tmdb_id: string | null; kind: string } | undefined;
+  if (!item?.tmdb_id || !/^\d+$/.test(item.tmdb_id) || !config.tmdbApiKey) return [];
+  const ruta = item.kind === 'show' ? `/tv/${item.tmdb_id}` : `/movie/${item.tmdb_id}`;
+  try {
+    const res = await fetch(`https://api.themoviedb.org/3${ruta}/videos?api_key=${config.tmdbApiKey}`, { signal: AbortSignal.timeout(6000) });
+    if (!res.ok) return [];
+    const j = (await res.json()) as { results?: any[] };
+    return (j.results || [])
+      .filter((v) => v.site === 'YouTube' && v.type !== 'Trailer')
+      .map((v) => ({
+        key: v.key,
+        name: v.name,
+        type: v.type,
+        site: v.site,
+        size: v.size,
+        official: Boolean(v.official),
+      }));
+  } catch {
+    return [];
+  }
+}
+
+export async function descargarExtraTmdb(itemId: number, youtubeKey: string, titulo: string, tipo: string): Promise<{ ok: boolean; path?: string; error?: string }> {
+  const item = db.prepare('SELECT id, title, folder FROM items WHERE id = ?').get(itemId) as { id: number; title: string; folder: string } | undefined;
+  if (!item || !item.folder) return { ok: false, error: 'Título no encontrado o sin carpeta en biblioteca' };
+
+  if (!/^[a-zA-Z0-9_-]{11}$/.test(youtubeKey)) {
+    return { ok: false, error: 'ID de YouTube no válido' };
+  }
+
+  let subcarpeta = 'Extras';
+  const tNorm = tipo.toLowerCase();
+  if (tNorm.includes('behind') || tNorm.includes('cómo se hizo')) subcarpeta = 'Behind the scenes';
+  else if (tNorm.includes('featurette')) subcarpeta = 'Featurettes';
+  else if (tNorm.includes('deleted') || tNorm.includes('eliminad')) subcarpeta = 'Deleted scenes';
+  else if (tNorm.includes('interview') || tNorm.includes('entrevista')) subcarpeta = 'Interviews';
+  else if (tNorm.includes('short') || tNorm.includes('corto')) subcarpeta = 'Shorts';
+
+  const destinoDir = join(item.folder, subcarpeta);
+  if (!destinoDir.startsWith(item.folder)) return { ok: false, error: 'Ruta de destino inválida' };
+  mkdirSync(destinoDir, { recursive: true });
+
+  const cleanNombre = (titulo || 'Extra').replace(/[/\\?%*:|"<>]/g, '_').replace(/^\.+/, '').trim().slice(0, 100) || 'Extra';
+  const destinoArchivo = join(destinoDir, `${cleanNombre}.mp4`);
+
+  try {
+    await run('yt-dlp', [
+      '-f', 'bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/best',
+      '--merge-output-format', 'mp4',
+      '--no-playlist',
+      '-o', destinoArchivo,
+      `https://www.youtube.com/watch?v=${youtubeKey}`,
+    ], { windowsHide: true, timeout: 300_000 });
+
+    if (existsSync(destinoArchivo)) {
+      indexarExtras(itemId, item.folder, item.title, new Date().toISOString());
+      return { ok: true, path: destinoArchivo };
+    }
+    return { ok: false, error: 'No se generó el fichero de salida' };
+  } catch (err) {
+    return { ok: false, error: (err as Error).message };
+  }
+}
+

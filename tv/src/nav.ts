@@ -469,16 +469,16 @@ export function siguiente(direccion: number): HTMLElement | null {
   }
 
   // Navegación de la ficha con estuche 3D:
-  // 1. Desde la barra de acciones (.acciones), pulsar a la derecha desde el último botón
-  // salta directamente al estuche 3D / carátula, en vez de derivar en diagonal al reparto.
+  // 1. Desde la barra de acciones (.acciones), pulsar a la derecha busca el siguiente botón en la barra.
+  // Si ya es el último botón a la derecha, salta directamente al estuche 3D / carátula,
+  // impidiendo que derive en diagonal hacia el reparto que está abajo.
   if (foco.closest('.acciones') && direccion === TECLA.DERECHA) {
     const acciones = foco.closest('.acciones')!;
-    const botones = Array.from(acciones.querySelectorAll<HTMLElement>('[data-nav]'));
-    const esUltimo = botones.length > 0 && botones[botones.length - 1] === foco;
-    if (esUltimo) {
-      const estuche = document.querySelector<HTMLElement>('[data-estuche]');
-      if (estuche) return estuche;
-    }
+    const dentro = mejorEn(desde, direccion, undefined, acciones);
+    if (dentro) return dentro;
+    const estuche = document.querySelector<HTMLElement>('[data-estuche]');
+    if (estuche) return estuche;
+    return null;
   }
 
   // 2. Desde el estuche 3D:

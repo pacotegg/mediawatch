@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { api, img, type ItemSummary } from '../lib/api.ts';
@@ -9,18 +9,25 @@ const ROTATE_MS = 11_000;
 export default function Hero({ items }: { items: ItemSummary[] }) {
   const [index, setIndex] = useState(0);
   const [trailerYoutube, setTrailerYoutube] = useState<string | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
+  const [trailerError, setTrailerError] = useState(false);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
-    if (items.length < 2) return;
+    if (items.length < 2 || trailerYoutube) return;
     const timer = setInterval(() => setIndex((i) => (i + 1) % items.length), ROTATE_MS);
     return () => clearInterval(timer);
-  }, [items.length]);
+  }, [items.length, trailerYoutube]);
 
   if (items.length === 0) return null;
   const item = items[index];
 
   useEffect(() => {
     setTrailerYoutube(null);
+    setIsPlaying(false);
+    setTrailerError(false);
+    setIsMuted(true);
     if (!item) return;
     let cancelado = false;
     const timer = setTimeout(() => {
@@ -31,12 +38,47 @@ export default function Hero({ items }: { items: ItemSummary[] }) {
           }
         })
         .catch(() => {});
-    }, 2800);
+    }, 1100);
     return () => {
       cancelado = true;
       clearTimeout(timer);
     };
   }, [item?.id]);
+
+  useEffect(() => {
+    if (!trailerYoutube) return;
+    const handleMsg = (e: MessageEvent) => {
+      try {
+        const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+        if (data.event === 'onStateChange') {
+          if (data.info === 1) {
+            setIsPlaying(true);
+          } else if (data.info === 0) {
+            setTrailerYoutube(null);
+            setIndex((i) => (i + 1) % items.length);
+          }
+        } else if (data.event === 'onError') {
+          setTrailerError(true);
+          setTrailerYoutube(null);
+        }
+      } catch {}
+    };
+    window.addEventListener('message', handleMsg);
+    return () => window.removeEventListener('message', handleMsg);
+  }, [trailerYoutube, items.length]);
+
+  const toggleMute = () => {
+    if (!iframeRef.current?.contentWindow) return;
+    const nextMuted = !isMuted;
+    iframeRef.current.contentWindow.postMessage(
+      JSON.stringify({
+        event: 'command',
+        func: nextMuted ? 'mute' : 'unMute',
+      }),
+      '*',
+    );
+    setIsMuted(nextMuted);
+  };
 
   const [touchStart, setTouchStart] = useState<number | null>(null);
 
@@ -76,14 +118,18 @@ export default function Hero({ items }: { items: ItemSummary[] }) {
         </motion.div>
       </AnimatePresence>
 
-      {trailerYoutube && (
-        <div className="absolute inset-0 overflow-hidden pointer-events-none transition-opacity duration-1000 z-[1]">
+      {trailerYoutube && !trailerError && (
+        <div className={`absolute inset-0 overflow-hidden pointer-events-none transition-opacity duration-1000 z-[1] ${isPlaying ? 'opacity-70' : 'opacity-0'}`}>
           <iframe
-            src={`https://www.youtube-nocookie.com/embed/${trailerYoutube}?autoplay=1&mute=1&controls=0&loop=1&playlist=${trailerYoutube}&showinfo=0&rel=0&modestbranding=1`}
+            ref={iframeRef}
+            src={`https://www.youtube-nocookie.com/embed/${trailerYoutube}?autoplay=1&mute=1&controls=0&loop=1&playlist=${trailerYoutube}&showinfo=0&rel=0&modestbranding=1&enablejsapi=1`}
             allow="autoplay; encrypted-media"
-            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120vw] h-[120vh] min-w-[100%] min-h-[100%] object-cover opacity-65 pointer-events-none"
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120vw] h-[120vh] min-w-[100%] min-h-[100%] object-cover pointer-events-none"
             tabIndex={-1}
             title="Tráiler de fondo"
+            onLoad={() => {
+              iframeRef.current?.contentWindow?.postMessage(JSON.stringify({ event: 'listening' }), '*');
+            }}
           />
         </div>
       )}
@@ -174,6 +220,28 @@ export default function Hero({ items }: { items: ItemSummary[] }) {
             ))}
           </div>
         </>
+      )}
+
+      {trailerYoutube && !trailerError && isPlaying && (
+        <button
+          onClick={toggleMute}
+          aria-label={isMuted ? 'Activar sonido del tráiler' : 'Silenciar tráiler'}
+          title={isMuted ? 'Activar sonido' : 'Silenciar'}
+          className="absolute right-6 bottom-20 sm:bottom-20 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-ink-950/60 text-white backdrop-blur-md transition-all hover:bg-ink-950/90 hover:scale-110 active:scale-95 border border-white/20 shadow-lg"
+        >
+          {isMuted ? (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+              <line x1="23" y1="9" x2="17" y2="15" />
+              <line x1="17" y1="9" x2="23" y2="15" />
+            </svg>
+          ) : (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" />
+            </svg>
+          )}
+        </button>
       )}
     </div>
   );

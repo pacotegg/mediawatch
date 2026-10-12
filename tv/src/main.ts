@@ -229,7 +229,7 @@ function menuHtml(activa: string): string {
   let seccionPuesta = false;
 
   lista.forEach((d) => {
-    if (d.clave.indexOf('lib-') === 0 && !seccionPuesta) {
+    if (d.clave.indexOf('lib-') === 0 && !seccionPuesta && ajustes().ordenMenu.length === 0) {
       html += '<div class="menu-seccion">Bibliotecas</div>';
       seccionPuesta = true;
     }
@@ -1670,6 +1670,7 @@ async function pantallaFicha(id: number) {
   }
 
   cuerpo += '<div data-bloque-resenas></div>';
+  cuerpo += '<div data-bloque-extras></div>';
 
   if (ficha.collectionItems && ficha.collectionItems.length > 1) cuerpo += filaHtml(ficha.collection || 'En la misma saga', ficha.collectionItems);
   if (ficha.similar && ficha.similar.length) cuerpo += filaHtml('Relacionadas', ficha.similar);
@@ -1739,19 +1740,16 @@ async function pantallaFicha(id: number) {
    */
   const bExtras = marco.querySelector<HTMLElement>('[data-extras]');
   if (bExtras) {
-    let losExtras: Extra[] = [];
     bExtras.addEventListener('click', () => {
-      if (losExtras.length > 0) {
-        menuExtras(ficha, losExtras, () => {
-          indexar();
-          enfocar(bExtras);
-        });
+      const primera = marco.querySelector<HTMLElement>('[data-extra]');
+      if (primera) {
+        enfocar(primera);
         return;
       }
       api
         .extras(ficha.id)
         .then((r) => {
-          losExtras = r.extras || [];
+          const losExtras = r.extras || [];
           if (losExtras.length === 0) return;
           menuExtras(ficha, losExtras, () => {
             indexar();
@@ -1998,6 +1996,50 @@ async function pantallaFicha(id: number) {
       indexar();
     })
     .catch(() => undefined);
+
+  if (ficha.extras_count && ficha.extras_count > 0) {
+    void api
+      .extras(ficha.id)
+      .then((r) => {
+        const hueco = marco.querySelector<HTMLElement>('[data-bloque-extras]');
+        if (!hueco || !r.extras || !r.extras.length) return;
+        const extras = r.extras;
+        hueco.innerHTML =
+          '<div class="extras-fila fila" data-bloque><h3>Material adicional y Extras (' + extras.length + ')</h3><div class="carrusel" data-carrusel><div class="pista">' +
+          extras
+            .map((e) => {
+              const dur = e.duration ? minutos(e.duration) : '';
+              return (
+                '<div class="tarjeta-extra" data-nav data-extra="' + e.id + '">' +
+                '<div class="extra-foto">' +
+                '<img data-src="' + imagen.extra(e.id) + '" alt="">' +
+                '<span class="badge-tipo">' + esc(e.tipo) + '</span>' +
+                (dur ? '<span class="badge-dur">' + esc(dur) + '</span>' : '') +
+                '</div>' +
+                '<div class="nombre">' + esc(e.titulo) + '</div>' +
+                (e.grupo ? '<div class="sub">' + esc(e.grupo) + '</div>' : '') +
+                '</div>'
+              );
+            })
+            .join('') +
+          '</div></div></div>';
+        hueco.querySelectorAll<HTMLElement>('[data-extra]').forEach((el) => {
+          const idExtra = Number(el.getAttribute('data-extra'));
+          const elExtra = extras.find((x) => x.id === idExtra);
+          if (elExtra) {
+            el.addEventListener('click', () => {
+              verExtra(ficha, elExtra, () => {
+                indexar();
+                enfocar(el);
+              });
+            });
+          }
+        });
+        indexar();
+        observarImagenes();
+      })
+      .catch(() => undefined);
+  }
 
   const episodioQueToca = ficha.nextUp
     ? marco.querySelector<HTMLElement>('[data-ep="' + ficha.nextUp.id + '"]')
@@ -4616,96 +4658,180 @@ function panelAlturaSubtitulos() {
   });
 }
 
-/** Reordenar y esconder secciones del menú, con el mando. */
+/** Reordenar y esconder secciones del menú con interacción Grab & Drop. */
 function pantallaOrdenMenu() {
-  /** Qué botón (subir/bajar/esconder + clave) tenía el foco antes de repintar, para volver a él. */
-  let focoDespues: string | null = null;
-  const dibujar = function (): void {
+  let enganchado: string | null = null;
+
+  const dibujar = function (focoClave?: string): void {
     const a = ajustes();
     const todas = destinosBase();
-    const orden = a.ordenMenu.length ? a.ordenMenu : todas.map(function (d: Destino) { return d.clave; });
-    const ordenadas = todas.slice().sort(function (x: Destino, y: Destino) {
+    const orden = a.ordenMenu.length ? a.ordenMenu : todas.map((d) => d.clave);
+    const ordenadas = todas.slice().sort((x, y) => {
       const ix = orden.indexOf(x.clave);
       const iy = orden.indexOf(y.clave);
       return (ix < 0 ? 999 : ix) - (iy < 0 ? 999 : iy);
     });
 
-    const filas = ordenadas
-      .map(function (d: Destino, i: number) {
-        const oculta = a.ocultos.indexOf(d.clave) >= 0;
-        const hueco = '<span class="mini invisible">-</span>';
-        return (
-          '<div class="orden-fila' + (oculta ? ' oculta' : '') + '">' +
-          '<span class="nom-menu">' + esc(d.etiqueta) + '</span>' +
-          (i > 0 ? '<button class="mini" data-nav data-subir="' + d.clave + '">Subir</button>' : hueco) +
-          (i < ordenadas.length - 1 ? '<button class="mini" data-nav data-bajar="' + d.clave + '">Bajar</button>' : hueco) +
-          '<button class="mini" data-nav data-ocultar="' + d.clave + '">' + (oculta ? 'Mostrar' : 'Esconder') + '</button>' +
-          '</div>'
-        );
-      })
-      .join('');
-
-    pintar('ajustes',
-      '<div class="ajustes" data-bloque>' +
-      '<h1 class="titulo-pantalla">Orden del menú</h1>' +
-      '<p class="pista-ayuda" style="margin-bottom:26px">Sube o baja cada sección, o escóndela si no la usas.</p>' +
-      filas +
-      '<div style="margin-top:26px">' +
-      '<button class="boton" data-nav data-restablecer>Restablecer</button>' +
-      '<button class="boton primario" data-nav data-listo>Listo</button></div></div>');
-
     const mover = function (clave: string, paso: number) {
-      const claves = ordenadas.map(function (d: Destino) { return d.clave; });
+      const claves = ordenadas.map((d) => d.clave);
       const i = claves.indexOf(clave);
       const j = i + paso;
       if (i < 0 || j < 0 || j >= claves.length) return;
       claves[i] = claves[j];
       claves[j] = clave;
       guardarAjustes({ ordenMenu: claves });
-      // El foco sigue en el mismo botón de la misma sección, ya en su sitio
-      // nuevo; si ese botón ya no existe (llegó al borde), en el contrario.
-      focoDespues = (paso < 0 ? 'subir' : 'bajar') + ':' + clave;
-      dibujar();
+      dibujar(clave);
     };
 
-    marco.querySelectorAll<HTMLElement>('[data-subir]').forEach(function (el: HTMLElement) {
-      el.addEventListener('click', function () { mover(el.getAttribute('data-subir') || '', -1); });
-    });
-    marco.querySelectorAll<HTMLElement>('[data-bajar]').forEach(function (el: HTMLElement) {
-      el.addEventListener('click', function () { mover(el.getAttribute('data-bajar') || '', 1); });
-    });
-    marco.querySelectorAll<HTMLElement>('[data-ocultar]').forEach(function (el: HTMLElement) {
-      el.addEventListener('click', function () {
-        const clave = el.getAttribute('data-ocultar') || '';
-        const ocultos = ajustes().ocultos.slice();
-        const i = ocultos.indexOf(clave);
-        if (i >= 0) ocultos.splice(i, 1);
-        else ocultos.push(clave);
-        guardarAjustes({ ocultos: ocultos });
-        focoDespues = 'ocultar:' + clave;
-        dibujar();
+    const alternarOculto = function (clave: string) {
+      if (clave === 'ajustes') {
+        avisoRapido('Ajustes no se puede ocultar');
+        return;
+      }
+      const ocultos = a.ocultos.slice();
+      const i = ocultos.indexOf(clave);
+      if (i >= 0) ocultos.splice(i, 1);
+      else ocultos.push(clave);
+      guardarAjustes({ ocultos });
+      dibujar(clave);
+    };
+
+    const filas = ordenadas
+      .map((d, i) => {
+        const oculta = a.ocultos.indexOf(d.clave) >= 0;
+        const estaEnganchado = enganchado === d.clave;
+        let badge = '';
+        if (estaEnganchado) {
+          badge = '<span class="badge-reordenar badge-moviendo">▲ ▼ Mover · OK Soltar</span>';
+        } else if (oculta) {
+          badge = '<span class="badge-reordenar badge-oculto">Oculto</span>';
+        } else {
+          badge = '<span class="badge-reordenar badge-visible">Visible</span>';
+        }
+
+        return (
+          '<div class="item-reordenar' +
+          (estaEnganchado ? ' enganchado' : '') +
+          (oculta ? ' oculta' : '') +
+          '" data-nav data-item-reordenar="' +
+          d.clave +
+          '">' +
+          '<span class="reordenar-pos">' +
+          (i + 1) +
+          '</span>' +
+          '<span class="reordenar-icono">' +
+          icono(d.icono) +
+          '</span>' +
+          '<span class="reordenar-etiqueta">' +
+          esc(d.etiqueta) +
+          '</span>' +
+          '<div class="reordenar-estado">' +
+          badge +
+          '</div>' +
+          '</div>'
+        );
+      })
+      .join('');
+
+    pintar(
+      'ajustes',
+      '<div class="ajustes" data-bloque>' +
+        '<h1 class="titulo-pantalla">Personalizar menú</h1>' +
+        '<p class="pista-ayuda" style="margin-bottom:24px">Organiza o esconde cualquier sección a tu gusto. Pulsa OK para mover arriba o abajo.</p>' +
+        '<div class="reordenar-contenedor">' +
+        '<div class="reordenar-lista">' +
+        filas +
+        '<div class="reordenar-acciones-pie">' +
+        '<button class="boton" data-nav data-restablecer>Restablecer orden</button>' +
+        '<button class="boton primario" data-nav data-listo>Listo</button>' +
+        '</div>' +
+        '</div>' +
+        '<div class="reordenar-panel-ayuda">' +
+        '<h3>Controles</h3>' +
+        '<div class="ayuda-item"><span class="k">[ OK ]</span><span><strong>Seleccionar</strong> para mover / <strong>Soltar</strong></span></div>' +
+        '<div class="ayuda-item"><span class="k">[ ▲ / ▼ ]</span><span><strong>Subir o bajar</strong> la sección seleccionada</span></div>' +
+        '<div class="ayuda-item"><span class="k">[ ► ]</span><span><strong>Mostrar / Ocultar</strong> sección</span></div>' +
+        '<div class="ayuda-item"><span class="k">[ ATRÁS ]</span><span>Soltar selección o volver a Ajustes</span></div>' +
+        '</div>' +
+        '</div>' +
+        '</div>',
+    );
+
+    marco.querySelectorAll<HTMLElement>('[data-item-reordenar]').forEach((el) => {
+      const clave = el.getAttribute('data-item-reordenar') || '';
+      el.addEventListener('click', () => {
+        if (enganchado === clave) {
+          enganchado = null;
+        } else {
+          enganchado = clave;
+        }
+        dibujar(clave);
       });
     });
 
     const rest = marco.querySelector<HTMLElement>('[data-restablecer]');
-    if (rest) rest.addEventListener('click', function () { guardarAjustes({ ordenMenu: [], ocultos: [] }); dibujar(); });
-    const listo = marco.querySelector<HTMLElement>('[data-listo]');
-    if (listo) listo.addEventListener('click', function () { pantallaAjustes(); });
-
-    let volver: HTMLElement | null = null;
-    if (focoDespues) {
-      const partes = focoDespues.split(':');
-      const clave = partes.slice(1).join(':');
-      const otro = partes[0] === 'subir' ? 'bajar' : 'subir';
-      volver =
-        marco.querySelector<HTMLElement>('[data-' + partes[0] + '="' + clave + '"]') ||
-        marco.querySelector<HTMLElement>('[data-' + otro + '="' + clave + '"]') ||
-        marco.querySelector<HTMLElement>('[data-ocultar="' + clave + '"]');
-      focoDespues = null;
+    if (rest) {
+      rest.addEventListener('click', () => {
+        enganchado = null;
+        guardarAjustes({ ordenMenu: [], ocultos: [] });
+        dibujar();
+      });
     }
-    enfocar(volver || marco.querySelector<HTMLElement>('.ajustes [data-nav]'));
-    alPulsar(function (tecla: number) {
-      if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE) { pantallaAjustes(); return true; }
+
+    const listo = marco.querySelector<HTMLElement>('[data-listo]');
+    if (listo) {
+      listo.addEventListener('click', () => {
+        pantallaAjustes();
+      });
+    }
+
+    const objetivoFoco = focoClave
+      ? marco.querySelector<HTMLElement>('[data-item-reordenar="' + focoClave + '"]')
+      : marco.querySelector<HTMLElement>('.reordenar-lista [data-nav]');
+    enfocar(objetivoFoco);
+
+    alPulsar((tecla: number) => {
+      if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE) {
+        if (enganchado) {
+          const clave = enganchado;
+          enganchado = null;
+          dibujar(clave);
+          return true;
+        }
+        pantallaAjustes();
+        return true;
+      }
+
+      if (enganchado) {
+        if (tecla === TECLA.ARRIBA) {
+          mover(enganchado, -1);
+          return true;
+        }
+        if (tecla === TECLA.ABAJO) {
+          mover(enganchado, 1);
+          return true;
+        }
+        if (tecla === TECLA.ENTRAR) {
+          const clave = enganchado;
+          enganchado = null;
+          dibujar(clave);
+          return true;
+        }
+        if (tecla === TECLA.IZQUIERDA || tecla === TECLA.DERECHA) {
+          return true;
+        }
+        return true;
+      }
+
+      const focoActual = actual();
+      const claveFoco = focoActual?.getAttribute('data-item-reordenar');
+      if (claveFoco) {
+        if (tecla === TECLA.DERECHA) {
+          alternarOculto(claveFoco);
+          return true;
+        }
+      }
+
       return false;
     });
   };

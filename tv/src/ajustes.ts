@@ -96,7 +96,7 @@ export function cargarAjustes(): Ajustes {
         reanudar: guardado.reanudar !== false,
         saltoCorto: guardado.saltoCorto || POR_DEFECTO.saltoCorto,
         saltoLargo: guardado.saltoLargo || POR_DEFECTO.saltoLargo,
-        ordenMenu: recolocarAjustes(guardado.ordenMenu || []),
+        ordenMenu: guardado.ordenMenu || [],
         ocultos: guardado.ocultos || [],
         tamanoSubtitulos: guardado.tamanoSubtitulos || POR_DEFECTO.tamanoSubtitulos,
         fondoSubtitulos: guardado.fondoSubtitulos === 'caja' ? 'caja' : 'sombra',

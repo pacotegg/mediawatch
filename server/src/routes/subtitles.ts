@@ -200,7 +200,7 @@ export default async function subtitleRoutes(app: FastifyInstance) {
       .get(fileId) as { path: string; item_id: number; title: string } | undefined;
     if (!file) return reply.code(404).send({ error: 'Fichero no encontrado' });
 
-    const langs = languages ?? 'es,en';
+    const langs = (languages ?? 'es,en').replace(/[^a-zA-Z,]/g, '') || 'es,en';
     const args = [SUBTITLES_API, 'buscar', '--video', file.path, '--idiomas', langs];
     const proc = spawn(PYTHON, args, { windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
 
@@ -227,6 +227,8 @@ export default async function subtitleRoutes(app: FastifyInstance) {
       fileId: number; provider: string; subId: string | number; language: string; release?: string; forced?: boolean;
     };
     if (!fileId || !provider || !subId) return reply.code(400).send({ error: 'Faltan parámetros' });
+    if (!['opensubtitles', 'subdivx'].includes(provider)) return reply.code(400).send({ error: 'Proveedor no soportado' });
+    if (!/^[a-zA-Z0-9_-]{1,64}$/.test(String(subId))) return reply.code(400).send({ error: 'ID de subtítulo no válido' });
 
     const file = db
       .prepare(`SELECT f.path, COALESCE(f.item_id, e.show_id) AS item_id, COALESCE(i.title, s.title) AS title
@@ -241,7 +243,7 @@ export default async function subtitleRoutes(app: FastifyInstance) {
     const outDir = join(DATA_DIR, 'subtitles', String(fileId));
     mkdirSync(outDir, { recursive: true });
 
-    const cleanRel = (release || 'subtitle').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 50);
+    const cleanRel = (release || 'subtitle').replace(/[^a-zA-Z0-9._-]/g, '_').replace(/^\.+/, '').trim().slice(0, 50) || 'subtitle';
     const langSuffix = language === 'en' ? 'en' : 'es';
     const forcedSuffix = forced ? '.forced' : '';
     const fileName = `${cleanRel}.${langSuffix}${forcedSuffix}.srt`;

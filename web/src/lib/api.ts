@@ -65,6 +65,15 @@ export type Extra = {
   grupo: string | null;
 };
 
+export type ExtraTmdb = {
+  key: string;
+  name: string;
+  type: string;
+  site: string;
+  size: number;
+  official: boolean;
+};
+
 export type MovieVersion = {
   itemId: number;
   fileId: number;
@@ -391,6 +400,15 @@ export const api = {
 
   /** Featurettes, tomas falsas y «como se hizo» de un titulo. */
   extras: (itemId: number) => request<{ extras: Extra[] }>(`/api/items/${itemId}/extras`),
+  extrasTmdb: (itemId: number) => request<{ videos: ExtraTmdb[] }>(`/api/items/${itemId}/extras/tmdb`),
+  descargarExtra: (itemId: number, data: { youtubeKey: string; titulo: string; tipo: string }) =>
+    post<{ ok: boolean; path?: string; error?: string }>(`/api/items/${itemId}/extras/download`, data),
+  actualizarTipoExtra: (id: number, tipo: string) =>
+    request<{ ok: boolean }>(`/api/extras/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tipo }),
+    }),
 
   collections: () => request<CollectionSummary[]>('/api/collections'),
   /** La imagen propia de una saga; solo sirve si `imagen_propia` viene a 1. */

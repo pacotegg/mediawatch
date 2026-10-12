@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -33,6 +34,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -139,13 +141,167 @@ fun DialogoDeExtras(extras: List<Extra>, alCerrar: () -> Unit) {
   }
 }
 
+@Composable
+fun SeccionExtras(
+  extras: List<Extra>,
+  alVerExtra: (Extra) -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  var seccion by remember { mutableStateOf<String?>(null) }
+  val secciones = remember(extras) { extras.map { seccionDe(it) }.distinct() }
+  val visibles = remember(seccion, extras) {
+    val s = seccion
+    if (s == null) extras else extras.filter { seccionDe(it) == s }
+  }
+
+  Column(modifier = modifier.fillMaxWidth()) {
+    Row(
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(horizontal = 16.dp, vertical = 6.dp),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+      Text(
+        "Material adicional y Extras",
+        color = Texto,
+        fontSize = 16.sp,
+        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+      )
+      Text(
+        "${extras.size}",
+        color = TextoTenue,
+        fontSize = 12.sp,
+        modifier = Modifier
+          .clip(RoundedCornerShape(10.dp))
+          .background(Color(0x22FFFFFF))
+          .padding(horizontal = 8.dp, vertical = 2.dp),
+      )
+    }
+
+    if (secciones.size > 1) {
+      androidx.compose.foundation.lazy.LazyRow(
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.padding(vertical = 8.dp),
+      ) {
+        item {
+          val activo = seccion == null
+          Text(
+            "Todos (${extras.size})",
+            color = if (activo) Color(0xFF15100A) else Texto,
+            fontSize = 12.sp,
+            modifier = Modifier
+              .clip(RoundedCornerShape(14.dp))
+              .background(if (activo) Realce else FondoTarjeta)
+              .clickable { seccion = null }
+              .padding(horizontal = 12.dp, vertical = 6.dp),
+          )
+        }
+        items(secciones) { nombre ->
+          val activo = seccion == nombre
+          val cuantos = extras.count { seccionDe(it) == nombre }
+          Text(
+            "$nombre ($cuantos)",
+            color = if (activo) Color(0xFF15100A) else Texto,
+            fontSize = 12.sp,
+            modifier = Modifier
+              .clip(RoundedCornerShape(14.dp))
+              .background(if (activo) Realce else FondoTarjeta)
+              .clickable { seccion = nombre }
+              .padding(horizontal = 12.dp, vertical = 6.dp),
+          )
+        }
+      }
+    }
+
+    androidx.compose.foundation.lazy.LazyRow(
+      contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp),
+      horizontalArrangement = Arrangement.spacedBy(12.dp),
+      modifier = Modifier.padding(vertical = 6.dp),
+    ) {
+      items(visibles, key = { it.id }) { e ->
+        Column(
+          modifier = Modifier
+            .width(190.dp)
+            .clickable { alVerExtra(e) },
+        ) {
+          Box(
+            modifier = Modifier
+              .fillMaxWidth()
+              .aspectRatio(16f / 9f)
+              .clip(RoundedCornerShape(10.dp))
+              .background(MaterialTheme.colorScheme.surfaceVariant),
+          ) {
+            Imagen(
+              Api.miniaturaDeExtra(e.id),
+              e.titulo,
+              Modifier.fillMaxSize(),
+              escala = ContentScale.Crop,
+            )
+            Box(
+              modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(6.dp)
+                .clip(RoundedCornerShape(5.dp))
+                .background(Color(0xCC0E0F16))
+                .padding(horizontal = 6.dp, vertical = 2.dp),
+            ) {
+              Text(
+                e.tipo,
+                color = Color(0xEEFFFFFF),
+                fontSize = 9.5.sp,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
+              )
+            }
+            val dur = minutos(e.duration)
+            if (dur.isNotEmpty()) {
+              Box(
+                modifier = Modifier
+                  .align(Alignment.BottomEnd)
+                  .padding(6.dp)
+                  .clip(RoundedCornerShape(5.dp))
+                  .background(Color(0xCC000000))
+                  .padding(horizontal = 5.dp, vertical = 2.dp),
+              ) {
+                Text(
+                  dur,
+                  color = Color(0xDDFFFFFF),
+                  fontSize = 9.sp,
+                )
+              }
+            }
+          }
+          Spacer(Modifier.height(6.dp))
+          Text(
+            e.titulo,
+            color = Texto,
+            fontSize = 12.sp,
+            maxLines = 2,
+            lineHeight = 15.sp,
+            overflow = TextOverflow.Ellipsis,
+          )
+          if (e.grupo != null) {
+            Text(
+              e.grupo,
+              color = TextoTenue,
+              fontSize = 10.5.sp,
+              maxLines = 1,
+            )
+          }
+        }
+      }
+    }
+  }
+}
+
 /**
  * Un extra se ve y ya: ni progreso, ni reanudar, ni Cast. Es un vídeo corto que
  * acompaña a la película, no la película, así que no usa el reproductor grande
  * ni su servicio de sesión de medios.
  */
 @Composable
-private fun ReproductorDeExtra(extra: Extra, alCerrar: () -> Unit) {
+fun ReproductorDeExtra(extra: Extra, alCerrar: () -> Unit) {
   val contexto = LocalContext.current
   val reproductor = remember {
     val fuente = DataSource.Factory {
