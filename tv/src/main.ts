@@ -2863,7 +2863,7 @@ function menuEditarMetadatos(ficha: Ficha, alTerminar: () => void) {
     } else if (v === 2) {
       menuSeleccionarArte(ficha, alTerminar);
     }
-  }, () => {});
+  }, () => alTerminar());
 }
 
 function menuSeleccionarArte(ficha: Ficha, alTerminar: () => void) {
@@ -2894,6 +2894,12 @@ function menuSeleccionarArte(ficha: Ficha, alTerminar: () => void) {
       const listaOpciones: OpcionLista[] = [
         { valor: -1, texto: '↺ Restaurar original de la carpeta' },
       ];
+      if (listaTmdb.length === 0 && listaBuzon.length === 0) {
+        listaOpciones.push({
+          valor: -99,
+          texto: 'ℹ No hay ' + papeles[idxPapel].nombre.toLowerCase() + ' en Fanart.tv ni buzón',
+        });
+      }
       let counter = 0;
       listaTmdb.slice(0, 15).forEach((img) => {
         listaOpciones.push({
@@ -2912,7 +2918,9 @@ function menuSeleccionarArte(ficha: Ficha, alTerminar: () => void) {
       });
 
       menuLista('Elige imagen para ' + papeles[idxPapel].nombre, listaOpciones, 0, (sel) => {
-        if (sel === -1) {
+        if (sel === -99) {
+          menuSeleccionarArte(ficha, alTerminar);
+        } else if (sel === -1) {
           api.enrichArte({ itemId: ficha.id, papel: papelElegido, url: null })
             .then(() => { aviso('Imagen restaurada a la original'); alTerminar(); })
             .catch((e) => aviso((e as Error).message || 'Error al restaurar'));
@@ -2929,7 +2937,7 @@ function menuSeleccionarArte(ficha: Ficha, alTerminar: () => void) {
         }
       }, () => menuSeleccionarArte(ficha, alTerminar));
     });
-  }, () => {});
+  }, () => menuEditarMetadatos(ficha, alTerminar));
 }
 
 /**
@@ -2983,8 +2991,11 @@ function menuLista(
   opciones: OpcionLista[],
   elegida: number,
   alElegir: (valor: number) => void,
-  alCerrar: () => void,
+  alCerrar?: () => void,
 ) {
+  const teclasAntes = manejadorActual();
+  const focoAntes = actual();
+
   const capa = document.createElement('div');
   capa.className = 'capa';
   capa.innerHTML =
@@ -3017,6 +3028,8 @@ function menuLista(
 
   const quitar = () => {
     if (capa.parentElement) capa.parentElement.removeChild(capa);
+    alPulsar(teclasAntes);
+    if (focoAntes) enfocar(focoAntes);
   };
 
   const seleccionar = (idx: number) => {
@@ -3035,7 +3048,11 @@ function menuLista(
     if (tecla === TECLA.ABAJO) { i = Math.min(lineas.length - 1, i + 1); pintarFoco(); return true; }
     if (tecla === TECLA.ARRIBA) { i = Math.max(0, i - 1); pintarFoco(); return true; }
     if (tecla === TECLA.ENTRAR) { seleccionar(i); return true; }
-    if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE) { quitar(); alCerrar(); return true; }
+    if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE) {
+      quitar();
+      if (alCerrar) alCerrar();
+      return true;
+    }
     return true;
   });
 }
