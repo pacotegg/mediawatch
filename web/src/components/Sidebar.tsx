@@ -3,6 +3,8 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type User } from '../lib/api.ts';
+import { t } from '../lib/i18n.ts';
+import { usePreferences } from '../lib/preferences.tsx';
 
 const STORAGE_KEY = 'cineteca.sidebar';
 
@@ -77,6 +79,8 @@ function Item({ to, icon, label, collapsed, end }: { to: string; icon: string; l
 export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
   const { data: libraries } = useQuery({ queryKey: ['libraries'], queryFn: api.libraries });
   const { data: yo } = useQuery({ queryKey: ['me'], queryFn: api.me, staleTime: Infinity });
+  const { prefs } = usePreferences();
+  const lang = prefs.interface.language;
   const movieLibs = libraries?.filter((l) => l.kind === 'movie') ?? [];
   const showLibs = libraries?.filter((l) => l.kind === 'show') ?? [];
 
@@ -97,13 +101,13 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
 
       <div className="flex flex-1 min-h-0 flex-col overflow-y-auto overscroll-contain px-2.5 pb-3">
         <nav className="space-y-0.5">
-          <Item to="/" icon={ICONS.home} label="Inicio" collapsed={collapsed} end />
-          <Item to="/sagas" icon={ICONS.saga} label="Sagas" collapsed={collapsed} />
-          <Item to="/favoritos" icon={ICONS.heart} label="Favoritos" collapsed={collapsed} />
+          <Item to="/" icon={ICONS.home} label={t('home', lang)} collapsed={collapsed} end />
+          <Item to="/sagas" icon={ICONS.saga} label={t('sagas', lang)} collapsed={collapsed} />
+          <Item to="/favoritos" icon={ICONS.heart} label={t('favorites', lang)} collapsed={collapsed} />
 
           {movieLibs.length > 0 && (
             <>
-              {!collapsed && <div className="px-3 pt-5 pb-1.5 text-[10.5px] font-semibold tracking-wider text-mist-600 uppercase">Películas</div>}
+              {!collapsed && <div className="px-3 pt-5 pb-1.5 text-[10.5px] font-semibold tracking-wider text-mist-600 uppercase">{t('movies', lang)}</div>}
               {collapsed && <div className="my-3 h-px bg-white/8" />}
               {movieLibs.map((lib) => (
                 <Item key={lib.id} to={`/biblioteca/${lib.id}`} icon={iconoBiblioteca(lib.name, lib.kind)} label={lib.name} collapsed={collapsed} />
@@ -113,7 +117,7 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
 
           {showLibs.length > 0 && (
             <>
-              {!collapsed && <div className="px-3 pt-5 pb-1.5 text-[10.5px] font-semibold tracking-wider text-mist-600 uppercase">Series</div>}
+              {!collapsed && <div className="px-3 pt-5 pb-1.5 text-[10.5px] font-semibold tracking-wider text-mist-600 uppercase">{t('shows', lang)}</div>}
               {collapsed && <div className="my-3 h-px bg-white/8" />}
               {showLibs.map((lib) => (
                 <Item key={lib.id} to={`/biblioteca/${lib.id}`} icon={iconoBiblioteca(lib.name, lib.kind)} label={lib.name} collapsed={collapsed} />
@@ -123,13 +127,13 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
         </nav>
 
         <div className="mt-auto shrink-0 space-y-0.5 border-t border-white/6 pt-2.5">
-          <Item to="/plataformas" icon={ICONS.plataformas} label="Plataformas" collapsed={collapsed} />
-          <Item to="/descargas" icon={ICONS.download} label="Descargas" collapsed={collapsed} />
-          {yo?.is_admin === 1 && <Item to="/estadisticas" icon={ICONS.stats} label="Estadísticas" collapsed={collapsed} />}
-          <Item to="/ajustes" icon={ICONS.settings} label="Ajustes" collapsed={collapsed} />
+          <Item to="/plataformas" icon={ICONS.plataformas} label={t('platforms', lang)} collapsed={collapsed} />
+          <Item to="/descargas" icon={ICONS.download} label={t('downloads', lang)} collapsed={collapsed} />
+          {yo?.is_admin === 1 && <Item to="/estadisticas" icon={ICONS.stats} label={t('stats', lang)} collapsed={collapsed} />}
+          <Item to="/ajustes" icon={ICONS.settings} label={t('settings', lang)} collapsed={collapsed} />
           <button
             onClick={onToggle}
-            title={collapsed ? 'Desplegar menú' : 'Plegar menú'}
+            title={collapsed ? t('expand', lang) : t('collapse', lang)}
             className={`flex w-full items-center gap-3 rounded-xl py-2 text-[13.5px] text-mist-500 transition-colors hover:bg-white/6 hover:text-mist-100 ${
               collapsed ? 'justify-center px-2' : 'px-3'
             }`}
@@ -137,7 +141,7 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
             <span className={`transition-transform duration-300 ${collapsed ? 'rotate-180' : ''}`}>
               <Icon path={ICONS.collapse} />
             </span>
-            {!collapsed && <span>Plegar</span>}
+            {!collapsed && <span>{t('collapse', lang)}</span>}
           </button>
         </div>
       </div>
@@ -150,6 +154,8 @@ function SearchField() {
   const navigate = useNavigate();
   const location = useLocation();
   const inputRef = useRef<HTMLInputElement>(null);
+  const { prefs } = usePreferences();
+  const lang = prefs.interface.language;
 
   useEffect(() => {
     if (!location.pathname.startsWith('/buscar')) setValue('');
@@ -181,7 +187,7 @@ function SearchField() {
             navigate(`/buscar?q=${encodeURIComponent(e.target.value)}`, { replace: location.pathname.startsWith('/buscar') });
           }
         }}
-        placeholder="Buscar títulos o frases de diálogo"
+        placeholder={t('searchPlaceholder', lang)}
         className="w-36 sm:w-52 rounded-full border border-white/8 bg-white/6 py-1.5 pr-3 pl-9 text-sm text-mist-100 outline-none transition-[width,background] duration-300 ease-[var(--ease-out)] placeholder:text-mist-600 focus:w-48 sm:focus:w-80 focus:bg-white/10"
       />
     </div>
@@ -192,6 +198,8 @@ function ProfileMenu({ user }: { user: User }) {
   const [open, setOpen] = useState(false);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { prefs, update } = usePreferences();
+  const lang = prefs.interface.language;
 
   return (
     <div className="relative">
@@ -209,12 +217,22 @@ function ProfileMenu({ user }: { user: User }) {
             initial={{ opacity: 0, y: -6, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-            className="glass absolute right-0 z-50 mt-2 w-48 overflow-hidden rounded-2xl p-1.5"
+            className="glass absolute right-0 z-50 mt-2 w-52 overflow-hidden rounded-2xl p-1.5"
           >
             <div className="px-3 py-2 text-xs text-mist-500">{user.name}</div>
             <button onClick={() => { setOpen(false); navigate('/ajustes'); }} className="w-full rounded-xl px-3 py-2 text-left text-sm hover:bg-white/8">
-              Ajustes
+              {t('settings', lang)}
             </button>
+            <div className="my-1 flex items-center justify-between rounded-xl px-3 py-1.5 text-xs text-mist-400 hover:bg-white/4">
+              <span>{t('uiLanguage', lang)}</span>
+              <button
+                type="button"
+                onClick={() => update('interface', { language: lang === 'en' ? 'es' : 'en' })}
+                className="rounded-lg bg-white/10 px-2 py-0.5 font-medium text-accent hover:bg-white/15"
+              >
+                {lang === 'en' ? 'English' : 'Español'}
+              </button>
+            </div>
             <button
               onClick={async () => {
                 await api.logout();
@@ -223,7 +241,7 @@ function ProfileMenu({ user }: { user: User }) {
               }}
               className="w-full rounded-xl px-3 py-2 text-left text-sm text-mist-300 hover:bg-white/8"
             >
-              Cambiar de perfil
+              {t('switchProfile', lang)}
             </button>
           </motion.div>
         </>
@@ -270,6 +288,8 @@ export function TopBar({ user, left, onOpenMenu }: { user: User; left: number; o
 export function MobileDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { data: libraries } = useQuery({ queryKey: ['libraries'], queryFn: api.libraries });
   const { data: yo } = useQuery({ queryKey: ['me'], queryFn: api.me, staleTime: Infinity });
+  const { prefs } = usePreferences();
+  const lang = prefs.interface.language;
   if (!open) return null;
 
   return (
@@ -285,18 +305,18 @@ export function MobileDrawer({ open, onClose }: { open: boolean; onClose: () => 
       >
         <div className="mb-3 px-2 py-2 text-[15px] font-semibold">Media Watch</div>
         <div className="space-y-0.5" onClick={onClose}>
-          <Item to="/" icon={ICONS.home} label="Inicio" collapsed={false} end />
-          <Item to="/sagas" icon={ICONS.saga} label="Sagas" collapsed={false} />
-          <Item to="/favoritos" icon={ICONS.heart} label="Favoritos" collapsed={false} />
-          <div className="px-3 pt-4 pb-1.5 text-[10.5px] font-semibold tracking-wider text-mist-600 uppercase">Bibliotecas</div>
+          <Item to="/" icon={ICONS.home} label={t('home', lang)} collapsed={false} end />
+          <Item to="/sagas" icon={ICONS.saga} label={t('sagas', lang)} collapsed={false} />
+          <Item to="/favoritos" icon={ICONS.heart} label={t('favorites', lang)} collapsed={false} />
+          <div className="px-3 pt-4 pb-1.5 text-[10.5px] font-semibold tracking-wider text-mist-600 uppercase">{t('libraries', lang)}</div>
           {libraries?.map((lib) => (
             <Item key={lib.id} to={`/biblioteca/${lib.id}`} icon={iconoBiblioteca(lib.name, lib.kind)} label={lib.name} collapsed={false} />
           ))}
           <div className="pt-4">
-            <Item to="/plataformas" icon={ICONS.plataformas} label="Plataformas" collapsed={false} />
-            <Item to="/descargas" icon={ICONS.download} label="Descargas" collapsed={false} />
-            {yo?.is_admin === 1 && <Item to="/estadisticas" icon={ICONS.stats} label="Estadísticas" collapsed={false} />}
-            <Item to="/ajustes" icon={ICONS.settings} label="Ajustes" collapsed={false} />
+            <Item to="/plataformas" icon={ICONS.plataformas} label={t('platforms', lang)} collapsed={false} />
+            <Item to="/descargas" icon={ICONS.download} label={t('downloads', lang)} collapsed={false} />
+            {yo?.is_admin === 1 && <Item to="/estadisticas" icon={ICONS.stats} label={t('stats', lang)} collapsed={false} />}
+            <Item to="/ajustes" icon={ICONS.settings} label={t('settings', lang)} collapsed={false} />
           </div>
         </div>
       </motion.div>

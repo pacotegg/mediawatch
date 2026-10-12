@@ -49,6 +49,8 @@ export type Ajustes = {
    */
   salvaMenu: number;
   salvaPausa: number;
+  /** Idioma de la interfaz: 'en' por defecto para nuevas instalaciones, 'es' para instalaciones existentes. */
+  idiomaInterfaz: 'en' | 'es';
 };
 
 const POR_DEFECTO: Ajustes = {
@@ -80,6 +82,7 @@ const POR_DEFECTO: Ajustes = {
   horaDeFin: true,
   salvaMenu: 2,
   salvaPausa: 5,
+  idiomaInterfaz: 'en',
 };
 
 let actuales: Ajustes = POR_DEFECTO;
@@ -109,6 +112,7 @@ export function cargarAjustes(): Ajustes {
         musicaCabecera: guardado.musicaCabecera !== false,
         estuche3D: guardado.estuche3D === true,
         horaDeFin: guardado.horaDeFin !== false,
+        idiomaInterfaz: guardado.idiomaInterfaz || (crudo ? 'es' : 'en'),
         /*
          * Con `??`, no con `||`: cero es «apagado», un valor legítimo que `||`
          * convertiría en el de por defecto. Faltaban los dos aquí —estaban en

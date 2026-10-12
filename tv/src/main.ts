@@ -19,6 +19,7 @@ import {
   type CandidatoSubtitulo,
 } from './api.ts';
 import { ajustes, cargarAjustes, guardarAjustes, ordenar, type Rendimiento } from './ajustes.ts';
+import { t } from './i18n.ts';
 import { actual, ajustarListaEpisodios, ajustarVentanaRejilla, alEnfocar, alPulsar, anadirPorArriba, situarFila, avisarDeFallos, enfocables, enfocar, indexar, indexarAdemas, iniciarNavegacion, manejadorActual, TECLA } from './nav.ts';
 import { Reproductor } from './player.ts';
 import { abrirApp, cargarAppsInstaladas, idDeApp } from './plataformas.ts';
@@ -198,12 +199,12 @@ function destinosBase(): Destino[] {
   // Los cinco fijos juntos, Ajustes incluido; debajo, con su separador, las
   // bibliotecas. Antes Ajustes iba al final, perdido tras nueve bibliotecas.
   const fijos: Destino[] = [
-    { clave: 'inicio', etiqueta: 'Inicio', icono: 'inicio', ir: () => void pantallaPortada() },
-    { clave: 'buscar', etiqueta: 'Buscar', icono: 'buscar', ir: () => pantallaBuscar() },
+    { clave: 'inicio', etiqueta: t('home'), icono: 'inicio', ir: () => void pantallaPortada() },
+    { clave: 'buscar', etiqueta: t('search'), icono: 'buscar', ir: () => pantallaBuscar() },
     { clave: 'sagas', etiqueta: 'Sagas', icono: 'saga', ir: () => void pantallaSagas() },
     { clave: 'favoritos', etiqueta: 'Favoritos', icono: 'favorito', ir: () => void pantallaFavoritos() },
     { clave: 'plataformas', etiqueta: 'Plataformas', icono: 'plataformas', ir: () => void pantallaPlataformas() },
-    { clave: 'ajustes', etiqueta: 'Ajustes', icono: 'ajustes', ir: () => pantallaAjustes() },
+    { clave: 'ajustes', etiqueta: t('settings'), icono: 'ajustes', ir: () => pantallaAjustes() },
     { clave: 'usuario', etiqueta: 'Cambiar de usuario', icono: 'usuario', ir: () => void pantallaConexion() },
   ];
   const libs = bibliotecas.map((b) => ({
@@ -4278,6 +4279,15 @@ function pantallaAjustes() {
     ) +
 
     grupo(
+      'Idioma / Language',
+      'Idioma de los menús y la interfaz / Interface language.',
+      elecciones('idiomaInterfaz', [
+        { valor: 'en', texto: 'English' },
+        { valor: 'es', texto: 'Español' },
+      ], a.idiomaInterfaz),
+    ) +
+
+    grupo(
       'Cómo suena',
       'Lo normal deja la pista intacta y la barra recibe el Atmos tal cual. Los otros dos modos obligan a recodificar el audio a DD+, así que se pierde el Atmos: úsalos solo cuando hagan falta.',
       elecciones('modoAudio', [
@@ -4365,6 +4375,7 @@ function pantallaAjustes() {
       else if (campo === 'musicaCabecera') guardarAjustes({ musicaCabecera: valor === 'si' });
       else if (campo === 'estuche3D') guardarAjustes({ estuche3D: valor === 'si' });
       else if (campo === 'horaDeFin') guardarAjustes({ horaDeFin: valor === 'si' });
+      else if (campo === 'idiomaInterfaz') guardarAjustes({ idiomaInterfaz: valor as 'en' | 'es' });
       focoAjustesDespues = campo;
       pantallaAjustes();
     });

@@ -67,6 +67,7 @@ fun PantallaAjustes(
   var modoMaraton by remember { mutableStateOf(Ajustes.modoMaraton) }
   var musicaCabecera by remember { mutableStateOf(Ajustes.musicaCabecera) }
   var estuche3D by remember { mutableStateOf(Ajustes.estuche3D) }
+  var idiomaInterfaz by remember { mutableStateOf(Ajustes.idiomaInterfaz) }
 
   // Diálogo selector genérico
   var dialogoOpciones by remember { mutableStateOf<DialogoConfig?>(null) }
@@ -319,6 +320,24 @@ fun PantallaAjustes(
           Ajustes.estuche3D = it
         },
       )
+      val opcionesIdiomaInterfaz = listOf(
+        "en" to "English",
+        "es" to "Español",
+      )
+      FilaSeleccion(
+        titulo = if (idiomaInterfaz == "es") "Idioma de la interfaz" else "Interface language",
+        valor = if (idiomaInterfaz == "es") "Español" else "English",
+      ) {
+        dialogoOpciones = DialogoConfig(
+          titulo = if (idiomaInterfaz == "es") "Idioma de la interfaz" else "Interface language",
+          seleccionado = idiomaInterfaz,
+          opciones = opcionesIdiomaInterfaz,
+          alElegir = {
+            idiomaInterfaz = it
+            Ajustes.idiomaInterfaz = it
+          },
+        )
+      }
     }
 
     Spacer(Modifier.height(16.dp))

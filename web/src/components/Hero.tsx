@@ -3,10 +3,14 @@ import { Link } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { api, img, type ItemSummary } from '../lib/api.ts';
 import { certification, runtime } from '../lib/format.ts';
+import { t } from '../lib/i18n.ts';
+import { usePreferences } from '../lib/preferences.tsx';
 
 const ROTATE_MS = 11_000;
 
 export default function Hero({ items }: { items: ItemSummary[] }) {
+  const { prefs } = usePreferences();
+  const lang = prefs.interface.language;
   const [index, setIndex] = useState(0);
   const [trailerYoutube, setTrailerYoutube] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -179,10 +183,10 @@ export default function Hero({ items }: { items: ItemSummary[] }) {
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M8 5.5v13l11-6.5-11-6.5Z" />
                 </svg>
-                Reproducir
+                {t('play', lang)}
               </Link>
               <Link to={`/titulo/${item.id}`} className="glass rounded-full px-5 py-2.5 text-sm font-medium transition-transform duration-200 hover:scale-105 active:scale-95">
-                Más información
+                {t('viewDetails', lang)}
               </Link>
             </div>
           </motion.div>

@@ -8,6 +8,7 @@ import Actividad from '../components/Actividad.tsx';
 import { api, type User } from '../lib/api.ts';
 import { fileSize } from '../lib/format.ts';
 import { usePreferences } from '../lib/preferences.tsx';
+import { t } from '../lib/i18n.ts';
 
 const TABS = [
   { key: 'playback', label: 'Reproducción' },
@@ -83,6 +84,16 @@ function PlaybackTab() {
       </Field>
       <Field label="Estuche coleccionista 3D" hint="Muestra el cartel en perspectiva 3D con el disco (discart) físico extraíble.">
         <Toggle checked={prefs.interface.case3D} onChange={(case3D) => update('interface', { case3D })} />
+      </Field>
+      <Field label={t('uiLanguage', prefs.interface.language)} hint={t('uiLanguageHint', prefs.interface.language)}>
+        <Select
+          value={prefs.interface.language}
+          onChange={(language) => update('interface', { language: language as 'en' | 'es' })}
+          options={[
+            { value: 'en', label: 'English' },
+            { value: 'es', label: 'Español' },
+          ]}
+        />
       </Field>
       <Field label="Salto corto" hint="Flechas izquierda y derecha.">
         <Select

@@ -28,6 +28,7 @@ export type Preferences = {
     showWatched: boolean;
     themeMusic: boolean;
     case3D: boolean;
+    language: 'en' | 'es';
   };
 };
 
@@ -35,7 +36,7 @@ export const DEFAULTS: Preferences = {
   playback: { maxHeight: 0, resume: true, autoPlayNext: true, autoSkipIntro: true, seekStep: 10, seekStepLarge: 60, adaptativo: 'auto' },
   audio: { downmixStereo: true, normalize: false, defaultVolume: 1, mode: 'normal' },
   subtitles: { size: 100, color: '#ffffff', background: 'shadow', offset: 0 },
-  interface: { reduceMotion: false, showWatched: true, themeMusic: true, case3D: false },
+  interface: { reduceMotion: false, showWatched: true, themeMusic: true, case3D: false, language: 'en' },
 };
 
 const STORAGE_KEY = 'cineteca.preferences';
@@ -59,11 +60,19 @@ const PreferencesContext = createContext<Context>({ prefs: DEFAULTS, update: () 
  * siempre —el control aparece vacío y la función nueva no se activa nunca.
  */
 function conValoresPorDefecto(stored: Partial<Preferences> | null | undefined): Preferences {
+  // Instalaciones existentes que ya tenían datos guardados mantienen español si no eligieron explícitamente; nuevas instalaciones usan inglés.
+  const hasExistingData = Boolean(stored && Object.keys(stored).length > 0);
+  const fallbackLang = hasExistingData ? 'es' : 'en';
+
   return {
     playback: { ...DEFAULTS.playback, ...stored?.playback },
     audio: { ...DEFAULTS.audio, ...stored?.audio },
     subtitles: { ...DEFAULTS.subtitles, ...stored?.subtitles },
-    interface: { ...DEFAULTS.interface, ...stored?.interface },
+    interface: {
+      ...DEFAULTS.interface,
+      language: fallbackLang,
+      ...stored?.interface,
+    },
   };
 }
 

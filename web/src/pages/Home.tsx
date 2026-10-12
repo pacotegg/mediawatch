@@ -3,6 +3,8 @@ import { motion } from 'motion/react';
 import Hero from '../components/Hero.tsx';
 import Row from '../components/Row.tsx';
 import { api } from '../lib/api.ts';
+import { t } from '../lib/i18n.ts';
+import { usePreferences } from '../lib/preferences.tsx';
 
 function RowSkeleton() {
   return (
@@ -20,6 +22,8 @@ function RowSkeleton() {
 export default function Home() {
   const { data, isLoading } = useQuery({ queryKey: ['home'], queryFn: api.home, staleTime: 30_000 });
   const { data: libraries } = useQuery({ queryKey: ['libraries'], queryFn: api.libraries });
+  const { prefs } = usePreferences();
+  const lang = prefs.interface.language;
 
   if (isLoading) {
     return (
@@ -35,6 +39,13 @@ export default function Home() {
     return id ? libraries?.find((l) => l.id === id) : undefined;
   };
 
+  const localizeTitle = (row: { kind: string; title: string }) => {
+    if (row.kind === 'progress') return t('continueWatching', lang);
+    const low = row.title.toLowerCase();
+    if (low.includes('estrenadas') || low.includes('recient')) return t('recentlyAdded', lang);
+    return row.title;
+  };
+
   return (
     <div className="pb-24">
       {data?.hero && data.hero.length > 0 && <Hero items={data.hero} />}
@@ -48,7 +59,7 @@ export default function Home() {
         {data?.rows.map((row) => (
           <Row
             key={row.key}
-            title={row.title}
+            title={localizeTitle(row)}
             items={row.items}
             variant={row.kind === 'progress' ? 'continue' : 'poster'}
             to={libraryFor(row.key) ? `/biblioteca/${libraryFor(row.key)!.id}` : undefined}

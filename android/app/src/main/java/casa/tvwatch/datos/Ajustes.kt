@@ -176,6 +176,19 @@ object Ajustes {
     get() = prefs.getBoolean("estuche3D", false)
     set(v) = prefs.edit().putBoolean("estuche3D", v).apply()
 
+  /** Idioma de la interfaz ("en" o "es"). "en" por defecto para nuevas instalaciones, "es" para las existentes. */
+  var idiomaInterfaz: String
+    get() {
+      if (prefs.contains("idiomaInterfaz")) {
+        return prefs.getString("idiomaInterfaz", "en") ?: "en"
+      }
+      if (prefs.contains("servidor") || prefs.contains("token")) {
+        return "es"
+      }
+      return "en"
+    }
+    set(v) = prefs.edit().putString("idiomaInterfaz", v).apply()
+
   /*
    * Subtítulos: sin ajuste por defecto, a propósito. Se eligen en la ficha o durante
    * la reproducción (el usuario lo pidió así el 09/10/2026); empiezan apagados.
