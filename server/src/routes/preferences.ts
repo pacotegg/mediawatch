@@ -82,6 +82,7 @@ export default async function preferenceRoutes(app: FastifyInstance) {
     return {
       readOnly: false,
       hwaccel: config.hwaccel,
+      transcodeCodec: config.transcodeCodec,
       transcodeQuality: config.transcodeQuality,
       tonemap: config.tonemap,
       tmdbLanguage: config.tmdbLanguage,
@@ -119,6 +120,7 @@ export default async function preferenceRoutes(app: FastifyInstance) {
     const body = req.body as Record<string, unknown>;
     const next = { ...config };
     if (body.hwaccel === 'qsv' || body.hwaccel === 'nvenc' || body.hwaccel === 'amf' || body.hwaccel === 'none') next.hwaccel = body.hwaccel;
+    if (body.transcodeCodec === 'h264' || body.transcodeCodec === 'hevc') next.transcodeCodec = body.transcodeCodec;
     if (typeof body.transcodeQuality === 'number') next.transcodeQuality = Math.min(35, Math.max(12, body.transcodeQuality));
     if (typeof body.tonemap === 'boolean') next.tonemap = body.tonemap;
     if (typeof body.tmdbApiKey === 'string') next.tmdbApiKey = body.tmdbApiKey.trim();

@@ -2,29 +2,29 @@
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-22%2B-green.svg)](https://nodejs.org/)
-[![Clients](https://img.shields.io/badge/Clients-Web%20%7C%20Samsung%20Smart%20TV%20%7C%20Android-orange.svg)](#client-applications)
-[![Desktop App](https://img.shields.io/badge/Desktop%20Server-Windows%20App-0078D6.svg)](https://github.com/pacotegg/MediaWatch-Server)
+[![Clients](https://img.shields.io/badge/Clients-Web%20%7C%20Samsung%20Smart%20TV%20%7C%20Android-orange.svg)](#client-applications--building)
+[![Desktop App](https://img.shields.io/badge/Desktop%20Server-Windows%20%7C%20Linux-0078D6.svg)](https://github.com/pacotegg/MediaWatch-Server)
 
-A self-hosted personal movie and TV series streaming server inspired by Plex, Jellyfin, and Infuse, built from the ground up without cloud telemetry, subscription paywalls, or third-party cloud lock-in. Designed to run on your local PC, mini-PC, or home server.
+[English](README.md) · [Español](README.es.md)
 
-> 💡 **Looking for a ready-to-run Windows installer?**  
-> Check out **[MediaWatch Server](https://github.com/pacotegg/MediaWatch-Server)**: a standalone Windows desktop app with system tray controls, automatic TMDb metadata scanner (no local `.nfo` required), and an intuitive setup wizard. This repository (`pacotegg/mediawatch`) serves as the core engine.
+I built Media Watch for my living room HTPC setup because I wanted a clean, fast streaming server that feels like a premium home cinema experience — without telemetry, cloud user accounts, or subscription paywalls.
 
-Media Watch scans and serves your cataloged media libraries directly from the storage drives and folders where your files reside (e.g. structured via tinyMediaManager with local `.nfo` metadata and artwork). It streams video seamlessly across your local network and transcode/remuxes on the fly only when the client device cannot direct-play the source stream natively. Hardware acceleration is supported across **Intel Quick Sync (QSV)**, **NVIDIA NVENC**, **AMD AMF**, and CPU fallback (`libx264`).
+It reads your media library directly from your storage drives, indexes your metadata and artwork, and streams to your TV, phone, tablet, or browser. If your player supports the file, it Direct Plays untouched with virtually 0% CPU. If you need transcoding (subtitles, lower bitrates outside home, or unsupported codecs), it uses your GPU hardware acceleration.
+
+> 💡 **Looking for a ready-to-run desktop installer?**  
+> Check out **[MediaWatch Server](https://github.com/pacotegg/MediaWatch-Server)**: a standalone desktop application for **Windows** and **Linux** with system tray controls, automatic TMDb metadata scraping without needing pre-existing `.nfo` files, and an instant QR code pairing tool. This repository (`pacotegg/mediawatch`) is the core engine.
 
 ---
 
 ## GNU General Public License v3.0
 
-Media Watch is free and open-source software: you can redistribute it and/or modify it under the terms of the **GNU General Public License version 3.0 (GPLv3)** as published by the Free Software Foundation.
-
-See the [LICENSE](LICENSE) file for full terms and conditions.
+Media Watch is free and open-source software: you can redistribute it and/or modify it under the terms of the **GNU General Public License version 3.0 (GPLv3)** as published by the Free Software Foundation. See [LICENSE](LICENSE) for details.
 
 ---
 
 ## Visual Showcase
 
-### Web Client
+### Web Client (React 19 + Tailwind CSS)
 
 | Interactive Home & Hero Banner | Media Details & 3D Steelbook |
 |:---:|:---:|
@@ -34,7 +34,7 @@ See the [LICENSE](LICENSE) file for full terms and conditions.
 | Poster Grid Library Browsing | Playback Analytics & Statistics |
 |:---:|:---:|
 | ![Web Library](docs/screenshots/web/web-library.png) | ![Web Stats](docs/screenshots/web/web-stats.png) |
-| *Fast metadata search, filtering, and responsive poster grid* | *Server-wide playback statistics, hourly activity, and device tracking* |
+| *Instant metadata search, filtering, and responsive poster grid* | *Playback statistics, hourly activity, and device tracking* |
 
 ---
 
@@ -48,7 +48,7 @@ See the [LICENSE](LICENSE) file for full terms and conditions.
 | TV Library Grid | AVPlay Native Player HUD |
 |:---:|:---:|
 | ![Smart TV Library](docs/screenshots/tv/tv-library.png) | ![Smart TV Player HUD](docs/screenshots/tv/tv-player-hud.png) |
-| *Responsive large-format TV catalog navigation* | *Trickplay thumbnail scrubbing, subtitle offset HUD & acoustic modes* |
+| *Large-format TV catalog navigation* | *Trickplay thumbnail scrubbing, subtitle offset HUD & acoustic modes* |
 
 ---
 
@@ -57,7 +57,7 @@ See the [LICENSE](LICENSE) file for full terms and conditions.
 | Mobile Feed | Rich Media Details & Offline Downloads |
 |:---:|:---:|
 | ![Android Home](docs/screenshots/android/android-home.png) | ![Android Detail](docs/screenshots/android/android-detail.png) |
-| *Jetpack Compose modern home feed with quick resume cards* | *Direct download profiles, audio track switcher, and trailer viewer* |
+| *Jetpack Compose feed with quick resume cards* | *Direct download profiles, audio track switcher, and trailer viewer* |
 
 | Grab & Drop Navigation Drawer | Detailed Application Settings |
 |:---:|:---:|
@@ -66,16 +66,93 @@ See the [LICENSE](LICENSE) file for full terms and conditions.
 
 ---
 
-## Key Features
+## Hardware Requirements
+
+One of the main design goals was efficiency: keeping resource usage low so you don't need expensive server gear.
+
+### 1. Direct Play Mode (Local playback without transcoding)
+When your TV, phone, or computer natively supports the video format (MKV/MP4 with H.264, HEVC, AV1, AAC, AC3, EAC3, TrueHD):
+- **CPU**: Any 64-bit x86-64 processor (Intel Celeron J4125/N5105, Intel N100, or older Core i3/i5).
+- **RAM**: **2 GB minimum** (the Node.js / Fastify process sits around ~120–200 MB in memory).
+- **Storage**: ~300 MB for the server + 2 to 4 GB for local metadata, artwork cache, and SQLite database.
+- **Network**: Gigabit Ethernet or 5 GHz Wi-Fi recommended for high-bitrate 4K remuxes (50–90 Mbps).
+
+### 2. Real-Time Hardware Transcoding (GPU Accelerated)
+When transcoding is required (burned subtitles, lower bandwidth outside home, or unsupported audio/video codecs):
+- **Intel (Recommended / best efficiency)**:
+  - Intel Core 7th Gen (Kaby Lake, 2017+) or newer with **Intel UHD / HD 600+** graphics. Budget chips like **Intel N100 / N95 / N200** transcode 4K HDR down to 1080p effortlessly via **Quick Sync (QSV)**.
+  - Dedicated **Intel Arc** GPUs (A310, A380, A750, A770).
+- **NVIDIA**:
+  - GeForce **GTX 1050 or higher**, GTX 1650/1660, or any **RTX series (20xx/30xx/40xx/50xx)** with NVENC encoder.
+- **AMD**:
+  - Ryzen APUs with Vega / RDNA integrated graphics, or dedicated Radeon RX 400 series or newer (AMF encoder).
+- **RAM**: **4 GB or more**.
+
+### 3. Software Transcoding (CPU Only, without GPU)
+- **CPU**: 4 cores / 8 threads minimum for real-time 1080p transcoding.  
+  *(Honest note: Software transcoding 4K HDR on CPU will pin all cores to 100% and will likely stutter; use hardware GPU acceleration for 4K).*
+
+---
+
+## Hardware Transcoding: H.264 & HEVC / x265
+
+Media Watch includes hardware-accelerated encoding for both **H.264 (AVC)** and **HEVC (H.265)**:
+
+| Hardware Engine | H.264 Encoder | HEVC (x265) Encoder | HDR Tonemapping |
+|---|---|---|---|
+| **Intel Quick Sync (QSV)** | `h264_qsv` | `hevc_qsv` (native 10-bit HDR) | `vpp_qsv` (GPU tonemap) |
+| **NVIDIA NVENC** | `h264_nvenc` | `hevc_nvnv` | Hardware scale + tonemap |
+| **AMD AMF** | `h264_amf` | `hevc_amf` | Hardware scale |
+| **CPU Fallback** | `libx264` | `libx265` | Software tonemap |
+
+### Choosing between H.264 and HEVC in Settings:
+- **H.264 (Default)**: Maximum universal compatibility. Every web browser (Firefox on Linux/Windows, Chromium browsers without HEVC licenses, old laptops) can play H.264 out of the box without black screens.
+- **HEVC / H.265**: Saves roughly 40–50% bandwidth at identical visual quality and supports 10-bit HDR color natively on GPU. Recommended if your main playback devices are the Android app, Samsung Smart TV, or browsers with hardware HEVC decoding enabled (Edge, Safari, Chrome with OS hardware decoders).
+- Change it anytime under **Settings &rarr; Transcoding &rarr; Transcode Codec**.
+
+---
+
+## Linux Support & Requirements
+
+Media Watch runs smoothly on Linux (Ubuntu, Debian, Fedora, Arch, etc.). When hosting on Linux:
+
+### 1. Standalone Desktop App (via MediaWatch Server)
+- **AppImage**: Runs directly without installation.
+  - *Requirement on modern distros (Ubuntu 22.04+, Debian 12, Fedora)*: ensure FUSE 2 is installed:
+    ```bash
+    sudo apt install libfuse2
+    ```
+- **DEB Package**: Native installation for Debian, Ubuntu, and Linux Mint:
+  ```bash
+  sudo dpkg -i mediawatch-server_*_amd64.deb
+  ```
+
+### 2. Hardware Acceleration on Linux
+- **Intel QSV / VAAPI**:
+  - Install the non-free media driver:
+    ```bash
+    sudo apt install intel-media-va-driver-non-free vainfo
+    ```
+  - Ensure your user has access to the render node:
+    ```bash
+    sudo usermod -aG render,video $USER
+    ```
+  - Verify with `vainfo`: you should see `VAProfileH264...` and `VAProfileHEVC...` entrypoints.
+- **NVIDIA NVENC**:
+  - Install the official proprietary NVIDIA drivers (`nvidia-driver-xxx`). Verify with `nvidia-smi`.
+
+---
+
+## Core Features
 
 - **100% Zero-Cloud Local Cataloging**:
-  - Blazing-fast scanner indexing thousands of titles in seconds directly from local `.nfo` files, posters, fanarts, and backdrops.
+  - Scans thousands of titles in seconds directly from local `.nfo` files, posters, fanarts, and backdrops.
   - Automatic film collections and chronological sagas built locally without third-party network calls.
   - Optional on-demand enrichment via TMDb/OMDb when requested (no unwanted automatic metadata overwrites).
 - **Adaptive Streaming & High-Performance Transcoding**:
   - *Direct Play*: Native stream passthrough with zero CPU utilization.
   - *Direct Stream / Remux*: Video stream copy with on-the-fly audio transcoding when device codecs require it.
-  - *Hardware Acceleration*: GPU-accelerated transcoding via Intel Quick Sync (QSV), NVIDIA NVENC, or VAAPI.
+  - *Hardware Acceleration*: GPU-accelerated transcoding via Intel Quick Sync (QSV), NVIDIA NVENC, AMD AMF, or CPU fallback. Both H.264 and HEVC codecs supported.
   - *Trickplay Scrubbing*: Keyframe thumbnail strips generated rapidly for timeline scrubbing.
 - **Native Extra Featurettes & Behind-The-Scenes**:
   - Dedicated 16:9 extra rows integrated directly into media detail pages (*Behind the Scenes*, *Featurettes*, *Deleted Scenes*, *Interviews*, *Bloopers*, *Short Films*).
@@ -114,7 +191,7 @@ See the [LICENSE](LICENSE) file for full terms and conditions.
 
 ---
 
-## Prerequisites
+## Prerequisites (for manual source installation)
 
 1. **Node.js**: Version 22 or higher (Node 26 executes TypeScript directly without a build step).
 2. **FFmpeg & FFprobe**: Configured with support for common codecs (H.264, HEVC) and GPU acceleration (Intel QSV, VAAPI, or NVIDIA NVENC).
@@ -123,7 +200,7 @@ See the [LICENSE](LICENSE) file for full terms and conditions.
 
 ---
 
-## Installation & Getting Started
+## Getting Started from Source
 
 ### 1. Clone the repository
 ```bash
@@ -137,7 +214,7 @@ npm install
 ```
 
 ### 3. Initial Configuration
-Create `data/config.json` defining your server port and the directories or drives hosting your media libraries:
+Create `data/config.json` defining your server port and media folders:
 ```json
 {
   "port": 8730,
@@ -150,7 +227,6 @@ Create `data/config.json` defining your server port and the directories or drive
   "python": "python"
 }
 ```
-> **Note**: `ffmpeg` and `ffprobe` can point to system `PATH` executables or exact absolute file paths on your machine.
 
 ### 4. Scan your media library
 Scan and index local `.nfo` metadata and artwork:
@@ -173,16 +249,6 @@ npm run dev
 
 ---
 
-## Interface Language Configuration
-
-Media Watch supports multiple interface languages (English and Spanish):
-- **Default for new installations**: English (`en`).
-- **Web**: Switch language anytime by clicking your profile avatar in the upper right or in **Settings** → **Playback** → **Interface language**.
-- **Samsung Smart TV**: Go to **Settings** → **Language** (`English` / `Español`).
-- **Android**: Open the drawer menu, go to **Settings** → **Experience & Presentation** → **Interface language**.
-
----
-
 ## Client Applications & Building
 
 ### Web & Smart TV
@@ -192,7 +258,7 @@ npm run build
 Builds static bundles to `web/dist/` (served directly by the backend) and `tv/dist/`.
 
 ### Samsung Smart TV (Tizen)
-Package and install the `.wgt` application to your Samsung TV using the official Docker container:
+Package and install the `.wgt` application to your Samsung TV using Docker:
 ```bash
 MSYS_NO_PATHCONV=1 docker run --rm --network host -v "${PWD}/tv:/app" \
   --entrypoint sh ghcr.io/georift/install-jellyfin-tizen:latest -c '
@@ -237,7 +303,7 @@ The compiled APK will be generated at `android/app/build/outputs/apk/release/`.
 
 - **D-Pad (`▲ / ▼ / ◄ / ►`)**: Fluid orthogonal spatial navigation across media cards and carousels.
 - **`[ENTER / OK]`**: Select title, play, or pause.
-- **Grab & Drop Menu Reordering**: In Settings → *Customize menu*, press `[OK]` to grab any section (highlighted in bright amber), move it up or down using `[▲ / ▼]`, and press `[OK]` again to release. Press `[►]` to toggle visibility.
+- **Grab & Drop Menu Reordering**: In Settings → *Customize menu*, press `[OK]` to grab any section, move it up or down using `[▲ / ▼]`, and press `[OK]` again to release. Press `[►]` to toggle visibility.
 - **`[BACK]`**: Return to previous screen or dismiss menus.
 
 ---
