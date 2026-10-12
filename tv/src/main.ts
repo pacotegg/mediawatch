@@ -2249,6 +2249,12 @@ async function menuPistas(fileId: number, tipo: 'audio' | 'subs', alCambiar?: (i
       texto: 'Externo (SRT): ' + (sb.title ? sb.title : idioma(sb.language) + (sb.forced ? ' (forzados)' : '')),
     });
   });
+  if (tipo === 'subs') {
+    opcionesSubs.push({
+      i: -99,
+      texto: '🔍 Buscar subtítulos en internet…',
+    });
+  }
 
   const opciones =
     tipo === 'audio'
@@ -2288,9 +2294,106 @@ async function menuPistas(fileId: number, tipo: 'audio' | 'subs', alCambiar?: (i
     alPulsar(teclasAntes);
   };
 
+  const buscarSubtitulosFicha = async () => {
+    capa.innerHTML =
+      '<div class="panel"><h3>Buscar subtítulos</h3>' +
+      '<p class="vacio" style="font-size:22px;padding:30px 0;">Buscando subtítulos (ES y EN) en internet…</p>' +
+      '</div>';
+    indexar();
+    try {
+      const res = await api.buscarCandidatosSubtitulos(fileId, 'es,en');
+      if (!res.ok || !res.candidates || res.candidates.length === 0) {
+        capa.innerHTML =
+          '<div class="panel"><h3>Buscar subtítulos</h3>' +
+          '<p class="vacio" style="font-size:22px;padding:30px 0;">No se encontraron subtítulos en internet</p>' +
+          '<button class="linea" data-nav data-volver>Volver</button>' +
+          '</div>';
+        indexar();
+        const bVolver = capa.querySelector<HTMLElement>('[data-volver]');
+        if (bVolver) {
+          bVolver.addEventListener('click', () => {
+            cerrar();
+            void menuPistas(fileId, 'subs', alCambiar, serieId);
+          });
+          enfocar(bVolver);
+        }
+        return;
+      }
+
+      const candidatos = res.candidates;
+      capa.innerHTML =
+        '<div class="panel"><h3>Descargar subtítulo</h3>' +
+        candidatos
+          .map((c, i) => {
+            const flag = c.language === 'es' ? '🇪🇸' : '🇬🇧';
+            const forz = c.forced ? ' (forzados)' : '';
+            const sdh = c.hearingImpaired ? ' [SDH]' : '';
+            const notaPartes: string[] = [`[${c.provider}]`];
+            if (c.rating > 0) notaPartes.push(`⭐ ${c.rating}`);
+            if (c.downloads > 0) notaPartes.push(`${c.downloads} descargas`);
+            if (c.comment) notaPartes.push(c.comment);
+            return (
+              '<button class="linea" data-nav data-candidato="' + i + '">' +
+              '<div style="font-size:21px;font-weight:600;">' + flag + ' ' + c.language.toUpperCase() + forz + sdh + ': ' + esc(c.release) + '</div>' +
+              '<div style="font-size:16px;opacity:0.7;margin-top:4px;">' + esc(notaPartes.join(' · ')) + '</div>' +
+              '</button>'
+            );
+          })
+          .join('') +
+        '<button class="linea" data-nav data-cancelar style="margin-top:10px;">Cancelar</button>' +
+        '</div>';
+      indexar();
+
+      capa.querySelectorAll<HTMLElement>('[data-candidato]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const idx = Number(btn.getAttribute('data-candidato'));
+          const elegido = candidatos[idx];
+          if (!elegido) return;
+          capa.innerHTML =
+            '<div class="panel"><h3>Descargando</h3>' +
+            '<p class="vacio" style="font-size:22px;padding:30px 0;">Descargando subtítulo y sincronizando con el audio…</p>' +
+            '</div>';
+          indexar();
+          try {
+            const dlRes = await api.descargarCandidatoSubtitulo(fileId, elegido);
+            if (dlRes.ok) {
+              aviso('¡Subtítulo descargado!');
+              const nuevaInfo = await api.pistas(fileId);
+              const extTracks = nuevaInfo.subtitles.filter((s) => s.source === 'external');
+              const extIdx = extTracks.findIndex((s) => dlRes.trackId ? s.id === dlRes.trackId : (dlRes.fileName ? s.title === dlRes.fileName : false));
+              seleccion.fileId = fileId;
+              if (extIdx >= 0) seleccion.subtitulo = -(10 + extIdx);
+              else if (extTracks.length > 0) seleccion.subtitulo = -(10 + extTracks.length - 1);
+              if (serieId !== undefined) recordarSerie(serieId, 'subs', nuevaInfo, seleccion.subtitulo);
+              cerrar();
+              if (alCambiar) alCambiar(nuevaInfo);
+            } else {
+              aviso('Fallo al descargar el subtítulo');
+              cerrar();
+            }
+          } catch (err) {
+            aviso('Error al descargar: ' + (err as Error).message);
+            cerrar();
+          }
+        });
+      });
+
+      const bCancel = capa.querySelector<HTMLElement>('[data-cancelar]');
+      if (bCancel) bCancel.addEventListener('click', cerrar);
+      enfocar(capa.querySelector<HTMLElement>('[data-nav]'));
+    } catch (e) {
+      aviso('Error buscando subtítulos: ' + (e as Error).message);
+      cerrar();
+    }
+  };
+
   capa.querySelectorAll<HTMLElement>('[data-elegir]').forEach((el) => {
     el.addEventListener('click', () => {
       const v = Number(el.getAttribute('data-elegir'));
+      if (tipo === 'subs' && v === -99) {
+        void buscarSubtitulosFicha();
+        return;
+      }
       if (tipo === 'audio') {
         seleccion.audio = v;
         const pista = info.audio[v];
