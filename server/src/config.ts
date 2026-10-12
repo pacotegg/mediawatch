@@ -108,9 +108,13 @@ const RUTAS_PYTHON = [
 function localizar(nombre: 'ffmpeg' | 'ffprobe' | 'python'): string {
   const deEntorno = env('MEDIAWATCH_' + nombre.toUpperCase());
   if (deEntorno) return deEntorno;
-  const dirs = nombre === 'python' ? RUTAS_PYTHON : RUTAS_FFMPEG;
+  const isWin = process.platform === 'win32';
+  const ext = isWin ? '.exe' : '';
+  const dirs = nombre === 'python'
+    ? (isWin ? RUTAS_PYTHON : ['/usr/bin', '/usr/local/bin'])
+    : (isWin ? RUTAS_FFMPEG : ['/usr/bin', '/usr/local/bin']);
   for (const dir of dirs) {
-    const ruta = join(dir, nombre + '.exe');
+    const ruta = join(dir, nombre + ext);
     if (existsSync(ruta)) return ruta;
   }
   return nombre;
