@@ -82,6 +82,9 @@ function PlaybackTab() {
       <Field label="Música de cabecera en ficha" hint="Suena la sintonía oficial al abrir la ficha de una película o serie.">
         <Toggle checked={prefs.interface.themeMusic} onChange={(themeMusic) => update('interface', { themeMusic })} />
       </Field>
+      <Field label="Tráiler en portada" hint="Reproduce el tráiler oficial en segundo plano en la cabecera principal con control de sonido.">
+        <Toggle checked={prefs.interface.heroTrailer ?? true} onChange={(heroTrailer) => update('interface', { heroTrailer })} />
+      </Field>
       <Field label="Estuche coleccionista 3D" hint="Muestra el cartel en perspectiva 3D con el disco (discart) físico extraíble.">
         <Toggle checked={prefs.interface.case3D} onChange={(case3D) => update('interface', { case3D })} />
       </Field>

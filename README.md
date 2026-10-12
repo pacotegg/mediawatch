@@ -4,6 +4,7 @@
 [![Node.js](https://img.shields.io/badge/Node.js-22%2B-green.svg)](https://nodejs.org/)
 [![Clients](https://img.shields.io/badge/Clients-Web%20%7C%20Samsung%20Smart%20TV%20%7C%20Android-orange.svg)](#client-applications--building)
 [![Desktop App](https://img.shields.io/badge/Desktop%20Server-Windows%20%7C%20Linux-0078D6.svg)](https://github.com/pacotegg/MediaWatch-Server)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-Buy%20me%20a%20coffee-ff5e5b?logo=ko-fi&logoColor=white)](https://ko-fi.com/pacotegg)
 
 [English](README.md) · [Español](README.es.md)
 
@@ -305,6 +306,12 @@ The compiled APK will be generated at `android/app/build/outputs/apk/release/`.
 - **`[ENTER / OK]`**: Select title, play, or pause.
 - **Grab & Drop Menu Reordering**: In Settings → *Customize menu*, press `[OK]` to grab any section, move it up or down using `[▲ / ▼]`, and press `[OK]` again to release. Press `[►]` to toggle visibility.
 - **`[BACK]`**: Return to previous screen or dismiss menus.
+
+---
+
+## Support the Project
+
+If you enjoy using Media Watch and want to support its ongoing development, you can [buy me a coffee on Ko-fi](https://ko-fi.com/pacotegg). Every contribution is deeply appreciated!
 
 ---
 

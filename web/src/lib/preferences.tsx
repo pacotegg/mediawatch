@@ -27,6 +27,7 @@ export type Preferences = {
     reduceMotion: boolean;
     showWatched: boolean;
     themeMusic: boolean;
+    heroTrailer: boolean;
     case3D: boolean;
     language: 'en' | 'es';
   };
@@ -36,7 +37,7 @@ export const DEFAULTS: Preferences = {
   playback: { maxHeight: 0, resume: true, autoPlayNext: true, autoSkipIntro: true, seekStep: 10, seekStepLarge: 60, adaptativo: 'auto' },
   audio: { downmixStereo: true, normalize: false, defaultVolume: 1, mode: 'normal' },
   subtitles: { size: 100, color: '#ffffff', background: 'shadow', offset: 0 },
-  interface: { reduceMotion: false, showWatched: true, themeMusic: true, case3D: false, language: 'en' },
+  interface: { reduceMotion: false, showWatched: true, themeMusic: true, heroTrailer: true, case3D: false, language: 'en' },
 };
 
 const STORAGE_KEY = 'cineteca.preferences';
