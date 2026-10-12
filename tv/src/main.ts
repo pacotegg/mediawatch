@@ -2431,13 +2431,21 @@ async function pantallaPersona(id: number, volverA?: number) {
     '<div class="persona-datos">' +
     '<h1>' + esc(persona.name) + '</h1>' +
     (datos ? '<p class="persona-vida">' + esc(datos) + '</p>' : '') +
-    (d && d.biography ? '<div class="persona-bio">' + esc(d.biography) + '</div>' : '') +
+    (d && d.biography ? '<div class="persona-bio" data-nav role="button" tabindex="0">' + esc(d.biography.replace(/\*+([^*]+)\*+/g, '$1')) + '</div>' : '') +
     '<p class="persona-cuenta">' + persona.credits.length + ' títulos en tu biblioteca</p>' +
     '</div></div>' +
     '<div class="rejilla" data-bloque>' + persona.credits.map(tarjeta).join('') + '</div>';
 
   pintar('inicio', cuerpo);
   conectarTarjetas();
+
+  const elBio = marco.querySelector<HTMLElement>('.persona-bio');
+  if (elBio && d && d.biography) {
+    elBio.addEventListener('click', () => {
+      dialogoResena(persona.name, 'Biografía', d.biography!.replace(/\*+([^*]+)\*+/g, '$1'));
+    });
+  }
+
   enfocar(marco.querySelector<HTMLElement>('.rejilla [data-nav]'));
   // Volver debe devolverte a la película desde la que entraste, no al inicio.
   alPulsar((tecla) => {

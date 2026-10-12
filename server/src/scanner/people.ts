@@ -34,15 +34,25 @@ async function traducirConGemini(texto: string): Promise<string | null> {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: `Traduce al español de España de forma natural y profesional la siguiente biografía, sin añadir notas, introducciones ni explicaciones adicionales:\n\n${texto}` }] }],
+        contents: [{ parts: [{ text: `Traduce al español de España de forma natural y profesional la siguiente biografía. NO uses formato Markdown, negritas ni asteriscos (*) para los títulos ni nombres. Devuelve únicamente el texto traducido limpio:\n\n${texto}` }] }],
       }),
     });
     if (!res.ok) return null;
     const data = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
-    return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || null;
+    const raw = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || null;
+    return raw ? raw.replace(/\*+([^*]+)\*+/g, '$1').trim() : null;
   } catch {
     return null;
   }
+}
+
+function esTextoEnIngles(texto: string): boolean {
+  if (!texto || texto.trim().length < 15) return false;
+  const tieneEspanol = /[áéíóúñ¿¡]/.test(texto) ||
+    /\b(nació|nacer|película|películas|conocido|conocida|hijo|hija|estadounidense|español|española|británico|británica|fue|estudió|comenzó)\b/i.test(texto);
+  if (tieneEspanol) return false;
+  const tieneIngles = /\b(born|is an?|was an?|known for|directed|starred|actor|actress|filmmaker|career|graduated|appeared|best known|in|the|and|of)\b/i.test(texto);
+  return tieneIngles;
 }
 
 /**
@@ -54,13 +64,16 @@ export async function detallePersona(personId: number): Promise<DetallePersona |
   const guardado = db
     .prepare('SELECT tmdb_id, biography, birthday, deathday, birthplace, profile, fetched_at FROM people_details WHERE person_id = ?')
     .get(personId) as DetallePersona | undefined;
-  // Completa del todo: ya está. `biography` a cadena vacía (no NULL) es la
-  // marca de "ya comprobado en TMDb, no tenía biografía" que pone la pasada
-  // masiva (detalles-personas.ts); tratarla como "falta" volvía a preguntar a
-  // TMDb en cada visita a esa ficha. Solo con el id (lo apunta la pasada de
-  // personas) y sin haber comprobado aún el resto: se trae por ese id, sin
-  // adivinar por nombre.
-  if (guardado && (guardado.biography !== null || guardado.birthday || !guardado.tmdb_id)) return guardado;
+  if (guardado) {
+    if (guardado.biography && esTextoEnIngles(guardado.biography)) {
+      const traducida = await traducirConGemini(guardado.biography);
+      if (traducida) {
+        guardado.biography = traducida;
+        db.prepare('UPDATE people_details SET biography = ? WHERE person_id = ?').run(guardado.biography, personId);
+      }
+    }
+    if (guardado.biography !== null || guardado.birthday || !guardado.tmdb_id) return guardado;
+  }
 
   const persona = db.prepare('SELECT name FROM people WHERE id = ?').get(personId) as { name: string } | undefined;
   if (!persona) return null;

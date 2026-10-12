@@ -2222,12 +2222,25 @@ body.rend-medio .tarjeta.enfocado .lamina {
   line-height: 1.6;
 }
 
-/* La biografía se lee desde el sofá: cuerpo grande y más líneas. */
+/* La biografía se lee desde el sofá: cuerpo grande y truncado limpio con elipsis. */
 .persona-bio {
-  font-size: 27px !important;
+  font-size: 24px !important;
   line-height: 1.5 !important;
-  max-height: 260px !important;
+  display: -webkit-box !important;
+  -webkit-line-clamp: 5 !important;
+  -webkit-box-orient: vertical !important;
+  overflow: hidden !important;
+  max-height: none !important;
   color: #d3d6e2 !important;
+  margin-bottom: 16px !important;
+  cursor: pointer;
+}
+
+.persona-bio.enfocado {
+  color: #fff !important;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  box-shadow: 0 0 0 4px var(--acento);
 }
 
 /* Los botones de la ficha pueden ser cinco: tienen que poder pasar a la
