@@ -467,7 +467,8 @@ export default async function libraryRoutes(app: FastifyInstance) {
 
     const hero = db
       .prepare(`SELECT ${ITEM_FIELDS}, i.plot FROM items i JOIN libraries l ON l.id = i.library_id
-                WHERE i.fanart IS NOT NULL AND i.clearlogo IS NOT NULL AND i.rating >= 7.4 ${crAnd}
+                WHERE i.fanart IS NOT NULL AND i.clearlogo IS NOT NULL AND i.rating >= 7.4
+                  AND (i.tmdb_id IS NOT NULL OR i.trailer IS NOT NULL) ${crAnd}
                 ORDER BY RANDOM() LIMIT 6`)
       .all(...cr.params);
 

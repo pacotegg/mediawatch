@@ -76,20 +76,35 @@ async function buscar(clave: string, ruta: string): Promise<Trailer | null> {
 
 /** El de la temporada si se pide y existe; si no, el de la película o serie. */
 export async function trailerDe(itemId: number, temporada?: number): Promise<Trailer | null> {
-  const item = db.prepare('SELECT tmdb_id, kind FROM items WHERE id = ?').get(itemId) as
-    | { tmdb_id: string | null; kind: string }
+  const item = db.prepare('SELECT tmdb_id, kind, trailer FROM items WHERE id = ?').get(itemId) as
+    | { tmdb_id: string | null; kind: string; trailer: string | null }
     | undefined;
-  if (!item?.tmdb_id || !/^\d+$/.test(item.tmdb_id)) return null;
-  if (item.kind === 'show') {
-    if (temporada !== undefined && Number.isInteger(temporada) && temporada >= 0) {
-      const t = await buscar(`tv:${item.tmdb_id}:s${temporada}`, `/tv/${item.tmdb_id}/season/${temporada}`);
-      if (t) return { ...t, de: 'temporada' };
+  if (!item) return null;
+
+  // 1. Intentar desde TMDb si tiene id
+  if (item.tmdb_id && /^\d+$/.test(item.tmdb_id)) {
+    if (item.kind === 'show') {
+      if (temporada !== undefined && Number.isInteger(temporada) && temporada >= 0) {
+        const t = await buscar(`tv:${item.tmdb_id}:s${temporada}`, `/tv/${item.tmdb_id}/season/${temporada}`);
+        if (t) return { ...t, de: 'temporada' };
+      }
+      const t = await buscar(`tv:${item.tmdb_id}`, `/tv/${item.tmdb_id}`);
+      if (t) return { ...t, de: 'titulo' };
+    } else {
+      const t = await buscar(`movie:${item.tmdb_id}`, `/movie/${item.tmdb_id}`);
+      if (t) return { ...t, de: 'titulo' };
     }
-    const t = await buscar(`tv:${item.tmdb_id}`, `/tv/${item.tmdb_id}`);
-    return t ? { ...t, de: 'titulo' } : null;
   }
-  const t = await buscar(`movie:${item.tmdb_id}`, `/movie/${item.tmdb_id}`);
-  return t ? { ...t, de: 'titulo' } : null;
+
+  // 2. Fallback: tráiler local catalogado en el .nfo (Kodi / tinyMediaManager)
+  if (item.trailer) {
+    const m = item.trailer.match(/(?:video_id=|v=|\/embed\/|youtu\.be\/|^)([\w-]{11})/);
+    if (m) {
+      return { youtube: m[1], idioma: 'es', calidad: 1080, de: 'titulo' };
+    }
+  }
+
+  return null;
 }
 
 /**

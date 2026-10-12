@@ -32,7 +32,7 @@ export default function Hero({ items }: { items: ItemSummary[] }) {
     setIsPlaying(false);
     setTrailerError(false);
     setIsMuted(true);
-    if (!item) return;
+    if (!item || prefs.interface.heroTrailer === false) return;
     let cancelado = false;
     const timer = setTimeout(() => {
       api.trailer(item.id)
