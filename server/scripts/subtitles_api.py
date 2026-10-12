@@ -39,9 +39,30 @@ def buscar_candidatos(video, idiomas=("es", "en")):
                 fichas = ss.fichas(imdb=imdb)
             else:
                 fichas = ss.fichas(texto=titulo)
+                # Filtrar tipo para no mezclar películas con series
+                if es_serie:
+                    fichas = [f for f in fichas if f.get("type") == "tvseries"]
+                else:
+                    fichas = [f for f in fichas if f.get("type") != "tvseries"]
+
                 if anyo:
                     mismas = [f for f in fichas if str(f.get("releaseYear")) == str(anyo)]
-                    fichas = mismas or fichas
+                    if mismas:
+                        fichas = mismas
+                    else:
+                        tit_norm = re.sub(r"[^a-z0-9]", "", titulo.lower())
+                        fichas = [
+                            f for f in fichas
+                            if tit_norm in re.sub(r"[^a-z0-9]", "", (f.get("title") or "").lower())
+                            or re.sub(r"[^a-z0-9]", "", (f.get("title") or "").lower()) in tit_norm
+                        ]
+                else:
+                    tit_norm = re.sub(r"[^a-z0-9]", "", titulo.lower())
+                    fichas = [
+                        f for f in fichas
+                        if tit_norm in re.sub(r"[^a-z0-9]", "", (f.get("title") or "").lower())
+                        or re.sub(r"[^a-z0-9]", "", (f.get("title") or "").lower()) in tit_norm
+                    ]
 
             if es_serie:
                 propias = [f for f in fichas if f.get("season") == temp]
@@ -65,9 +86,20 @@ def buscar_candidatos(video, idiomas=("es", "en")):
                         sub_id = s.get("subtitleId")
                         if not sub_id:
                             continue
-                        rel_info = " | ".join(s.get("releaseInfo") or [])
-                        if not rel_info.strip():
+                        rel_list = [r.strip() for r in (s.get("releaseInfo") or []) if r.strip()]
+                        if rel_list:
+                            rel_info = rel_list[0]
+                            if len(rel_list) > 1 and len(rel_info) < 32:
+                                rel_info += f" | {rel_list[1]}"
+                        else:
                             rel_info = f.get("title", titulo)
+                        rel_info = re.sub(r"\s+", " ", rel_info)
+                        if len(rel_info) > 70:
+                            rel_info = rel_info[:67] + "…"
+
+                        comentario = re.sub(r"\s+", " ", (s.get("commentary") or "").strip())
+                        if len(comentario) > 50:
+                            comentario = comentario[:47] + "…"
                         
                         puntuacion = 0
                         rat = s.get("rating") or {}
@@ -88,7 +120,7 @@ def buscar_candidatos(video, idiomas=("es", "en")):
                             "rating": puntuacion,
                             "forced": bool(s.get("foreignParts")),
                             "hearingImpaired": bool(s.get("hearingImpaired")),
-                            "comment": s.get("commentary") or "",
+                            "comment": comentario,
                             "matchScore": subsfetch._puntuar_ss(s, nombre_video),
                         })
     except Exception as e:
@@ -119,6 +151,15 @@ def buscar_candidatos(video, idiomas=("es", "en")):
                     cand_os = os_api.buscar(**q)
                     for c in (cand_os or []):
                         attr = c.get("attributes", {})
+                        if not imdb_num:
+                            feat = attr.get("feature_details", {})
+                            feat_title = (feat.get("title") or "").strip()
+                            if feat_title:
+                                tit_norm = re.sub(r"[^a-z0-9]", "", titulo.lower())
+                                feat_norm = re.sub(r"[^a-z0-9]", "", feat_title.lower())
+                                if tit_norm not in feat_norm and feat_norm not in tit_norm:
+                                    continue
+
                         fichs = attr.get("files") or []
                         if not fichs:
                             continue
@@ -126,7 +167,14 @@ def buscar_candidatos(video, idiomas=("es", "en")):
                         if not fid:
                             continue
                         
-                        rel = attr.get("release") or fichs[0].get("file_name") or titulo
+                        rel = re.sub(r"\s+", " ", (attr.get("release") or fichs[0].get("file_name") or titulo).strip())
+                        if len(rel) > 70:
+                            rel = rel[:67] + "…"
+
+                        comentario = re.sub(r"\s+", " ", (attr.get("comments") or "").strip())
+                        if len(comentario) > 50:
+                            comentario = comentario[:47] + "…"
+
                         rating = float(attr.get("ratings") or 0)
                         
                         resultados.append({
@@ -140,7 +188,7 @@ def buscar_candidatos(video, idiomas=("es", "en")):
                             "rating": round(rating, 1),
                             "forced": bool(attr.get("foreign_parts_only")),
                             "hearingImpaired": bool(attr.get("hearing_impaired")),
-                            "comment": attr.get("comments") or "",
+                            "comment": comentario,
                             "matchScore": subsfetch.puntuar(c, fps, nombre_video),
                         })
     except Exception as e:
@@ -154,7 +202,9 @@ def buscar_candidatos(video, idiomas=("es", "en")):
             vistos.add(r["id"])
             unicos.append(r)
 
-    return unicos
+    # Filtrar resultados con matchScore muy negativo salvo descargas masivas
+    unicos = [r for r in unicos if r["matchScore"] >= -20 or r["downloads"] > 500]
+    return unicos[:15]
 
 
 def descargar_candidato(video, provider, sub_id, out_file):

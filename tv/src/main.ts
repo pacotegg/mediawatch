@@ -2320,40 +2320,31 @@ async function menuPistas(fileId: number, tipo: 'audio' | 'subs', alCambiar?: (i
         return;
       }
 
-      const candidatos = res.candidates;
-      capa.innerHTML =
-        '<div class="panel"><h3>Descargar subtítulo</h3>' +
-        candidatos
-          .map((c, i) => {
-            const flag = c.language === 'es' ? '🇪🇸' : '🇬🇧';
-            const forz = c.forced ? ' (forzados)' : '';
-            const sdh = c.hearingImpaired ? ' [SDH]' : '';
-            const notaPartes: string[] = [`[${c.provider}]`];
-            if (c.rating > 0) notaPartes.push(`⭐ ${c.rating}`);
-            if (c.downloads > 0) notaPartes.push(`${c.downloads} descargas`);
-            if (c.comment) notaPartes.push(c.comment);
-            return (
-              '<button class="linea" data-nav data-candidato="' + i + '">' +
-              '<div style="font-size:21px;font-weight:600;">' + flag + ' ' + c.language.toUpperCase() + forz + sdh + ': ' + esc(c.release) + '</div>' +
-              '<div style="font-size:16px;opacity:0.7;margin-top:4px;">' + esc(notaPartes.join(' · ')) + '</div>' +
-              '</button>'
-            );
-          })
-          .join('') +
-        '<button class="linea" data-nav data-cancelar style="margin-top:10px;">Cancelar</button>' +
-        '</div>';
-      indexar();
+      const opciones: OpcionLista[] = res.candidates.map((c, i) => {
+        const flag = c.language === 'es' ? '🇪🇸' : '🇬🇧';
+        const forz = c.forced ? ' [Forz.]' : '';
+        const sdh = c.hearingImpaired ? ' [SDH]' : '';
+        const notaPartes: string[] = [`[${c.provider}]`];
+        if (c.rating > 0) notaPartes.push(`⭐ ${c.rating}`);
+        if (c.downloads > 0) notaPartes.push(`${c.downloads} desc.`);
+        if (c.comment) notaPartes.push(c.comment);
 
-      capa.querySelectorAll<HTMLElement>('[data-candidato]').forEach((btn) => {
-        btn.addEventListener('click', async () => {
-          const idx = Number(btn.getAttribute('data-candidato'));
-          const elegido = candidatos[idx];
+        return {
+          valor: i,
+          texto: `${flag} ${c.language.toUpperCase()}${forz}${sdh}: ${c.release}`,
+          nota: notaPartes.join(' · '),
+        };
+      });
+
+      cerrar();
+      menuLista(
+        'Descargar subtítulo',
+        opciones,
+        0,
+        async (idx) => {
+          const elegido = res.candidates[idx];
           if (!elegido) return;
-          capa.innerHTML =
-            '<div class="panel"><h3>Descargando</h3>' +
-            '<p class="vacio" style="font-size:22px;padding:30px 0;">Descargando subtítulo y sincronizando con el audio…</p>' +
-            '</div>';
-          indexar();
+          aviso('Descargando subtítulo…');
           try {
             const dlRes = await api.descargarCandidatoSubtitulo(fileId, elegido);
             if (dlRes.ok) {
@@ -2365,22 +2356,18 @@ async function menuPistas(fileId: number, tipo: 'audio' | 'subs', alCambiar?: (i
               if (extIdx >= 0) seleccion.subtitulo = -(10 + extIdx);
               else if (extTracks.length > 0) seleccion.subtitulo = -(10 + extTracks.length - 1);
               if (serieId !== undefined) recordarSerie(serieId, 'subs', nuevaInfo, seleccion.subtitulo);
-              cerrar();
               if (alCambiar) alCambiar(nuevaInfo);
             } else {
               aviso('Fallo al descargar el subtítulo');
-              cerrar();
             }
           } catch (err) {
             aviso('Error al descargar: ' + (err as Error).message);
-            cerrar();
           }
-        });
-      });
-
-      const bCancel = capa.querySelector<HTMLElement>('[data-cancelar]');
-      if (bCancel) bCancel.addEventListener('click', cerrar);
-      enfocar(capa.querySelector<HTMLElement>('[data-nav]'));
+        },
+        () => {
+          void menuPistas(fileId, 'subs', alCambiar, serieId);
+        },
+      );
     } catch (e) {
       aviso('Error buscando subtítulos: ' + (e as Error).message);
       cerrar();
