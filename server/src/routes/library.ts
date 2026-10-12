@@ -754,11 +754,17 @@ export default async function libraryRoutes(app: FastifyInstance) {
     } catch {
       detalle = null;
     }
-    const credits = db
+    const rawCredits = db
       .prepare(`SELECT ${ITEM_FIELDS}, ip.character, ip.role FROM item_people ip
                 JOIN items i ON i.id = ip.item_id JOIN libraries l ON l.id = i.library_id
                 WHERE ip.person_id = ? ORDER BY i.year DESC`)
-      .all(id);
+      .all(id) as Array<{ id: number; [key: string]: any }>;
+    const seen = new Set<number>();
+    const credits = rawCredits.filter((c) => {
+      if (seen.has(c.id)) return false;
+      seen.add(c.id);
+      return true;
+    });
     return { ...person, detalle, credits };
   });
 

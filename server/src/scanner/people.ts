@@ -26,6 +26,25 @@ async function tmdb<T>(path: string, params: Record<string, string>): Promise<T 
   return (await res.json()) as T;
 }
 
+async function traducirConGemini(texto: string): Promise<string | null> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey || !texto.trim()) return null;
+  try {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: `Traduce al español de España de forma natural y profesional la siguiente biografía, sin añadir notas, introducciones ni explicaciones adicionales:\n\n${texto}` }] }],
+      }),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+    return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Ficha de una persona. Se guarda en la base al traerla, así que solo se pide a
  * TMDb la primera vez que alguien la abre — abrir un reparto entero no dispara
@@ -63,12 +82,14 @@ export async function detallePersona(personId: number): Promise<DetallePersona |
   }>(`/person/${encontrado.id}`, {});
   if (!ficha) return null;
 
-  // TMDb deja la biografía vacía en español muchas veces; en ese caso vale más
-  // la inglesa que un hueco.
+  // TMDb deja la biografía vacía en español muchas veces; en ese caso se traduce
+  // de la versión en inglés usando Gemini para mostrarla en español.
   let biografia = ficha.biography || null;
   if (!biografia) {
     const enIngles = await tmdb<{ biography: string }>(`/person/${encontrado.id}`, { language: 'en-US' });
-    biografia = enIngles?.biography || null;
+    if (enIngles?.biography) {
+      biografia = (await traducirConGemini(enIngles.biography)) ?? enIngles.biography;
+    }
   }
 
   const detalle: DetallePersona = {

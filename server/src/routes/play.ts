@@ -370,8 +370,8 @@ export default async function playRoutes(app: FastifyInstance) {
       // En una pelicula no hay huellas que comparar: los creditos salen de los
       // capitulos del propio fichero o del detector del texto que sube.
       skip: row.episode_id ? skipRangesFor(row.episode_id) : skipDePelicula(row.item_id ?? 0, info.chapters, info.duration),
-      size: bytes,
-      bitrate: info.duration > 0 ? Math.round((bytes * 8) / info.duration) : 0,
+      size: statFichero.size,
+      bitrate: info.duration > 0 ? Math.round((statFichero.size * 8) / info.duration) : 0,
       video: info.video,
       plan,
       audio: info.audio.map((a) => ({
