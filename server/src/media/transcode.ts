@@ -109,30 +109,29 @@ function videoArgs(plan: PlaybackPlan, info: MediaInfo): string[] {
 
   const filters: string[] = [];
   const qsv = config.hwaccel === 'qsv';
+  const isHevc = config.transcodeCodec === 'hevc';
   const needsScale = plan.targetHeight > 0 && info.video && info.video.height > plan.targetHeight;
 
   if (qsv) {
-    // h264_qsv only accepts 8-bit input, so 10-bit sources (HEVC Main 10) must be
-    // converted on the GPU or the encoder refuses to open.
+    // h264_qsv solo acepta 8 bits; HEVC acepta 10 bits nativo en QSV.
     const vpp: string[] = [];
     if (needsScale && info.video) {
       const width = Math.round((info.video.width * plan.targetHeight) / info.video.height / 2) * 2;
       vpp.push(`w=${width}`, `h=${plan.targetHeight}`);
     }
     if (info.video?.hdr && config.tonemap) vpp.push('tonemap=1');
-    vpp.push('format=nv12');
+    if (!isHevc) vpp.push('format=nv12');
     filters.push(`vpp_qsv=${vpp.join(':')}`);
 
+    const encoder = isHevc ? 'hevc_qsv' : 'h264_qsv';
     return [
       '-vf', filters.join(','),
-      '-c:v', 'h264_qsv',
+      '-c:v', encoder,
       '-preset', 'veryfast',
-      // Con tope, h264_qsv necesita `-b:v` para entrar en VBR; `-global_quality`
-      // solo (ICQ) ignora el `-maxrate`, medido.
       ...(plan.maxKbps ? ['-b:v', `${plan.maxKbps}k`] : ['-global_quality', String(config.transcodeQuality)]),
       ...topeDeTasa(plan),
       '-look_ahead', '0',
-      '-profile:v', 'high',
+      ...(isHevc ? [] : ['-profile:v', 'high']),
       '-g', '120',
     ];
   }
@@ -140,9 +139,10 @@ function videoArgs(plan: PlaybackPlan, info: MediaInfo): string[] {
   if (needsScale) filters.push(`scale=-2:${plan.targetHeight}`);
 
   if (config.hwaccel === 'nvenc') {
+    const encoder = isHevc ? 'hevc_nvenc' : 'h264_nvenc';
     return [
       ...(filters.length ? ['-vf', filters.join(',')] : []),
-      '-c:v', 'h264_nvenc',
+      '-c:v', encoder,
       '-preset', 'p4',
       ...(plan.maxKbps ? ['-b:v', `${plan.maxKbps}k`] : ['-cq', String(config.transcodeQuality)]),
       ...topeDeTasa(plan),
@@ -151,9 +151,10 @@ function videoArgs(plan: PlaybackPlan, info: MediaInfo): string[] {
   }
 
   if (config.hwaccel === 'amf') {
+    const encoder = isHevc ? 'hevc_amf' : 'h264_amf';
     return [
       ...(filters.length ? ['-vf', filters.join(',')] : []),
-      '-c:v', 'h264_amf',
+      '-c:v', encoder,
       '-quality', 'speed',
       ...(plan.maxKbps ? ['-b:v', `${plan.maxKbps}k`] : ['-rc', 'cqp', '-qp_i', String(config.transcodeQuality), '-qp_p', String(config.transcodeQuality)]),
       ...topeDeTasa(plan),
@@ -161,11 +162,13 @@ function videoArgs(plan: PlaybackPlan, info: MediaInfo): string[] {
     ];
   }
 
+  const encoder = isHevc ? 'libx265' : 'libx264';
+  const crf = isHevc ? '24' : '21';
   return [
     ...(filters.length ? ['-vf', filters.join(',')] : []),
-    '-c:v', 'libx264',
+    '-c:v', encoder,
     '-preset', 'veryfast',
-    '-crf', '21',
+    '-crf', crf,
     ...topeDeTasa(plan),
     '-g', '120',
   ];

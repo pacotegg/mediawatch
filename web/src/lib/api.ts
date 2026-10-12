@@ -679,6 +679,7 @@ export type Trickplay = {
 export const trickplaySheet = (fileId: number, index: number) => `/api/play/${fileId}/trickplay/${index}.jpg`;
 
 export type HwAccel = 'qsv' | 'nvenc' | 'amf' | 'none';
+export type TranscodeCodec = 'h264' | 'hevc';
 
 export type Capabilities = {
   detectedAt: string;
@@ -705,6 +706,7 @@ export type SubtitleJob = {
 export type ServerSettings = {
   readOnly: boolean;
   hwaccel: HwAccel;
+  transcodeCodec?: TranscodeCodec;
   transcodeQuality: number;
   tonemap: boolean;
   tmdbLanguage: string;

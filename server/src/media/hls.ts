@@ -237,28 +237,27 @@ function argumentos(p: PeticionSegmento, desde: number, dir: string): string[] {
   const ancho = p.info.video ? Math.round((p.info.video.width * alto) / p.info.video.height / 2) * 2 : 0;
   const bitrate = String(Math.round(p.calidad.bitrate / 1000)) + 'k';
 
+  const isHevc = config.transcodeCodec === 'hevc';
   let video: string[];
   if (qsv) {
+    const encoder = isHevc ? 'hevc_qsv' : 'h264_qsv';
     video = [
-      // El tonemapping va aquí porque h264_qsv solo acepta 8 bits: un HEVC de
-      // 10 bits o cualquier HDR hay que bajarlo en la GPU o el codificador
-      // ni siquiera abre.
-      '-vf', `vpp_qsv=w=${ancho}:h=${alto}${p.info.video?.hdr && config.tonemap ? ':tonemap=1' : ''}:format=nv12`,
-      '-c:v', 'h264_qsv',
+      '-vf', `vpp_qsv=w=${ancho}:h=${alto}${p.info.video?.hdr && config.tonemap ? ':tonemap=1' : ''}${isHevc ? '' : ':format=nv12'}`,
+      '-c:v', encoder,
       '-preset', 'veryfast',
       '-b:v', bitrate,
       '-maxrate', bitrate,
       '-bufsize', String(Math.round(p.calidad.bitrate / 500)) + 'k',
       '-look_ahead', '0',
-      '-profile:v', 'high',
-      // QSV no atiende a `-force_key_frames`; el GOP en fotogramas sí.
+      ...(isHevc ? [] : ['-profile:v', 'high']),
       '-g', String(gop),
       '-forced_idr', '1',
     ];
   } else if (config.hwaccel === 'nvenc') {
+    const encoder = isHevc ? 'hevc_nvenc' : 'h264_nvenc';
     video = [
       '-vf', `scale=-2:${alto}`,
-      '-c:v', 'h264_nvenc',
+      '-c:v', encoder,
       '-preset', 'p4',
       '-b:v', bitrate,
       '-maxrate', bitrate,
@@ -267,9 +266,10 @@ function argumentos(p: PeticionSegmento, desde: number, dir: string): string[] {
       '-forced_idr', '1',
     ];
   } else if (config.hwaccel === 'amf') {
+    const encoder = isHevc ? 'hevc_amf' : 'h264_amf';
     video = [
       '-vf', `scale=-2:${alto}`,
-      '-c:v', 'h264_amf',
+      '-c:v', encoder,
       '-quality', 'speed',
       '-b:v', bitrate,
       '-maxrate', bitrate,
@@ -277,9 +277,10 @@ function argumentos(p: PeticionSegmento, desde: number, dir: string): string[] {
       '-g', String(gop),
     ];
   } else {
+    const encoder = isHevc ? 'libx265' : 'libx264';
     video = [
       '-vf', `scale=-2:${alto}`,
-      '-c:v', 'libx264',
+      '-c:v', encoder,
       '-preset', 'veryfast',
       '-b:v', bitrate,
       '-maxrate', bitrate,

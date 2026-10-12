@@ -1019,6 +1019,16 @@ function ServerTab() {
             ]}
           />
         </Field>
+        <Field label="Códec de transcodificación" hint="H.264 funciona en cualquier navegador. HEVC reduce el bitrate a la mitad pero requiere que el cliente soporte decodificación HEVC.">
+          <Select
+            value={settings?.transcodeCodec ?? 'h264'}
+            onChange={(transcodeCodec) => save.mutate({ transcodeCodec: transcodeCodec as any })}
+            options={[
+              { value: 'h264', label: 'H.264 / AVC (Recomendado · compatibilidad universal)' },
+              { value: 'hevc', label: 'HEVC / H.265 (Ahorro de ancho de banda · clientes modernos)' },
+            ]}
+          />
+        </Field>
         <Field label="Calidad" hint="Número más bajo, más calidad y más tamaño. En red local sale a cuenta bajarlo.">
           <Slider value={settings?.transcodeQuality ?? 20} min={14} max={30} onChange={(transcodeQuality) => save.mutate({ transcodeQuality })} />
         </Field>

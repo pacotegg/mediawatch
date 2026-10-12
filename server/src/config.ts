@@ -38,6 +38,7 @@ export type AppConfig = {
   ffprobe: string;
   python: string;
   hwaccel: HwAccel;
+  transcodeCodec: 'h264' | 'hevc';
   transcodeQuality: number;
   tonemap: boolean;
   tmdbApiKey: string;
@@ -131,6 +132,7 @@ function defaultConfig(): AppConfig {
     ffprobe: localizar('ffprobe'),
     python: localizar('python'),
     hwaccel: (env('MEDIAWATCH_HWACCEL') as HwAccel) || (PORTABLE ? 'none' : 'qsv'),
+    transcodeCodec: (env('MEDIAWATCH_TRANSCODE_CODEC') as 'h264' | 'hevc') || 'h264',
     transcodeQuality: 20,
     tonemap: true,
     tmdbApiKey: '',
@@ -154,6 +156,7 @@ const POR_ENTORNO: Partial<Record<keyof AppConfig, string>> = {
   ffprobe: env('MEDIAWATCH_FFPROBE'),
   python: env('MEDIAWATCH_PYTHON'),
   hwaccel: env('MEDIAWATCH_HWACCEL'),
+  transcodeCodec: env('MEDIAWATCH_TRANSCODE_CODEC'),
   transcodeDir: env('MEDIAWATCH_TMP_DIR'),
 };
 let guardadoPrevio: Partial<AppConfig> = {};
