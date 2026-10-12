@@ -12,6 +12,10 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.54 — 12/10/2026
+
+- Soporte multi-idioma (i18n): interfaz en inglés por defecto para nuevas instalaciones y selector directo entre inglés y español en Ajustes (Experiencia y Presentación). Las instalaciones existentes mantienen su idioma preferido.
+
 ## 3.53 — 12/10/2026
 
 - Búsqueda y descarga directa de subtítulos desde la app y la tele: descarga online multifuente (SubSource y OpenSubtitles con comprobación de correlación cruzada contra el audio) y guardado automático en el servidor sin tocar la biblioteca en disco.
