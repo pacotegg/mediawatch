@@ -9,6 +9,13 @@ import os
 import re
 import sys
 
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 # Agregar la ruta de scripts del pipeline para importar subsfetch
 sys.path.append(r"C:\scripts\webpanel")
 import subsfetch
@@ -206,14 +213,14 @@ def main():
     if args.accion == "buscar":
         idiomas = [i.strip() for i in args.idiomas.split(",") if i.strip()]
         res = buscar_candidatos(args.video, idiomas=idiomas)
-        print(json.dumps({"ok": True, "candidates": res}, ensure_ascii=False))
+        print(json.dumps({"ok": True, "candidates": res}, ensure_ascii=True))
 
     elif args.accion == "descargar":
         ok, res = descargar_candidato(args.video, args.provider, args.sub_id, args.out)
         if ok:
-            print(json.dumps({"ok": True, "out": args.out}, ensure_ascii=False))
+            print(json.dumps({"ok": True, "out": args.out}, ensure_ascii=True))
         else:
-            print(json.dumps({"ok": False, "error": res}, ensure_ascii=False))
+            print(json.dumps({"ok": False, "error": res}, ensure_ascii=True))
             sys.exit(1)
     else:
         p.print_help()
