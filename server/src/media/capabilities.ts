@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { cpus, totalmem } from 'node:os';
 import { promisify } from 'node:util';
-import { config } from '../config.ts';
+import { config, type HwAccel } from '../config.ts';
 import { db } from '../db.ts';
 
 const run = promisify(execFile);
@@ -23,17 +23,17 @@ export type Capabilities = {
   hwaccels: string[];
   encoders: EncoderProbe[];
   tonemap: { supported: boolean; note: string };
-  best: { hwaccel: 'qsv' | 'none'; encoder: string; transcodeQuality: number; tonemap: boolean; concurrentStreams: number };
+  best: { hwaccel: HwAccel; encoder: string; transcodeQuality: number; tonemap: boolean; concurrentStreams: number };
   notes: string[];
 };
 
-const CANDIDATES: { name: string; label: string; hwaccel: 'qsv' | 'none' }[] = [
+const CANDIDATES: { name: string; label: string; hwaccel: HwAccel }[] = [
   { name: 'h264_qsv', label: 'Intel Quick Sync · H.264', hwaccel: 'qsv' },
   { name: 'hevc_qsv', label: 'Intel Quick Sync · HEVC', hwaccel: 'qsv' },
   { name: 'av1_qsv', label: 'Intel Quick Sync · AV1', hwaccel: 'qsv' },
-  { name: 'h264_nvenc', label: 'NVIDIA NVENC · H.264', hwaccel: 'none' },
-  { name: 'hevc_nvenc', label: 'NVIDIA NVENC · HEVC', hwaccel: 'none' },
-  { name: 'h264_amf', label: 'AMD AMF · H.264', hwaccel: 'none' },
+  { name: 'h264_nvenc', label: 'NVIDIA NVENC · H.264', hwaccel: 'nvenc' },
+  { name: 'hevc_nvenc', label: 'NVIDIA NVENC · HEVC', hwaccel: 'nvenc' },
+  { name: 'h264_amf', label: 'AMD AMF · H.264', hwaccel: 'amf' },
   { name: 'libx264', label: 'Software · H.264 (CPU)', hwaccel: 'none' },
 ];
 
@@ -193,8 +193,16 @@ function recommend(encoders: EncoderProbe[], tonemap: boolean, gpus: { name: str
   if (!tonemap) notes.push('Sin tonemapping por GPU: el contenido HDR puede verse desvaído al transcodificar.');
   if (working.some((e) => e.name === 'av1_qsv')) notes.push('Tu GPU codifica AV1, útil más adelante si añades clientes compatibles.');
 
+  const bestHwaccel: HwAccel = chosen.includes('_qsv')
+    ? 'qsv'
+    : chosen.includes('_nvenc')
+      ? 'nvenc'
+      : chosen.includes('_amf')
+        ? 'amf'
+        : 'none';
+
   return {
-    best: { hwaccel: (isQsv ? 'qsv' : 'none') as 'qsv' | 'none', encoder: chosen, transcodeQuality: quality, tonemap, concurrentStreams: concurrent },
+    best: { hwaccel: bestHwaccel, encoder: chosen, transcodeQuality: quality, tonemap, concurrentStreams: concurrent },
     notes,
   };
 }

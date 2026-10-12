@@ -678,6 +678,8 @@ export type Trickplay = {
 
 export const trickplaySheet = (fileId: number, index: number) => `/api/play/${fileId}/trickplay/${index}.jpg`;
 
+export type HwAccel = 'qsv' | 'nvenc' | 'amf' | 'none';
+
 export type Capabilities = {
   detectedAt: string;
   cpu: { model: string; cores: number; memoryGb: number };
@@ -685,7 +687,7 @@ export type Capabilities = {
   hwaccels: string[];
   encoders: { name: string; label: string; compiled: boolean; working: boolean; realtimeFactor: number | null; note?: string }[];
   tonemap: { supported: boolean; note: string };
-  best: { hwaccel: 'qsv' | 'none'; encoder: string; transcodeQuality: number; tonemap: boolean; concurrentStreams: number };
+  best: { hwaccel: HwAccel; encoder: string; transcodeQuality: number; tonemap: boolean; concurrentStreams: number };
   notes: string[];
 };
 
@@ -702,7 +704,7 @@ export type SubtitleJob = {
 
 export type ServerSettings = {
   readOnly: boolean;
-  hwaccel: 'qsv' | 'none';
+  hwaccel: HwAccel;
   transcodeQuality: number;
   tonemap: boolean;
   tmdbLanguage: string;

@@ -237,34 +237,58 @@ function argumentos(p: PeticionSegmento, desde: number, dir: string): string[] {
   const ancho = p.info.video ? Math.round((p.info.video.width * alto) / p.info.video.height / 2) * 2 : 0;
   const bitrate = String(Math.round(p.calidad.bitrate / 1000)) + 'k';
 
-  const video = qsv
-    ? [
-        // El tonemapping va aquí porque h264_qsv solo acepta 8 bits: un HEVC de
-        // 10 bits o cualquier HDR hay que bajarlo en la GPU o el codificador
-        // ni siquiera abre.
-        '-vf', `vpp_qsv=w=${ancho}:h=${alto}${p.info.video?.hdr && config.tonemap ? ':tonemap=1' : ''}:format=nv12`,
-        '-c:v', 'h264_qsv',
-        '-preset', 'veryfast',
-        '-b:v', bitrate,
-        '-maxrate', bitrate,
-        '-bufsize', String(Math.round(p.calidad.bitrate / 500)) + 'k',
-        '-look_ahead', '0',
-        '-profile:v', 'high',
-        // QSV no atiende a `-force_key_frames`; el GOP en fotogramas sí.
-        '-g', String(gop),
-        '-forced_idr', '1',
-      ]
-    : [
-        '-vf', `scale=-2:${alto}`,
-        '-c:v', 'libx264',
-        '-preset', 'veryfast',
-        '-b:v', bitrate,
-        '-maxrate', bitrate,
-        '-bufsize', String(Math.round(p.calidad.bitrate / 500)) + 'k',
-        '-g', String(gop),
-        '-keyint_min', String(gop),
-        '-sc_threshold', '0',
-      ];
+  let video: string[];
+  if (qsv) {
+    video = [
+      // El tonemapping va aquí porque h264_qsv solo acepta 8 bits: un HEVC de
+      // 10 bits o cualquier HDR hay que bajarlo en la GPU o el codificador
+      // ni siquiera abre.
+      '-vf', `vpp_qsv=w=${ancho}:h=${alto}${p.info.video?.hdr && config.tonemap ? ':tonemap=1' : ''}:format=nv12`,
+      '-c:v', 'h264_qsv',
+      '-preset', 'veryfast',
+      '-b:v', bitrate,
+      '-maxrate', bitrate,
+      '-bufsize', String(Math.round(p.calidad.bitrate / 500)) + 'k',
+      '-look_ahead', '0',
+      '-profile:v', 'high',
+      // QSV no atiende a `-force_key_frames`; el GOP en fotogramas sí.
+      '-g', String(gop),
+      '-forced_idr', '1',
+    ];
+  } else if (config.hwaccel === 'nvenc') {
+    video = [
+      '-vf', `scale=-2:${alto}`,
+      '-c:v', 'h264_nvenc',
+      '-preset', 'p4',
+      '-b:v', bitrate,
+      '-maxrate', bitrate,
+      '-bufsize', String(Math.round(p.calidad.bitrate / 500)) + 'k',
+      '-g', String(gop),
+      '-forced_idr', '1',
+    ];
+  } else if (config.hwaccel === 'amf') {
+    video = [
+      '-vf', `scale=-2:${alto}`,
+      '-c:v', 'h264_amf',
+      '-quality', 'speed',
+      '-b:v', bitrate,
+      '-maxrate', bitrate,
+      '-bufsize', String(Math.round(p.calidad.bitrate / 500)) + 'k',
+      '-g', String(gop),
+    ];
+  } else {
+    video = [
+      '-vf', `scale=-2:${alto}`,
+      '-c:v', 'libx264',
+      '-preset', 'veryfast',
+      '-b:v', bitrate,
+      '-maxrate', bitrate,
+      '-bufsize', String(Math.round(p.calidad.bitrate / 500)) + 'k',
+      '-g', String(gop),
+      '-keyint_min', String(gop),
+      '-sc_threshold', '0',
+    ];
+  }
 
   const filtrosAudio: string[] = [];
   const retardo = p.audioDelayMs ?? 0;
