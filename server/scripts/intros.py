@@ -23,7 +23,7 @@ import tempfile
 
 import numpy as np
 
-FFMPEG = r"C:\Users\HTPC\AppData\Local\Microsoft\WinGet\Links\ffmpeg.exe"
+FFMPEG = os.environ.get("MEDIAWATCH_FFMPEG") or r"C:\Users\HTPC\AppData\Local\Microsoft\WinGet\Links\ffmpeg.exe"
 
 # chromaprint emite ~8.05 valores por segundo con su configuracion por defecto.
 POR_SEGUNDO = 11025.0 / 1024 / 1.3346

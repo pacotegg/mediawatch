@@ -21,7 +21,7 @@ import { requireUser } from './auth.ts';
  * moviehash, and proves synchronisation by cross-correlating against the
  * centre audio channel — rejecting anything it cannot verify.
  */
-const SUBSFETCH = 'C:\\scripts\\webpanel\\subsfetch.py';
+const SUBSFETCH = process.env.MEDIAWATCH_SUBSFETCH || 'C:\\scripts\\webpanel\\subsfetch.py';
 const SUBTITLES_API = join(ROOT, 'server', 'scripts', 'subtitles_api.py');
 const PYTHON = config.python;
 
