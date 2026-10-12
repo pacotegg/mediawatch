@@ -457,12 +457,8 @@ export class Reproductor {
     // Lo que llegue a partir de aquí es de una reproducción que ya no existe.
     this.generacion++;
     if (this.nativo) {
-      try {
-        this.nativo.stop();
-        this.nativo.close();
-      } catch (e) {
-        /* ya estaba cerrado */
-      }
+      try { this.nativo.stop(); } catch (_) { /* no estaba reproduciendo */ }
+      try { this.nativo.close(); } catch (_) { /* ya estaba cerrado */ }
       return;
     }
     if (this.video) {

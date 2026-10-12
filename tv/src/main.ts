@@ -988,7 +988,15 @@ async function pantallaBiblioteca(id: number, nombre: string) {
       letras,
     });
   } catch (e) {
-    pintar('lib-' + id, '<div class="vacio">No se pudo cargar la biblioteca.</div>');
+    pintar('lib-' + id, '<div class="vacio">No se pudo cargar la biblioteca.' +
+      '<div class="acciones" data-bloque><button class="boton" data-nav data-reintentar>Reintentar</button>' +
+      '<button class="boton" data-nav data-inicio>Ir al inicio</button></div></div>');
+    const rein = marco.querySelector<HTMLElement>('[data-reintentar]');
+    if (rein) rein.addEventListener('click', () => void pantallaBiblioteca(id, nombre));
+    const ini = marco.querySelector<HTMLElement>('[data-inicio]');
+    if (ini) ini.addEventListener('click', () => void pantallaPortada());
+    enfocar(rein);
+    alPulsar((tecla) => (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE ? atrasHaciaMenu() : false));
   }
 }
 
@@ -1021,11 +1029,24 @@ async function pantallaPlataformas(clave?: string, kind?: 'movie' | 'show', pagi
     todas = r.plataformas;
     (r.porPlataforma || []).forEach((x) => { titulosPorPlataforma[x.clave] = x.titulos; });
   } catch (e) {
-    pintar('plataformas', '<div class="vacio">No se pudieron cargar las plataformas.</div>');
+    pintar('plataformas', '<div class="vacio">No se pudieron cargar las plataformas.' +
+      '<div class="acciones" data-bloque><button class="boton" data-nav data-reintentar>Reintentar</button>' +
+      '<button class="boton" data-nav data-inicio>Ir al inicio</button></div></div>');
+    const rein = marco.querySelector<HTMLElement>('[data-reintentar]');
+    if (rein) rein.addEventListener('click', () => void pantallaPlataformas(clave, kind, pagina));
+    const ini = marco.querySelector<HTMLElement>('[data-inicio]');
+    if (ini) ini.addEventListener('click', () => void pantallaPortada());
+    enfocar(rein);
+    alPulsar((tecla) => (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE ? atrasHaciaMenu() : false));
     return;
   }
   if (!todas.length) {
-    pintar('plataformas', '<div class="vacio">No hay ninguna plataforma configurada.</div>');
+    pintar('plataformas', '<div class="vacio">No hay ninguna plataforma configurada.' +
+      '<div class="acciones" data-bloque><button class="boton" data-nav data-inicio>Ir al inicio</button></div></div>');
+    const ini = marco.querySelector<HTMLElement>('[data-inicio]');
+    if (ini) ini.addEventListener('click', () => void pantallaPortada());
+    enfocar(ini);
+    alPulsar((tecla) => (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE ? atrasHaciaMenu() : false));
     return;
   }
   // Solo las del perfil son pestañas; el resto se «conectan» en la pantalla de elegir (la pestaña «＋»).
@@ -1192,7 +1213,15 @@ async function pantallaFavoritos() {
     const items = await api.favoritos();
     pantallaRejilla('favoritos', 'Favoritos', items.length + ' títulos', items);
   } catch (e) {
-    pintar('favoritos', '<div class="vacio">No se pudieron cargar los favoritos.</div>');
+    pintar('favoritos', '<div class="vacio">No se pudieron cargar los favoritos.' +
+      '<div class="acciones" data-bloque><button class="boton" data-nav data-reintentar>Reintentar</button>' +
+      '<button class="boton" data-nav data-inicio>Ir al inicio</button></div></div>');
+    const rein = marco.querySelector<HTMLElement>('[data-reintentar]');
+    if (rein) rein.addEventListener('click', () => void pantallaFavoritos());
+    const ini = marco.querySelector<HTMLElement>('[data-inicio]');
+    if (ini) ini.addEventListener('click', () => void pantallaPortada());
+    enfocar(rein);
+    alPulsar((tecla) => (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE ? atrasHaciaMenu() : false));
   }
 }
 
@@ -1203,7 +1232,15 @@ async function pantallaSagas() {
   try {
     sagas = await api.colecciones();
   } catch (e) {
-    pintar('sagas', '<div class="vacio">No se pudieron cargar las sagas.</div>');
+    pintar('sagas', '<div class="vacio">No se pudieron cargar las sagas.' +
+      '<div class="acciones" data-bloque><button class="boton" data-nav data-reintentar>Reintentar</button>' +
+      '<button class="boton" data-nav data-inicio>Ir al inicio</button></div></div>');
+    const rein = marco.querySelector<HTMLElement>('[data-reintentar]');
+    if (rein) rein.addEventListener('click', () => void pantallaSagas());
+    const ini = marco.querySelector<HTMLElement>('[data-inicio]');
+    if (ini) ini.addEventListener('click', () => void pantallaPortada());
+    enfocar(rein);
+    alPulsar((tecla) => (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE ? atrasHaciaMenu() : false));
     return;
   }
 
@@ -1751,7 +1788,10 @@ async function pantallaFicha(id: number) {
         .extras(ficha.id)
         .then((r) => {
           const losExtras = r.extras || [];
-          if (losExtras.length === 0) return;
+          if (losExtras.length === 0) {
+            aviso('Este título no tiene material extra');
+            return;
+          }
           menuExtras(ficha, losExtras, () => {
             indexar();
             enfocar(bExtras);
@@ -2287,7 +2327,9 @@ async function menuPistas(fileId: number, tipo: 'audio' | 'subs', alCambiar?: (i
 
   const anterior = actual();
   const teclasAntes = manejadorActual();
+  let cancelado = false;
   const cerrar = () => {
+    cancelado = true;
     if (capa.parentElement) capa.parentElement.removeChild(capa);
     indexar();
     enfocar(anterior);
@@ -2302,6 +2344,7 @@ async function menuPistas(fileId: number, tipo: 'audio' | 'subs', alCambiar?: (i
     indexar();
     try {
       const res = await api.buscarCandidatosSubtitulos(fileId, 'es,en');
+      if (cancelado) return;
       if (!res.ok || !res.candidates || res.candidates.length === 0) {
         capa.innerHTML =
           '<div class="panel"><h3>Buscar subtítulos</h3>' +
@@ -2412,7 +2455,13 @@ async function pantallaPersona(id: number, volverA?: number) {
   try {
     persona = await api.persona(id);
   } catch (e) {
-    aviso('No se pudo abrir la ficha de esa persona');
+    pintar('inicio', '<div class="vacio">No se pudo abrir la ficha de esa persona.' +
+      '<div class="acciones" data-bloque><button class="boton" data-nav data-volver>Volver</button></div></div>');
+    const bVolver = marco.querySelector<HTMLElement>('[data-volver]');
+    const volverFn = () => (volverA ? void pantallaFicha(volverA) : void pantallaPortada());
+    if (bVolver) bVolver.addEventListener('click', volverFn);
+    enfocar(bVolver);
+    alPulsar((tecla) => (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE ? (volverFn(), true) : false));
     return;
   }
 
@@ -2856,7 +2905,7 @@ function menuEditarMetadatos(ficha: Ficha, alTerminar: () => void) {
                   alTerminar();
                 })
                 .catch((e) => aviso((e as Error).message || 'No se pudieron aplicar'));
-            }, () => {});
+            }, () => menuEditarMetadatos(ficha, alTerminar));
           }
         })
         .catch((e) => aviso((e as Error).message || 'Error al buscar en TMDb'));
@@ -4087,13 +4136,23 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
    * Desfase de los subtítulos en vivo (HUD translúcido en cabecera sin tapar vídeo ni texto).
    */
   function panelDesfase() {
+    const estabaReproduciendo = reproductor.reproduciendo();
+    if (estabaReproduciendo) {
+      reproductor.pausar();
+      refrescarPlay();
+    }
+    // Ocultar barra, tiempos y OSD para dejar la imagen completamente limpia
+    osd.classList.remove('visible');
+    enBotones = false;
+    pintarFocoBotones();
+
     const capa = document.createElement('div');
     capa.className = 'capa capa-desfase-hud';
     capa.innerHTML =
       '<div class="panel-desfase-hud">' +
-      '<div class="desfase-titulo">Sincronía de subtítulos (en vivo)</div>' +
+      '<div class="desfase-titulo">Sincronía de subtítulos</div>' +
       '<div class="desfase">◀ <b data-valor>0,0 s</b> ▶</div>' +
-      '<p class="pista-ayuda">◄ / ► ajustar en vivo · Enter guardar · Volver salir</p></div>';
+      '<p class="pista-ayuda">◄ / ► ajustar · Play pausar/reanudar · Enter guardar · Volver salir</p></div>';
     marco.appendChild(capa);
     const etiqueta = capa.querySelector<HTMLElement>('[data-valor]')!;
     const pintarValor = () => {
@@ -4103,10 +4162,24 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     };
     pintarValor();
 
+    const refrescarSubEnPausa = () => {
+      if (cuesExternos.length > 0) {
+        const seg = reproductor.tiempo() + (retardoSubs / 1000);
+        const activa = cuesExternos.find((c) => seg >= c.start && seg <= c.end);
+        const txt = activa ? activa.text : '';
+        textoSubExtActual = txt;
+        capaSubs.innerHTML = txt
+          ? '<span>' + esc(txt).replace(/\n/g, '<br>') + '</span>'
+          : '';
+      }
+    };
+    refrescarSubEnPausa();
+
     let avisadoSinSoporte = false;
     const mover = (paso: number) => {
       retardoSubs = Math.max(-10000, Math.min(10000, retardoSubs + paso));
       pintarValor();
+      refrescarSubEnPausa();
       if (!reproductor.retardoSubtitulos(retardoSubs) && !avisadoSinSoporte) {
         avisadoSinSoporte = true;
         aviso('Esta tele no deja mover los subtítulos nativos');
@@ -4114,12 +4187,22 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     };
     const cerrar = () => {
       if (capa.parentElement) capa.parentElement.removeChild(capa);
+      refrescarPlay();
       alPulsar(manejarTeclas);
+      if (estabaReproduciendo && !reproductor.reproduciendo()) {
+        reproductor.reproducir();
+        refrescarPlay();
+      }
     };
 
     alPulsar((tecla) => {
       if (tecla === TECLA.DERECHA) { mover(250); return true; }
       if (tecla === TECLA.IZQUIERDA) { mover(-250); return true; }
+      if (tecla === TECLA.REPRODUCIR || tecla === TECLA.PAUSA || tecla === TECLA.PLAY_PAUSA) {
+        reproductor.alternarPausa();
+        refrescarPlay();
+        return true;
+      }
       if (tecla === TECLA.ENTRAR) {
         guardarAjustes({ retardoSubtitulos: retardoSubs });
         let pistaId: string | null = null;
@@ -5164,13 +5247,15 @@ function pantallaPinEmparejar(perfil: { id: number; name: string; has_pin: numbe
 
 function pantallaServidor() {
   let valor = servidor().replace('http://', '');
+  const volverA = () => (token() ? pantallaAjustes() : void pantallaConexion());
 
   const dibujar = () => {
     pantallaSimple(
       '<h1 class="marca">Dirección del servidor</h1>' +
-        '<p class="sub">Usa los números del mando. El botón de volver borra.</p>' +
+        '<p class="sub">Usa los números del mando. El botón de volver borra o sale.</p>' +
         '<div class="entrada">http://' + esc(valor) + '</div>' +
-        '<div><button class="boton primario" data-nav data-guardar>Guardar</button></div>',
+        '<div><button class="boton primario" data-nav data-guardar>Guardar</button>' +
+        '<button class="boton" data-nav data-volver>Volver</button></div>',
     );
     const g = marco.querySelector<HTMLElement>('[data-guardar]');
     if (g) {
@@ -5179,6 +5264,8 @@ function pantallaServidor() {
         void arrancar();
       });
     }
+    const v = marco.querySelector<HTMLElement>('[data-volver]');
+    if (v) v.addEventListener('click', volverA);
     enfocar(enfocables()[0]);
   };
 
@@ -5186,7 +5273,15 @@ function pantallaServidor() {
     if (tecla >= 48 && tecla <= 57) { valor += String(tecla - 48); dibujar(); return true; }
     if (tecla === 190 || tecla === 110) { valor += '.'; dibujar(); return true; }
     if (tecla === 186 || tecla === 59) { valor += ':'; dibujar(); return true; }
-    if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE) { valor = valor.slice(0, -1); dibujar(); return true; }
+    if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE) {
+      if (valor.length === 0) {
+        volverA();
+        return true;
+      }
+      valor = valor.slice(0, -1);
+      dibujar();
+      return true;
+    }
     return false;
   });
 
