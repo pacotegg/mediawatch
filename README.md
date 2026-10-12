@@ -3,10 +3,14 @@
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-22%2B-green.svg)](https://nodejs.org/)
 [![Clients](https://img.shields.io/badge/Clients-Web%20%7C%20Samsung%20Smart%20TV%20%7C%20Android-orange.svg)](#client-applications)
+[![Desktop App](https://img.shields.io/badge/Desktop%20Server-Windows%20App-0078D6.svg)](https://github.com/pacotegg/MediaWatch-Server)
 
 A self-hosted personal movie and TV series streaming server inspired by Plex, Jellyfin, and Infuse, built from the ground up without cloud telemetry, subscription paywalls, or third-party cloud lock-in. Designed to run on your local PC, mini-PC, or home server.
 
-Media Watch scans and serves your cataloged media libraries directly from the storage drives and folders where your files reside (e.g. structured via tinyMediaManager with local `.nfo` metadata and artwork). It streams video seamlessly across your local network and transcode/remuxes on the fly only when the client device cannot direct-play the source stream natively.
+> 💡 **Looking for a ready-to-run Windows installer?**  
+> Check out **[MediaWatch Server](https://github.com/pacotegg/MediaWatch-Server)**: a standalone Windows desktop app with system tray controls, automatic TMDb metadata scanner (no local `.nfo` required), and an intuitive setup wizard. This repository (`pacotegg/mediawatch`) serves as the core engine.
+
+Media Watch scans and serves your cataloged media libraries directly from the storage drives and folders where your files reside (e.g. structured via tinyMediaManager with local `.nfo` metadata and artwork). It streams video seamlessly across your local network and transcode/remuxes on the fly only when the client device cannot direct-play the source stream natively. Hardware acceleration is supported across **Intel Quick Sync (QSV)**, **NVIDIA NVENC**, **AMD AMF**, and CPU fallback (`libx264`).
 
 ---
 

@@ -138,6 +138,29 @@ function videoArgs(plan: PlaybackPlan, info: MediaInfo): string[] {
   }
 
   if (needsScale) filters.push(`scale=-2:${plan.targetHeight}`);
+
+  if (config.hwaccel === 'nvenc') {
+    return [
+      ...(filters.length ? ['-vf', filters.join(',')] : []),
+      '-c:v', 'h264_nvenc',
+      '-preset', 'p4',
+      ...(plan.maxKbps ? ['-b:v', `${plan.maxKbps}k`] : ['-cq', String(config.transcodeQuality)]),
+      ...topeDeTasa(plan),
+      '-g', '120',
+    ];
+  }
+
+  if (config.hwaccel === 'amf') {
+    return [
+      ...(filters.length ? ['-vf', filters.join(',')] : []),
+      '-c:v', 'h264_amf',
+      '-quality', 'speed',
+      ...(plan.maxKbps ? ['-b:v', `${plan.maxKbps}k`] : ['-rc', 'cqp', '-qp_i', String(config.transcodeQuality), '-qp_p', String(config.transcodeQuality)]),
+      ...topeDeTasa(plan),
+      '-g', '120',
+    ];
+  }
+
   return [
     ...(filters.length ? ['-vf', filters.join(',')] : []),
     '-c:v', 'libx264',

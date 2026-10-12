@@ -1010,10 +1010,12 @@ function ServerTab() {
         <Field label="Aceleración por hardware" hint="Quick Sync usa la GPU Intel. Sin ella, todo recae en la CPU.">
           <Select
             value={settings?.hwaccel ?? 'qsv'}
-            onChange={(hwaccel) => save.mutate({ hwaccel })}
+            onChange={(hwaccel) => save.mutate({ hwaccel: hwaccel as any })}
             options={[
-              { value: 'qsv', label: 'Intel Quick Sync' },
-              { value: 'none', label: 'Solo CPU' },
+              { value: 'qsv', label: 'Intel Quick Sync (QSV)' },
+              { value: 'nvenc', label: 'NVIDIA NVENC' },
+              { value: 'amf', label: 'AMD AMF' },
+              { value: 'none', label: 'Solo CPU (Software)' },
             ]}
           />
         </Field>

@@ -27,6 +27,8 @@ export type LibraryConfig = {
   kind: LibraryKind;
 };
 
+export type HwAccel = 'qsv' | 'nvenc' | 'amf' | 'none';
+
 export type AppConfig = {
   port: number;
   host: string;
@@ -35,7 +37,7 @@ export type AppConfig = {
   ffmpeg: string;
   ffprobe: string;
   python: string;
-  hwaccel: 'qsv' | 'none';
+  hwaccel: HwAccel;
   transcodeQuality: number;
   tonemap: boolean;
   tmdbApiKey: string;
@@ -124,7 +126,7 @@ function defaultConfig(): AppConfig {
     ffmpeg: localizar('ffmpeg'),
     ffprobe: localizar('ffprobe'),
     python: localizar('python'),
-    hwaccel: (env('MEDIAWATCH_HWACCEL') as 'qsv' | 'none') || (PORTABLE ? 'none' : 'qsv'),
+    hwaccel: (env('MEDIAWATCH_HWACCEL') as HwAccel) || (PORTABLE ? 'none' : 'qsv'),
     transcodeQuality: 20,
     tonemap: true,
     tmdbApiKey: '',
