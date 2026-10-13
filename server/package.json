@@ -10,7 +10,8 @@
     "arte": "node src/cli/completar-arte.ts",
     "personas": "node src/cli/completar-personas.ts",
     "detalles": "node src/cli/completar-detalles.ts",
-    "temas": "node src/cli/completar-temas.ts"
+    "temas": "node src/cli/completar-temas.ts",
+    "test": "node --test \"test/**/*.test.mjs\""
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",

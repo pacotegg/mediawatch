@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  comprobar:
+    name: Tipos y pruebas (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Node.js 26
+        uses: actions/setup-node@v4
+        with:
+          node-version: 26.x
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      # El servidor y la tele no pasan por tsc al compilar/ejecutar (Node quita los tipos, Vite
+      # no los comprueba): sin este paso los errores de tipos no los ve nadie.
+      - name: Tipos de la web
+        working-directory: web
+        run: npx tsc --noEmit
+
+      # Arranca un servidor real en modo portable (datos temporales) y comprueba que toda ruta
+      # de la API responde 401 sin sesion, tambien con rutas codificadas (/%61pi/...).
+      - name: Pruebas de autenticacion del servidor
+        run: npm test --workspace server

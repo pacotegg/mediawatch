@@ -16,6 +16,7 @@
     "scan": "npm run scan --workspace server",
     "build": "npm run build --workspace web && npm run build --workspace tv",
     "start": "npm run start --workspace server",
+    "test": "npm test --workspace server",
     "build:tv": "npm run build --workspace tv"
   },
   "devDependencies": {
