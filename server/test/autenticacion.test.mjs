@@ -136,6 +136,19 @@ describe('guardian de la API sin credenciales', () => {
   });
 });
 
+describe('cabeceras', () => {
+  test('las respuestas llevan X-Content-Type-Options: nosniff, y no se rompe el iframe del trailer', async () => {
+    for (const ruta of ['/api/salud', '/api/home', '/trailer?v=x']) {
+      const res = await fetch(base + ruta, { signal: AbortSignal.timeout(8000) });
+      await res.text();
+      assert.equal(res.headers.get('x-content-type-options'), 'nosniff', ruta);
+      // La tele incrusta /trailer en un iframe de otro origen: estas cabeceras lo impedirian.
+      assert.equal(res.headers.get('x-frame-options'), null, ruta + ' no debe llevar X-Frame-Options');
+      assert.ok(!(res.headers.get('content-security-policy') ?? '').includes('frame-ancestors'), ruta);
+    }
+  });
+});
+
 describe('estaticos', () => {
   test('no se sale de la carpeta con rutas codificadas', async () => {
     for (const ruta of ['/assets/..%2f..%2f..%2fpackage.json', '/assets/%2e%2e/%2e%2e/package.json', '/tv/..%2f..%2fpackage.json']) {

@@ -136,7 +136,6 @@ export default function Player() {
   const [subtitle, setSubtitle] = useState<string | null>(null);
   const [maxHeight, setMaxHeight] = useState(prefs.playback.maxHeight);
   const [scrubbing, setScrubbing] = useState(false);
-  const [autoSubApplied, setAutoSubApplied] = useState(false);
   const [hover, setHover] = useState<{ time: number; x: number } | null>(null);
   const trackInitRef = useRef(false);
   const audioTrackRef = useRef(audioTrack);
