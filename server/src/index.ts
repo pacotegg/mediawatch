@@ -8,6 +8,7 @@ import { backupBaseDeDatosEnWorker, db } from './db.ts';
 import { limpiarCache as limpiarCacheImagenes } from './media/images.ts';
 import { hayAlguienViendo } from './media/ocupado.ts';
 import { limpiarHuerfanas as limpiarTrickplayHuerfano, reanudarLoteSiPendiente } from './media/trickplay.ts';
+import { reanudarAfinadoSiPendiente } from './media/creditos-afinado.ts';
 import animeRoutes from './routes/anime.ts';
 import actividadRoutes from './routes/actividad.ts';
 import authRoutes, { currentUser, limpiarSesiones } from './routes/auth.ts';
@@ -412,6 +413,7 @@ async function limpiarSiToca() {
 setTimeout(() => void limpiarSiToca(), 40_000).unref();
 // Un lote de miniaturas que murió con el proceso se reanuda, sin prisa: primero que arranque todo.
 // (MEDIAWATCH_TRICKPLAY_REANUDAR_MS solo existe para que las pruebas no esperen tres minutos.)
+setTimeout(reanudarAfinadoSiPendiente, Number(process.env.MEDIAWATCH_TRICKPLAY_REANUDAR_MS) || 4 * 60_000).unref();
 setTimeout(reanudarLoteSiPendiente, Number(process.env.MEDIAWATCH_TRICKPLAY_REANUDAR_MS) || 3 * 60_000).unref();
 setInterval(() => void limpiarSiToca(), 7 * 24 * 60 * 60_000).unref();
 

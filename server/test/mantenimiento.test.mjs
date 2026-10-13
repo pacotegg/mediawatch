@@ -27,6 +27,7 @@ before(async () => {
   datos = mkdtempSync(join(tmpdir(), 'mediawatch-test-'));
   // Un lote completo que «murió con el proceso»: el servidor debe retomarlo solo al arrancar.
   writeFileSync(join(datos, 'trickplay-lote.json'), JSON.stringify({ todo: true, desde: 'prueba' }));
+  writeFileSync(join(datos, 'creditos-afinar.json'), JSON.stringify({ desde: 'prueba' }));
   const puerto = await puertoLibre();
   base = `http://127.0.0.1:${puerto}`;
   proceso = spawn(process.execPath, ['src/index.ts'], {
@@ -61,4 +62,10 @@ test('CORS: un origen ajeno se apunta una vez; el propio no', async () => {
   const texto = existsSync(log) ? readFileSync(log, 'utf8') : '';
   assert.equal((texto.match(/ajeno\.example/g) ?? []).length, 1, 'el origen ajeno debe aparecer una sola vez');
   assert.ok(!texto.includes(base), 'el origen propio no se apunta');
+});
+
+test('un afinado de creditos pendiente se reanuda al arrancar y se borra al terminar', async () => {
+  const marca = join(datos, 'creditos-afinar.json');
+  for (let i = 0; i < 20 && existsSync(marca); i++) await esperar(500);
+  assert.equal(existsSync(marca), false, 'el apunte del afinado sigue ahi: no se reanudo o no termino');
 });

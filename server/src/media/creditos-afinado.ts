@@ -13,8 +13,9 @@
  * Corre dentro del servidor porque solo él sabe si alguien está viendo algo (ocupado.ts es por proceso).
  */
 import { spawn } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
-import { config } from '../config.ts';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { config, DATA_DIR } from '../config.ts';
 import { db } from '../db.ts';
 import { esperarSiHayAlguienViendo, hayAlguienViendo } from './ocupado.ts';
 import './creditos-detector.ts'; // crea la tabla pelicula_creditos
@@ -42,6 +43,23 @@ export type JobAfinado = {
 export const jobAfinado: JobAfinado = {
   running: false, total: 0, hechas: 0, afinadas: 0, actual: '', parando: false, esperando: false, error: null, finishedAt: null,
 };
+
+/*
+ * Un lote de ~30 horas no puede depender de que nadie reinicie el servidor: mientras corre queda apuntado
+ * aquí, y si el proceso muere se retoma solo al arrancar (lo ya mirado lleva `rangos_texto`, así que no
+ * se repite). Lo mismo vale para lanzarlo sin sesión: basta con crear este fichero y reiniciar.
+ */
+const PENDIENTE = join(DATA_DIR, 'creditos-afinar.json');
+
+export function reanudarAfinadoSiPendiente(): void {
+  if (!existsSync(PENDIENTE) || jobAfinado.running) return;
+  try {
+    const total = afinarPeliculas();
+    console.log(`[creditos-afinado] reanudado el lote pendiente: ${total} por mirar`);
+  } catch (err) {
+    console.error('[creditos-afinado] no se pudo reanudar:', (err as Error).message);
+  }
+}
 
 export const pararAfinado = () => {
   if (!jobAfinado.running) return false;
@@ -132,6 +150,11 @@ async function afinarUna(c: Candidata): Promise<boolean> {
 export function afinarPeliculas(): number {
   if (jobAfinado.running) throw new Error('Ya hay un afinado de créditos en curso');
   const lista = candidatas();
+  try {
+    writeFileSync(PENDIENTE, JSON.stringify({ desde: new Date().toISOString() }));
+  } catch {
+    // Sin el apunte solo se pierde la reanudación automática.
+  }
   Object.assign(jobAfinado, { running: true, total: lista.length, hechas: 0, afinadas: 0, actual: '', parando: false, esperando: false, error: null, finishedAt: null });
 
   void (async () => {
@@ -157,6 +180,8 @@ export function afinarPeliculas(): number {
       jobAfinado.actual = '';
       jobAfinado.parando = false;
       jobAfinado.finishedAt = new Date().toISOString();
+      // Terminado o parado a mano: ya no hay nada que reanudar.
+      rmSync(PENDIENTE, { force: true });
       console.log(`[creditos-afinado] terminado: ${jobAfinado.afinadas} afinadas de ${jobAfinado.hechas} miradas`);
     }
   })();
