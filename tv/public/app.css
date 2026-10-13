@@ -692,6 +692,8 @@ body.rend-rapido .lamina img {
   transform: rotateY(-14deg) rotateX(2deg);
   transform-style: preserve-3d;
   transition: border-color 0.25s, box-shadow 0.25s;
+  /* Por encima del disco, que va detrás y solo asoma al enfocar. */
+  z-index: 2;
 }
 
 .estuche-3d-tv.enfocado .estuche-caja-tv {
@@ -760,22 +762,30 @@ body.rend-rapido .lamina img {
   50%, 100% { transform: rotate(25deg) translateX(180%); }
 }
 
+/*
+ * El disco vive DETRÁS de la caja. Sin foco queda tapado del todo (220 px en una caja de 250, con
+ * margen para la inclinación 3D): se ve solo el estuche. Con foco sale hasta la mitad, girando, y
+ * se ven los dos. Solo se anima `transform` (en la tele, animar `right`/`left` obliga a recalcular
+ * el diseño en cada fotograma), y la sombra solo existe con foco: en reposo asomaría por el borde.
+ */
 .estuche-disco-tv {
   position: absolute;
-  top: 42px;
-  right: -46px;
-  width: 275px;
-  height: 275px;
+  top: 72px;
+  right: 15px;
+  width: 220px;
+  height: 220px;
   border-radius: 50%;
   object-fit: contain;
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.75);
   z-index: 1;
-  transform: rotate(0deg);
-  transition: right 0.32s cubic-bezier(0.2, 0, 0, 1), transform 0.3s ease-out;
+  transform: translateX(0) rotate(0deg);
+  transition: transform 0.45s cubic-bezier(0.2, 0, 0, 1);
 }
 
 .estuche-3d-tv.enfocado .estuche-disco-tv {
-  right: -115px;
+  /* +105 px: algo menos de la mitad del disco fuera de la caja. Con 125 (la mitad justa) y la ampliación
+     del foco (x1,06) el borde llegaba a 1924 px, fuera de los 1920 de la pantalla. */
+  transform: translateX(105px) rotate(-360deg);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.75);
 }
 
 .estuche-hint-tv {
