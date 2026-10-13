@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { adelantarPrimerRango, instantesDeSubtitulo, primerNegro, ultimoDialogoAntes } from '../src/media/creditos-afinado-puro.ts';
+import { adelantarPrimerRango, instantesDeSubtitulo, negroPlausible, primerNegro, ultimoDialogoAntes } from '../src/media/creditos-afinado-puro.ts';
 
 describe('instantesDeSubtitulo', () => {
   test('srt', () => {
@@ -43,4 +43,11 @@ describe('adelantarPrimerRango', () => {
     assert.equal(r[0].start_s, 10);
   });
   test('lista vacia', () => assert.deepEqual(adelantarPrimerRango([], 5), []));
+});
+
+describe('negroPlausible', () => {
+  test('un negro cerca del final y poco adelantado vale', () => assert.equal(negroPlausible(7000, 7090, 7600), true));
+  test('si dejaria mas de 12 min de creditos no vale (El dilema)', () => assert.equal(negroPlausible(6000, 7160, 7600), false));
+  test('adelantar mas de 5 min al detector no vale', () => assert.equal(negroPlausible(7000, 7400, 7600), false));
+  test('en la primera mitad no vale', () => assert.equal(negroPlausible(100, 150, 7600), false));
 });
