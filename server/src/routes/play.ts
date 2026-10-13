@@ -483,8 +483,9 @@ export default async function playRoutes(app: FastifyInstance) {
     const modoAudio: AudioMode = q.audiomode === 'night' || q.audiomode === 'dialogue' ? q.audiomode : 'normal';
     const normalizar = q.normalize === '1';
     const incompatible = Boolean(perfil && pistaElegida && !audioCompatible(perfil, pistaElegida.codec));
+    const forzarRemux = q.compat === '1';
 
-    if (raw && pistaElegida && (incompatible || modoAudio !== 'normal' || normalizar)) {
+    if (raw && pistaElegida && (incompatible || modoAudio !== 'normal' || normalizar || forzarRemux)) {
       const salida = salidaDeAudio(perfil);
       const origen = pistaElegida.channels ?? 2;
       // «Voces claras» mezcla a estereo subiendo el canal central; el resto

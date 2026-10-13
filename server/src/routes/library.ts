@@ -6,7 +6,7 @@ import { stat as statAsync } from 'node:fs/promises';
 import { extname, join, resolve, sep } from 'node:path';
 import { ficheroDelBuzon } from '../media/buzon.ts';
 import { descargar, formatoDeImagen, imagenesDeSaga } from '../scanner/tmdb.ts';
-import { rutaTema, tieneTema } from '../scanner/themes.ts';
+import { descargarTema, rutaTema, tieneTema } from '../scanner/themes.ts';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { db, normalize } from '../db.ts';
 import { thumbnail } from '../media/images.ts';
@@ -225,6 +225,9 @@ export default async function libraryRoutes(app: FastifyInstance) {
     if (!item) return reply.code(404).send({ error: 'No encontrado' });
 
     item.has_theme = tieneTema(id, item.folder as string | undefined) ? 1 : 0;
+    if (!item.has_theme && (item.tvdb_id || item.tmdb_id)) {
+      void descargarTema(id, item.tvdb_id, item.tmdb_id, item.kind, item.folder as string | undefined).catch(() => {});
+    }
 
     for (const k of ['poster', 'fanart', 'clearlogo', 'landscape', 'folder', 'search_title']) delete item[k];
 
@@ -988,8 +991,16 @@ export default async function libraryRoutes(app: FastifyInstance) {
   /** Música de cabecera (theme.mp3) del ítem o serie; responde 404 si no existe. */
   app.get('/api/items/:id/theme', async (req, reply) => {
     const id = Number((req.params as { id: string }).id);
-    const row = db.prepare('SELECT folder FROM items WHERE id = ?').get(id) as { folder: string } | undefined;
-    const themePath = rutaTema(id, row?.folder);
+    const row = db.prepare('SELECT folder, kind, tvdb_id, tmdb_id FROM items WHERE id = ?').get(id) as
+      | { folder: string; kind: string; tvdb_id: number | null; tmdb_id: number | null }
+      | undefined;
+    let themePath = rutaTema(id, row?.folder);
+    if (!themePath && row && (row.tvdb_id || row.tmdb_id)) {
+      try {
+        const ok = await descargarTema(id, row.tvdb_id, row.tmdb_id, row.kind, row.folder);
+        if (ok) themePath = rutaTema(id, row.folder);
+      } catch {}
+    }
     if (!themePath) return reply.code(404).send({ error: 'Sin tema' });
     let stat;
     try {

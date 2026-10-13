@@ -1915,6 +1915,145 @@ body.rend-rapido .lamina img {
   color: var(--fondo);
 }
 
+/* Selector visual de arte con miniaturas */
+.grid-arte {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.grid-arte.poster {
+  grid-template-columns: repeat(5, 1fr);
+}
+
+.grid-arte.discart {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.tarjeta-arte {
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+  transition: transform 0.15s, outline-color 0.15s;
+  outline: 3px solid transparent;
+  outline-offset: 2px;
+}
+
+.tarjeta-arte.enfocado {
+  outline-color: #fff;
+  transform: scale(1.06);
+  z-index: 2;
+}
+
+.miniatura-arte {
+  width: 100%;
+  display: block;
+}
+
+.miniatura-arte.poster {
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+}
+
+.miniatura-arte.fanart,
+.miniatura-arte.landscape,
+.miniatura-arte.clearlogo {
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+}
+
+.miniatura-arte.discart {
+  aspect-ratio: 1;
+  object-fit: contain;
+  padding: 6px;
+}
+
+.pie-arte {
+  padding: 5px 8px;
+  font-size: 16px;
+  color: var(--texto-ter);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tarjeta-arte.enfocado .pie-arte {
+  color: #fff;
+}
+
+/* Campos seleccionables en el diálogo de metadatos */
+.campos-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.campo-meta {
+  padding: 10px 20px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--texto-sec);
+  font-size: 20px;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.campo-meta.activo {
+  background: rgba(100, 180, 255, 0.15);
+  color: #7db8f0;
+  border-color: rgba(100, 180, 255, 0.3);
+}
+
+.campo-meta.enfocado {
+  background: #fff;
+  color: var(--fondo);
+}
+
+.campo-meta.enfocado.activo {
+  background: #7db8f0;
+  color: var(--fondo);
+}
+
+/* Propuesta TMDb en revisión de metadatos */
+.propuesta-tmdb {
+  display: flex;
+  gap: 16px;
+  padding: 16px;
+  margin: 12px 0;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.propuesta-tmdb img {
+  width: 80px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.propuesta-tmdb .info {
+  flex: 1;
+  min-width: 0;
+}
+
+.propuesta-tmdb .titulo-propuesta {
+  font-size: 22px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.propuesta-tmdb .sinopsis-propuesta {
+  font-size: 17px;
+  color: var(--texto-ter);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 /* Barra del escaneo de la biblioteca. */
 .barra-escaneo {
   position: relative;

@@ -2847,12 +2847,298 @@ function minutos(segundos: number): string {
 }
 
 /**
+ * Diálogo interactivo para revisar la propuesta de TMDb y seleccionar qué campos
+ * sobrescribir con el mando a distancia (sin sobreescribir a ciegas ni botones engañosos).
+ */
+function dialogoRevisarMetadatos(
+  ficha: Ficha,
+  propuesta: { tmdbId: number; title: string; year?: number | null; overview?: string; posterUrl?: string },
+  alTerminar: () => void,
+  alCancelar: () => void,
+) {
+  const teclasAntes = manejadorActual();
+  const focoAntes = actual();
+
+  const capa = document.createElement('div');
+  capa.className = 'capa';
+
+  const campos = [
+    { clave: 'plot', nombre: 'Sinopsis', activo: true },
+    { clave: 'genres', nombre: 'Géneros', activo: true },
+    { clave: 'rating', nombre: 'Puntuación', activo: true },
+    { clave: 'poster', nombre: 'Póster', activo: true },
+    { clave: 'fanart', nombre: 'Fondo', activo: true },
+    { clave: 'logo', nombre: 'Logotipo', activo: true },
+  ];
+
+  capa.innerHTML =
+    '<div class="panel" style="width:800px;margin-left:-400px">' +
+    '<h3>Revisar y aplicar metadatos</h3>' +
+    '<div class="propuesta-tmdb">' +
+    (propuesta.posterUrl ? '<img src="' + esc(propuesta.posterUrl) + '" alt="" />' : '') +
+    '<div class="info">' +
+    '<div class="titulo-propuesta">' + esc(propuesta.title) + (propuesta.year ? ' (' + propuesta.year + ')' : '') + '</div>' +
+    (propuesta.overview ? '<div class="sinopsis-propuesta">' + esc(propuesta.overview) + '</div>' : '') +
+    '</div></div>' +
+    '<p class="dato" style="margin-top:12px;margin-bottom:8px">Elige qué datos quieres actualizar (pulsa OK para conmutar):</p>' +
+    '<div class="campos-meta">' +
+    campos
+      .map(
+        (c, idx) =>
+          '<button class="campo-meta' + (c.activo ? ' activo' : '') + '" data-campo="' + idx + '">' +
+          (c.activo ? '✓ ' : '✗ ') + esc(c.nombre) +
+          '</button>',
+      )
+      .join('') +
+    '</div>' +
+    '<button class="linea enfocado" style="margin-top:16px" data-aplicar>Aplicar campos seleccionados</button>' +
+    '<button class="linea" data-cancelar>Cancelar</button>' +
+    '</div>';
+  marco.appendChild(capa);
+
+  const botonesCampos = capa.querySelectorAll<HTMLElement>('.campo-meta');
+  const btnAplicar = capa.querySelector<HTMLElement>('[data-aplicar]')!;
+  const btnCancelar = capa.querySelector<HTMLElement>('[data-cancelar]')!;
+
+  const todosControles: HTMLElement[] = [...Array.from(botonesCampos), btnAplicar, btnCancelar];
+  let i = 0;
+
+  const pintarFoco = () => {
+    todosControles.forEach((el, n) => {
+      if (n === i) el.classList.add('enfocado');
+      else el.classList.remove('enfocado');
+    });
+    if (todosControles[i]) todosControles[i].scrollIntoView({ block: 'nearest' });
+  };
+  pintarFoco();
+
+  const cerrar = () => {
+    if (capa.parentElement) capa.parentElement.removeChild(capa);
+    alPulsar(teclasAntes);
+    if (focoAntes) enfocar(focoAntes);
+  };
+
+  const conmutarCampo = (idxCampo: number) => {
+    campos[idxCampo].activo = !campos[idxCampo].activo;
+    const btn = botonesCampos[idxCampo];
+    if (btn) {
+      if (campos[idxCampo].activo) {
+        btn.classList.add('activo');
+        btn.textContent = '✓ ' + campos[idxCampo].nombre;
+      } else {
+        btn.classList.remove('activo');
+        btn.textContent = '✗ ' + campos[idxCampo].nombre;
+      }
+    }
+  };
+
+  const aplicar = () => {
+    const camposActivos = campos.filter((c) => c.activo).map((c) => c.clave);
+    if (camposActivos.length === 0) {
+      aviso('Selecciona al menos un campo para actualizar');
+      return;
+    }
+    cerrar();
+    aviso('Descargando metadatos de TMDb…');
+    api.enrichApply({
+      itemId: ficha.id,
+      tmdbId: propuesta.tmdbId,
+      kind: ficha.kind === 'show' ? 'show' : 'movie',
+      fields: camposActivos,
+      overwrite: true,
+    })
+      .then(() => {
+        aviso('Metadatos actualizados');
+        alTerminar();
+      })
+      .catch((e) => aviso((e as Error).message || 'No se pudieron aplicar'));
+  };
+
+  alPulsar((tecla) => {
+    if (tecla === TECLA.ABAJO) {
+      i = Math.min(todosControles.length - 1, i + 1);
+      pintarFoco();
+      return true;
+    }
+    if (tecla === TECLA.ARRIBA) {
+      i = Math.max(0, i - 1);
+      pintarFoco();
+      return true;
+    }
+    if (tecla === TECLA.IZQUIERDA) {
+      if (i < campos.length && i > 0) {
+        i--;
+        pintarFoco();
+        return true;
+      }
+    }
+    if (tecla === TECLA.DERECHA) {
+      if (i < campos.length - 1) {
+        i++;
+        pintarFoco();
+        return true;
+      }
+    }
+    if (tecla === TECLA.ENTRAR) {
+      if (i < campos.length) {
+        conmutarCampo(i);
+        return true;
+      }
+      if (i === campos.length) {
+        aplicar();
+        return true;
+      }
+      if (i === campos.length + 1) {
+        cerrar();
+        alCancelar();
+        return true;
+      }
+      return true;
+    }
+    if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE) {
+      cerrar();
+      alCancelar();
+      return true;
+    }
+    return true;
+  });
+}
+
+/**
+ * Selector visual de arte en cuadrícula con miniaturas reales navegables por D-pad.
+ */
+function selectorVisualArte(
+  ficha: Ficha,
+  papel: { papel: string; nombre: string },
+  listaTmdb: { url: string; vista: string; idioma?: string; ancho?: number; alto?: number }[],
+  listaBuzon: { nombre: string; bytes: number }[],
+  alTerminar: () => void,
+  alCancelar: () => void,
+) {
+  const teclasAntes = manejadorActual();
+  const focoAntes = actual();
+
+  const capa = document.createElement('div');
+  capa.className = 'capa';
+
+  type ElementoArte =
+    | { tipo: 'restaurar' }
+    | { tipo: 'tmdb'; url: string; vista: string; idioma?: string; ancho?: number; alto?: number }
+    | { tipo: 'buzon'; nombre: string; bytes: number };
+
+  const items: ElementoArte[] = [
+    { tipo: 'restaurar' },
+    ...listaTmdb.slice(0, 20).map((t): ElementoArte => ({ tipo: 'tmdb', ...t })),
+    ...listaBuzon.map((b): ElementoArte => ({ tipo: 'buzon', ...b })),
+  ];
+
+  const cols = papel.papel === 'poster' ? 5 : papel.papel === 'discart' ? 4 : 4;
+
+  let htmlCards = '';
+  items.forEach((item, idx) => {
+    if (item.tipo === 'restaurar') {
+      htmlCards +=
+        '<div class="tarjeta-arte" data-idx="' + idx + '">' +
+        '<div class="miniatura-arte ' + papel.papel + '" style="display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.08);font-size:36px;color:#cbd5e1">↺</div>' +
+        '<div class="pie-arte">Restaurar original</div>' +
+        '</div>';
+    } else if (item.tipo === 'tmdb') {
+      const dim = item.ancho && item.alto ? item.ancho + '×' + item.alto : '';
+      const lang = item.idioma ? '[' + item.idioma + ']' : '';
+      htmlCards +=
+        '<div class="tarjeta-arte" data-idx="' + idx + '">' +
+        '<img src="' + esc(item.vista || item.url) + '" class="miniatura-arte ' + papel.papel + '" alt="" loading="lazy" />' +
+        '<div class="pie-arte">' + esc([lang, dim].filter(Boolean).join(' ') || 'TMDb') + '</div>' +
+        '</div>';
+    } else {
+      const urlBuzon = servidor() + '/api/enrich/arte/buzon/' + encodeURIComponent(item.nombre) + (token() ? '?token=' + encodeURIComponent(token()) : '');
+      htmlCards +=
+        '<div class="tarjeta-arte" data-idx="' + idx + '">' +
+        '<img src="' + esc(urlBuzon) + '" class="miniatura-arte ' + papel.papel + '" alt="" loading="lazy" />' +
+        '<div class="pie-arte">📁 ' + esc(item.nombre) + '</div>' +
+        '</div>';
+    }
+  });
+
+  capa.innerHTML =
+    '<div class="panel" style="width:1050px;max-height:820px;margin-left:-525px">' +
+    '<h3>Elige imagen para ' + esc(papel.nombre) + '</h3>' +
+    '<div class="grid-arte ' + papel.papel + '">' +
+    htmlCards +
+    '</div>' +
+    '</div>';
+  marco.appendChild(capa);
+
+  const tarjetas = capa.querySelectorAll<HTMLElement>('.tarjeta-arte');
+  let i = 0;
+
+  const pintarFoco = () => {
+    tarjetas.forEach((el, n) => {
+      if (n === i) el.classList.add('enfocado');
+      else el.classList.remove('enfocado');
+    });
+    if (tarjetas[i]) tarjetas[i].scrollIntoView({ block: 'nearest' });
+  };
+  pintarFoco();
+
+  const cerrar = () => {
+    if (capa.parentElement) capa.parentElement.removeChild(capa);
+    alPulsar(teclasAntes);
+    if (focoAntes) enfocar(focoAntes);
+  };
+
+  const aplicarItem = (item: ElementoArte) => {
+    cerrar();
+    if (item.tipo === 'restaurar') {
+      api.enrichArte({ itemId: ficha.id, papel: papel.papel, url: null })
+        .then(() => { aviso('Imagen restaurada a la original'); alTerminar(); })
+        .catch((e) => aviso((e as Error).message || 'Error al restaurar'));
+    } else if (item.tipo === 'tmdb') {
+      api.enrichArte({ itemId: ficha.id, papel: papel.papel, url: item.url })
+        .then(() => { aviso('Imagen actualizada'); alTerminar(); })
+        .catch((e) => aviso((e as Error).message || 'Error al guardar imagen'));
+    } else {
+      api.enrichArteBuzon({ itemId: ficha.id, papel: papel.papel, nombre: item.nombre })
+        .then(() => { aviso('Imagen actualizada desde buzón'); alTerminar(); })
+        .catch((e) => aviso((e as Error).message || 'Error al guardar imagen'));
+    }
+  };
+
+  alPulsar((tecla) => {
+    if (tecla === TECLA.DERECHA) {
+      if (i < items.length - 1) { i++; pintarFoco(); return true; }
+    }
+    if (tecla === TECLA.IZQUIERDA) {
+      if (i > 0) { i--; pintarFoco(); return true; }
+    }
+    if (tecla === TECLA.ABAJO) {
+      if (i + cols < items.length) { i += cols; pintarFoco(); return true; }
+      else if (i < items.length - 1) { i = items.length - 1; pintarFoco(); return true; }
+    }
+    if (tecla === TECLA.ARRIBA) {
+      if (i - cols >= 0) { i -= cols; pintarFoco(); return true; }
+      else if (i > 0) { i = 0; pintarFoco(); return true; }
+    }
+    if (tecla === TECLA.ENTRAR) {
+      if (items[i]) aplicarItem(items[i]);
+      return true;
+    }
+    if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE) {
+      cerrar();
+      alCancelar();
+      return true;
+    }
+    return true;
+  });
+}
+
+/**
  * Menú de edición y escrapeo de metadatos desde TMDb para el mando a distancia.
  */
 function menuEditarMetadatos(ficha: Ficha, alTerminar: () => void) {
   const opciones: OpcionLista[] = [
-    { valor: 1, texto: '⚡ Actualizar todos los metadatos desde TMDb', nota: 'Sinopsis, géneros, nota, año, póster y fondo' },
-    { valor: 2, texto: '🎨 Cambiar imágenes', nota: 'Póster, fondo, logotipo, disco CD/Blu-ray' },
+    { valor: 1, texto: '⚡ Actualizar metadatos desde TMDb', nota: 'Revisar y elegir qué datos o arte sustituir' },
+    { valor: 2, texto: '🎨 Cambiar imágenes con selector visual', nota: 'Póster, fondo, logotipo, disco con miniaturas' },
   ];
   menuLista('Editar metadatos / Arte', opciones, -1, (v) => {
     if (v === 1) {
@@ -2864,25 +3150,11 @@ function menuEditarMetadatos(ficha: Ficha, alTerminar: () => void) {
             return;
           }
           if (res.results.length === 1) {
-            const r = res.results[0];
-            confirmar(
-              'Sobrescribir metadatos',
-              'Se aplicarán los datos y arte de «' + r.title + '» (' + (r.year || '') + '). ¿Continuar?',
-              () => {
-                aviso('Descargando metadatos de TMDb…');
-                api.enrichApply({
-                  itemId: ficha.id,
-                  tmdbId: r.tmdbId,
-                  kind: ficha.kind === 'show' ? 'show' : 'movie',
-                  fields: ['poster', 'fanart', 'logo', 'plot', 'rating', 'genres'],
-                  overwrite: true,
-                })
-                  .then(() => {
-                    aviso('Metadatos actualizados');
-                    alTerminar();
-                  })
-                  .catch((e) => aviso((e as Error).message || 'No se pudieron aplicar'));
-              },
+            dialogoRevisarMetadatos(
+              ficha,
+              res.results[0],
+              alTerminar,
+              () => menuEditarMetadatos(ficha, alTerminar),
             );
           } else {
             const propuestas: OpcionLista[] = res.results.slice(0, 8).map((p, idx) => ({
@@ -2891,20 +3163,12 @@ function menuEditarMetadatos(ficha: Ficha, alTerminar: () => void) {
               nota: p.overview ? p.overview.slice(0, 50) + '…' : '',
             }));
             menuLista('Elige la coincidencia en TMDb', propuestas, 0, (idx) => {
-              const r = res.results[idx];
-              aviso('Descargando metadatos de TMDb…');
-              api.enrichApply({
-                itemId: ficha.id,
-                tmdbId: r.tmdbId,
-                kind: ficha.kind === 'show' ? 'show' : 'movie',
-                fields: ['poster', 'fanart', 'logo', 'plot', 'rating', 'genres'],
-                overwrite: true,
-              })
-                .then(() => {
-                  aviso('Metadatos actualizados');
-                  alTerminar();
-                })
-                .catch((e) => aviso((e as Error).message || 'No se pudieron aplicar'));
+              dialogoRevisarMetadatos(
+                ficha,
+                res.results[idx],
+                alTerminar,
+                () => menuEditarMetadatos(ficha, alTerminar),
+              );
             }, () => menuEditarMetadatos(ficha, alTerminar));
           }
         })
@@ -2928,7 +3192,7 @@ function menuSeleccionarArte(ficha: Ficha, alTerminar: () => void) {
     texto: p.nombre,
   }));
   menuLista('Selecciona tipo de imagen', opcionesPapel, 0, (idxPapel) => {
-    const papelElegido = papeles[idxPapel].papel;
+    const papelElegido = papeles[idxPapel];
     aviso('Buscando imágenes disponibles…');
     Promise.all([
       api.enrichSearch(ficha.title, ficha.kind === 'show' ? 'show' : 'movie', ficha.year)
@@ -2937,54 +3201,23 @@ function menuSeleccionarArte(ficha: Ficha, alTerminar: () => void) {
         .catch(() => null),
       api.buzonArte().catch(() => ({ imagenes: [] as { nombre: string; bytes: number }[] })),
     ]).then(([imgsTmdb, buzon]) => {
-      const listaTmdb = imgsTmdb && imgsTmdb[papelElegido] ? imgsTmdb[papelElegido] : [];
+      const listaTmdb = imgsTmdb && imgsTmdb[papelElegido.papel] ? imgsTmdb[papelElegido.papel] : [];
       const listaBuzon = buzon && buzon.imagenes ? buzon.imagenes : [];
 
-      const listaOpciones: OpcionLista[] = [
-        { valor: -1, texto: '↺ Restaurar original de la carpeta' },
-      ];
       if (listaTmdb.length === 0 && listaBuzon.length === 0) {
-        listaOpciones.push({
-          valor: -99,
-          texto: 'ℹ No hay ' + papeles[idxPapel].nombre.toLowerCase() + ' en Fanart.tv ni buzón',
-        });
+        aviso('No hay ' + papelElegido.nombre.toLowerCase() + ' en TMDb ni en buzón');
+        menuSeleccionarArte(ficha, alTerminar);
+        return;
       }
-      let counter = 0;
-      listaTmdb.slice(0, 15).forEach((img) => {
-        listaOpciones.push({
-          valor: counter++,
-          texto: 'TMDb ' + (img.idioma ? '[' + img.idioma + ']' : '[sin texto]'),
-          nota: img.url.split('/').pop() || '',
-        });
-      });
-      const offsetBuzon = counter;
-      listaBuzon.forEach((b) => {
-        listaOpciones.push({
-          valor: offsetBuzon + (counter++ - offsetBuzon),
-          texto: '📁 Buzón: ' + b.nombre,
-          nota: Math.round(b.bytes / 1024) + ' KB',
-        });
-      });
 
-      menuLista('Elige imagen para ' + papeles[idxPapel].nombre, listaOpciones, 0, (sel) => {
-        if (sel === -99) {
-          menuSeleccionarArte(ficha, alTerminar);
-        } else if (sel === -1) {
-          api.enrichArte({ itemId: ficha.id, papel: papelElegido, url: null })
-            .then(() => { aviso('Imagen restaurada a la original'); alTerminar(); })
-            .catch((e) => aviso((e as Error).message || 'Error al restaurar'));
-        } else if (sel < offsetBuzon) {
-          const img = listaTmdb[sel];
-          api.enrichArte({ itemId: ficha.id, papel: papelElegido, url: img.url })
-            .then(() => { aviso('Imagen actualizada'); alTerminar(); })
-            .catch((e) => aviso((e as Error).message || 'Error al guardar imagen'));
-        } else {
-          const b = listaBuzon[sel - offsetBuzon];
-          api.enrichArteBuzon({ itemId: ficha.id, papel: papelElegido, nombre: b.nombre })
-            .then(() => { aviso('Imagen actualizada desde buzón'); alTerminar(); })
-            .catch((e) => aviso((e as Error).message || 'Error al guardar imagen'));
-        }
-      }, () => menuSeleccionarArte(ficha, alTerminar));
+      selectorVisualArte(
+        ficha,
+        papelElegido,
+        listaTmdb,
+        listaBuzon,
+        alTerminar,
+        () => menuSeleccionarArte(ficha, alTerminar),
+      );
     });
   }, () => menuEditarMetadatos(ficha, alTerminar));
 }
@@ -3449,7 +3682,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     cargando.style.display = 'block';
     capaSubs.innerHTML = '';
     reproductor.abrir(
-      urlReproduccion(fileId, porTuberia() ? audioId : undefined, desfase, modoAudio),
+      urlReproduccion(fileId, porTuberia() ? audioId : undefined, desfase, modoAudio, convertir),
       lienzo,
       desdeSegundos,
       duracionFichero,
@@ -3595,20 +3828,30 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
         quitarCapaError();
         cargando.style.display = 'block';
         cargando.textContent = 'Cargando…';
+        // Si falló en crudo, reintentar por tubería (ffmpeg convierte el audio):
+        // AVPlay puede rechazar ficheros con cabeceras AAC no estándar (44.1 kHz,
+        // codec_private inflado) que ffmpeg lee sin problema.
+        if (!convertir) {
+          convertir = true;
+          seleccion.convertir = true;
+        }
         abrirFlujo(donde);
       };
 
-      const mostrarPanelError = (intento: number, maxIntentos: number, sEspera: number) => {
+      const mostrarPanelError = (motivoError: string, intento: number, maxIntentos: number, sEspera: number) => {
         if (!capaError) {
           capaError = document.createElement('div');
           capaError.className = 'capa';
           capaError.innerHTML =
-            '<div class="panel"><h3>Se ha cortado la conexión</h3>' +
+            '<div class="panel"><h3>Error de reproducción</h3>' +
+            '<p class="dato" style="color:#f87171;font-size:18px;margin-bottom:14px" data-motivo></p>' +
             '<p class="dato" data-estado></p>' +
-            '<button class="linea enfocado" data-reintentar>Reintentar ahora</button>' +
+            '<button class="linea enfocado" data-reintentar>Reintentar (modo compatibilidad)</button>' +
             '<button class="linea" data-salir>Volver a la ficha</button></div>';
           marco.appendChild(capaError);
 
+          const txtMotivo = capaError.querySelector<HTMLElement>('[data-motivo]');
+          if (txtMotivo) txtMotivo.textContent = motivoError;
           const btnReintentar = capaError.querySelector<HTMLElement>('[data-reintentar]');
           if (btnReintentar) btnReintentar.addEventListener('click', reintentarYa);
           const btnSalir = capaError.querySelector<HTMLElement>('[data-salir]');
@@ -3639,9 +3882,9 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
         }
         const txt = capaError.querySelector<HTMLElement>('[data-estado]');
         if (intento <= maxIntentos) {
-          if (txt) txt.textContent = `Reintentando automáticamente (${intento}/${maxIntentos}) en ${sEspera} s…`;
+          if (txt) txt.textContent = `Reintentando en modo compatibilidad (${intento}/${maxIntentos}) en ${sEspera} s…`;
         } else {
-          if (txt) txt.textContent = 'No se pudo recuperar la conexión tras 4 intentos. Elige una opción:';
+          if (txt) txt.textContent = 'No se pudo reproducir tras 4 intentos. Elige una opción:';
         }
       };
 
@@ -3650,12 +3893,12 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
         ultimoReintento = Date.now();
         const pausas = [3000, 8000, 15000, 22000];
         const espera = pausas[reintentos - 1] || 10000;
-        mostrarPanelError(reintentos, 4, Math.round(espera / 1000));
+        mostrarPanelError(mensaje, reintentos, 4, Math.round(espera / 1000));
         window.clearTimeout(temporizadorReintento);
         temporizadorReintento = window.setTimeout(reintentarYa, espera);
         return;
       }
-      mostrarPanelError(5, 4, 0);
+      mostrarPanelError(mensaje, 5, 4, 0);
     },
     onSubtitulo: (texto, milisegundos) => {
       window.clearTimeout(temporizadorSub);

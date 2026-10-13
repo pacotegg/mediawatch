@@ -329,7 +329,20 @@ export const api = {
       method: 'DELETE',
       body: JSON.stringify({ confirmar }),
     }),
-  person: (id: number) => request<{ id: number; name: string; has_thumb: number; credits: ItemSummary[] }>(`/api/people/${id}`),
+  person: (id: number) =>
+    request<{
+      id: number;
+      name: string;
+      has_thumb: number;
+      detalle?: {
+        biography?: string | null;
+        birthday?: string | null;
+        deathday?: string | null;
+        place_of_birth?: string | null;
+        known_for_department?: string | null;
+      } | null;
+      credits: ItemSummary[];
+    }>(`/api/people/${id}`),
   search: (q: string) =>
     request<{ items: ItemSummary[]; people: { id: number; name: string; has_thumb: number; count: number }[] }>(
       `/api/search?q=${encodeURIComponent(q)}`,

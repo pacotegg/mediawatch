@@ -1021,7 +1021,7 @@ private fun Reproduciendo(
     }
 
     AnimatedVisibility(
-      visible = controlesVisibles,
+      visible = controlesVisibles && !hudSincroniaVisible,
       enter = fadeIn(Movimiento.aparecer(200)),
       exit = fadeOut(Movimiento.aparecer(250)),
       modifier = Modifier.fillMaxSize(),
@@ -1065,7 +1065,7 @@ private fun Reproduciendo(
      * sabe que deslizar desde el borde sale del video.
      */
     AnimatedVisibility(
-      visible = controlesVisibles,
+      visible = controlesVisibles && !hudSincroniaVisible,
       enter = fadeIn(Movimiento.aparecer(200)),
       exit = fadeOut(Movimiento.aparecer(250)),
       modifier = Modifier.align(Alignment.TopStart),
@@ -1264,6 +1264,8 @@ private fun Reproduciendo(
         },
         alAbrirSyncEnVivo = {
           menuAbierto = false
+          controlesVisibles = false
+          if (reproductor.isPlaying) reproductor.pause()
           hudSincroniaVisible = true
         },
         alCerrar = { menuAbierto = false },

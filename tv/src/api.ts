@@ -492,6 +492,7 @@ export function urlReproduccion(
   audioId?: number,
   desdeSegundos = 0,
   modoAudio: 'normal' | 'night' | 'dialogue' = 'normal',
+  compat = false,
 ): string {
   const t = token();
   return (
@@ -500,6 +501,7 @@ export function urlReproduccion(
     // Solo se manda cuando no es «normal»: en normal la pista va intacta y la
     // barra recibe el Atmos tal cual.
     (modoAudio !== 'normal' ? '&audiomode=' + modoAudio : '') +
+    (compat ? '&compat=1' : '') +
     // Solo tiene sentido con audio convertido: ahi el flujo va por tuberia y no
     // admite saltos, asi que para moverse hay que volver a pedirlo ya cortado.
     (desdeSegundos > 0 ? '&t=' + Math.floor(desdeSegundos) : '') +
