@@ -113,7 +113,7 @@ function cerrarSiInactivo(stream: ReturnType<typeof createReadStream>, res: Serv
   res.on('close', () => clearInterval(vigia));
 }
 
-function fileRow(fileId: number) {
+export function fileRow(fileId: number) {
   return db
     .prepare(`SELECT f.id, f.path, f.item_id, f.episode_id,
                 COALESCE(i.title, s.title) AS title, COALESCE(f.item_id, e.show_id) AS parent_id,
@@ -126,7 +126,7 @@ function fileRow(fileId: number) {
     .get(fileId) as { id: number; path: string; item_id: number | null; episode_id: number | null; title: string; parent_id: number; mpaa?: string; library_id?: number } | undefined;
 }
 
-function permitidoParaUsuario(row: ReturnType<typeof fileRow>, user: any): boolean {
+export function permitidoParaUsuario(row: ReturnType<typeof fileRow>, user: any): boolean {
   if (!user?.kid_ratings || !Array.isArray(user.kid_ratings) || user.kid_ratings.length === 0) return true;
   if (!row) return false;
   const cat = parseRatingCategoria(row.mpaa ?? null, row.library_id ?? 0);
@@ -735,6 +735,11 @@ export default async function playRoutes(app: FastifyInstance) {
     const calidad = (req.params as { calidad: string }).calidad;
     const row = fileRow(fileId);
     if (!row) return reply.code(404).send({ error: 'Fichero no encontrado' });
+    // La lista maestra ya lo comprueba, pero las de calidad y los trozos se pueden pedir directamente:
+    // sin esto un perfil infantil saltaba la clasificación pidiendo /hls/<calidad>.m3u8 (14/10/2026).
+    if (!permitidoParaUsuario(row, currentUser(req))) {
+      return reply.code(403).send({ error: 'Contenido no disponible para este perfil' });
+    }
     const info = await mediaInfo(fileId);
     if (!escalera(info).some((c) => c.nombre === calidad)) return reply.code(404).send({ error: 'Calidad desconocida' });
 
@@ -751,6 +756,11 @@ export default async function playRoutes(app: FastifyInstance) {
 
     const row = fileRow(fileId);
     if (!row) return reply.code(404).send({ error: 'Fichero no encontrado' });
+    // La lista maestra ya lo comprueba, pero las de calidad y los trozos se pueden pedir directamente:
+    // sin esto un perfil infantil saltaba la clasificación pidiendo /hls/<calidad>.m3u8 (14/10/2026).
+    if (!permitidoParaUsuario(row, currentUser(req))) {
+      return reply.code(403).send({ error: 'Contenido no disponible para este perfil' });
+    }
     const info = await mediaInfo(fileId);
 
     const cal = CALIDADES.find((c) => c.nombre === calidad);
