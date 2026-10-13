@@ -442,6 +442,8 @@ anadirColumna('sessions', 'last_seen', 'TEXT');
 // pestaña de actividad, que enseña quién ve qué y desde dónde.
 anadirColumna('playbacks', 'sesion', 'TEXT');
 anadirColumna('sessions', 'device', 'TEXT');
+// 1 = la columna token guarda la huella SHA-256 del token, no el token (ver hashToken en auth.ts).
+anadirColumna('sessions', 'cifrado', 'INTEGER');
 // Subcarpeta del extra dentro de la carpeta de extras, para agruparlos en la ficha.
 anadirColumna('extras', 'grupo', 'TEXT');
 // Fondo propio de una saga (además de la carátula).
