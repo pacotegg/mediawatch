@@ -149,6 +149,8 @@ export default function Player() {
   const [syncNote, setSyncNote] = useState('');
 
   const { data: info, refetch: refetchInfo } = useQuery<PlayInfo>({ queryKey: ['play', fileId], queryFn: () => api.playInfo(fileId), staleTime: Infinity });
+  // La busqueda en internet necesita subsfetch.py, que solo existe en el HTPC.
+  const { data: subsDisp } = useQuery({ queryKey: ['subs-available'], queryFn: () => api.subtitlesAvailable(), staleTime: Infinity });
   interface CandidatoSubtitulo {
     id: string;
     provider: string;
@@ -905,15 +907,17 @@ export default function Player() {
                       </div>
                     )}
 
-                    <div className="mt-2 border-t border-white/8 pt-2">
-                      <button
-                        onClick={buscarSubtitulos}
-                        disabled={buscandoSubs}
-                        className="w-full rounded-xl px-3 py-2 text-left text-[13px] text-accent hover:bg-white/8 disabled:opacity-50"
-                      >
-                        {buscandoSubs ? 'Buscando en internet…' : '🔍 Buscar subtítulos en internet'}
-                      </button>
-                    </div>
+                    {subsDisp?.available && (
+                      <div className="mt-2 border-t border-white/8 pt-2">
+                        <button
+                          onClick={buscarSubtitulos}
+                          disabled={buscandoSubs}
+                          className="w-full rounded-xl px-3 py-2 text-left text-[13px] text-accent hover:bg-white/8 disabled:opacity-50"
+                        >
+                          {buscandoSubs ? 'Buscando en internet…' : '🔍 Buscar subtítulos en internet'}
+                        </button>
+                      </div>
+                    )}
                   </Menu>
                 </div>
 
