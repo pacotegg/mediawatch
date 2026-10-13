@@ -410,6 +410,9 @@ export const api = {
   creditosPeliculas: () => request<CreditosPeliculas>('/api/skip/peliculas'),
   detectarCreditosPeliculas: () => post<{ started: boolean; total: number }>('/api/skip/peliculas/detectar', {}),
   pararCreditosPeliculas: () => post<{ parando: boolean }>('/api/skip/peliculas/parar', {}),
+  afinarCreditosPeliculas: () => post<{ started: boolean; total: number }>('/api/skip/peliculas/afinar', {}),
+  pararAfinadoCreditos: () => post<{ parando: boolean }>('/api/skip/peliculas/afinar/parar', {}),
+  deshacerAfinadoCreditos: () => post<{ vueltas: number }>('/api/skip/peliculas/afinar/deshacer', {}),
 
   searchDialogue: (q: string) =>
     request<{ hits: DialogueHit[]; stats: DialogueStats; error?: string }>(`/api/search/dialogue?q=${encodeURIComponent(q)}`),
@@ -618,6 +621,13 @@ export type CreditosPeliculas = {
   analizadas: number;
   conCreditos: number;
   conEscenas: number;
+  /** Afinado del inicio con el primer negro (creditos-afinado.ts). */
+  afinado?: {
+    job: { running: boolean; total: number; hechas: number; afinadas: number; actual: string; parando: boolean; esperando: boolean; error: string | null; finishedAt: string | null };
+    conRango: number;
+    afinadas: number;
+    vistas: number;
+  };
 };
 
 export type DialogueHit = {
