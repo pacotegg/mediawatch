@@ -31,12 +31,12 @@ Media Watch es software libre y de código abierto: puedes redistribuirlo y/o mo
 
 | Portada Interactiva y Tráiler de Fondo | Ficha Técnica y Steelbook 3D |
 |:---:|:---:|
-| ![Web Home](docs/screenshots/web/web-home.png) | ![Web Detail](docs/screenshots/web/web-detail.png) |
+| ![Web Home](docs/screenshots/web/web-home.webp) | ![Web Detail](docs/screenshots/web/web-detail.webp) |
 | *Banner principal con tráiler ambiente, carrusel de continuar viendo y sagas* | *Badges de pistas, notas Rotten Tomatoes/IMDb, disco 3D y extras nativos 16:9* |
 
 | Catálogo de Pósteres | Estadísticas de Uso |
 |:---:|:---:|
-| ![Web Library](docs/screenshots/web/web-library.png) | ![Web Stats](docs/screenshots/web/web-stats.png) |
+| ![Web Library](docs/screenshots/web/web-library.webp) | ![Web Stats](docs/screenshots/web/web-stats.webp) |
 | *Búsqueda rápida por metadatos, filtros y cuadrícula fluida* | *Estadísticas de reproducción, actividad por horas y dispositivos* |
 
 ---
@@ -45,12 +45,12 @@ Media Watch es software libre y de código abierto: puedes redistribuirlo y/o mo
 
 | Pantalla Principal en Gran Formato | Menú Lateral Personalizable |
 |:---:|:---:|
-| ![Smart TV Home](docs/screenshots/tv/tv-home.png) | ![Smart TV Menu](docs/screenshots/tv/tv-menu.png) |
+| ![Smart TV Home](docs/screenshots/tv/tv-home.webp) | ![Smart TV Menu](docs/screenshots/tv/tv-menu.webp) |
 | *Navegación espacial a 60 FPS con la cruceta del mando a distancia* | *Reordenación de secciones agarrando y soltando para priorizar tus bibliotecas* |
 
 | Cuadrícula de Biblioteca en TV | HUD de Reproducción Nativo (AVPlay) |
 |:---:|:---:|
-| ![Smart TV Library](docs/screenshots/tv/tv-library.png) | ![Smart TV Player HUD](docs/screenshots/tv/tv-player-hud.png) |
+| ![Smart TV Library](docs/screenshots/tv/tv-library.webp) | ![Smart TV Player HUD](docs/screenshots/tv/tv-player-hud.webp) |
 | *Navegación fluida por catálogo en la tele* | *Línea de tiempo con miniaturas trickplay, ajuste de desfase de subtítulos y audio* |
 
 ---
@@ -59,12 +59,12 @@ Media Watch es software libre y de código abierto: puedes redistribuirlo y/o mo
 
 | Portada Móvil | Ficha y Descargas Locales |
 |:---:|:---:|
-| ![Android Home](docs/screenshots/android/android-home.png) | ![Android Detail](docs/screenshots/android/android-detail.png) |
+| ![Android Home](docs/screenshots/android/android-home.webp) | ![Android Detail](docs/screenshots/android/android-detail.webp) |
 | *Interfaz Jetpack Compose con reanudación rápida* | *Perfiles de descarga, selector de pistas de audio y visor de tráilers* |
 
 | Menú Desplegable Reordenable | Ajustes de la Aplicación |
 |:---:|:---:|
-| ![Android Drawer](docs/screenshots/android/android-drawer.png) | ![Android Settings](docs/screenshots/android/android-settings.png) |
+| ![Android Drawer](docs/screenshots/android/android-drawer.webp) | ![Android Settings](docs/screenshots/android/android-settings.webp) |
 | *Organización de secciones arrastrando y soltando* | *Ajuste de bitrate máximo, modos de sonido e idioma de la app* |
 
 ---

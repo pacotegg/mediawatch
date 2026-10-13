@@ -31,12 +31,12 @@ Media Watch is free and open-source software: you can redistribute it and/or mod
 
 | Interactive Home & Hero Banner | Media Details & 3D Steelbook |
 |:---:|:---:|
-| ![Web Home](docs/screenshots/web/web-home.png) | ![Web Detail](docs/screenshots/web/web-detail.png) |
+| ![Web Home](docs/screenshots/web/web-home.webp) | ![Web Detail](docs/screenshots/web/web-detail.webp) |
 | *Hero banner with trailer playback, resume carousel & collections* | *Stream badges, Rotten Tomatoes/IMDb ratings, 3D discart & native 16:9 extras* |
 
 | Poster Grid Library Browsing | Playback Analytics & Statistics |
 |:---:|:---:|
-| ![Web Library](docs/screenshots/web/web-library.png) | ![Web Stats](docs/screenshots/web/web-stats.png) |
+| ![Web Library](docs/screenshots/web/web-library.webp) | ![Web Stats](docs/screenshots/web/web-stats.webp) |
 | *Instant metadata search, filtering, and responsive poster grid* | *Playback statistics, hourly activity, and device tracking* |
 
 ---
@@ -45,12 +45,12 @@ Media Watch is free and open-source software: you can redistribute it and/or mod
 
 | Big-Screen TV Interface | Customizable Sidebar Menu |
 |:---:|:---:|
-| ![Smart TV Home](docs/screenshots/tv/tv-home.png) | ![Smart TV Menu](docs/screenshots/tv/tv-menu.png) |
+| ![Smart TV Home](docs/screenshots/tv/tv-home.webp) | ![Smart TV Menu](docs/screenshots/tv/tv-menu.webp) |
 | *Designed for fluid 60 FPS spatial navigation with remote control D-pad* | *Grab & Drop menu reordering to prioritize your favorite libraries* |
 
 | TV Library Grid | AVPlay Native Player HUD |
 |:---:|:---:|
-| ![Smart TV Library](docs/screenshots/tv/tv-library.png) | ![Smart TV Player HUD](docs/screenshots/tv/tv-player-hud.png) |
+| ![Smart TV Library](docs/screenshots/tv/tv-library.webp) | ![Smart TV Player HUD](docs/screenshots/tv/tv-player-hud.webp) |
 | *Large-format TV catalog navigation* | *Trickplay thumbnail scrubbing, subtitle offset HUD & acoustic modes* |
 
 ---
@@ -59,12 +59,12 @@ Media Watch is free and open-source software: you can redistribute it and/or mod
 
 | Mobile Feed | Rich Media Details & Offline Downloads |
 |:---:|:---:|
-| ![Android Home](docs/screenshots/android/android-home.png) | ![Android Detail](docs/screenshots/android/android-detail.png) |
+| ![Android Home](docs/screenshots/android/android-home.webp) | ![Android Detail](docs/screenshots/android/android-detail.webp) |
 | *Jetpack Compose feed with quick resume cards* | *Direct download profiles, audio track switcher, and trailer viewer* |
 
 | Grab & Drop Navigation Drawer | Detailed Application Settings |
 |:---:|:---:|
-| ![Android Drawer](docs/screenshots/android/android-drawer.png) | ![Android Settings](docs/screenshots/android/android-settings.png) |
+| ![Android Drawer](docs/screenshots/android/android-drawer.webp) | ![Android Settings](docs/screenshots/android/android-settings.webp) |
 | *Interactive drag-and-drop section organization* | *Bitrate quality control, audio modes, and interface language selector* |
 
 ---
