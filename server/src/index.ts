@@ -7,7 +7,7 @@ import { DATA_DIR, MODO_PORTABLE, ROOT, config } from './config.ts';
 import { backupBaseDeDatosEnWorker, db } from './db.ts';
 import { limpiarCache as limpiarCacheImagenes } from './media/images.ts';
 import { hayAlguienViendo } from './media/ocupado.ts';
-import { limpiarHuerfanas as limpiarTrickplayHuerfano } from './media/trickplay.ts';
+import { limpiarHuerfanas as limpiarTrickplayHuerfano, reanudarLoteSiPendiente } from './media/trickplay.ts';
 import animeRoutes from './routes/anime.ts';
 import actividadRoutes from './routes/actividad.ts';
 import authRoutes, { currentUser, limpiarSesiones } from './routes/auth.ts';
@@ -386,6 +386,8 @@ async function limpiarSiToca() {
   }
 }
 setTimeout(() => void limpiarSiToca(), 40_000).unref();
+// Un lote de miniaturas que murió con el proceso se reanuda, sin prisa: primero que arranque todo.
+setTimeout(reanudarLoteSiPendiente, 3 * 60_000).unref();
 setInterval(() => void limpiarSiToca(), 7 * 24 * 60 * 60_000).unref();
 
 // Copia de seguridad diaria; se rota sola a las 14 mas recientes en `data/copias`.

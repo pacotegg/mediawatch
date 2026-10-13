@@ -222,6 +222,39 @@ export function pararLote() {
 }
 
 /**
+ * Cuántos ficheros tienen ya su tira, de cuántos que la merecen. Contar carpetas es instantáneo
+ * (no se abre ningún manifest) y vale de sobra para una barra de progreso.
+ */
+export function cobertura(): { hechas: number; total: number } {
+  const total = (db.prepare('SELECT COUNT(*) AS n FROM media_files WHERE duration > 300').get() as { n: number }).n;
+  let hechas = 0;
+  try {
+    hechas = readdirSync(ROOT).length;
+  } catch {
+    // Aún no existe la carpeta.
+  }
+  return { hechas: Math.min(hechas, total), total };
+}
+
+/*
+ * El lote vive en memoria: un reinicio del servidor (el vigilante, una actualización) lo mataba y
+ * nadie lo relanzaba (el del 12/10 se quedó en el fichero 281 de 5.656). Mientras hay un lote en
+ * marcha queda apuntado aquí; si el proceso muere, al arrancar se reanuda solo.
+ */
+const PENDIENTE = join(DATA_DIR, 'trickplay-lote.json');
+
+export function reanudarLoteSiPendiente(): void {
+  if (!existsSync(PENDIENTE) || lote.running) return;
+  try {
+    const { todo } = JSON.parse(readFileSync(PENDIENTE, 'utf8')) as { todo?: boolean };
+    const total = generarLote(Boolean(todo));
+    console.log(`[miniaturas] reanudado el lote pendiente: ${total} por hacer`);
+  } catch (err) {
+    console.error('[miniaturas] no se pudo reanudar el lote:', (err as Error).message);
+  }
+}
+
+/**
  * Qué ficheros merecen la tira, y en qué orden.
  *
  * Medido: 170 s por película de hora y media. Con 5566 ficheros, hacerlas todas
@@ -239,13 +272,9 @@ function porHacer(todo: boolean): { id: number; nombre: string }[] {
   type Fila = { id: number; nombre: string | null };
   const filas: Fila[] = [];
 
-  if (todo) {
-    filas.push(
-      ...(db
-        .prepare(`SELECT f.id, ${NOMBRE} FROM media_files f ${UNIONES} WHERE f.duration > 300 ORDER BY f.id`)
-        .all() as Fila[]),
-    );
-  } else {
+  // Primero lo que está a medias y lo añadido hace poco (lo que se va a ver antes); en el lote
+  // completo, después todo lo demás.
+  {
     // Primero lo que está a medias, que es lo que se va a abrir esta misma noche.
     filas.push(
       ...(db
@@ -267,13 +296,21 @@ function porHacer(todo: boolean): { id: number; nombre: string }[] {
         .all() as Fila[]),
     );
   }
+  if (todo) {
+    filas.push(
+      ...(db
+        .prepare(`SELECT f.id, ${NOMBRE} FROM media_files f ${UNIONES} WHERE f.duration > 300 ORDER BY f.id`)
+        .all() as Fila[]),
+    );
+  }
 
   const vistos: Record<number, boolean> = {};
   const salida: { id: number; nombre: string }[] = [];
   for (const f of filas) {
     if (vistos[f.id]) continue;
     vistos[f.id] = true;
-    if (readManifest(f.id)) continue;
+    // Solo mirar si existe: parsear miles de manifests aquí congelaba el servidor al arrancar el lote.
+    if (existsSync(manifestFor(f.id))) continue;
     salida.push({ id: f.id, nombre: f.nombre ?? String(f.id) });
     if (!todo && salida.length >= 60) break;
   }
@@ -288,8 +325,15 @@ export function generarLote(todo = false) {
     running: true, total: pendientes.length, hechas: 0, fallos: 0, actual: '', parando: false, esperando: false, finishedAt: null,
   });
 
+  try {
+    writeFileSync(PENDIENTE, JSON.stringify({ todo, desde: new Date().toISOString() }));
+  } catch {
+    // Sin el apunte solo se pierde la reanudación automática.
+  }
+
   queueMicrotask(async () => {
-    for (const f of pendientes) {
+    for (let i = 0; i < pendientes.length; i++) {
+      const f = pendientes[i];
       if (lote.parando) break;
       // Leer los fotogramas clave de una película entera deja sin datos al
       // vídeo que se esté sirviendo del mismo disco: se espera.
@@ -303,11 +347,13 @@ export function generarLote(todo = false) {
         else lote.fallos++;
       } catch (err) {
         const motivo = (err as Error).message;
-        // Cortar porque alguien se ha puesto a ver algo no es un fallo: la
-        // pelicula se queda pendiente y se hace en la siguiente tanda.
+        // Cortar porque alguien se ha puesto a ver algo no es un fallo: se repite esta misma
+        // en cuanto quede libre (la vuelta siguiente espera). Antes se cortaba el lote entero,
+        // y uno de varios días no llegaba nunca al final.
         if (motivo.indexOf('cortado') === 0) {
-          console.log('[miniaturas] aparcada', f.nombre, '(hay alguien viendo algo)');
-          break;
+          console.log('[miniaturas] aparcada', f.nombre, '(hay alguien viendo algo): se reintenta despues');
+          i--;
+          continue;
         }
         lote.fallos++;
         console.error('[miniaturas]', f.nombre, motivo);
@@ -318,6 +364,8 @@ export function generarLote(todo = false) {
     lote.esperando = false;
     lote.actual = '';
     lote.finishedAt = new Date().toISOString();
+    // Terminado o parado a mano: ya no hay nada que reanudar.
+    rmSync(PENDIENTE, { force: true });
     console.log(`[miniaturas] terminado: ${lote.hechas} hechas, ${lote.fallos} fallidas de ${lote.total}`);
   });
 

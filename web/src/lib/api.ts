@@ -520,6 +520,13 @@ export const api = {
   mantenimientoLimpiar: () => post<{ cacheImagenes: number; trickplayHuerfano: number }>('/api/mantenimiento/limpiar', {}),
   mantenimientoOptimizar: () => post<{ antes: number; despues: number }>('/api/mantenimiento/optimizar', {}),
   mantenimientoCopia: () => post<{ ruta: string }>('/api/mantenimiento/copia', {}),
+  trickplayEstado: () =>
+    request<{
+      lote: { running: boolean; total: number; hechas: number; fallos: number; actual: string; parando: boolean; esperando: boolean; finishedAt: string | null };
+      cobertura: { hechas: number; total: number };
+    }>('/api/trickplay/estado'),
+  trickplayLote: (todo: boolean) => post<{ started: boolean; total: number }>('/api/trickplay/lote', { todo }),
+  trickplayParar: () => post<{ parando: boolean }>('/api/trickplay/parar', {}),
 
   subtitlesAvailable: () => request<{ available: boolean; script: string }>('/api/subtitles/available'),
   subtitlesJob: () => request<SubtitleJob>('/api/subtitles/job'),

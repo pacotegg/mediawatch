@@ -11,7 +11,7 @@ import { db, parseRatingCategoria } from '../db.ts';
 import { mediaInfo, type MediaInfo } from '../media/probe.ts';
 import { dialogueDownmix, planPlayback, sessions, startStream, stopSession, type AudioMode, type ClientCaps } from '../media/transcode.ts';
 import { clearOffset, isMeasuring, measure, offsetFor, saveOffset } from '../media/resync.ts';
-import { ensure, generarLote, isGenerating, lote, pararLote, readManifest, sheetPath } from '../media/trickplay.ts';
+import { cobertura, generarLote, lote, pararLote, readManifest, sheetPath } from '../media/trickplay.ts';
 import { marcarActividad } from '../media/ocupado.ts';
 import { extraPorId, extrasDe, miniatura, extrasTmdb, descargarExtraTmdb, actualizarTipoExtra } from '../media/extras.ts';
 import { detectForShow, detectarTodas, job, pararDeteccion, showsWithRanges, skipRangesFor } from '../media/intros.ts';
@@ -872,7 +872,7 @@ export default async function playRoutes(app: FastifyInstance) {
 
   app.get('/api/trickplay/estado', async (req) => {
     requireUser(req);
-    return { lote };
+    return { lote, cobertura: cobertura() };
   });
 
   app.post('/api/trickplay/lote', async (req, reply) => {
