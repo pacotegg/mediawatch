@@ -25,20 +25,6 @@ const TABS = [
 
 type Tab = (typeof TABS)[number]['key'];
 
-const LANGUAGES = [
-  { value: 'spa', label: 'Español' },
-  { value: 'eng', label: 'Inglés' },
-  { value: 'cat', label: 'Catalán' },
-  { value: 'glg', label: 'Gallego' },
-  { value: 'eus', label: 'Euskera' },
-  { value: 'fre', label: 'Francés' },
-  { value: 'ger', label: 'Alemán' },
-  { value: 'ita', label: 'Italiano' },
-  { value: 'por', label: 'Portugués' },
-  { value: 'jpn', label: 'Japonés' },
-  { value: 'original', label: 'Idioma original' },
-];
-
 function PlaybackTab() {
   const { prefs, update } = usePreferences();
   const p = prefs.playback;
@@ -241,7 +227,6 @@ function SubtitlesTab() {
 }
 
 function LibraryTab() {
-  const queryClient = useQueryClient();
   const { data: stats } = useQuery({ queryKey: ['stats'], queryFn: api.stats });
   const { data: libraries } = useQuery({ queryKey: ['libraries'], queryFn: api.libraries });
   const { data: sessions } = useQuery({ queryKey: ['sessions'], queryFn: api.sessions, refetchInterval: 4000 });

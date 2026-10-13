@@ -172,6 +172,16 @@ app.get('/api/salud', async () => {
 });
 
 /*
+ * Cabecera barata contra el «olfateo» de tipos MIME. A propósito NO se añaden X-Frame-Options,
+ * frame-ancestors ni Referrer-Policy: la tele incrusta la página /trailer en un iframe desde otro
+ * origen (marcoVideo en tv/src/main.ts) y esa página fija su propio referrer; se romperían.
+ */
+app.addHook('onSend', async (_req, reply, payload) => {
+  reply.header('X-Content-Type-Options', 'nosniff');
+  return payload;
+});
+
+/*
  * Un error dentro de un gancho deja la petición sin respuesta y el cliente
  * esperando. Registrarlo aquí es lo que permitió ver que el preflight de la
  * tele se estaba quedando colgado.

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import PosterCard from '../components/PosterCard.tsx';
