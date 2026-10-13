@@ -17,7 +17,8 @@ if sys.platform == "win32":
         pass
 
 # Agregar la ruta de scripts del pipeline para importar subsfetch
-sys.path.append(r"C:\scripts\webpanel")
+_sf = os.environ.get("MEDIAWATCH_SUBSFETCH")
+sys.path.append(os.path.dirname(_sf) if _sf else r"C:\scripts\webpanel")
 import subsfetch
 
 SS_LANG = {"es": "spanish", "en": "english"}

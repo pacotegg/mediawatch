@@ -171,7 +171,7 @@ export default function Player() {
     setModalCandidatos(true);
     setCandidatos([]);
     try {
-      const res = await api.post<{ ok: boolean; candidates: CandidatoSubtitulo[] }>('/api/subtitles/search', {
+      const res = await api.subtitlesSearch<{ ok: boolean; candidates: CandidatoSubtitulo[] }>({
         fileId,
         languages: 'es,en',
       });
@@ -188,7 +188,7 @@ export default function Player() {
   const descargarCandidato = async (c: CandidatoSubtitulo) => {
     setDescargandoId(c.id);
     try {
-      const res = await api.post<{ ok: boolean; trackId?: string }>('/api/subtitles/download', {
+      const res = await api.subtitlesDownload<{ ok: boolean; trackId?: string }>({
         fileId,
         provider: c.provider,
         subId: c.providerId,

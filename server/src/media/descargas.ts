@@ -151,23 +151,61 @@ function preparar(id: number, origen: string, duracion: number, perfil: Exclude<
   ];
 
   const esH264 = codec === 'h264';
-  const codecArgs = esH264
-    ? ['-c:v', 'h264_qsv', '-preset', 'veryfast', '-profile:v', 'high']
-    : ['-c:v', 'hevc_qsv', '-preset', 'veryfast', '-profile:v', 'main', '-tag:v', 'hvc1'];
+  const hw = config.hwaccel;
+
+  // Entrada, filtro y codificador según el aparato. La rama qsv es la de siempre;
+  // en las demás el tonemap de HDR no se aplica (igual que en hls.ts).
+  let entrada: string[];
+  let filtro: string;
+  let codecArgs: string[];
+  if (hw === 'qsv') {
+    entrada = [
+      '-init_hw_device', 'qsv=qsv:hw,child_device_type=d3d11va,child_device=0',
+      '-hwaccel', 'qsv', '-hwaccel_output_format', 'qsv',
+    ];
+    filtro = `vpp_qsv=${vppParts.join(':')}`;
+    codecArgs = [
+      ...(esH264
+        ? ['-c:v', 'h264_qsv', '-preset', 'veryfast', '-profile:v', 'high']
+        : ['-c:v', 'hevc_qsv', '-preset', 'veryfast', '-profile:v', 'main', '-tag:v', 'hvc1']),
+      '-low_power', '1',
+      '-async_depth', '8',
+      '-global_quality', String(ajustes.crf),
+      '-maxrate', ajustes.techo,
+      '-bufsize', `${ajustes.techoKbps * 2}k`,
+    ];
+  } else {
+    entrada = [];
+    filtro = `scale=${ancho > 0 ? ancho : -2}:${alto},format=yuv420p`;
+    const topes = ['-maxrate', ajustes.techo, '-bufsize', `${ajustes.techoKbps * 2}k`];
+    if (hw === 'nvenc') {
+      codecArgs = [
+        '-c:v', esH264 ? 'h264_nvenc' : 'hevc_nvenc', '-preset', 'p4',
+        '-b:v', ajustes.techo, ...topes,
+        ...(esH264 ? [] : ['-tag:v', 'hvc1']),
+      ];
+    } else if (hw === 'amf') {
+      codecArgs = [
+        '-c:v', esH264 ? 'h264_amf' : 'hevc_amf', '-quality', 'speed',
+        '-b:v', ajustes.techo, ...topes,
+        ...(esH264 ? [] : ['-tag:v', 'hvc1']),
+      ];
+    } else {
+      codecArgs = [
+        '-c:v', esH264 ? 'libx264' : 'libx265', '-preset', 'veryfast',
+        '-crf', String(ajustes.crf), ...topes,
+        ...(esH264 ? ['-profile:v', 'high'] : ['-tag:v', 'hvc1']),
+      ];
+    }
+  }
 
   const args = [
     '-hide_banner', '-loglevel', 'error', '-nostdin', '-y',
-    '-init_hw_device', 'qsv=qsv:hw,child_device_type=d3d11va,child_device=0',
-    '-hwaccel', 'qsv', '-hwaccel_output_format', 'qsv',
+    ...entrada,
     '-i', origen,
     '-map', '0:v:0', '-map', '0:a:0?',
-    '-vf', `vpp_qsv=${vppParts.join(':')}`,
+    '-vf', filtro,
     ...codecArgs,
-    '-low_power', '1',
-    '-async_depth', '8',
-    '-global_quality', String(ajustes.crf),
-    '-maxrate', ajustes.techo,
-    '-bufsize', `${ajustes.techoKbps * 2}k`,
     '-c:a', 'aac', '-b:a', ajustes.audio, '-ac', '2',
     '-movflags', '+faststart',
     '-progress', 'pipe:1',
