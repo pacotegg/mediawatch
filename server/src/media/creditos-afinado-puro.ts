@@ -25,6 +25,18 @@ export function primerNegro(salida: string, desde: number, minimo: number, maxim
   return dentro.length ? Math.min(...dentro) : null;
 }
 
+/**
+ * Un negro solo vale como inicio de créditos si es plausible: quedan como mucho 12 minutos de película (el
+ * mismo tope que usa creditos-pelicula.ts) y no se adelanta más de 5 minutos al detector. Sin esto, el 13/10/2026
+ * 3 de 321 películas afinadas salieron adelantadas 7–19 minutos (un negro cualquiera de la escena final).
+ */
+export const MAX_RESTANTE_S = 720;
+export const MAX_ADELANTO_S = 300;
+
+export function negroPlausible(negro: number, inicioDetector: number, duracion: number): boolean {
+  return negro >= duracion * 0.5 && duracion - negro <= MAX_RESTANTE_S && inicioDetector - negro <= MAX_ADELANTO_S;
+}
+
 /** El primer bloque de créditos arranca en `negro`; los demás (escenas extra en medio) no se tocan. */
 export function adelantarPrimerRango(rangos: Tramo[], negro: number): Tramo[] {
   if (!rangos.length) return rangos;

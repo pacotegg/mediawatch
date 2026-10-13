@@ -19,7 +19,7 @@ import { config, DATA_DIR } from '../config.ts';
 import { db } from '../db.ts';
 import { esperarSiHayAlguienViendo, hayAlguienViendo } from './ocupado.ts';
 import './creditos-detector.ts'; // crea la tabla pelicula_creditos
-import { adelantarPrimerRango, instantesDeSubtitulo, primerNegro, ultimoDialogoAntes, type Tramo } from './creditos-afinado-puro.ts';
+import { adelantarPrimerRango, instantesDeSubtitulo, negroPlausible, primerNegro, ultimoDialogoAntes, type Tramo } from './creditos-afinado-puro.ts';
 
 const cols = db.prepare('PRAGMA table_info(pelicula_creditos)').all() as { name: string }[];
 if (!cols.some((c) => c.name === 'rangos_texto')) db.exec('ALTER TABLE pelicula_creditos ADD COLUMN rangos_texto TEXT');
@@ -75,6 +75,27 @@ export function resumenAfinado() {
                 FROM pelicula_creditos WHERE rangos NOT IN ('[]', '')`)
     .get() as { conRango: number | null; afinadas: number | null; vistas: number | null };
   return { conRango: f.conRango ?? 0, afinadas: f.afinadas ?? 0, vistas: f.vistas ?? 0 };
+}
+
+/**
+ * Devuelve al rango original las películas ya afinadas cuyo nuevo inicio no es plausible (ver negroPlausible).
+ * Sirve para corregir lo hecho antes de existir la guarda.
+ */
+export function revisarAfinadas(): number {
+  const filas = db
+    .prepare(`SELECT c.item_id AS itemId, c.rangos, c.rangos_texto AS original, MAX(f.duration) AS duracion
+                FROM pelicula_creditos c JOIN media_files f ON f.item_id = c.item_id
+               WHERE c.metodo = '${METODO_AFINADO}' AND c.rangos_texto IS NOT NULL GROUP BY c.item_id`)
+    .all() as { itemId: number; rangos: string; original: string; duracion: number }[];
+  let vueltas = 0;
+  for (const f of filas) {
+    const nuevo = Math.min(...(JSON.parse(f.rangos) as Tramo[]).map((r) => r.start_s));
+    const antes = Math.min(...(JSON.parse(f.original) as Tramo[]).map((r) => r.start_s));
+    if (negroPlausible(nuevo, antes, f.duracion)) continue;
+    db.prepare(`UPDATE pelicula_creditos SET rangos = rangos_texto, metodo = 'texto-sube' WHERE item_id = ?`).run(f.itemId);
+    vueltas++;
+  }
+  return vueltas;
 }
 
 /** Deja los rangos como los dejó el detector del texto que sube. Devuelve cuántas películas volvió. */
@@ -139,8 +160,8 @@ async function afinarUna(c: Candidata): Promise<boolean> {
   const desde = Math.max(0, ultimo - 5);
   const salida = await blackdetect(c.path, desde, inicio + 5 - desde);
   const negro = primerNegro(salida, desde, ultimo + 2, inicio);
-  // Un negro en la primera mitad de la película no es el principio de los créditos.
-  if (negro === null || negro < c.duracion * 0.5) { marcar(); return false; }
+  // Un negro en la primera mitad, o que dejaría más de 12 min de «créditos», no es su principio.
+  if (negro === null || !negroPlausible(negro, inicio, c.duracion)) { marcar(); return false; }
 
   db.prepare('UPDATE pelicula_creditos SET rangos = ?, rangos_texto = ?, metodo = ? WHERE item_id = ?')
     .run(JSON.stringify(adelantarPrimerRango(rangos, negro)), c.rangos, METODO_AFINADO, c.itemId);
