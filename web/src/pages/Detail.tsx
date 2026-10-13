@@ -901,7 +901,7 @@ export default function Detail() {
             </div>
           </motion.div>
 
-          {prefs.interface.case3D && item.has_poster && (
+          {(prefs.interface.case3D ?? true) && item.has_poster ? (
             <div className="hidden lg:block shrink-0 pt-2 pr-4">
               <Estuche3D
                 posterUrl={img.poster(itemId, 500, item.arte_actualizado)}
@@ -909,9 +909,17 @@ export default function Detail() {
                 title={item.title}
               />
             </div>
-          )}
+          ) : item.has_poster ? (
+            <div className="hidden lg:block shrink-0 pt-2 pr-4">
+              <img
+                src={img.poster(itemId, 500, item.arte_actualizado)}
+                alt={item.title}
+                className="h-[324px] w-[220px] rounded-xl object-cover shadow-2xl ring-1 ring-white/10"
+              />
+            </div>
+          ) : null}
 
-          {prefs.interface.case3D && item.has_poster && (
+          {(prefs.interface.case3D ?? true) && item.has_poster ? (
             <div className="mt-8 flex justify-center lg:hidden">
               <Estuche3D
                 posterUrl={img.poster(itemId, 500, item.arte_actualizado)}
@@ -919,7 +927,15 @@ export default function Detail() {
                 title={item.title}
               />
             </div>
-          )}
+          ) : item.has_poster ? (
+            <div className="mt-8 flex justify-center lg:hidden">
+              <img
+                src={img.poster(itemId, 500, item.arte_actualizado)}
+                alt={item.title}
+                className="h-[300px] w-[200px] rounded-xl object-cover shadow-2xl ring-1 ring-white/10"
+              />
+            </div>
+          ) : null}
         </div>
 
         <motion.div
