@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { useQuery } from '@tanstack/react-query';
-import Hls from 'hls.js';
+import type HlsInstancia from 'hls.js';
 import { api, enRedLocal, hlsUrl, img, streamUrl, subtitleSync, subtitleUrl, trickplaySheet, type PlayInfo, type Trickplay } from '../lib/api.ts';
 import { clock, languageName } from '../lib/format.ts';
 import { subtitleCss, usePreferences } from '../lib/preferences.tsx';
@@ -330,42 +330,60 @@ export default function Player() {
       return;
     }
 
-    // Safari y iOS reproducen HLS de fábrica y lo hacen mejor que la biblioteca.
-    if (!Hls.isSupported()) {
+    // hls.js pesa ~500 KB y solo hace falta fuera de casa (o con «adaptativo: siempre»): se baja
+    // aquí, no con el reproductor. `cancelado` cubre cerrar el reproductor mientras aún carga.
+    let cancelado = false;
+    let hls: HlsInstancia | null = null;
+    const nativo = () => {
       video.src = src;
       video.load();
       video.play().catch(() => undefined);
-      return;
-    }
+    };
 
-    const hls = new Hls({
-      // Un trozo tarda en fabricarse: sin margen, el reproductor lo da por
-      // perdido antes de que el servidor lo haya terminado de codificar.
-      fragLoadingTimeOut: 45_000,
-      manifestLoadingTimeOut: 20_000,
-      fragLoadingMaxRetry: 6,
-      levelLoadingMaxRetry: 6,
-      // Empezar por abajo y subir: es preferible que arranque enseguida a que
-      // se quede pensando para acabar bajando igual.
-      startLevel: -1,
-      maxBufferLength: 30,
-    });
+    import('hls.js')
+      .then(({ default: Hls }) => {
+        if (cancelado) return;
+        // Safari y iOS reproducen HLS de fábrica y lo hacen mejor que la biblioteca.
+        if (!Hls.isSupported()) {
+          nativo();
+          return;
+        }
 
-    hls.on(Hls.Events.ERROR, (_e, data) => {
-      if (!data.fatal) return;
-      // Un fallo de red no debe tumbar la reproducción: se reintenta, que es
-      // justamente para lo que se trocea.
-      if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
-      else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
-      else hls.destroy();
-    });
+        const h = new Hls({
+          // Un trozo tarda en fabricarse: sin margen, el reproductor lo da por
+          // perdido antes de que el servidor lo haya terminado de codificar.
+          fragLoadingTimeOut: 45_000,
+          manifestLoadingTimeOut: 20_000,
+          fragLoadingMaxRetry: 6,
+          levelLoadingMaxRetry: 6,
+          // Empezar por abajo y subir: es preferible que arranque enseguida a que
+          // se quede pensando para acabar bajando igual.
+          startLevel: -1,
+          maxBufferLength: 30,
+        });
+        hls = h;
 
-    hls.loadSource(src);
-    hls.attachMedia(video);
-    hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => undefined));
+        h.on(Hls.Events.ERROR, (_e, data) => {
+          if (!data.fatal) return;
+          // Un fallo de red no debe tumbar la reproducción: se reintenta, que es
+          // justamente para lo que se trocea.
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) h.startLoad();
+          else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) h.recoverMediaError();
+          else h.destroy();
+        });
+
+        h.loadSource(src);
+        h.attachMedia(video);
+        h.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => undefined));
+      })
+      // Si no se pudo bajar la biblioteca (sin conexión, despliegue nuevo), se intenta el HLS nativo.
+      .catch(() => {
+        if (!cancelado) nativo();
+      });
 
     return () => {
-      hls.destroy();
+      cancelado = true;
+      hls?.destroy();
       // Libera la GPU en el servidor en cuanto se cierra el reproductor.
       navigator.sendBeacon?.(`/api/play/${fileId}/hls/cerrar`);
     };
