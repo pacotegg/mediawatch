@@ -214,6 +214,14 @@ button {
   transition-delay: 0s;
 }
 
+/* Raya que separa del contenido lo que va al pie del menú (Ajustes, Cambiar de usuario). */
+.menu-seccion.menu-pie {
+  padding: 0;
+  margin: 14px 24px 10px 36px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  visibility: visible;
+}
+
 .opcion {
   position: relative;
   display: block;
