@@ -20,6 +20,7 @@ import { obtenerResenas } from '../media/reviews.ts';
 import { paginaTrailer, trailerDe } from '../media/trailers.ts';
 import { toString as qrComoSvg } from 'qrcode';
 import { parsearRango } from '../media/rango.ts';
+import { etiquetasTecnicas } from '../media/etiquetas.ts';
 
 const MIME: Record<string, string> = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp' };
 
@@ -325,7 +326,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
                   FROM episodes e LEFT JOIN media_files f ON f.episode_id = e.id
                   WHERE e.show_id = ? ORDER BY e.season, e.episode`)
         .all(id);
-      return { ...item, genres: genres.map((g) => g.name), cast, files, episodes, progress, nextUp: nextEpisode(id, user?.id ?? null) };
+      return { ...item, genres: genres.map((g) => g.name), cast, files, tags: etiquetasTecnicas(files), episodes, progress, nextUp: nextEpisode(id, user?.id ?? null) };
     }
 
     let versions: any[] = [];
@@ -376,6 +377,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
       genres: genres.map((g) => g.name),
       cast,
       files,
+      tags: etiquetasTecnicas(files),
       versions,
       progress,
       collectionItems: item.collection

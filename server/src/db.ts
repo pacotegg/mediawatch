@@ -26,7 +26,7 @@ export function parseRatingCategoria(mpaa: string | null, libraryId: number): st
   return '18';
 }
 
-db.function('rating_categoria', parseRatingCategoria);
+db.function('rating_categoria', parseRatingCategoria as (...args: any[]) => string);
 
 db.exec(`
 PRAGMA journal_mode = WAL;

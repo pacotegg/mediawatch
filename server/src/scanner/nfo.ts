@@ -54,6 +54,7 @@ export type NfoData = {
   trailer?: string;
   imdbId?: string;
   tmdbId?: string;
+  tvdbId?: string;
   addedAt?: string;
   genres: string[];
   people: Person[];
@@ -225,6 +226,7 @@ function fromNode(node: Record<string, any>): NfoData {
     trailer: str(node.trailer),
     imdbId: uniqueIds.imdb ?? (rawId?.startsWith('tt') ? rawId : undefined),
     tmdbId: uniqueIds.tmdb ?? str(node.tmdbid),
+    tvdbId: uniqueIds.tvdb ?? str(node.tvdbid),
     addedAt: str(node.dateadded),
     genres: (node.genre ?? []).map(str).filter(Boolean) as string[],
     people: collectPeople(node),

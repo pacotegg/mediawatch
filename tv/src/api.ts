@@ -128,6 +128,7 @@ export type Ficha = Titulo & {
   files: {
     id: number;
     duration: number | null;
+    width: number | null;
     height: number | null;
     video_codec: string | null;
     hdr: string | null;
@@ -146,6 +147,11 @@ export type Ficha = Titulo & {
   nextUp?: { id: number; season: number; episode: number };
   /** Del mismo genero, las que mas generos comparten primero. */
   similar?: Titulo[];
+  /** Etiquetas tecnicas del mejor fichero: 4K, DV/HDR10/HDR10+/HDR, Atmos, TrueHD, DTS-HD, 5.1, 7.1. */
+  tags?: string[];
+  /** Nombre de la saga y sus titulos (vacio si no pertenece a ninguna). */
+  collection?: string | null;
+  collectionItems?: Titulo[];
 };
 
 /** Lo que el servidor sabe del fichero que se va a reproducir. */
@@ -314,7 +320,7 @@ export const api = {
     pedir<{ job: { running: boolean; showTitle: string; season: number | null; kind: string; found: number; total: number; hechas: number } }>(
       '/api/skip/status',
     ),
-  progreso: (cuerpo: { itemId: number; episodeId?: number | null; position: number; duration?: number; watched?: boolean }) =>
+  progreso: (cuerpo: { itemId: number; episodeId?: number | null; position: number; duration?: number; watched?: boolean; audio?: number | string | null; subtitle?: string | null }) =>
     pedir<{ ok: true }>('/api/progress', { method: 'POST', body: JSON.stringify(cuerpo) }),
 
   /** ¿Ha escrito algo alguien desde el móvil? Se entrega una sola vez. */
@@ -324,6 +330,8 @@ export const api = {
       reproducir: { fileId: number; itemId: number; episodeId: number | null; position: number } | null;
       mensaje: string | null;
       parar: boolean;
+      /** Tecla del mando enviada desde el movil (se entrega una sola vez). */
+      tecla: 'arriba' | 'abajo' | 'izquierda' | 'derecha' | 'ok' | 'atras' | 'play_pause' | null;
     }>('/api/mando?tele=1'),
   /** Solo los avisos del administrador, sin llevarse las órdenes del móvil (para dentro del reproductor). */
   avisos: () => pedir<{ mensaje: string | null; parar: boolean }>('/api/mando'),

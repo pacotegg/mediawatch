@@ -325,7 +325,7 @@ type RespuestaProveedores = {
 
 const mias = (lista: { provider_id: number }[] | undefined) =>
   (lista ?? [])
-    .map((p) => PROVEEDORES.get(p.provider_id))
+    .map((p) => (PROVEEDORES as Map<number, (typeof PLATAFORMAS)[number]>).get(p.provider_id))
     .filter((p): p is (typeof PLATAFORMAS)[number] => Boolean(p))
     .map((p) => ({ clave: p.clave, nombre: p.nombre }));
 

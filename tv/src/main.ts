@@ -1586,7 +1586,7 @@ async function pantallaFicha(id: number) {
 
   const directores = (ficha.cast || []).filter((c) => c.role === 'director');
   const actores = (ficha.cast || []).filter((c) => c.role === 'actor').slice(0, 10);
-  const reparto = directores.map((d) => ({ ...d, character: 'Dirección' })).concat(actores);
+  const reparto = [...directores.map((d) => ({ ...d, character: 'Dirección' })), ...actores];
 
   // Duración en horas y minutos: «1h 34m» se lee de un vistazo desde el sofá,
   // «94 min» hay que traducirlo mentalmente.
@@ -3051,7 +3051,8 @@ function selectorVisualArte(
         '<div class="pie-arte">' + esc([lang, dim].filter(Boolean).join(' ') || 'TMDb') + '</div>' +
         '</div>';
     } else {
-      const urlBuzon = servidor() + '/api/enrich/arte/buzon/' + encodeURIComponent(item.nombre) + (token() ? '?token=' + encodeURIComponent(token()) : '');
+      const tk = token();
+      const urlBuzon = servidor() + '/api/enrich/arte/buzon/' + encodeURIComponent(item.nombre) + (tk ? '?token=' + encodeURIComponent(tk) : '');
       htmlCards +=
         '<div class="tarjeta-arte" data-idx="' + idx + '">' +
         '<img src="' + esc(urlBuzon) + '" class="miniatura-arte ' + papel.papel + '" alt="" loading="lazy" />' +
