@@ -7,6 +7,7 @@ import Home from './pages/Home.tsx';
 import Library from './pages/Library.tsx';
 import Login from './pages/Login.tsx';
 import { api } from './lib/api.ts';
+import { usePreferences, useReducirMovimiento } from './lib/preferences.tsx';
 
 /*
  * Home and Library are what you land on, so they ship in the first chunk.
@@ -67,6 +68,8 @@ export default function App() {
   const { collapsed, toggle, width } = useSidebar();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const { data: user, isLoading, isError } = useQuery({ queryKey: ['me'], queryFn: api.me, retry: false });
+  const { prefs } = usePreferences();
+  useReducirMovimiento(prefs.interface.reduceMotion);
 
   if (isLoading) {
     return <div className="grid min-h-screen place-items-center bg-ink-950 text-mist-600">Media Watch</div>;
@@ -77,7 +80,7 @@ export default function App() {
   const isPlayer = location.pathname.startsWith('/ver/');
 
   return (
-    <MotionConfig reducedMotion="user">
+    <MotionConfig reducedMotion={prefs.interface.reduceMotion ? 'always' : 'user'}>
       <div className="min-h-screen bg-ink-950">
         {!isPlayer && <div className="grain" aria-hidden />}
         {!isPlayer && (

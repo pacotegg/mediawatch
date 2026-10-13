@@ -18,8 +18,10 @@ export default function Estuche3D({ posterUrl, discartUrl, title }: Estuche3DPro
   const [extraido, setExtraido] = useState(false);
   const marcoRef = useRef<HTMLDivElement>(null);
 
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!marcoRef.current) return;
+  // Solo el ratón inclina el estuche y saca el disco al pasar por encima. En pantallas táctiles el
+  // navegador emula «mouseenter» y luego «click» en el mismo toque: el disco salía y volvía a entrar.
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== 'mouse' || !marcoRef.current) return;
     const r = marcoRef.current.getBoundingClientRect();
     const xRel = (e.clientX - r.left) / r.width;
     const yRel = (e.clientY - r.top) / r.height;
@@ -33,11 +35,12 @@ export default function Estuche3D({ posterUrl, discartUrl, title }: Estuche3DPro
     marcoRef.current.style.setProperty('--glare-op', '0.45');
   };
 
-  const handleMouseEnter = () => {
-    setExtraido(true);
+  const handlePointerEnter = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === 'mouse') setExtraido(true);
   };
 
-  const handleMouseLeave = () => {
+  const handlePointerLeave = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== 'mouse') return;
     setExtraido(false);
     if (marcoRef.current) {
       marcoRef.current.style.setProperty('--tilt-x', '2deg');
@@ -59,10 +62,20 @@ export default function Estuche3D({ posterUrl, discartUrl, title }: Estuche3DPro
         '--glare-y': '30%',
         '--glare-op': '0',
       }}
-      onMouseMove={handleMouseMove}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
+      onPointerMove={handlePointerMove}
+      onPointerEnter={handlePointerEnter}
+      onPointerLeave={handlePointerLeave}
       onClick={() => setExtraido((prev) => !prev)}
+      role="button"
+      tabIndex={0}
+      aria-pressed={extraido}
+      aria-label={`${title}: ${extraido ? 'guardar' : 'sacar'} el disco`}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          setExtraido((prev) => !prev);
+        }
+      }}
       title={`${title} (Haz clic o pasa el ratón para extraer el disco)`}
     >
       <div

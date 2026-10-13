@@ -134,6 +134,13 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
 
 export const usePreferences = () => useContext(PreferencesContext);
 
+/** Aplica «Reducir movimiento» a las transiciones CSS (la regla vive en styles.css). */
+export function useReducirMovimiento(activo: boolean) {
+  useEffect(() => {
+    document.documentElement.classList.toggle('reducir-movimiento', activo);
+  }, [activo]);
+}
+
 /** Styles the native cue box; the only way to restyle WebVTT text. */
 export function subtitleCss(s: Preferences['subtitles']): string {
   const background =

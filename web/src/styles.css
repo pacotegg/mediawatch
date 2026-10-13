@@ -255,6 +255,14 @@ video::-webkit-media-controls {
   }
 }
 
+/* Lo mismo cuando el perfil lo pide en Ajustes, aunque el sistema no lo tenga activado. */
+.reducir-movimiento *,
+.reducir-movimiento *::before,
+.reducir-movimiento *::after {
+  animation-duration: 0.01ms !important;
+  transition-duration: 0.01ms !important;
+}
+
 /*
  * En el reproductor no hay desenfoque de fondo: en el navegador de algunas teles (LG webOS)
  * el vídeo va en un plano aparte por debajo de la página y un `backdrop-filter` encima se pinta
