@@ -1,4 +1,4 @@
-import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { createReadStream, existsSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
@@ -124,10 +124,35 @@ export function limpiarSesiones() {
 const MARCA_CADA_MS = 60 * 60_000;
 const vistas = new Map<string, number>();
 
-function marcarUso(token: string, req: FastifyRequest) {
+/*
+ * En la base solo se guarda la huella SHA-256 del token, nunca el token: quien copie un .db (o una de
+ * las copias diarias de data/copias) no se lleva sesiones utilizables. El cliente sigue teniendo el
+ * token de siempre; el servidor lo cifra al comprobarlo.
+ */
+export const hashToken = (token: string) => createHash('sha256').update(token).digest('hex');
+
+// Migración de una sola vez: las sesiones de antes de cifrar siguen valiendo, nadie vuelve a entrar.
+{
+  const sinCifrar = db.prepare('SELECT token FROM sessions WHERE cifrado IS NULL').all() as { token: string }[];
+  if (sinCifrar.length) {
+    const cambiar = db.prepare('UPDATE sessions SET token = ?, cifrado = 1 WHERE token = ? AND cifrado IS NULL');
+    db.exec('BEGIN');
+    try {
+      for (const s of sinCifrar) cambiar.run(hashToken(s.token), s.token);
+      db.exec('COMMIT');
+      console.log(`[sesiones] cifradas ${sinCifrar.length} sesiones guardadas en claro`);
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+  }
+}
+
+/** `huella` es el valor guardado en la columna token (hashToken del token del cliente). */
+function marcarUso(huella: string, req: FastifyRequest) {
   const ahora = Date.now();
-  if ((vistas.get(token) ?? 0) + MARCA_CADA_MS > ahora) return;
-  vistas.set(token, ahora);
+  if ((vistas.get(huella) ?? 0) + MARCA_CADA_MS > ahora) return;
+  vistas.set(huella, ahora);
 
   const agente = String(req.headers['user-agent'] ?? '');
   const dispositivo = /tizen|smart-?tv/i.test(agente)
@@ -138,7 +163,7 @@ function marcarUso(token: string, req: FastifyRequest) {
         ? 'iOS'
         : 'Navegador';
   db.prepare('UPDATE sessions SET last_seen = ?, device = COALESCE(device, ?) WHERE token = ?')
-    .run(new Date().toISOString(), dispositivo, token);
+    .run(new Date().toISOString(), dispositivo, huella);
 }
 
 function tokenDe(req: FastifyRequest): string | null {
@@ -159,7 +184,9 @@ function tokenDe(req: FastifyRequest): string | null {
  */
 export function sesionDe(req: FastifyRequest): string | null {
   const t = tokenDe(req);
-  return t ? t.slice(0, 8) : null;
+  // De la huella y no del token: así coincide con el id que enseñan «Dispositivos» y la actividad,
+  // que salen de la columna token (ya cifrada).
+  return t ? hashToken(t).slice(0, 8) : null;
 }
 
 export function currentUser(req: FastifyRequest): User | null {
@@ -174,13 +201,13 @@ export function currentUser(req: FastifyRequest): User | null {
   const row = db
     .prepare(`SELECT u.id, u.name, u.color, u.is_admin, (u.pin IS NOT NULL) AS has_pin, u.kid_ratings FROM sessions s JOIN users u ON u.id = s.user_id
                WHERE s.token = ? AND COALESCE(s.last_seen, s.created_at) >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)`)
-    .get(token, `-${CADUCIDAD_DIAS} days`) as any;
+    .get(hashToken(token), `-${CADUCIDAD_DIAS} days`) as any;
 
   if (row) {
     if (typeof row.kid_ratings === 'string') {
       try { row.kid_ratings = JSON.parse(row.kid_ratings); } catch { row.kid_ratings = null; }
     }
-    marcarUso(token, req);
+    marcarUso(hashToken(token), req);
   }
   return row ?? null;
 }
@@ -335,7 +362,7 @@ export default async function authRoutes(app: FastifyInstance) {
     if (user.pin && pin) db.prepare('UPDATE users SET pin_len = ? WHERE id = ?').run(String(pin).length, user.id);
 
     const token = randomBytes(32).toString('hex');
-    db.prepare('INSERT INTO sessions (token, user_id, created_at) VALUES (?,?,?)').run(token, user.id, new Date().toISOString());
+    db.prepare('INSERT INTO sessions (token, user_id, created_at, cifrado) VALUES (?,?,?,1)').run(hashToken(token), user.id, new Date().toISOString());
     /*
      * `secure` solo cuando la conexion ha venido cifrada. Ponerlo siempre haria
      * que la cookie no viajase por HTTP y la web dejaria de funcionar dentro de
@@ -393,7 +420,7 @@ export default async function authRoutes(app: FastifyInstance) {
      * se queda, para no echarse uno mismo.
      */
     const miToken = (req.headers.authorization ?? '').replace(/^Bearer /i, '') || req.cookies[COOKIE] || '';
-    const cerradas = db.prepare('DELETE FROM sessions WHERE user_id = ? AND token != ?').run(id, miToken);
+    const cerradas = db.prepare('DELETE FROM sessions WHERE user_id = ? AND token != ?').run(id, hashToken(miToken));
     return { ok: true, tienePin: Boolean(nuevo), sesionesCerradas: cerradas.changes };
   });
 
@@ -450,7 +477,7 @@ export default async function authRoutes(app: FastifyInstance) {
       const nuevoHash = pinStr.length > 0 ? hashPin(pinStr) : null;
       db.prepare('UPDATE users SET pin = ?, pin_len = ? WHERE id = ?').run(nuevoHash, pinStr.length > 0 ? pinStr.length : null, id);
       const miToken = (req.headers.authorization ?? '').replace(/^Bearer /i, '') || req.cookies[COOKIE] || '';
-      db.prepare('DELETE FROM sessions WHERE user_id = ? AND token != ?').run(id, miToken);
+      db.prepare('DELETE FROM sessions WHERE user_id = ? AND token != ?').run(id, hashToken(miToken));
     }
 
     return { ok: true };
@@ -571,7 +598,7 @@ export default async function authRoutes(app: FastifyInstance) {
     }
 
     entry.userId = user.id;
-    db.prepare('INSERT INTO sessions (token, user_id, created_at) VALUES (?,?,?)').run(entry.token, user.id, new Date().toISOString());
+    db.prepare('INSERT INTO sessions (token, user_id, created_at, cifrado) VALUES (?,?,?,1)').run(hashToken(entry.token), user.id, new Date().toISOString());
     return { ok: true, user: user.name };
   });
 
@@ -600,7 +627,7 @@ export default async function authRoutes(app: FastifyInstance) {
     if (user.pin && pin) db.prepare('UPDATE users SET pin_len = ? WHERE id = ?').run(String(pin).length, user.id);
 
     entry.userId = user.id;
-    db.prepare('INSERT INTO sessions (token, user_id, created_at) VALUES (?,?,?)').run(entry.token, user.id, new Date().toISOString());
+    db.prepare('INSERT INTO sessions (token, user_id, created_at, cifrado) VALUES (?,?,?,1)').run(hashToken(entry.token), user.id, new Date().toISOString());
     return { ok: true, user: user.name };
   });
 
@@ -633,7 +660,7 @@ export default async function authRoutes(app: FastifyInstance) {
 
   app.post('/api/auth/logout', async (req, reply) => {
     const token = req.cookies[COOKIE];
-    if (token) db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+    if (token) db.prepare('DELETE FROM sessions WHERE token = ?').run(hashToken(token));
     reply.clearCookie(COOKIE, { path: '/' });
     return { ok: true };
   });
