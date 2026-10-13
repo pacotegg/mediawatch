@@ -512,6 +512,8 @@ export const api = {
   subtitlesJob: () => request<SubtitleJob>('/api/subtitles/job'),
   subtitlesFetch: (body: { fileId: number; languages?: string; forced?: boolean; mux?: boolean; localOnly?: boolean; dryRun?: boolean }) =>
     post<{ started: boolean; title: string }>('/api/subtitles/fetch', body),
+  subtitlesSearch: <T,>(body: { fileId: number; languages?: string }) => post<T>('/api/subtitles/search', body),
+  subtitlesDownload: <T,>(body: Record<string, unknown>) => post<T>('/api/subtitles/download', body),
   transcribeJob: () => request<TranscribeJob>('/api/subtitles/transcribe'),
   transcribe: (body: { fileId?: number; fileIds?: number[]; model?: string; language?: string; force?: boolean }) =>
     post<{ started: boolean; title: string }>('/api/subtitles/transcribe', body),

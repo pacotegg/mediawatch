@@ -260,6 +260,11 @@ export default async function authRoutes(app: FastifyInstance) {
     if (pin && !/^\d{6,}$/.test(String(pin))) return reply.code(400).send({ error: 'El PIN tiene que ser de seis cifras o más, solo números' });
 
     const first = userCount() === 0;
+    // MediaWatch Server: mientras no hay administrador el servidor escucha en la red local;
+    // el primer perfil solo puede crearse desde este mismo equipo.
+    if (first && MODO_PORTABLE && !['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.ip)) {
+      return reply.code(403).send({ error: 'El primer administrador solo puede crearse desde este equipo' });
+    }
     // MediaWatch Server: el primer perfil es el administrador y quien llegue antes se queda
     // con el servidor, asi que no puede ser un perfil sin PIN.
     if (first && MODO_PORTABLE && !pin) return reply.code(400).send({ error: 'El administrador necesita un PIN de seis cifras o más' });
