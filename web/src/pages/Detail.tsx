@@ -305,8 +305,10 @@ export default function Detail() {
   const [codecDescarga, setCodecDescarga] = useState<CodecDescarga>('h265');
   const [dialogoBorrar, setDialogoBorrar] = useState(false);
   const [borrando, setBorrando] = useState(false);
+  const [temaSonando, setTemaSonando] = useState(false);
+  const [temaMute, setTemaMute] = useState(false);
 
-  const { data: item, isLoading } = useQuery({ queryKey: ['item', itemId], queryFn: () => api.item(itemId) });
+  const { data: item, isLoading, refetch } = useQuery({ queryKey: ['item', itemId], queryFn: () => api.item(itemId) });
   /*
    * Dónde verlo fuera de casa. Solo informa: Apple TV+, Prime y Movistar+ van
    * cifrados y no se pueden reproducir aquí. Sale de una tabla ya rellenada, así
@@ -324,28 +326,53 @@ export default function Detail() {
   }, [item?.has_poster, item?.arte_actualizado, itemId]);
 
   useEffect(() => {
-    if (!item?.has_theme || !prefs.interface.themeMusic) return;
+    if (!item?.has_theme || !prefs.interface.themeMusic || temaMute) {
+      setTemaSonando(false);
+      return;
+    }
     const audio = new Audio(`/api/items/${itemId}/theme`);
     audio.loop = true;
     audio.volume = 0;
     let fadeTimer: ReturnType<typeof setTimeout> | null = null;
-    audio.play().then(() => {
+    let cancelado = false;
+
+    const iniciarFade = () => {
+      if (cancelado) return;
+      setTemaSonando(true);
       let vol = 0;
       fadeTimer = setInterval(() => {
-        vol = Math.min(0.15, vol + 0.02);
+        vol = Math.min(0.30, vol + 0.03);
         audio.volume = vol;
-        if (vol >= 0.15 && fadeTimer) clearInterval(fadeTimer);
+        if (vol >= 0.30 && fadeTimer) clearInterval(fadeTimer);
       }, 100);
-    }).catch(() => {
-      // Ignorar si el navegador bloquea el autoplay sin interacción
-    });
+    };
+
+    const intentar = () => {
+      audio.play().then(iniciarFade).catch(() => {
+        // Los navegadores bloquean el autoplay de audio sin interacción previa.
+        // Al primer clic o pulsación en la página, iniciamos la reproducción suavemente.
+        const alInteractuar = () => {
+          window.removeEventListener('pointerdown', alInteractuar);
+          window.removeEventListener('keydown', alInteractuar);
+          if (!cancelado) {
+            audio.play().then(iniciarFade).catch(() => {});
+          }
+        };
+        window.addEventListener('pointerdown', alInteractuar, { once: true });
+        window.addEventListener('keydown', alInteractuar, { once: true });
+      });
+    };
+
+    intentar();
 
     return () => {
+      cancelado = true;
+      setTemaSonando(false);
       if (fadeTimer) clearInterval(fadeTimer);
       audio.pause();
       audio.src = '';
     };
-  }, [item?.has_theme, prefs.interface.themeMusic, itemId]);
+  }, [item?.has_theme, prefs.interface.themeMusic, itemId, temaMute]);
 
   /*
    * Las dos escriben en el servidor y luego refrescan **todo** lo que enseña ese
@@ -394,10 +421,33 @@ export default function Detail() {
     return map;
   }, [item?.episodes]);
 
-  if (isLoading || !item) {
+  if (isLoading) {
     return (
       <div className="page-pt">
         <div className="skeleton mx-auto h-[52vh] max-w-[1800px] rounded-3xl" />
+      </div>
+    );
+  }
+
+  if (!item) {
+    return (
+      <div className="page-pt mx-auto max-w-[800px] px-6 py-24 text-center">
+        <h2 className="mb-3 text-2xl font-bold text-white">No se pudo cargar este título</h2>
+        <p className="mb-6 text-[14px] text-mist-500">El elemento no existe o el servidor no respondió.</p>
+        <div className="flex justify-center gap-3">
+          <button
+            onClick={() => refetch()}
+            className="rounded-xl bg-accent px-5 py-2.5 text-[13px] font-medium text-white transition hover:bg-accent-hover"
+          >
+            Reintentar
+          </button>
+          <button
+            onClick={() => navigate(-1)}
+            className="rounded-xl bg-white/10 px-5 py-2.5 text-[13px] font-medium text-white transition hover:bg-white/16"
+          >
+            Volver
+          </button>
+        </div>
       </div>
     );
   }
@@ -690,6 +740,23 @@ export default function Detail() {
               )}
 
               <Trailer itemId={item.id} />
+
+              {item.has_theme === 1 && prefs.interface.themeMusic && (
+                <button
+                  onClick={() => setTemaMute(!temaMute)}
+                  title={temaMute ? 'Activar música' : 'Silenciar música'}
+                  className={`glass flex items-center gap-1.5 rounded-full px-4 py-2.5 text-sm transition-transform duration-200 hover:scale-105 active:scale-95 ${
+                    temaSonando ? 'text-accent ring-1 ring-accent/30' : 'text-mist-400'
+                  }`}
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 18V5l12-2v13" />
+                    <circle cx="6" cy="18" r="3" />
+                    <circle cx="18" cy="16" r="3" />
+                  </svg>
+                  <span>{temaMute ? 'Música silenciada' : 'Música'}</span>
+                </button>
+              )}
 
               {(item as any).extras_count > 0 && (
                 <a

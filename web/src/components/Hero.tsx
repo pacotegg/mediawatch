@@ -42,26 +42,27 @@ export default function Hero({ items }: { items: ItemSummary[] }) {
           }
         })
         .catch(() => {});
-    }, 1100);
+    }, 800);
     return () => {
       cancelado = true;
       clearTimeout(timer);
     };
-  }, [item?.id]);
+  }, [item?.id, prefs.interface.heroTrailer]);
 
   useEffect(() => {
     if (!trailerYoutube) return;
     const handleMsg = (e: MessageEvent) => {
       try {
         const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
-        if (data.event === 'onStateChange') {
-          if (data.info === 1) {
+        const state = data?.info?.playerState !== undefined ? data.info.playerState : data?.info;
+        if (data?.event === 'onStateChange' || data?.event === 'infoDelivery') {
+          if (state === 1) {
             setIsPlaying(true);
-          } else if (data.info === 0) {
+          } else if (state === 0) {
             setTrailerYoutube(null);
             setIndex((i) => (i + 1) % items.length);
           }
-        } else if (data.event === 'onError') {
+        } else if (data?.event === 'onError' || data?.info?.errorCode) {
           setTrailerError(true);
           setTrailerYoutube(null);
         }
@@ -126,22 +127,23 @@ export default function Hero({ items }: { items: ItemSummary[] }) {
         <div className={`absolute inset-0 overflow-hidden pointer-events-none transition-opacity duration-1000 z-[1] ${isPlaying ? 'opacity-70' : 'opacity-0'}`}>
           <iframe
             ref={iframeRef}
-            src={`https://www.youtube-nocookie.com/embed/${trailerYoutube}?autoplay=1&mute=1&controls=0&loop=1&playlist=${trailerYoutube}&showinfo=0&rel=0&modestbranding=1&enablejsapi=1`}
-            allow="autoplay; encrypted-media"
+            src={`https://www.youtube-nocookie.com/embed/${trailerYoutube}?autoplay=1&mute=1&controls=0&loop=1&playlist=${trailerYoutube}&playsinline=1&showinfo=0&rel=0&modestbranding=1&enablejsapi=1`}
+            allow="autoplay; encrypted-media; picture-in-picture"
             className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120vw] h-[120vh] min-w-[100%] min-h-[100%] object-cover pointer-events-none"
             tabIndex={-1}
             title="Tráiler de fondo"
             onLoad={() => {
               iframeRef.current?.contentWindow?.postMessage(JSON.stringify({ event: 'listening' }), '*');
+              setTimeout(() => setIsPlaying(true), 1200);
             }}
           />
         </div>
       )}
 
-      <div className="scrim-b absolute inset-0 z-[2]" />
-      <div className="scrim-l absolute inset-0 z-[2]" />
+      <div className="scrim-b pointer-events-none absolute inset-0 z-[2]" />
+      <div className="scrim-l pointer-events-none absolute inset-0 z-[2]" />
 
-      <div className="relative flex h-full items-end pb-14">
+      <div className="relative z-[3] flex h-full items-end pb-14 pointer-events-auto">
         <AnimatePresence mode="wait">
           <motion.div
             key={item.id}

@@ -12,6 +12,10 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.55 — 13/10/2026
+
+- Reproductor: al abrir el ajuste de sincronía de subtítulos en vivo, la reproducción se pausa automáticamente y los controles se ocultan para ver la imagen limpia y aplicar el desfase en tiempo real.
+
 ## 3.54 — 12/10/2026
 
 - Soporte multi-idioma (i18n): interfaz en inglés por defecto para nuevas instalaciones y selector directo entre inglés y español en Ajustes (Experiencia y Presentación). Las instalaciones existentes mantienen su idioma preferido.
