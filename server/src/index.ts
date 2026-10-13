@@ -87,6 +87,7 @@ app.addHook('onRequest', async (req, reply) => {
   }
   const origin = req.headers.origin;
   if (!origin) return;
+  anotarOrigenAjeno(origin, String(req.headers.host ?? ''), req.method, req.url);
 
   reply.header('Access-Control-Allow-Origin', origin);
   reply.header('Vary', 'Origin');
@@ -99,6 +100,29 @@ app.addHook('onRequest', async (req, reply) => {
   // traga, y el preflight de la tele se queda colgado para siempre.
   if (req.method === 'OPTIONS') return reply.code(204).send();
 });
+
+/*
+ * CORS refleja cualquier origen (la tele y otros clientes llaman desde su propio origen). Antes de
+ * cerrarlo a una lista hay que saber qué orígenes usan de verdad, así que de momento solo se apunta
+ * en data/cors-origenes.log, una vez por origen y arranque, cada origen que no sea el propio
+ * servidor. Con unas semanas de datos se podrá pasar a una lista blanca sin romper ningún cliente.
+ */
+const origenesVistos = new Set<string>();
+function anotarOrigenAjeno(origen: string, host: string, metodo: string, url: string) {
+  let propio = false;
+  try {
+    propio = new URL(origen).host.toLowerCase() === host.toLowerCase();
+  } catch {
+    // «null» (ficheros locales, apps empaquetadas) no es una URL: se apunta.
+  }
+  if (propio || origenesVistos.has(origen)) return;
+  origenesVistos.add(origen);
+  try {
+    appendFileSync(join(DATA_DIR, 'cors-origenes.log'), `${new Date().toISOString()} ${origen} ${metodo} ${sinToken(url).slice(0, 80)}\n`);
+  } catch {
+    // Sin registro no pasa nada: es solo para mirar.
+  }
+}
 
 /*
  * Guardián único para toda la API.
@@ -387,7 +411,8 @@ async function limpiarSiToca() {
 }
 setTimeout(() => void limpiarSiToca(), 40_000).unref();
 // Un lote de miniaturas que murió con el proceso se reanuda, sin prisa: primero que arranque todo.
-setTimeout(reanudarLoteSiPendiente, 3 * 60_000).unref();
+// (MEDIAWATCH_TRICKPLAY_REANUDAR_MS solo existe para que las pruebas no esperen tres minutos.)
+setTimeout(reanudarLoteSiPendiente, Number(process.env.MEDIAWATCH_TRICKPLAY_REANUDAR_MS) || 3 * 60_000).unref();
 setInterval(() => void limpiarSiToca(), 7 * 24 * 60 * 60_000).unref();
 
 // Copia de seguridad diaria; se rota sola a las 14 mas recientes en `data/copias`.
