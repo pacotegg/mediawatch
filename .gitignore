@@ -22,3 +22,15 @@ __pycache__/
 
 # QR generado para el host local/remoto
 web/public/qr.svg
+
+# Documentacion interna: va en el repo PRIVADO pacotegg/mediawatch-docs (git aparte con
+# --git-dir=C:/tvwatch-docs.git --work-tree=C:/tvwatch). Los ficheros siguen en esta carpeta.
+/CLAUDE.md
+/GEMINI.md
+/AGENTS.md
+/MEDIAWATCH-PROYECTO.md
+/DISENO-SERVIDOR-PROPIO.md
+/PLAN-*.md
+/RESUMEN-SESION-*.md
+/.claude/agents/
+/.agents/
