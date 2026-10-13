@@ -136,7 +136,21 @@ app.addHook('onRequest', async (req, reply) => {
   if (req.method === 'OPTIONS') return;
 
   const ruta = req.url.split('?')[0];
-  if (!ruta.startsWith('/api/')) return; // la web y la app de la tele son ficheros
+  /*
+   * El enrutador descodifica «%61pi» a «api» antes de elegir la ruta, así que mirar solo el
+   * texto crudo dejaba pasar /%61pi/... sin comprobar sesión (verificado el 13/10/2026: bibliotecas
+   * y vídeo sin iniciar sesión). Se mira también la ruta descodificada y el patrón ya enrutado.
+   * Las rutas ABIERTAS siguen comparándose con el texto crudo: codificar solo puede cerrarlas más.
+   */
+  let descodificada: string;
+  try {
+    descodificada = decodeURIComponent(ruta);
+  } catch {
+    return reply.code(400).send({ error: 'Ruta no válida' });
+  }
+  const patron = req.routeOptions?.url ?? '';
+  const esApi = ruta.startsWith('/api/') || descodificada.toLowerCase().startsWith('/api/') || patron.startsWith('/api/');
+  if (!esApi) return; // la web y la app de la tele son ficheros
   if (ABIERTAS.has(`${req.method} ${ruta}`)) return;
   // Los avatares de los usuarios se ven en la pantalla de entrada antes de tener sesión
   if (req.method === 'GET' && /^\/api\/users\/\d+\/avatar$/.test(ruta)) return;

@@ -261,9 +261,23 @@ export default async function authRoutes(app: FastifyInstance) {
 
     const first = userCount() === 0;
     // MediaWatch Server: mientras no hay administrador el servidor escucha en la red local;
-    // el primer perfil solo puede crearse desde este mismo equipo.
-    if (first && MODO_PORTABLE && !['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.ip)) {
-      return reply.code(403).send({ error: 'El primer administrador solo puede crearse desde este equipo' });
+    // el primer perfil solo puede crearse desde este mismo equipo. La IP sola no basta: el navegador
+    // del propio usuario también sale de localhost, así que una web ajena podría pedirlo (CORS
+    // refleja cualquier origen) o un dominio reasignado a 127.0.0.1 (DNS rebinding). Se exige
+    // además que el Host sea localhost y que el Origin, si viene, sea el propio servidor.
+    if (first && MODO_PORTABLE) {
+      const host = String(req.headers.host ?? '').toLowerCase();
+      const hostSinPuerto = host.replace(/:\d+$/, '');
+      const origen = req.headers.origin;
+      let origenPropio = true;
+      if (origen) {
+        try { origenPropio = new URL(origen).host.toLowerCase() === host; } catch { origenPropio = false; }
+      }
+      const ipLocal = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.ip);
+      const hostLocal = ['localhost', '127.0.0.1', '[::1]'].includes(hostSinPuerto);
+      if (!ipLocal || !hostLocal || !origenPropio) {
+        return reply.code(403).send({ error: 'El primer administrador solo puede crearse desde este equipo' });
+      }
     }
     // MediaWatch Server: el primer perfil es el administrador y quien llegue antes se queda
     // con el servidor, asi que no puede ser un perfil sin PIN.
