@@ -8,6 +8,17 @@
         "C:\tvwatch\\server\\src\\index.ts"
       ],
       "port": 8730
+    },
+    {
+      "name": "web-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--workspace",
+        "web"
+      ],
+      "port": 5273
     }
   ]
 }

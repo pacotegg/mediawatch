@@ -71,6 +71,9 @@ function PlaybackTab() {
       <Field label="Tráiler en portada" hint="Reproduce el tráiler oficial en segundo plano en la cabecera principal con control de sonido.">
         <Toggle checked={prefs.interface.heroTrailer ?? true} onChange={(heroTrailer) => update('interface', { heroTrailer })} />
       </Field>
+      <Field label="Reducir movimiento" hint="Quita animaciones y transiciones (también el giro del disco del estuche).">
+        <Toggle checked={prefs.interface.reduceMotion} onChange={(reduceMotion) => update('interface', { reduceMotion })} />
+      </Field>
       <Field label="Estuche coleccionista 3D" hint="Muestra el cartel en perspectiva 3D con el disco (discart) físico extraíble.">
         <Toggle checked={prefs.interface.case3D} onChange={(case3D) => update('interface', { case3D })} />
       </Field>
