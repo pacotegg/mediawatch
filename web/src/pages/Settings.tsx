@@ -921,6 +921,71 @@ function MantenimientoPanel() {
   );
 }
 
+function MiniaturasPanel() {
+  const queryClient = useQueryClient();
+  const [error, setError] = useState('');
+  const { data } = useQuery({
+    queryKey: ['trickplay'],
+    queryFn: api.trickplayEstado,
+    // Mientras hay lote, se refresca solo; parado, no hace falta preguntar.
+    refetchInterval: (q) => (q.state.data?.lote.running ? 5000 : false),
+  });
+  const refrescar = () => queryClient.invalidateQueries({ queryKey: ['trickplay'] });
+  const lanzar = useMutation({
+    mutationFn: (todo: boolean) => api.trickplayLote(todo),
+    onSuccess: () => { setError(''); void refrescar(); },
+    onError: (e: Error) => setError(e.message),
+  });
+  const parar = useMutation({ mutationFn: api.trickplayParar, onSuccess: () => void refrescar() });
+
+  const l = data?.lote;
+  const c = data?.cobertura;
+  const pct = c && c.total ? Math.round((c.hechas / c.total) * 100) : 0;
+
+  return (
+    <Panel
+      title="Miniaturas de la barra de tiempo"
+      subtitle="Se hacen por lotes y solo cuando nadie está viendo nada: leer una película entera deja sin datos al vídeo que se sirve del mismo disco. El lote completo tarda días; si el servidor se reinicia, se reanuda solo."
+    >
+      <div className="text-[13px]">
+        <span className="text-mist-600">Con miniaturas: </span>
+        {c ? `${c.hechas} de ${c.total} (${pct} %)` : '—'}
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/8">
+        <div className="h-full rounded-full bg-accent" style={{ width: `${pct}%` }} />
+      </div>
+      {l?.running && (
+        <p className="text-[12.5px] text-mist-400">
+          {l.parando ? 'Parando…' : l.esperando ? 'En pausa: hay alguien viendo algo.' : `Generando: ${l.actual || '…'}`}
+          {' '}· {l.hechas} de {l.total} en este lote{l.fallos ? `, ${l.fallos} fallidas` : ''}.
+        </p>
+      )}
+      {!l?.running && l?.finishedAt && (
+        <p className="text-[12px] text-mist-600">
+          Último lote terminado el {new Date(l.finishedAt).toLocaleString('es-ES')}: {l.hechas} hechas{l.fallos ? `, ${l.fallos} fallidas` : ''}.
+        </p>
+      )}
+      <div className="flex flex-wrap gap-2 pt-1">
+        {l?.running ? (
+          <Button variant="ghost" onClick={() => parar.mutate()} disabled={l.parando || parar.isPending}>
+            {l.parando ? 'Parando…' : 'Parar'}
+          </Button>
+        ) : (
+          <>
+            <Button variant="ghost" onClick={() => lanzar.mutate(false)} disabled={lanzar.isPending}>
+              Generar las próximas (a medias y recientes)
+            </Button>
+            <Button variant="ghost" onClick={() => lanzar.mutate(true)} disabled={lanzar.isPending}>
+              Generar todas
+            </Button>
+          </>
+        )}
+      </div>
+      {error && <p className="text-[12.5px] text-red-400">{error}</p>}
+    </Panel>
+  );
+}
+
 function ServerTab() {
   const queryClient = useQueryClient();
   const { data: settings } = useQuery({ queryKey: ['server-settings'], queryFn: api.serverSettings });
@@ -1032,6 +1097,8 @@ function ServerTab() {
       </Panel>
 
       <MantenimientoPanel />
+
+      <MiniaturasPanel />
 
       {message && <p className="text-center text-sm text-mist-400">{message}</p>}
     </div>
