@@ -27,7 +27,7 @@ const CollectionsIndex = lazy(() => import('./pages/Collections.tsx').then((m) =
 const CollectionDetail = lazy(() => import('./pages/Collections.tsx').then((m) => ({ default: m.CollectionDetail })));
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: Error | null }> {
-  state = { hasError: false, error: null };
+  state: { hasError: boolean; error: Error | null } = { hasError: false, error: null };
   static getDerivedStateFromError(error: Error) { return { hasError: true, error }; }
   componentDidCatch(error: Error, info: ErrorInfo) { console.error('[ErrorBoundary]', error, info); }
   render() {

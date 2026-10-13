@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, createWriteStream } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
-import { DATA_DIR } from '../config.ts';
+import { DATA_DIR, MODO_PORTABLE } from '../config.ts';
 import { db } from '../db.ts';
 
 const THEMES_DIR = join(DATA_DIR, 'themes');
@@ -35,6 +35,8 @@ export async function descargarTema(
   folder?: string | null,
 ): Promise<boolean> {
   if (tieneTema(itemId, folder)) return true;
+  // MediaWatch Server: sin yt-dlp empaquetado y con fuentes de terceros (Plex, YouTube), no se descargan temas.
+  if (MODO_PORTABLE) return false;
 
   const targetMp3 = join(THEMES_DIR, `${itemId}.mp3`);
 

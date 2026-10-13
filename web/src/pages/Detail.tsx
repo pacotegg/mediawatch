@@ -328,7 +328,7 @@ export default function Detail() {
     const audio = new Audio(`/api/items/${itemId}/theme`);
     audio.loop = true;
     audio.volume = 0;
-    let fadeTimer: NodeJS.Timeout | null = null;
+    let fadeTimer: ReturnType<typeof setTimeout> | null = null;
     audio.play().then(() => {
       let vol = 0;
       fadeTimer = setInterval(() => {
