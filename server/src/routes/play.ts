@@ -11,6 +11,7 @@ import { db, parseRatingCategoria } from '../db.ts';
 import { mediaInfo, type MediaInfo } from '../media/probe.ts';
 import { dialogueDownmix, planPlayback, sessions, startStream, stopSession, type AudioMode, type ClientCaps } from '../media/transcode.ts';
 import { clearOffset, isMeasuring, measure, offsetFor, saveOffset } from '../media/resync.ts';
+import { afinarPeliculas, deshacerAfinado, jobAfinado, pararAfinado, resumenAfinado } from '../media/creditos-afinado.ts';
 import { cobertura, generarLote, lote, pararLote, readManifest, sheetPath } from '../media/trickplay.ts';
 import { marcarActividad } from '../media/ocupado.ts';
 import { extraPorId, extrasDe, miniatura, extrasTmdb, descargarExtraTmdb, actualizarTipoExtra } from '../media/extras.ts';
@@ -980,7 +981,31 @@ export default async function playRoutes(app: FastifyInstance) {
   });
 
   // Créditos de las películas por el texto que sube; ver creditos-detector.ts.
-  app.get('/api/skip/peliculas', async () => ({ job: jobPeliculas, ...resumenPeliculas() }));
+  app.get('/api/skip/peliculas', async () => ({ job: jobPeliculas, ...resumenPeliculas(), afinado: { job: jobAfinado, ...resumenAfinado() } }));
+
+  // Afinado del inicio de los créditos con el primer negro; ver creditos-afinado.ts. Reversible.
+  app.post('/api/skip/peliculas/afinar', async (req, reply) => {
+    const user = requireUser(req);
+    if (!user.is_admin) return reply.code(403).send({ error: 'Solo un administrador puede lanzar el afinado' });
+    try {
+      return { started: true, total: afinarPeliculas() };
+    } catch (err) {
+      return reply.code(409).send({ error: (err as Error).message });
+    }
+  });
+
+  app.post('/api/skip/peliculas/afinar/parar', async (req, reply) => {
+    const user = requireUser(req);
+    if (!user.is_admin) return reply.code(403).send({ error: 'Solo un administrador puede pararlo' });
+    return { parando: pararAfinado() };
+  });
+
+  app.post('/api/skip/peliculas/afinar/deshacer', async (req, reply) => {
+    const user = requireUser(req);
+    if (!user.is_admin) return reply.code(403).send({ error: 'Solo un administrador puede deshacerlo' });
+    if (jobAfinado.running) return reply.code(409).send({ error: 'Hay un afinado en curso: párala antes' });
+    return { vueltas: deshacerAfinado() };
+  });
 
   app.post('/api/skip/peliculas/detectar', async (req, reply) => {
     const user = requireUser(req);

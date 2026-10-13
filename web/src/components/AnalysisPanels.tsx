@@ -314,11 +314,17 @@ function CreditosPeliculasPanel() {
   const { data } = useQuery({
     queryKey: ['creditos-peliculas'],
     queryFn: api.creditosPeliculas,
-    refetchInterval: (q) => (q.state.data?.job.running ? 4000 : 20000),
+    refetchInterval: (q) => (q.state.data?.job.running || q.state.data?.afinado?.job.running ? 4000 : 20000),
   });
   const refrescar = () => cliente.invalidateQueries({ queryKey: ['creditos-peliculas'] });
   const iniciar = useMutation({ mutationFn: api.detectarCreditosPeliculas, onSuccess: refrescar });
   const parar = useMutation({ mutationFn: api.pararCreditosPeliculas, onSuccess: refrescar });
+  const afinar = useMutation({ mutationFn: api.afinarCreditosPeliculas, onSuccess: refrescar });
+  const pararAfinado = useMutation({ mutationFn: api.pararAfinadoCreditos, onSuccess: refrescar });
+  const deshacer = useMutation({
+    mutationFn: api.deshacerAfinadoCreditos,
+    onSuccess: refrescar,
+  });
 
   const job = data?.job;
   return (
@@ -350,6 +356,37 @@ function CreditosPeliculasPanel() {
       )}
       {iniciar.error && <p className="text-[13px] text-red-400">{(iniciar.error as Error).message}</p>}
       {job?.error && <p className="text-[13px] text-red-400">{job.error}</p>}
+
+      <Field label="Afinar el inicio">
+        <span className="text-[13px] text-mist-300">
+          {data?.afinado ? `${data.afinado.afinadas} afinadas · ${data.afinado.vistas} de ${data.afinado.conRango} miradas` : '…'}
+        </span>
+      </Field>
+      <p className="text-[12px] text-mist-600">
+        El detector del texto que sube llega de media ~95 s tarde. Esto busca el primer corte a negro entre el último diálogo subtitulado y ese punto (medido: error mediano 33 s, 5 de 12 dentro de ±20 s). Sin subtítulos o sin negro no se toca nada, y «Deshacer» devuelve el rango original.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <Button onClick={() => afinar.mutate()} disabled={Boolean(data?.afinado?.job.running) || Boolean(job?.running)}>
+          {data?.afinado?.job.running ? 'Afinando…' : 'Afinar el inicio de los créditos'}
+        </Button>
+        {data?.afinado?.job.running && (
+          <Button onClick={() => pararAfinado.mutate()} disabled={data.afinado.job.parando}>
+            {data.afinado.job.parando ? 'Parando…' : 'Parar'}
+          </Button>
+        )}
+        <Button onClick={() => { if (window.confirm('¿Devolver todas las películas afinadas al rango original?')) deshacer.mutate(); }} disabled={Boolean(data?.afinado?.job.running) || !data?.afinado?.afinadas}>
+          Deshacer el afinado
+        </Button>
+      </div>
+      {data?.afinado?.job.running && (
+        <p className="text-[13px] text-mist-400">
+          {data.afinado.job.esperando ? 'En espera: hay alguien viendo algo. ' : ''}
+          {data.afinado.job.hechas} de {data.afinado.job.total} · {data.afinado.job.afinadas} afinadas
+          {data.afinado.job.actual ? ` · ${data.afinado.job.actual}` : ''}
+        </p>
+      )}
+      {afinar.error && <p className="text-[13px] text-red-400">{(afinar.error as Error).message}</p>}
+      {data?.afinado?.job.error && <p className="text-[13px] text-red-400">{data.afinado.job.error}</p>}
     </Panel>
   );
 }
