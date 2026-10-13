@@ -201,9 +201,50 @@ app.get('/api/salud', async () => {
  * frame-ancestors ni Referrer-Policy: la tele incrusta la página /trailer en un iframe desde otro
  * origen (marcoVideo en tv/src/main.ts) y esa página fija su propio referrer; se romperían.
  */
-app.addHook('onSend', async (_req, reply, payload) => {
+app.addHook('onSend', async (req, reply, payload) => {
   reply.header('X-Content-Type-Options', 'nosniff');
+  if (String(reply.getHeader('content-type') ?? '').startsWith('text/html') && !req.url.startsWith('/trailer') && !req.url.startsWith('/tv/')) {
+    reply.header('Content-Security-Policy-Report-Only', CSP_WEB);
+  }
   return payload;
+});
+
+/*
+ * Política de seguridad de contenido de la web, de momento SOLO INFORMANDO (no bloquea nada): lo
+ * que la incumpla queda en data/csp.log. Cuando el log siga vacío con uso normal, se pasa la
+ * cabecera a `Content-Security-Policy` y un script inyectado (como el del buscador por diálogo,
+ * 14/10/2026) ya no se ejecutaría. hls.js necesita blob: para su worker y para MSE; el único
+ * iframe externo es el tráiler de youtube-nocookie.
+ */
+const CSP_WEB = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob: https:",
+  "font-src 'self' data:",
+  "media-src 'self' blob:",
+  "worker-src 'self' blob:",
+  "connect-src 'self'",
+  'frame-src https://www.youtube-nocookie.com',
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  'report-uri /api/csp',
+].join('; ');
+
+// Los navegadores mandan el informe con estos tipos; sin analizador Fastify respondería 415.
+app.addContentTypeParser(['application/csp-report', 'application/reports+json'], { parseAs: 'string' }, (_req, cuerpo, hecho) => {
+  try { hecho(null, JSON.parse(String(cuerpo))); } catch (err) { hecho(err as Error, undefined); }
+});
+const cspVistos = new Set<string>();
+app.post('/api/csp', async (req, reply) => {
+  const r = ((req.body as any)?.['csp-report'] ?? {}) as Record<string, unknown>;
+  const linea = `${r['violated-directive'] ?? r['effective-directive'] ?? '?'} ${sinToken(String(r['blocked-uri'] ?? '?')).slice(0, 120)} en ${sinToken(String(r['document-uri'] ?? '?')).slice(0, 80)}`;
+  if (cspVistos.size < 200 && !cspVistos.has(linea)) {
+    cspVistos.add(linea);
+    try { appendFileSync(join(DATA_DIR, 'csp.log'), `${new Date().toISOString()} ${linea}\n`); } catch { /* solo para mirar */ }
+  }
+  return reply.code(204).send();
 });
 
 /*
@@ -535,6 +576,9 @@ if (existsSync(webDist)) {
     decorateReply: false,
     maxAge: '365d',
     immutable: true,
+    // El build deja .br y .gz al lado (web/scripts/precomprimir.mjs). En casa no hay Caddy que
+    // comprima: el JS principal baja de 463 KB a 128 KB (medido el 14/10/2026).
+    preCompressed: true,
   });
   await app.register(fastifyStatic, {
     root: webDist,
