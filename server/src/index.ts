@@ -497,9 +497,9 @@ if (existsSync(webDist)) {
   });
   await app.register(fastifyStatic, {
     root: webDist,
-    setHeaders: (res, path) => {
+    setHeaders: (reply, path) => {
       if (path.endsWith('index.html') || path.endsWith('sw.js')) {
-        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        reply.header('Cache-Control', 'no-cache, no-store, must-revalidate');
       }
     },
   });
