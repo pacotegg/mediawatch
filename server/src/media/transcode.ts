@@ -1,4 +1,5 @@
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { spawn, type ChildProcessByStdio } from 'node:child_process';
+import type { Readable } from 'node:stream';
 import { config } from '../config.ts';
 import type { MediaInfo } from './probe.ts';
 
@@ -293,7 +294,7 @@ export type Session = {
   userId: number;
   /** El aparato (ocho caracteres del token), para poder pararle solo a él. */
   sesion?: string | null;
-  proc: ChildProcessWithoutNullStreams;
+  proc: ChildProcessByStdio<null, Readable, Readable>;
   plan: PlaybackPlan;
   startedAt: number;
   startSeconds: number;

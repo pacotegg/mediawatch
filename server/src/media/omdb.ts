@@ -108,7 +108,7 @@ export function rellenarConOmdb(todos = false) {
               const valor = f ? valorDe(r.Value) : null;
               if (!f || valor === null) continue;
               const cambio = meter.run(it.id, f.nuestra, valor, f.maximo, f.nuestra === 'imdb' ? votos : 0, 'omdb');
-              puestas += cambio.changes;
+              puestas += Number(cambio.changes);
             }
             if (puestas) loteOmdb.anadidas += puestas;
             else loteOmdb.sinDatos++;

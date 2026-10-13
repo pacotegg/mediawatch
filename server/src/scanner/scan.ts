@@ -9,6 +9,12 @@ import { indexarExtras } from '../media/extras.ts';
 import { descargarTema } from './themes.ts';
 import { limpiarNombre, esNombreGenerico, tituloDespuesDeNumeracion } from './nombres.ts';
 
+// Los ids del .nfo llegan como texto; descargarTema los espera como numero.
+function idNumerico(id?: string): number | null {
+  const n = Number(id);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
 const VIDEO_EXT = new Set(['.mkv', '.mp4', '.avi', '.m4v', '.mov', '.wmv', '.mpg', '.mpeg', '.ts', '.webm']);
 const SUB_EXT = new Set(['.srt', '.ass', '.ssa', '.vtt', '.sub']);
 const SKIP_DIRS = new Set(['.actors', 'extrathumbs', 'extras', 'extra', 'featurettes', 'behind the scenes', 'trailers', '.trickplay']);
@@ -521,7 +527,7 @@ function scanMovieFolder(libId: number, dir: string, files: Entry[], now: string
   saveGenresAndPeople(item.id, nfo, actorThumbs(dir));
   // Un suelto no tiene carpeta propia: sus vecinos de la raiz no son sus extras.
   if (!suelto) indexarExtras(item.id, dir, title, now);
-  void descargarTema(item.id, null, nfo?.tmdbId, 'movie', clave).catch(() => {});
+  void descargarTema(item.id, null, idNumerico(nfo?.tmdbId), 'movie', clave).catch(() => {});
   return 1;
 }
 
@@ -581,7 +587,7 @@ function scanShowFolder(libId: number, dir: string, files: Entry[], now: string)
   saveRatings(item.id, nfo);
   saveGenresAndPeople(item.id, nfo, actorThumbs(dir));
   indexarExtras(item.id, dir, title, now);
-  void descargarTema(item.id, nfo?.tvdbId, nfo?.tmdbId, 'show', dir).catch(() => {});
+  void descargarTema(item.id, idNumerico(nfo?.tvdbId), idNumerico(nfo?.tmdbId), 'show', dir).catch(() => {});
 
   const seasonDirs = files.filter((f) => f.isDir && seasonNumber(f.name) !== null);
   let episodes = 0;

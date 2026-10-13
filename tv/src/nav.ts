@@ -474,7 +474,7 @@ export function siguiente(direccion: number): HTMLElement | null {
   // impidiendo que derive en diagonal hacia el reparto que está abajo.
   if (foco.closest('.acciones') && direccion === TECLA.DERECHA) {
     const acciones = foco.closest('.acciones')!;
-    const dentro = mejorEn(desde, direccion, undefined, acciones);
+    const dentro = mejorEn(desde, direccion, undefined, acciones as HTMLElement);
     if (dentro) return dentro;
     const estuche = document.querySelector<HTMLElement>('[data-estuche]');
     if (estuche) return estuche;

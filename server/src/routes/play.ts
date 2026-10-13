@@ -768,7 +768,7 @@ export default async function playRoutes(app: FastifyInstance) {
         audioOptions: opcionesAudio(q, info.audio.find((a) => a.streamIndex === audioIndex)?.channels ?? 2),
         audioDelayMs: Math.max(-10_000, Math.min(10_000, Number(q.audiodelay ?? 0))),
         surround: q.surround === '1',
-        dispositivo: sesionDe(req),
+        dispositivo: sesionDe(req) ?? undefined,
       });
       return reply.header('Content-Type', 'video/mp2t').header('Cache-Control', 'no-store').send(datos);
     } catch (err) {
