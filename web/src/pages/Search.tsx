@@ -5,6 +5,9 @@ import PosterCard from '../components/PosterCard.tsx';
 import { api, img, type DialogueHit } from '../lib/api.ts';
 import { clock } from '../lib/format.ts';
 
+const escaparHtml = (s: string) =>
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
 function DialogueResults({ hits, count }: { hits: DialogueHit[]; count: number }) {
   const navigate = useNavigate();
   if (hits.length === 0) return null;
@@ -30,7 +33,9 @@ function DialogueResults({ hits, count }: { hits: DialogueHit[]; count: number }
             <span
               className="min-w-0 flex-1 truncate text-[13px] text-mist-200 [&_b]:text-accent"
               dangerouslySetInnerHTML={{
-                __html: hit.snippet.replace(/«/g, '<b>').replace(/»/g, '</b>'),
+                // El texto sale de subtítulos bajados de internet: se escapa ANTES de resaltar. Sin esto, una
+                // etiqueta sin cerrar en un subtítulo la cerraba el </b> y ejecutaba código en la sesión.
+                __html: escaparHtml(hit.snippet).replace(/«/g, '<b>').replace(/»/g, '</b>'),
               }}
             />
             <span className="shrink-0 text-[11.5px] text-mist-500">

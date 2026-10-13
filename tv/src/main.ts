@@ -1320,7 +1320,8 @@ function pantallaBuscar(inicial = '') {
         '<div class="lista-dialogos">' +
         dialogos.map((d, i) =>
           '<button class="linea-dialogo" data-nav data-dialogo="' + i + '">' +
-          '<div class="dialogo-texto">«' + d.snippet.replace(/«/g, '<b>').replace(/»/g, '</b>') + '»</div>' +
+          // esc() antes de resaltar: el texto sale de subtítulos de internet (misma trampa que en la web).
+          '<div class="dialogo-texto">«' + esc(d.snippet).replace(/«/g, '<b>').replace(/»/g, '</b>') + '»</div>' +
           '<div class="dialogo-meta">' + esc(d.title) +
           (d.season ? ' · T' + d.season + 'E' + d.episode : d.year ? ' · ' + d.year : '') +
           ' <span class="dialogo-tiempo">' + reloj(Math.floor(d.startMs / 1000)) + '</span>' +

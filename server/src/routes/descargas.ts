@@ -6,6 +6,7 @@
  * que se va la wifi, que es exactamente la queja que tiene la gente con Plex.
  */
 import { createReadStream, existsSync, statSync } from 'node:fs';
+import { fileRow, permitidoParaUsuario } from './play.ts';
 import type { FastifyInstance } from 'fastify';
 import { requireUser } from './auth.ts';
 import { parsearRango } from '../media/rango.ts';
@@ -25,6 +26,9 @@ export default async function descargaRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'Perfil desconocido' });
     }
     const codecFinal: Codec = codec === 'h264' ? 'h264' : 'h265';
+    // Una copia descargada es el vídeo entero: un perfil infantil no puede pedirla de lo que no puede ver.
+    const fila = fileRow(Number(fileId));
+    if (fila && !permitidoParaUsuario(fila, user)) return reply.code(403).send({ error: 'Contenido no disponible para este perfil' });
     try {
       return pedir(user.id, fileId, perfil, codecFinal);
     } catch (err) {
