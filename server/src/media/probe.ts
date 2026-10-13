@@ -223,8 +223,10 @@ export async function mediaInfo(fileId: number): Promise<MediaInfo & { path: str
   // Si ffprobe no encuentra pista de vídeo en esta pasada (fichero a medio
   // reescribir, JSON incompleto), `info.video` viene null: COALESCE conserva
   // lo ya medido en vez de borrar codec/ancho/alto buenos.
-  db.prepare(`UPDATE media_files SET probed = 1, duration = ?, video_codec = COALESCE(?, video_codec), width = COALESCE(?, width), height = COALESCE(?, height), hdr = COALESCE(?, hdr) WHERE id = ?`)
-    .run(info.duration || file.duration || null, info.video?.codec ?? null, info.video?.width ?? null, info.video?.height ?? null, info.video?.hdr ?? null, fileId);
+  // Sin pista de video no se da por medido: con probed = 1 nadie volvia a mirarlo y el titulo se
+  // quedaba sin resolucion ni codec (102 clips de Monologos, 13/10/2026).
+  db.prepare(`UPDATE media_files SET probed = CASE WHEN ? = 1 OR video_codec IS NOT NULL THEN 1 ELSE probed END, duration = ?, video_codec = COALESCE(?, video_codec), width = COALESCE(?, width), height = COALESCE(?, height), hdr = COALESCE(?, hdr) WHERE id = ?`)
+    .run(info.video ? 1 : 0, info.duration || file.duration || null, info.video?.codec ?? null, info.video?.width ?? null, info.video?.height ?? null, info.video?.hdr ?? null, fileId);
 
   db.prepare('DELETE FROM audio_tracks WHERE file_id = ?').run(fileId);
   const insA = db.prepare('INSERT INTO audio_tracks (file_id, idx, codec, language, channels, title) VALUES (?,?,?,?,?,?)');
