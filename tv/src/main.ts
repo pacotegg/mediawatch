@@ -19,7 +19,7 @@ import {
   type CandidatoSubtitulo,
 } from './api.ts';
 import { ajustes, cargarAjustes, guardarAjustes, ordenar, type Rendimiento } from './ajustes.ts';
-import { t } from './i18n.ts';
+import { t, tr } from './i18n.ts';
 import { actual, ajustarListaEpisodios, ajustarVentanaRejilla, alEnfocar, alPulsar, anadirPorArriba, situarFila, avisarDeFallos, enfocables, enfocar, indexar, indexarAdemas, iniciarNavegacion, manejadorActual, TECLA } from './nav.ts';
 import { Reproductor } from './player.ts';
 import { abrirApp, cargarAppsInstaladas, idDeApp } from './plataformas.ts';
@@ -196,16 +196,18 @@ function iconoBiblioteca(nombre: string, kind: string): string {
 }
 
 function destinosBase(): Destino[] {
-  // Los cinco fijos juntos, Ajustes incluido; debajo, con su separador, las
-  // bibliotecas. Antes Ajustes iba al final, perdido tras nueve bibliotecas.
+  // Contenido primero: accesos rápidos y, con su encabezado, las bibliotecas. Ajustes y el cambio
+  // de usuario van al pie, separados (antes iban en medio, entre los accesos y las bibliotecas).
   const fijos: Destino[] = [
     { clave: 'inicio', etiqueta: t('home'), icono: 'inicio', ir: () => void pantallaPortada() },
     { clave: 'buscar', etiqueta: t('search'), icono: 'buscar', ir: () => pantallaBuscar() },
-    { clave: 'sagas', etiqueta: 'Sagas', icono: 'saga', ir: () => void pantallaSagas() },
-    { clave: 'favoritos', etiqueta: 'Favoritos', icono: 'favorito', ir: () => void pantallaFavoritos() },
-    { clave: 'plataformas', etiqueta: 'Plataformas', icono: 'plataformas', ir: () => void pantallaPlataformas() },
+    { clave: 'favoritos', etiqueta: tr('Favoritos', 'Favorites'), icono: 'favorito', ir: () => void pantallaFavoritos() },
+    { clave: 'sagas', etiqueta: tr('Sagas', 'Collections'), icono: 'saga', ir: () => void pantallaSagas() },
+    { clave: 'plataformas', etiqueta: tr('Plataformas', 'Streaming'), icono: 'plataformas', ir: () => void pantallaPlataformas() },
+  ];
+  const pie: Destino[] = [
     { clave: 'ajustes', etiqueta: t('settings'), icono: 'ajustes', ir: () => pantallaAjustes() },
-    { clave: 'usuario', etiqueta: 'Cambiar de usuario', icono: 'usuario', ir: () => void pantallaConexion() },
+    { clave: 'usuario', etiqueta: tr('Cambiar de usuario', 'Switch user'), icono: 'usuario', ir: () => void pantallaConexion() },
   ];
   const libs = bibliotecas.map((b) => ({
     clave: 'lib-' + b.id,
@@ -213,7 +215,7 @@ function destinosBase(): Destino[] {
     icono: iconoBiblioteca(b.name, b.kind),
     ir: () => void pantallaBiblioteca(b.id, b.name),
   }));
-  return fijos.concat(libs);
+  return fijos.concat(libs, pie);
 }
 
 /** Lo que ve el menú: el orden elegido y sin las secciones escondidas. */
@@ -231,8 +233,11 @@ function menuHtml(activa: string): string {
 
   lista.forEach((d) => {
     if (d.clave.indexOf('lib-') === 0 && !seccionPuesta && ajustes().ordenMenu.length === 0) {
-      html += '<div class="menu-seccion">Bibliotecas</div>';
+      html += '<div class="menu-seccion">' + tr('Bibliotecas', 'Libraries') + '</div>';
       seccionPuesta = true;
+    }
+    if (d.clave === 'ajustes' && ajustes().ordenMenu.length === 0) {
+      html += '<div class="menu-seccion menu-pie" aria-hidden="true"></div>';
     }
     html +=
       '<button data-nav data-destino="' + d.clave + '" class="opcion' + (d.clave === activa ? ' activa' : '') + '">' +
@@ -3558,23 +3563,25 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
 
   const refrescarPlay = () => {
     const b = cajaBotones.querySelector<HTMLElement>('[data-accion="play"]');
-    if (b) b.textContent = reproductor.reproduciendo() ? 'Pausa' : 'Reproducir';
+    if (b) b.textContent = reproductor.reproduciendo() ? tr('Pausa', 'Pause') : t('play');
   };
 
   /** «Capítulos» solo aparece si el fichero los trae; por eso se reconstruye. */
   const construirBotones = () => {
     const lista = [
       { accion: 'atras', texto: '\u25c0\u25c0' },
-      { accion: 'play', texto: reproductor.reproduciendo() ? 'Pausa' : 'Reproducir' },
+      { accion: 'play', texto: reproductor.reproduciendo() ? tr('Pausa', 'Pause') : t('play') },
       { accion: 'alante', texto: '\u25b6\u25b6' },
-      { accion: 'audio', texto: 'Audio' },
-      { accion: 'escucha', texto: modoAudio === 'normal' ? 'Escucha: Normal' : modoAudio === 'night' ? 'Escucha: Noche' : 'Escucha: Voces' },
-      { accion: 'subs', texto: 'Subtítulos' },
+      { accion: 'audio', texto: t('audio') },
+      { accion: 'escucha', texto: modoAudio === 'normal' ? tr('Escucha: normal', 'Sound: original') : modoAudio === 'night' ? tr('Escucha: noche', 'Sound: night') : tr('Escucha: voces', 'Sound: voices') },
+      { accion: 'subs', texto: t('subtitles') },
     ];
     if (infoServidor && infoServidor.chapters && infoServidor.chapters.length > 1) {
-      lista.push({ accion: 'capitulos', texto: 'Capítulos' });
+      lista.push({ accion: 'capitulos', texto: tr('Capítulos', 'Chapters') });
     }
-    lista.push({ accion: 'info', texto: 'Información' });
+    // En series, pasar al siguiente sin esperar a que acabe (con la misma cuenta atrás de siempre).
+    if (siguienteEpisodio()) lista.push({ accion: 'siguiente', texto: tr('Siguiente episodio', 'Next episode') });
+    lista.push({ accion: 'info', texto: tr('Información', 'Info') });
 
     cajaBotones.innerHTML = lista
       .map((b) => '<button class="boton-osd" data-accion="' + b.accion + '">' + b.texto + '</button>')
@@ -4506,6 +4513,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     else if (accion === 'subs') menuSubtitulos();
     else if (accion === 'capitulos') menuCapitulos();
     else if (accion === 'info') alternarInfo();
+    else if (accion === 'siguiente') alTerminar();
   };
 
   /** Cualquier flecha aparta el botón de saltar: quien navega no quiere saltar. */
@@ -4677,121 +4685,110 @@ let focoAjustesDespues: string | null = null;
 function pantallaAjustes() {
   const a = ajustes();
 
+  const siNo = (campo: string, activo: boolean, es: string, en: string) =>
+    elecciones(campo, [
+      { valor: 'si', texto: tr(es + ': sí', en + ': on') },
+      { valor: 'no', texto: tr(es + ': no', en + ': off') },
+    ], activo ? 'si' : 'no');
+
+  /*
+   * Orden: primero lo que se toca viendo algo (reproducción, audio, subtítulos, saltos), después el
+   * aspecto, luego idioma y menú, y al final lo de administración y el aparato. Antes eran 15 grupos
+   * seguidos que mezclaban preferencias con tareas de mantenimiento.
+   */
   const cuerpo =
     '<div class="ajustes" data-bloque>' +
-    '<h1 class="titulo-pantalla">Ajustes</h1>' +
+    '<h1 class="titulo-pantalla">' + esc(t('settings')) + '</h1>' +
 
-    grupo(
-      'Rendimiento',
-      'Medido en esta tele: con todos los efectos va a 60 fotogramas por segundo y ninguno se pasa de 18 ms, así que no hace falta quitarle nada. Los otros dos modos están por si algún día la biblioteca crece mucho más.',
-      elecciones('rendimiento', [
-        { valor: 'completo', texto: 'Todos los efectos' },
-        { valor: 'medio', texto: 'Equilibrado' },
-        { valor: 'rapido', texto: 'Máxima fluidez' },
-      ], a.rendimiento),
-    ) +
-
-    grupo('Portada', 'El destacado de arriba va cambiando de película solo.',
-      elecciones('heroeRotar', [{ valor: 'si', texto: 'Rotar' }, { valor: 'no', texto: 'Fijo' }], a.heroeRotar ? 'si' : 'no') +
-      elecciones('heroeSegundos', [6, 9, 12, 20].map(function (n: number) { return { valor: n, texto: n + ' s' }; }), a.heroeSegundos),
-    ) +
-
-    grupo('Reproducción', 'Cuánto salta cada flecha, si retomas donde lo dejaste, modo maratón y hora de fin.',
-      elecciones('reanudar', [{ valor: 'si', texto: 'Reanudar' }, { valor: 'no', texto: 'Empezar de cero' }], a.reanudar ? 'si' : 'no') +
-      elecciones('modoMaraton', [{ valor: 'si', texto: 'Maratón (auto-intro): Sí' }, { valor: 'no', texto: 'Maratón: No' }], a.modoMaraton ? 'si' : 'no') +
-      elecciones('horaDeFin', [{ valor: 'si', texto: 'Termina a las…' }, { valor: 'no', texto: 'Solo lo que queda' }], a.horaDeFin ? 'si' : 'no') +
-      elecciones('saltoCorto', [10, 15, 30].map(function (n: number) { return { valor: n, texto: 'Atrás ' + n + ' s' }; }), a.saltoCorto) +
-      elecciones('saltoLargo', [30, 60, 120].map(function (n: number) { return { valor: n, texto: 'Adelante ' + n + ' s' }; }), a.saltoLargo),
-    ) +
-
-    grupo('Experiencia visual y sonora', 'Música de fondo oficial al abrir fichas y presentación de carátulas.',
-      elecciones('musicaCabecera', [{ valor: 'si', texto: 'Música de cabecera: Sí' }, { valor: 'no', texto: 'Música de cabecera: No' }], a.musicaCabecera ? 'si' : 'no') +
-      elecciones('estuche3D', [{ valor: 'si', texto: 'Estuche 3D: Sí' }, { valor: 'no', texto: 'Estuche 3D: No' }], a.estuche3D ? 'si' : 'no'),
-    ) +
-
-    grupo('Subtítulos', 'Los pinta la aplicación a partir de los que van dentro del vídeo: nunca se queman.',
-      elecciones('tamanoSubtitulos', [
-        { valor: 80, texto: 'Pequeños' }, { valor: 100, texto: 'Normales' },
-        { valor: 125, texto: 'Grandes' }, { valor: 150, texto: 'Enormes' },
-      ], a.tamanoSubtitulos) +
-      elecciones('fondoSubtitulos', [
-        { valor: 'sombra', texto: 'Con sombra' }, { valor: 'caja', texto: 'Sobre caja negra' },
-      ], a.fondoSubtitulos) +
-      '<button class="boton" data-nav data-posicion-subs>Ajustar la altura…</button>',
+    grupo(tr('Reproducción', 'Playback'), tr('Dónde empieza, cuánto salta cada flecha y si encadena episodios.', 'Where it starts, how far each arrow jumps and whether episodes chain.'),
+      elecciones('reanudar', [{ valor: 'si', texto: tr('Reanudar donde lo dejé', 'Resume where I left off') }, { valor: 'no', texto: tr('Empezar de cero', 'Start over') }], a.reanudar ? 'si' : 'no') +
+      elecciones('saltoCorto', [10, 15, 30].map(function (n: number) { return { valor: n, texto: tr('Atrás ', 'Back ') + n + ' s' }; }), a.saltoCorto) +
+      elecciones('saltoLargo', [30, 60, 120].map(function (n: number) { return { valor: n, texto: tr('Adelante ', 'Forward ') + n + ' s' }; }), a.saltoLargo) +
+      elecciones('horaDeFin', [{ valor: 'si', texto: tr('Mostrar «termina a las…»', 'Show «ends at…»') }, { valor: 'no', texto: tr('Solo lo que queda', 'Time left only') }], a.horaDeFin ? 'si' : 'no') +
+      siNo('modoMaraton', a.modoMaraton, 'Modo maratón (salta la cabecera al encadenar)', 'Binge mode (skips intros when chaining)'),
     ) +
 
     grupo(
-      'Idioma / Language',
-      'Idioma de los menús y la interfaz / Interface language.',
-      elecciones('idiomaInterfaz', [
-        { valor: 'en', texto: 'English' },
-        { valor: 'es', texto: 'Español' },
-      ], a.idiomaInterfaz),
-    ) +
-
-    grupo(
-      'Cómo suena',
-      'Lo normal deja la pista intacta y la barra recibe el Atmos tal cual. Los otros dos modos obligan a recodificar el audio a DD+, así que se pierde el Atmos: úsalos solo cuando hagan falta.',
+      tr('Audio', 'Audio'),
+      tr('Lo normal deja la pista intacta y la barra recibe el Atmos tal cual. Los otros dos modos obligan a recodificar el audio a DD+, así que se pierde el Atmos: úsalos solo cuando hagan falta.',
+        'Original keeps the track untouched and the soundbar gets Atmos as is. The other two modes re-encode the audio to DD+, so Atmos is lost: use them only when needed.'),
       elecciones('modoAudio', [
-        { valor: 'normal', texto: 'Normal' },
-        { valor: 'night', texto: 'Volumen nocturno' },
-        { valor: 'dialogue', texto: 'Voces claras' },
+        { valor: 'normal', texto: tr('Original', 'Original') },
+        { valor: 'night', texto: tr('Volumen nocturno', 'Night mode') },
+        { valor: 'dialogue', texto: tr('Voces claras', 'Clear voice') },
       ], a.modoAudio),
     ) +
 
-    grupo(
-      'Miniaturas de la barra',
-      'La vista previa al saltar. Se fabrica una vez por película (unos tres minutos cada una, solo fotogramas clave) y se guarda. Por defecto solo prepara lo que estás viendo y lo recién añadido; hacerlas todas serían días de máquina.',
-      '<p class="dato" data-estado-miniaturas>…</p>' +
-      '<button class="boton" data-nav data-miniaturas>Preparar las que voy a ver</button>' +
-      '<button class="boton" data-nav data-miniaturas-todo>Toda la biblioteca</button>' +
-      '<button class="boton" data-nav data-parar-miniaturas>Parar</button>',
+    grupo(tr('Subtítulos', 'Subtitles'), tr('Los pinta la aplicación a partir de los que van dentro del vídeo: nunca se queman.', 'Drawn by the app from the tracks inside the video: never burned in.'),
+      elecciones('tamanoSubtitulos', [
+        { valor: 80, texto: tr('Pequeños', 'Small') }, { valor: 100, texto: tr('Normales', 'Normal') },
+        { valor: 125, texto: tr('Grandes', 'Large') }, { valor: 150, texto: tr('Enormes', 'Huge') },
+      ], a.tamanoSubtitulos) +
+      elecciones('fondoSubtitulos', [
+        { valor: 'sombra', texto: tr('Con sombra', 'Shadow') }, { valor: 'caja', texto: tr('Sobre caja negra', 'Black box') },
+      ], a.fondoSubtitulos) +
+      '<button class="boton" data-nav data-posicion-subs>' + tr('Ajustar la altura…', 'Adjust height…') + '</button>',
     ) +
 
-    grupo(
-      'Notas',
-      'Las de IMDb, Rotten Tomatoes y TheMovieDb salen de los propios ficheros de la biblioteca. Lo que falte se puede pedir a OMDb, que devuelve IMDb y Rotten Tomatoes de una vez. Los ficheros siempre mandan: esto solo rellena huecos.',
-      '<p class="dato" data-estado-notas>…</p>' +
-      '<button class="boton" data-nav data-notas>Rellenar las que faltan</button>' +
-      '<button class="boton" data-nav data-parar-notas>Parar</button>',
+    grupo(tr('Saltar cabecera y créditos', 'Skip intro and credits'), tr('Muestra el botón para saltar la cabecera de las series y los créditos finales.', 'Shows the button to skip series intros and end credits.'),
+      elecciones('saltarCabecera', [{ valor: 'si', texto: tr('Ofrecer saltar', 'Offer to skip') }, { valor: 'no', texto: tr('No ofrecer', "Don't offer") }], a.saltarCabecera ? 'si' : 'no'),
     ) +
 
-    grupo(
-      'Cabeceras y créditos',
-      'La cabecera es el único tramo de audio que se repite igual en todos los episodios de una temporada, y así se encuentra. Analizarla cuesta un rato de máquina por serie, y se puede parar.',
-      elecciones('saltarCabecera', [{ valor: 'si', texto: 'Ofrecer saltar' }, { valor: 'no', texto: 'No ofrecer' }], a.saltarCabecera ? 'si' : 'no') +
-      '<p class="dato" data-estado-cabeceras>…</p>' +
-      '<button class="boton" data-nav data-cabeceras>Buscar cabeceras en las series nuevas</button>' +
-      '<button class="boton" data-nav data-parar-cabeceras>Parar la búsqueda</button>',
-    ) +
-
-    grupo(
-      'Salvapantallas',
-      'Fondos de la biblioteca, a pantalla completa. En pausa el margen es mayor a propósito: seguramente te has levantado un momento, no que te hayas ido. «Apagado» lo quita del todo.',
+    grupo(tr('Pantalla', 'Display'), tr('La portada, la música y el estuche de las fichas, y cuándo sale el salvapantallas. En pausa el margen es mayor a propósito: seguramente te has levantado un momento.', 'Home screen, theme music, the 3D case and when the screensaver kicks in. Paused, the delay is longer on purpose: you probably just stepped away.'),
+      elecciones('heroeRotar', [{ valor: 'si', texto: tr('Portada: va cambiando', 'Home: rotates') }, { valor: 'no', texto: tr('Portada: fija', 'Home: fixed') }], a.heroeRotar ? 'si' : 'no') +
+      elecciones('heroeSegundos', [6, 9, 12, 20].map(function (n: number) { return { valor: n, texto: tr('Cada ', 'Every ') + n + ' s' }; }), a.heroeSegundos) +
+      siNo('musicaCabecera', a.musicaCabecera, 'Música de cabecera', 'Theme music') +
+      siNo('estuche3D', a.estuche3D, 'Estuche 3D', '3D case') +
       elecciones('salvaMenu', [
-        { valor: 0, texto: 'En el menú: apagado' }, { valor: 1, texto: 'En el menú: 1 min' },
-        { valor: 2, texto: 'En el menú: 2 min' }, { valor: 5, texto: 'En el menú: 5 min' },
+        { valor: 0, texto: tr('Salvapantallas en el menú: no', 'Screensaver in menus: off') }, { valor: 1, texto: '1 min' },
+        { valor: 2, texto: '2 min' }, { valor: 5, texto: '5 min' },
       ], a.salvaMenu) +
       elecciones('salvaPausa', [
-        { valor: 0, texto: 'En pausa: apagado' }, { valor: 3, texto: 'En pausa: 3 min' },
-        { valor: 5, texto: 'En pausa: 5 min' }, { valor: 10, texto: 'En pausa: 10 min' },
-      ], a.salvaPausa),
+        { valor: 0, texto: tr('Salvapantallas en pausa: no', 'Screensaver when paused: off') }, { valor: 3, texto: '3 min' },
+        { valor: 5, texto: '5 min' }, { valor: 10, texto: '10 min' },
+      ], a.salvaPausa) +
+      elecciones('rendimiento', [
+        { valor: 'completo', texto: tr('Todos los efectos', 'All effects') },
+        { valor: 'medio', texto: tr('Equilibrado', 'Balanced') },
+        { valor: 'rapido', texto: tr('Máxima fluidez', 'Smoothest') },
+      ], a.rendimiento),
     ) +
 
-    grupo('Biblioteca', 'El servidor la revisa sola cada 24 h. Si acabas de añadir algo, pídelo aquí.',
-      '<button class="boton" data-nav data-escanear>Actualizar biblioteca ahora</button>') +
+    grupo(tr('Idioma y menú', 'Language and menu'), tr('Idioma de la interfaz y orden de las secciones del menú.', 'Interface language and the order of menu sections.'),
+      elecciones('idiomaInterfaz', [
+        { valor: 'en', texto: 'English' },
+        { valor: 'es', texto: 'Español' },
+      ], a.idiomaInterfaz) +
+      '<button class="boton" data-nav data-reordenar>' + tr('Reordenar o esconder secciones', 'Reorder or hide sections') + '</button>',
+    ) +
 
-    grupo('Menú', 'Cambia el orden de las secciones o esconde las que no uses.',
-      '<button class="boton" data-nav data-reordenar>Reordenar el menú</button>') +
+    (soyAdmin
+      ? grupo(
+        tr('Mantenimiento', 'Maintenance'),
+        tr('Tareas de la biblioteca que corren en el servidor y se pausan solas si alguien está viendo algo. Las miniaturas de la barra se hacen una vez por película (solo fotogramas clave); hacerlas todas son días de máquina.',
+          'Library tasks that run on the server and pause by themselves while someone is watching. Seek-bar thumbnails are made once per movie (keyframes only); doing them all takes days.'),
+        '<button class="boton" data-nav data-escanear>' + tr('Actualizar biblioteca ahora', 'Scan library now') + '</button>' +
+        '<p class="dato" data-estado-miniaturas>…</p>' +
+        '<button class="boton" data-nav data-miniaturas>' + tr('Miniaturas: las que voy a ver', 'Thumbnails: what I will watch') + '</button>' +
+        '<button class="boton" data-nav data-miniaturas-todo>' + tr('Miniaturas: toda la biblioteca', 'Thumbnails: whole library') + '</button>' +
+        '<button class="boton" data-nav data-parar-miniaturas>' + tr('Parar miniaturas', 'Stop thumbnails') + '</button>' +
+        '<p class="dato" data-estado-cabeceras>…</p>' +
+        '<button class="boton" data-nav data-cabeceras>' + tr('Buscar cabeceras en las series nuevas', 'Find intros in new series') + '</button>' +
+        '<button class="boton" data-nav data-parar-cabeceras>' + tr('Parar la búsqueda', 'Stop search') + '</button>' +
+        '<p class="dato" data-estado-notas>…</p>' +
+        '<button class="boton" data-nav data-notas>' + tr('Rellenar notas que faltan (OMDb)', 'Fill missing ratings (OMDb)') + '</button>' +
+        '<button class="boton" data-nav data-parar-notas>' + tr('Parar notas', 'Stop ratings') + '</button>',
+      )
+      : '') +
 
-    grupo('Servidor', '',
+    grupo(tr('Servidor y esta tele', 'Server and this TV'), '',
       '<p class="dato">' + esc(servidor()) + '</p>' +
-      '<button class="boton" data-nav data-servidor>Cambiar servidor</button>' +
-      '<button class="boton" data-nav data-desemparejar>Desemparejar esta tele</button>') +
+      '<button class="boton" data-nav data-servidor>' + tr('Cambiar servidor', 'Change server') + '</button>' +
+      '<button class="boton" data-nav data-desemparejar>' + tr('Desemparejar esta tele', 'Unpair this TV') + '</button>') +
 
-    grupo('Acerca de', '',
+    grupo(tr('Acerca de', 'About'), '',
       '<p class="dato">Media Watch para Samsung Tizen · Creado por Paco Gamiz</p>' +
-      '<p class="dato">App ' + VERSION_APP + ' · Tizen ' + esc(versionTizen()) + ' · ' + bibliotecas.length + ' bibliotecas</p>') +
+      '<p class="dato">App ' + VERSION_APP + ' · Tizen ' + esc(versionTizen()) + ' · ' + bibliotecas.length + ' ' + tr('bibliotecas', 'libraries') + '</p>') +
 
     '</div>';
 

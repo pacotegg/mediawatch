@@ -51,3 +51,11 @@ export function t(clave: ClaveTexto): string {
   const lang = (ajustes().idiomaInterfaz as Idioma) || 'en';
   return TEXTOS[lang]?.[clave] ?? TEXTOS.en[clave] ?? clave;
 }
+
+/**
+ * Texto en los dos idiomas, en línea: para pantallas enteras (Ajustes, menú, controles del
+ * reproductor) es más legible que una clave por frase. Sigue el idioma de la interfaz.
+ */
+export function tr(es: string, en: string): string {
+  return ajustes().idiomaInterfaz === 'es' ? es : en;
+}
