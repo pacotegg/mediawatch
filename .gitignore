@@ -38,3 +38,6 @@ web/public/qr.svg
 # Cliente de escritorio
 desktop/dist/
 desktop/release/
+
+# mpv descargado para empaquetar
+desktop/build/

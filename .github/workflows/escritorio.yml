@@ -1,0 +1,63 @@
+name: Escritorio
+
+# Instalador del cliente de PC. Se publica con la etiqueta `escritorio-v<version>` (la `v3.x` es de Android).
+on:
+  push:
+    tags: ['escritorio-v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  instalador:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Node.js 26
+        uses: actions/setup-node@v4
+        with:
+          node-version: 26.x
+
+      - name: Dependencias
+        run: npm ci
+        working-directory: desktop
+
+      # La etiqueta tiene que coincidir con la version del paquete: si no, el instalador diria una cosa y la release otra.
+      - name: Comprobar versión
+        if: startsWith(github.ref, 'refs/tags/escritorio-v')
+        shell: pwsh
+        run: |
+          $v = (Get-Content desktop/package.json | ConvertFrom-Json).version
+          if ("escritorio-v$v" -ne "${{ github.ref_name }}") { throw "La etiqueta ${{ github.ref_name }} no coincide con la versión $v" }
+
+      - name: Instalador (mpv fijado por SHA-256)
+        run: npm run dist
+        working-directory: desktop
+
+      # Instalación real en silencio: que lleve la app, mpv y que el desinstalador exista.
+      - name: Prueba de instalación
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem desktop/release/MediaWatch-Escritorio-Setup-*.exe | Select-Object -First 1
+          $dir = Join-Path $env:RUNNER_TEMP 'mw-escritorio'
+          $p = Start-Process $setup.FullName -ArgumentList '/S', "/D=$dir" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "El instalador salió con $($p.ExitCode)" }
+          foreach ($f in 'Media Watch.exe', 'resources\mpv\mpv.exe', 'resources\app.asar') {
+            if (-not (Test-Path (Join-Path $dir $f))) { throw "Falta en la instalación: $f" }
+          }
+          & (Join-Path $dir 'resources\mpv\mpv.exe') --version | Select-Object -First 1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MediaWatch-Escritorio-Windows
+          path: desktop/release/*.exe
+
+      - name: Publicar release (solo con etiqueta)
+        if: startsWith(github.ref, 'refs/tags/escritorio-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: desktop/release/MediaWatch-Escritorio-Setup-*.exe
+          make_latest: false
+          generate_release_notes: true
