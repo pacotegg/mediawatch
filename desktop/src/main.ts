@@ -8,13 +8,27 @@ const COOKIE = 'cineteca_session';
 const ficheroConfig = () => join(app.getPath('userData'), 'config.json');
 let ventana: BrowserWindow | null = null;
 
-function leerServidor(): string | null {
+function leerConfig(): { servidor?: unknown; mpvArgs?: unknown } {
   try {
-    const url = JSON.parse(readFileSync(ficheroConfig(), 'utf8')).servidor;
-    return typeof url === 'string' && url ? url : null;
+    return JSON.parse(readFileSync(ficheroConfig(), 'utf8'));
   } catch {
-    return null;
+    return {};
   }
+}
+
+function leerServidor(): string | null {
+  const url = leerConfig().servidor;
+  return typeof url === 'string' && url ? url : null;
+}
+
+/**
+ * Salida de escape para mpv: `"mpvArgs": ["--vo=x11"]` en el config del usuario. Hace falta en equipos
+ * donde la salida normal de mpv no arranca (máquinas virtuales sin GPU, por ejemplo). Solo opciones
+ * largas, para que un valor raro en el fichero no acabe siendo un nombre de fichero que mpv abra.
+ */
+function opcionesExtraMpv(): string[] {
+  const v = leerConfig().mpvArgs;
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && /^--[a-z0-9-]+(=|$)/i.test(x)).slice(0, 20) : [];
 }
 
 const origen = (url: string) => { try { return new URL(url).origin; } catch { return ''; } };
@@ -117,6 +131,7 @@ ipcMain.handle('mw:reproducir', async (e, o: any) => {
       audio: entero(o.audio) ? o.audio : null,
       subtitulo: typeof o.subtitulo === 'string' && /^(off|embedded-\d+|external-\d+)$/.test(o.subtitulo) ? o.subtitulo : null,
       externos,
+      extra: opcionesExtraMpv(),
     }, () => ventana?.webContents.send('mw:fin'));
     return { ok: true };
   } catch (err) {
