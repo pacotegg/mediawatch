@@ -119,14 +119,13 @@ export default function Player() {
   const itemId = Number(params.get('item'));
   const lanzado = useRef(false);
   const [fallo, setFallo] = useState<string | null>(null);
-  const aEscritorio = Boolean(escritorio()) && params.get('web') !== '1' && itemId > 0 && fallo === null;
+  const enVentanaDeVideo = params.get('escritorio') === '1';
+  const aEscritorio = Boolean(escritorio()) && !enVentanaDeVideo && params.get('web') !== '1' && itemId > 0 && fallo === null;
   const { data: info } = useQuery<PlayInfo>({ queryKey: ['play', fileId], queryFn: () => api.playInfo(fileId), staleTime: Infinity, enabled: aEscritorio });
 
   useEffect(() => {
     if (!aEscritorio || !info || lanzado.current) return;
     lanzado.current = true;
-    // El vídeo se dibuja dentro de esta misma ventana, encima de la web; al cerrarlo se vuelve a la ficha.
-    const dejarDeEscuchar = escritorio()!.alTerminar(() => navigate(-1));
     const guardadoAudio = Number(info.savedAudio);
     escritorio()!
       .reproducir({
@@ -139,15 +138,22 @@ export default function Player() {
         subtitulo: info.savedSubtitle ?? null,
         externos: info.subtitles.filter((s) => s.source === 'external').map((s) => ({ id: s.id })),
       })
-      .then((r) => { if (!r.ok) { dejarDeEscuchar(); setFallo(r.error ?? 'No se pudo abrir mpv'); } })
-      .catch((e) => { dejarDeEscuchar(); setFallo(String(e)); });
+      // La ventana de vídeo se abre aparte y se cierra sola; aquí se vuelve a la ficha.
+      .then((r) => { if (r.ok) navigate(-1); else setFallo(r.error ?? 'No se pudo abrir el vídeo'); })
+      .catch((e) => setFallo(String(e)));
   }, [aEscritorio, info, fileId, itemId, params, navigate]);
 
+  if (enVentanaDeVideo) return <PlayerWeb aviso={null} conMpv />;
   if (!aEscritorio) return <PlayerWeb aviso={fallo} />;
   return <div className="flex h-screen items-center justify-center bg-black text-white/70">Abriendo el vídeo…</div>;
 }
 
-function PlayerWeb({ aviso }: { aviso: string | null }) {
+/**
+ * El mismo reproductor para los dos sitios. En el navegador pinta un `<video>`; en la ventana de vídeo del
+ * cliente de escritorio (`conMpv`) la imagen la pone mpv por detrás y esto son solo los controles, que son
+ * los mismos. Las órdenes van por el puente y el estado vuelve por él.
+ */
+function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: boolean }) {
   const { fileId: fileIdParam } = useParams<{ fileId: string }>();
   const [params] = useSearchParams();
   const navigate = useNavigate();
@@ -162,6 +168,9 @@ function PlayerWeb({ aviso }: { aviso: string | null }) {
   const trackRef = useRef<TextTrack | null>(null);
 
   const { prefs, update } = usePreferences();
+  // El puente con mpv. Fuera de la ventana de vídeo no existe y todo va por el `<video>` de siempre.
+  const mpv = conMpv ? escritorio() : undefined;
+  const playingRef = useRef(false);
 
   // Always honour an explicit `t`: it also carries deep links from a dialogue
   // search, which must jump to the line whatever the resume preference says.
@@ -259,6 +268,12 @@ function PlayerWeb({ aviso }: { aviso: string | null }) {
    * ocho segundos, o «para», que devuelve a la ficha. Se pregunta cada cinco
    * segundos; si el servidor no contesta, no pasa nada.
    */
+  /** Salir del reproductor: en la ventana de vídeo del escritorio se cierra la ventana entera. */
+  const salir = useCallback(() => {
+    if (mpv) void mpv.video('cerrar');
+    else navigate(-1);
+  }, [mpv, navigate]);
+
   const [avisoAdmin, setAvisoAdmin] = useState('');
   useEffect(() => {
     const t = window.setInterval(async () => {
@@ -270,12 +285,12 @@ function PlayerWeb({ aviso }: { aviso: string | null }) {
         }
         if (r.parar) {
           videoRef.current?.pause();
-          navigate(-1);
+          salir();
         }
       } catch { /* sin red, sin avisos */ }
     }, 5000);
     return () => window.clearInterval(t);
-  }, [navigate]);
+  }, [salir]);
   const { data: show } = useQuery({ queryKey: ['item', itemId], queryFn: () => api.item(itemId), enabled: Boolean(itemId && episodeId) });
   // La ficha entera solo para saber si hay disco; es la misma consulta que la ficha, así que suele estar en caché.
   const { data: ficha } = useQuery({ queryKey: ['item', itemId], queryFn: () => api.item(itemId), enabled: Boolean(itemId) });
@@ -311,7 +326,7 @@ function PlayerWeb({ aviso }: { aviso: string | null }) {
 
   // Con HLS la lista cubre la película entera, así que saltar es instantáneo y
   // no hay que recargar la fuente como con la tubería transcodificada.
-  const isTimeshift = usaHls ? false : info ? info.plan.mode !== 'direct' : true;
+  const isTimeshift = conMpv ? false : usaHls ? false : info ? info.plan.mode !== 'direct' : true;
   const virtual = (isTimeshift ? offset : 0) + current;
   const duration = info?.duration ?? 0;
   const finishTime = (() => {
@@ -362,7 +377,7 @@ function PlayerWeb({ aviso }: { aviso: string | null }) {
   // Reloading the source is how seeking works while transcoding, so restore playback after it lands.
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || !src) return;
+    if (conMpv || !video || !src) return;
 
     if (!usaHls) {
       video.src = src;
@@ -428,13 +443,19 @@ function PlayerWeb({ aviso }: { aviso: string | null }) {
       // Libera la GPU en el servidor en cuanto se cierra el reproductor.
       navigator.sendBeacon?.(`/api/play/${fileId}/hls/cerrar`);
     };
-  }, [src, usaHls, fileId]);
+  }, [src, usaHls, fileId, conMpv]);
 
   const seek = useCallback(
     (target: number) => {
       const video = videoRef.current;
-      if (!video || !info) return;
+      if (!info) return;
       const clamped = Math.max(0, Math.min(duration - 1, target));
+      if (mpv) {
+        setCurrent(clamped);
+        void mpv.video('buscar', clamped);
+        return;
+      }
+      if (!video) return;
       if (!isTimeshift) {
         video.currentTime = clamped;
         return;
@@ -443,15 +464,16 @@ function PlayerWeb({ aviso }: { aviso: string | null }) {
       setOffset(clamped);
       setCurrent(0);
     },
-    [duration, info, isTimeshift],
+    [duration, info, isTimeshift, mpv],
   );
 
   const togglePlay = useCallback(() => {
+    if (mpv) { void mpv.video('pausa', playingRef.current); return; }
     const video = videoRef.current;
     if (!video) return;
     if (video.paused) video.play().catch(() => undefined);
     else video.pause();
-  }, []);
+  }, [mpv]);
 
   const changeDelay = useCallback(
     (nextMs: number) => {
@@ -466,7 +488,7 @@ function PlayerWeb({ aviso }: { aviso: string | null }) {
     setControls(true);
     window.clearTimeout(hideTimer.current);
     hideTimer.current = window.setTimeout(() => {
-      if (!videoRef.current?.paused) setControls(false);
+      if (playingRef.current || !videoRef.current?.paused) setControls(false);
     }, HIDE_AFTER_MS);
   }, []);
 
@@ -506,25 +528,30 @@ function PlayerWeb({ aviso }: { aviso: string | null }) {
           if (subtitle) changeDelay(subDelayMs + 100);
           break;
         case 'Escape':
-          if (!document.fullscreenElement) navigate(-1);
+          if (mpv || !document.fullscreenElement) salir();
           break;
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [navigate, seek, showControls, togglePlay, virtual, prefs.playback.seekStep, prefs.playback.seekStepLarge, changeDelay, subDelayMs, subtitle]);
+  }, [navigate, seek, showControls, togglePlay, virtual, prefs.playback.seekStep, prefs.playback.seekStepLarge, changeDelay, subDelayMs, subtitle, mpv]);
 
   useEffect(() => {
+    if (mpv) {
+      void mpv.video('volumen', volume);
+      void mpv.video('silencio', muted);
+      return;
+    }
     const video = videoRef.current;
     if (video) {
       video.volume = volume;
       video.muted = muted;
     }
-  }, [volume, muted]);
+  }, [volume, muted, mpv]);
 
   // Persist position so "continue watching" survives a reload or a jump to another device.
   useEffect(() => {
-    if (!itemId) return;
+    if (!itemId || conMpv) return;
     const save = () => {
       const position = (isTimeshift ? offset : 0) + (videoRef.current?.currentTime ?? 0);
       if (position > 5) {
@@ -545,10 +572,11 @@ function PlayerWeb({ aviso }: { aviso: string | null }) {
       window.removeEventListener('beforeunload', save);
       save();
     };
-  }, [duration, episodeId, isTimeshift, itemId, offset]);
+  }, [duration, episodeId, isTimeshift, itemId, offset, conMpv]);
 
   // Subtitle cues are fetched once, then re-applied whenever the timeline shifts.
   useEffect(() => {
+    if (mpv) { void mpv.video('subtitulo', subtitle ?? 'off'); return; }
     const video = videoRef.current;
     if (!video) return;
 
@@ -573,13 +601,14 @@ function PlayerWeb({ aviso }: { aviso: string | null }) {
     return () => {
       cancelled = true;
     };
-  }, [fileId, subtitle]);
+  }, [fileId, subtitle, mpv]);
 
   useEffect(() => {
+    if (mpv) { void mpv.video('subDelay', subDelayMs); return; }
     if (trackRef.current && cuesRef.current.length > 0) {
       applyCues(trackRef.current, cuesRef.current, isTimeshift ? offset : 0, subDelayMs / 1000);
     }
-  }, [offset, isTimeshift, subDelayMs]);
+  }, [offset, isTimeshift, subDelayMs, mpv]);
 
   // A stored correction belongs to the file/track pair, so pick it up on switch.
   useEffect(() => {
@@ -620,6 +649,25 @@ function PlayerWeb({ aviso }: { aviso: string | null }) {
     }
   }, [audioTrack, fileId, subtitle]);
 
+  // Lo que va contando mpv: posición, pausa, carga y qué pistas tiene puestas.
+  useEffect(() => {
+    if (!mpv) return;
+    return mpv.alEstado((e: unknown) => {
+      const s = e as { tiempo: number; pausado: boolean; cargando: boolean; audio: number | null; subtitulo: string };
+      if (!scrubbing) setCurrent(s.tiempo ?? 0);
+      playingRef.current = !s.pausado;
+      setPlaying(!s.pausado);
+      setBuffering(Boolean(s.cargando));
+      if (typeof s.audio === 'number') setAudioTrack(s.audio);
+      setSubtitle(s.subtitulo && s.subtitulo !== 'off' ? s.subtitulo : null);
+    });
+  }, [mpv, scrubbing]);
+
+  // Cambiar de pista de audio: con mpv es inmediato, sin recargar la fuente.
+  useEffect(() => {
+    if (mpv && audioTrack !== null) void mpv.video('audio', audioTrack);
+  }, [mpv, audioTrack]);
+
   const progressPct = duration ? (virtual / duration) * 100 : 0;
 
   // The button only offers itself while you are actually inside the segment,
@@ -650,10 +698,13 @@ function PlayerWeb({ aviso }: { aviso: string | null }) {
       onMouseMove={showControls}
       onDoubleClick={() => (document.fullscreenElement ? document.exitFullscreen() : containerRef.current?.requestFullscreen())}
       data-reproductor
-      className={`fixed inset-0 z-100 bg-black ${controls ? '' : 'cursor-none'}`}
+      className={`fixed inset-0 z-100 ${conMpv ? 'bg-transparent' : 'bg-black'} ${controls ? '' : 'cursor-none'}`}
     >
       <style>{subtitleCss(prefs.subtitles)}</style>
+      {/* La ventana del escritorio es transparente: el vídeo lo pinta mpv por detrás y esto va encima. */}
+      {conMpv && <style>{'html,body,#root{background:transparent !important}'}</style>}
       {aviso && <div className="absolute left-1/2 top-4 z-10 -translate-x-1/2 rounded-lg bg-black/80 px-4 py-2 text-sm text-amber-300">{aviso}</div>}
+      {!conMpv && (
       <video
         ref={videoRef}
         autoPlay
@@ -680,11 +731,12 @@ function PlayerWeb({ aviso }: { aviso: string | null }) {
           if (prefs.playback.autoPlayNext && nextEpisode?.file_id) {
             navigate(`/ver/${nextEpisode.file_id}?item=${itemId}&ep=${nextEpisode.id}&t=0`, { replace: true });
           } else {
-            navigate(-1);
+            salir();
           }
         }}
         className="h-full w-full"
       />
+      )}
 
       <AnimatePresence>
         {avisoAdmin && (
@@ -734,7 +786,7 @@ function PlayerWeb({ aviso }: { aviso: string | null }) {
             className="absolute inset-0 flex flex-col justify-between bg-linear-to-b from-black/75 via-transparent to-black/85"
           >
             <div className="flex items-start gap-4 p-5 pt-[max(1.25rem,env(safe-area-inset-top))] pl-[max(1.25rem,env(safe-area-inset-left))] pr-[max(1.25rem,env(safe-area-inset-right))]">
-              <button onClick={() => navigate(-1)} className="glass grid h-10 w-10 shrink-0 place-items-center rounded-full transition-transform hover:scale-110">
+              <button onClick={salir} className="glass grid h-10 w-10 shrink-0 place-items-center rounded-full transition-transform hover:scale-110">
                 <Icon path="M15 5 8 12l7 7" size={18} />
               </button>
               <div className="min-w-0 pt-1.5">
@@ -980,6 +1032,8 @@ function PlayerWeb({ aviso }: { aviso: string | null }) {
                   </Menu>
                 </div>
 
+                {/* Con mpv el fichero va en crudo: elegir calidad no haría nada, así que no se enseña. */}
+                {!conMpv && (
                 <div className="relative">
                   <button
                     onClick={() => setMenu(menu === 'quality' ? null : 'quality')}
@@ -1004,6 +1058,7 @@ function PlayerWeb({ aviso }: { aviso: string | null }) {
                     ))}
                   </Menu>
                 </div>
+                )}
 
                 {info?.chapters && info.chapters.length > 1 && (
                   <div className="relative">

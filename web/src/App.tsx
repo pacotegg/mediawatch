@@ -78,10 +78,15 @@ export default function App() {
   if (isError || !user) return <Login />;
 
   const isPlayer = location.pathname.startsWith('/ver/');
+  /*
+   * En la ventana de vídeo del cliente de escritorio la imagen la pinta mpv POR DETRÁS de la web, así que
+   * el armazón no puede llevar fondo: con `bg-ink-950` se veía todo negro y el vídeo no (14/10/2026).
+   */
+  const enVideoEscritorio = isPlayer && new URLSearchParams(location.search).get('escritorio') === '1';
 
   return (
     <MotionConfig reducedMotion={prefs.interface.reduceMotion ? 'always' : 'user'}>
-      <div className="min-h-screen bg-ink-950">
+      <div className={`min-h-screen ${enVideoEscritorio ? '' : 'bg-ink-950'}`}>
         {!isPlayer && <div className="grain" aria-hidden />}
         {!isPlayer && (
           <>

@@ -6,8 +6,10 @@ export type EscritorioApi = {
     /** Pista de audio del perfil (índice de flujo) y subtítulo (`embedded-N`, `external-N` u `off`). */
     audio?: number | null; subtitulo?: string | null; externos?: { id: string }[];
   }) => Promise<{ ok: boolean; error?: string }>;
-  /** Se llama al cerrar el vídeo; devuelve la función para dejar de escuchar. */
-  alTerminar: (cb: () => void) => () => void;
+  /** Órdenes al vídeo: pausa, buscar, volumen, silencio, audio, subtitulo, subDelay, cerrar. */
+  video: (nombre: string, valor?: unknown) => Promise<{ ok: boolean }>;
+  /** Estado del vídeo según mpv; devuelve la función para dejar de escuchar. */
+  alEstado: (cb: (e: unknown) => void) => () => void;
   alActualizar: (cb: (v: { version: string }) => void) => () => void;
 };
 
