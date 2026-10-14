@@ -3,16 +3,18 @@ import { contextBridge, ipcRenderer } from 'electron';
 // Lo único que la web ve del escritorio. `reproducir` lo atiende main.ts, que comprueba que la
 // llamada viene de la propia web del servidor.
 contextBridge.exposeInMainWorld('mediawatchDesktop', {
-  version: 2,
+  version: 3,
   reproducir: (o: {
     fileId: number; itemId: number; episodeId: number | null; start: number; title: string;
     audio?: number | null; subtitulo?: string | null; externos?: { id: string }[];
   }) => ipcRenderer.invoke('mw:reproducir', o) as Promise<{ ok: boolean; error?: string }>,
-  /** Avisa cuando se cierra el vídeo, para volver a la ficha. Devuelve la función para dejar de escuchar. */
-  alTerminar: (cb: () => void) => {
-    const h = () => cb();
-    ipcRenderer.on('mw:fin', h);
-    return () => ipcRenderer.removeListener('mw:fin', h);
+  /** Órdenes al vídeo desde los controles de la web: pausa, buscar, volumen, audio, subtítulo, cerrar. */
+  video: (nombre: string, valor?: unknown) => ipcRenderer.invoke('mw:video', nombre, valor) as Promise<{ ok: boolean }>,
+  /** Estado del vídeo (tiempo, duración, pausa, pistas). Devuelve la función para dejar de escuchar. */
+  alEstado: (cb: (e: unknown) => void) => {
+    const h = (_e: unknown, v: unknown) => cb(v);
+    ipcRenderer.on('mw:estado', h);
+    return () => ipcRenderer.removeListener('mw:estado', h);
   },
   alActualizar: (cb: (v: { version: string }) => void) => {
     const h = (_e: unknown, v: { version: string }) => cb(v);

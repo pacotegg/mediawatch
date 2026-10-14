@@ -1,8 +1,8 @@
-import { app, BrowserWindow, ipcMain, Menu, session } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, screen, session } from 'electron';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { iniciarActualizaciones } from './actualizaciones';
-import { buscarMpv, hayReproduccion, pararReproduccion, reproducir } from './mpv';
+import { buscarMpv, hayReproduccion, ordenar, pararReproduccion, pistasActuales, reproducir, type Estado } from './mpv';
 
 const COOKIE = 'cineteca_session';
 const ficheroConfig = () => join(app.getPath('userData'), 'config.json');
@@ -34,13 +34,12 @@ function opcionesExtraMpv(): string[] {
 const origen = (url: string) => { try { return new URL(url).origin; } catch { return ''; } };
 
 /**
- * Identificador nativo de la ventana, para que mpv dibuje DENTRO de ella (`--wid`) en vez de abrir otra:
- * así el vídeo va siempre en la misma ventana y lo pinta mpv, que es lo rápido. En Windows es un HWND de
- * 64 bits; en X11, el XID. Si no se puede averiguar, mpv abre su propia ventana y todo lo demás sigue igual.
+ * Identificador nativo de una ventana, para que mpv dibuje DENTRO de ella (`--wid`) en vez de abrir otra.
+ * En Windows es un HWND de 64 bits; en X11, el XID. Si no se puede averiguar, mpv abre su propia ventana.
  */
-function widDeLaVentana(): string | null {
+function widDe(w: BrowserWindow | null): string | null {
   try {
-    const b = ventana?.getNativeWindowHandle();
+    const b = w?.getNativeWindowHandle();
     if (!b) return null;
     return (b.length >= 8 ? b.readBigUInt64LE(0) : BigInt(b.readUInt32LE(0))).toString();
   } catch {
@@ -103,6 +102,22 @@ ipcMain.handle('mw:guardar-servidor', async (e, url: unknown) => {
   return { ok: true };
 });
 
+/*
+ * Ventana de reproducción: sin marco, a pantalla completa y TRANSPARENTE. Lo de transparente no es
+ * estética: mpv dibuja como ventana hija y la superficie de Chrome se pintaba ENCIMA, así que el vídeo
+ * no se veía (pasaba en la 0.2.1). Con la ventana transparente, el vídeo se ve y la interfaz de la web
+ * —la misma que en el navegador— se dibuja sobre él.
+ */
+let ventanaVideo: BrowserWindow | null = null;
+
+function cerrarVideo() {
+  pararReproduccion();
+  const v = ventanaVideo;
+  ventanaVideo = null;
+  if (v && !v.isDestroyed()) v.close();
+  if (ventana && !ventana.isDestroyed()) ventana.focus();
+}
+
 ipcMain.handle('mw:reproducir', async (e, o: any) => {
   const servidor = leerServidor();
   // Solo la web del servidor configurado puede pedir una reproducción.
@@ -123,20 +138,63 @@ ipcMain.handle('mw:reproducir', async (e, o: any) => {
   const externos = Array.isArray(o.externos)
     ? o.externos.filter((s: any) => typeof s?.id === 'string' && /^external-\d+$/.test(s.id)).slice(0, 40).map((s: any) => ({ id: s.id }))
     : [];
+  const ep = o.episodeId !== null ? `&ep=${o.episodeId}` : '';
+  /*
+   * Del tamaño de la pantalla, pero NO en modo «pantalla completa» de Windows: con `fullscreen: true` la
+   * ventana hija de mpv deja de componerse y el vídeo no se ve (comprobado el 14/10). Así sí se ve.
+   */
+  const pantalla = screen.getPrimaryDisplay().bounds;
+  ventanaVideo = new BrowserWindow({
+    ...pantalla, frame: false, transparent: true, backgroundColor: '#00000000', show: false,
+    alwaysOnTop: true, skipTaskbar: false, resizable: false,
+    webPreferences: { preload: join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false },
+  });
+  ventanaVideo.on('closed', () => { if (ventanaVideo) { ventanaVideo = null; pararReproduccion(); } });
+  // `escritorio=1`: la web pinta sus controles pero deja que el vídeo lo ponga mpv.
+  await ventanaVideo.loadURL(`${servidor}/ver/${o.fileId}?item=${o.itemId}${ep}&t=${Math.floor(o.start)}&escritorio=1`);
+  ventanaVideo.show();
+  // Al crearla, Windows la encoge al área libre (deja fuera la barra de tareas). Puesto ya el tamaño
+  // a mano, ocupa la pantalla entera, que es lo que toca para ver una película.
+  ventanaVideo.setBounds(pantalla);
+
   try {
     await reproducir(exe, {
       servidor, token: galletas[0].value, fileId: o.fileId, itemId: o.itemId, episodeId: o.episodeId,
       start: o.start, title: o.title.slice(0, 200),
-      wid: widDeLaVentana() ?? undefined,
+      wid: widDe(ventanaVideo) ?? undefined,
       audio: entero(o.audio) ? o.audio : null,
       subtitulo: typeof o.subtitulo === 'string' && /^(off|embedded-\d+|external-\d+)$/.test(o.subtitulo) ? o.subtitulo : null,
       externos,
       extra: opcionesExtraMpv(),
-    }, () => ventana?.webContents.send('mw:fin'));
+    }, cerrarVideo, (estado: Estado) => {
+      if (ventanaVideo && !ventanaVideo.isDestroyed()) ventanaVideo.webContents.send('mw:estado', estado);
+    });
+    /*
+     * mpv se queda con el tamaño que tenía la ventana al engancharse y dejaba un marco negro alrededor
+     * del vídeo. Un cambio de tamaño de un píxel y vuelta le hace recolocarse al tamaño de verdad.
+     */
+    setTimeout(() => {
+      if (!ventanaVideo || ventanaVideo.isDestroyed()) return;
+      ventanaVideo.setBounds({ ...pantalla, height: pantalla.height - 1 });
+      ventanaVideo.setBounds(pantalla);
+      // El foco tiene que quedarse en la web: es quien atiende el teclado (mpv va sin teclas).
+      ventanaVideo.focus();
+      ventanaVideo.webContents.focus();
+    }, 900);
     return { ok: true };
   } catch (err) {
+    cerrarVideo();
     return { ok: false, error: (err as Error).message };
   }
+});
+
+/** Órdenes de la interfaz al vídeo. Solo las acepta de la ventana de reproducción. */
+ipcMain.handle('mw:video', async (e, nombre: unknown, valor: unknown) => {
+  if (!ventanaVideo || e.sender !== ventanaVideo.webContents) return { ok: false };
+  if (typeof nombre !== 'string') return { ok: false };
+  if (nombre === 'cerrar') { cerrarVideo(); return { ok: true }; }
+  ordenar(nombre, valor, pistasActuales);
+  return { ok: true };
 });
 
 if (!app.requestSingleInstanceLock()) app.quit();
