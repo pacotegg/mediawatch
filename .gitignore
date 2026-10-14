@@ -34,3 +34,7 @@ web/public/qr.svg
 /RESUMEN-SESION-*.md
 /.claude/agents/
 /.agents/
+
+# Cliente de escritorio
+desktop/dist/
+desktop/release/

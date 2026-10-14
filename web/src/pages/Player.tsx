@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { useQuery } from '@tanstack/react-query';
 import type HlsInstancia from 'hls.js';
 import { api, enRedLocal, hlsUrl, img, streamUrl, subtitleSync, subtitleUrl, trickplaySheet, type PlayInfo, type Trickplay } from '../lib/api.ts';
+import { escritorio } from '../lib/escritorio.ts';
 import { clock, languageName } from '../lib/format.ts';
 import { subtitleCss, usePreferences } from '../lib/preferences.tsx';
 import { applyCues, parseVtt, type Cue } from '../lib/vtt.ts';
@@ -106,7 +107,35 @@ function MenuItem({ active, onClick, children }: { active: boolean; onClick: () 
   );
 }
 
+/**
+ * Dentro del cliente de escritorio la película se abre en mpv, que lee casi todo sin que el servidor transcodifique.
+ * Si no se puede (sin mpv, sin sesión…) o se pide `?web=1`, se cae al reproductor del navegador de siempre.
+ */
 export default function Player() {
+  const { fileId: fileIdParam } = useParams<{ fileId: string }>();
+  const [params] = useSearchParams();
+  const navigate = useNavigate();
+  const fileId = Number(fileIdParam);
+  const itemId = Number(params.get('item'));
+  const lanzado = useRef(false);
+  const [fallo, setFallo] = useState<string | null>(null);
+  const aEscritorio = Boolean(escritorio()) && params.get('web') !== '1' && itemId > 0 && fallo === null;
+  const { data: info } = useQuery<PlayInfo>({ queryKey: ['play', fileId], queryFn: () => api.playInfo(fileId), staleTime: Infinity, enabled: aEscritorio });
+
+  useEffect(() => {
+    if (!aEscritorio || !info || lanzado.current) return;
+    lanzado.current = true;
+    escritorio()!
+      .reproducir({ fileId, itemId, episodeId: params.get('ep') ? Number(params.get('ep')) : null, start: Number(params.get('t') ?? 0), title: info.title })
+      .then((r) => { if (r.ok) navigate(-1); else setFallo(r.error ?? 'No se pudo abrir mpv'); })
+      .catch((e) => setFallo(String(e)));
+  }, [aEscritorio, info, fileId, itemId, params, navigate]);
+
+  if (!aEscritorio) return <PlayerWeb aviso={fallo} />;
+  return <div className="flex h-screen items-center justify-center bg-black text-white/70">Abriendo en mpv…</div>;
+}
+
+function PlayerWeb({ aviso }: { aviso: string | null }) {
   const { fileId: fileIdParam } = useParams<{ fileId: string }>();
   const [params] = useSearchParams();
   const navigate = useNavigate();
@@ -612,6 +641,7 @@ export default function Player() {
       className={`fixed inset-0 z-100 bg-black ${controls ? '' : 'cursor-none'}`}
     >
       <style>{subtitleCss(prefs.subtitles)}</style>
+      {aviso && <div className="absolute left-1/2 top-4 z-10 -translate-x-1/2 rounded-lg bg-black/80 px-4 py-2 text-sm text-amber-300">{aviso}</div>}
       <video
         ref={videoRef}
         autoPlay
