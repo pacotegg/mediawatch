@@ -20,6 +20,8 @@ export type Pedido = {
   subtitulo?: string | null;
   /** Subtítulos en fichero aparte, que mpv no ve solo porque el vídeo le llega por HTTP. */
   externos?: { id: string }[];
+  /** Opciones extra para mpv, de `mpvArgs` en el config del usuario (ver main.ts). */
+  extra?: string[];
 };
 
 type Pista = { id: number; type: string; 'ff-index'?: number; external?: boolean; 'external-filename'?: string };
@@ -71,7 +73,12 @@ export function reproducir(exe: string, p: Pedido, onFin: () => void): Promise<v
       `--input-ipc-server=${canal}`,
     ];
     if (p.wid) args.push(`--wid=${p.wid}`);
-    const proc = spawn(exe, args, { stdio: 'ignore' });
+    args.push(...(p.extra ?? []));
+    // La salida de error de mpv se guarda: cuando no arranca (sin GPU, un códec que falta, una opción
+    // mala) es lo único que dice por qué, y sin esto el usuario solo veía «mpv se cerró antes de empezar».
+    const proc = spawn(exe, args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    let queja = '';
+    proc.stderr?.on('data', (d) => { queja = (queja + d).slice(-1200); });
     actual = proc;
 
     let posicion = 0;
@@ -121,7 +128,12 @@ export function reproducir(exe: string, p: Pedido, onFin: () => void): Promise<v
       onFin();
     };
     proc.on('error', (err) => { cerrar(); reject(err); });
-    proc.on('exit', () => { cerrar(); if (!conectado) reject(new Error('mpv se cerró antes de empezar')); });
+    proc.on('exit', () => {
+      cerrar();
+      if (conectado) return;
+      const motivo = queja.split('\n').filter((l) => l.trim()).slice(-3).join(' · ');
+      reject(new Error(`mpv se cerró antes de empezar${motivo ? `: ${motivo}` : ''}`));
+    });
 
     const intentar = (n: number) => {
       const sock = net.connect(canal);
