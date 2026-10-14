@@ -2,7 +2,7 @@
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-22%2B-green.svg)](https://nodejs.org/)
-[![Clients](https://img.shields.io/badge/Clients-Web%20%7C%20Windows%20%7C%20Samsung%20Smart%20TV%20%7C%20Android-orange.svg)](#client-applications--building)
+[![Clients](https://img.shields.io/badge/Clients-Web%20%7C%20Windows%20%7C%20Linux%20%7C%20Samsung%20Smart%20TV%20%7C%20Android-orange.svg)](#client-applications--building)
 [![Desktop App](https://img.shields.io/badge/Desktop%20Server-Windows%20%7C%20Linux-0078D6.svg)](https://github.com/pacotegg/MediaWatch-Server)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-Buy%20me%20a%20coffee-ff5e5b?logo=ko-fi&logoColor=white)](https://ko-fi.com/pacotegg)
 
