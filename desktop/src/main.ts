@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, session, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, session } from 'electron';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { buscarMpv, hayReproduccion, reproducir } from './mpv';
@@ -25,20 +25,32 @@ function abrir() {
   else void ventana.loadFile(join(__dirname, 'conectar.html'));
 }
 
+/** Enlaces de fuera (Watchmode, tráileres…): ventana aparte, sin el puente del escritorio y sin Node. Solo http(s). */
+function abrirExterno(url: string) {
+  if (!/^https?:\/\//i.test(url)) return;
+  const w = new BrowserWindow({
+    width: 1100, height: 780, parent: ventana ?? undefined, autoHideMenuBar: true,
+    webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false },
+  });
+  // Dentro de esa ventana, los enlaces nuevos reutilizan la misma en vez de abrir más.
+  w.webContents.setWindowOpenHandler(({ url: u }) => { if (/^https?:\/\//i.test(u)) void w.loadURL(u); return { action: 'deny' }; });
+  void w.loadURL(url);
+}
+
 function crearVentana() {
   ventana = new BrowserWindow({
     width: 1400, height: 860, backgroundColor: '#08080b', title: 'Media Watch', autoHideMenuBar: true,
     webPreferences: { preload: join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
-  // La ventana solo navega por el servidor; cualquier otra dirección se abre en el navegador del sistema.
+  // La ventana principal solo navega por el servidor; cualquier otra dirección se abre en una ventana propia.
   ventana.webContents.on('will-navigate', (e, url) => {
     const servidor = leerServidor();
     if (url.startsWith('file:') || (servidor && origen(url) === origen(servidor))) return;
     e.preventDefault();
-    if (/^https?:/i.test(url)) void shell.openExternal(url);
+    abrirExterno(url);
   });
   ventana.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:/i.test(url)) void shell.openExternal(url);
+    abrirExterno(url);
     return { action: 'deny' };
   });
   abrir();
