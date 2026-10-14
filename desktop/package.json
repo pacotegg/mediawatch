@@ -1,0 +1,18 @@
+{
+  "name": "mediawatch-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cliente de escritorio de Media Watch: la web del servidor más mpv para reproducir sin transcodificar",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc && node -e \"require('fs').copyFileSync('src/conectar.html','dist/conectar.html')\"",
+    "start": "npm run build && electron dist/main.js",
+    "dist": "npm run build && electron-builder --win"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3",
+    "typescript": "^5.7.2"
+  }
+}
