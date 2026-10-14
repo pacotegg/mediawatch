@@ -96,7 +96,7 @@ for (const [i, ruta] of lista.entries()) {
   try {
     await run(
       config.ffmpeg,
-      ['-hide_banner', '-loglevel', 'error', '-y', '-i', ruta, '-vf', `scale=${ANCHO}:-1:flags=lanczos`, temporal],
+      ['-hide_banner', '-loglevel', 'error', '-y', '-i', ruta, '-vf', `scale=${ANCHO}:-1:flags=lanczos`, '-pix_fmt', 'rgba', temporal],
       { windowsHide: true },
     );
   } catch (err) {
@@ -122,7 +122,9 @@ for (const [i, ruta] of lista.entries()) {
    * el alfa al escalar (comprobado: entrada rgba -> salida rgba), pero la
    * comprobación no comprobaba lo que decía.
    */
-  const teniaAlfa = original.pix.includes('rgba') || original.pix.includes('ya');
+  // `pal8` (paleta con transparencia en fanart.tv) también cuenta: sin `-pix_fmt rgba` ffmpeg lo reescalaba
+  // a paleta SIN alfa y 76 discos salieron con recuadro opaco (14/10/2026). Ahora la salida es siempre rgba.
+  const teniaAlfa = original.pix.includes('rgba') || original.pix.includes('ya') || original.pix === 'pal8';
   const mantieneAlfa = !teniaAlfa || (nuevo !== null && (nuevo.pix.includes('rgba') || nuevo.pix.includes('ya')));
   const valido = nuevo !== null && nuevo.ancho === ANCHO && mantieneAlfa && bytesDespues > 0 && bytesDespues < bytesAntes;
 
