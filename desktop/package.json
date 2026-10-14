@@ -1,13 +1,14 @@
 {
   "name": "mediawatch-desktop",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Cliente de escritorio de Media Watch: la web del servidor más mpv para reproducir sin transcodificar",
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc && node -e \"require('fs').copyFileSync('src/conectar.html','dist/conectar.html')\"",
     "start": "npm run build && electron dist/main.js",
-    "dist": "npm run build && node scripts/prepare-mpv.js && electron-builder --win --publish never"
+    "dist": "npm run build && node scripts/prepare-mpv.js && electron-builder --win --publish never",
+    "dist:linux": "npm run build && electron-builder --linux --publish never"
   },
   "devDependencies": {
     "@types/node": "^22.10.1",
@@ -23,23 +24,24 @@
     },
     "files": [
       "dist/**/*",
+      "node_modules/**/*",
       "package.json"
-    ],
-    "extraResources": [
-      {
-        "from": "build/mpv",
-        "to": "mpv",
-        "filter": [
-          "**/*",
-          "!doc/**",
-          "!installer/**",
-          "!*.bat"
-        ]
-      }
     ],
     "win": {
       "target": "nsis",
-      "icon": "assets/icon.png"
+      "icon": "assets/icon.png",
+      "extraResources": [
+        {
+          "from": "build/mpv",
+          "to": "mpv",
+          "filter": [
+            "**/*",
+            "!doc/**",
+            "!installer/**",
+            "!*.bat"
+          ]
+        }
+      ]
     },
     "nsis": {
       "oneClick": false,
@@ -48,6 +50,30 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "artifactName": "MediaWatch-Escritorio-Setup-${version}.${ext}"
+    },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://github.com/pacotegg/mediawatch/releases/download/escritorio-latest/"
+      }
+    ],
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Video",
+      "icon": "assets/icon.png",
+      "maintainer": "Paco Gamiz <pacotegg@users.noreply.github.com>",
+      "artifactName": "MediaWatch-Escritorio-${version}.${ext}"
+    },
+    "deb": {
+      "depends": [
+        "mpv"
+      ]
     }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   }
 }

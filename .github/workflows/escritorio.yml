@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 jobs:
-  instalador:
+  windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -51,13 +51,86 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: MediaWatch-Escritorio-Windows
-          path: desktop/release/*.exe
+          name: escritorio-windows
+          path: |
+            desktop/release/*.exe
+            desktop/release/latest.yml
 
-      - name: Publicar release (solo con etiqueta)
-        if: startsWith(github.ref, 'refs/tags/escritorio-v')
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Node.js 26
+        uses: actions/setup-node@v4
+        with:
+          node-version: 26.x
+
+      - name: Dependencias
+        run: npm ci
+        working-directory: desktop
+
+      # En Linux mpv no se empaqueta: viene de la distribución (el .deb lo pide como dependencia).
+      - name: AppImage y .deb
+        run: npm run dist:linux
+        working-directory: desktop
+
+      - name: Comprobar lo construido
+        run: |
+          set -e
+          ls -la release/*.AppImage release/*.deb
+          dpkg-deb -f release/*.deb Depends | grep -q mpv || { echo "el .deb no pide mpv"; exit 1; }
+          chmod +x release/*.AppImage
+          ./release/*.AppImage --appimage-extract >/dev/null
+          test -f squashfs-root/resources/app.asar
+        working-directory: desktop
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: escritorio-linux
+          path: |
+            desktop/release/*.AppImage
+            desktop/release/*.deb
+            desktop/release/latest-linux.yml
+
+  publicar:
+    needs: [windows, linux]
+    if: startsWith(github.ref, 'refs/tags/escritorio-v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: descargas
+
+      - name: Juntar ficheros
+        run: mkdir -p subir && find descargas -type f \( -name '*.exe' -o -name '*.AppImage' -o -name '*.deb' -o -name '*.yml' \) -exec cp {} subir/ \;
+
+      - name: Publicar release de esta versión
         uses: softprops/action-gh-release@v2
         with:
-          files: desktop/release/MediaWatch-Escritorio-Setup-*.exe
+          files: |
+            subir/*.exe
+            subir/*.AppImage
+            subir/*.deb
           make_latest: false
           generate_release_notes: true
+
+      # El apunte para actualizarse solo vive en una etiqueta FIJA, y dentro lleva la direccion completa del
+      # instalador de esta version. Asi el actualizador no depende de cual sea la ultima release del repo,
+      # que es la de la app Android.
+      - name: Apunte de actualizaciones (etiqueta fija)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -e
+          base="https://github.com/${{ github.repository }}/releases/download/$TAG"
+          for f in subir/latest.yml subir/latest-linux.yml; do
+            [ -f "$f" ] || continue
+            sed -i -E "s#^( *- url: )(.+)\$#\1$base/\2#; s#^(path: )(.+)\$#\1$base/\2#" "$f"
+            grep -q "^ *- url: https://" "$f" || { echo "no se pudo poner la direccion completa en $f"; exit 1; }
+          done
+          gh release view escritorio-latest --repo ${{ github.repository }} >/dev/null 2>&1 || \
+            gh release create escritorio-latest --repo ${{ github.repository }} --title "Escritorio: apunte de actualizaciones" \
+              --notes "Fichero que usan los clientes de escritorio ya instalados para saber si hay versión nueva. Las descargas están en las releases \`escritorio-v*\`." --latest=false
+          gh release upload escritorio-latest subir/latest*.yml --repo ${{ github.repository }} --clobber

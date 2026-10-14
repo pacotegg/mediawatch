@@ -125,14 +125,26 @@ export default function Player() {
   useEffect(() => {
     if (!aEscritorio || !info || lanzado.current) return;
     lanzado.current = true;
+    // El vídeo se dibuja dentro de esta misma ventana, encima de la web; al cerrarlo se vuelve a la ficha.
+    const dejarDeEscuchar = escritorio()!.alTerminar(() => navigate(-1));
+    const guardadoAudio = Number(info.savedAudio);
     escritorio()!
-      .reproducir({ fileId, itemId, episodeId: params.get('ep') ? Number(params.get('ep')) : null, start: Number(params.get('t') ?? 0), title: info.title })
-      .then((r) => { if (r.ok) navigate(-1); else setFallo(r.error ?? 'No se pudo abrir mpv'); })
-      .catch((e) => setFallo(String(e)));
+      .reproducir({
+        fileId,
+        itemId,
+        episodeId: params.get('ep') ? Number(params.get('ep')) : null,
+        start: Number(params.get('t') ?? 0),
+        title: info.title,
+        audio: Number.isInteger(guardadoAudio) ? guardadoAudio : null,
+        subtitulo: info.savedSubtitle ?? null,
+        externos: info.subtitles.filter((s) => s.source === 'external').map((s) => ({ id: s.id })),
+      })
+      .then((r) => { if (!r.ok) { dejarDeEscuchar(); setFallo(r.error ?? 'No se pudo abrir mpv'); } })
+      .catch((e) => { dejarDeEscuchar(); setFallo(String(e)); });
   }, [aEscritorio, info, fileId, itemId, params, navigate]);
 
   if (!aEscritorio) return <PlayerWeb aviso={fallo} />;
-  return <div className="flex h-screen items-center justify-center bg-black text-white/70">Abriendo en mpv…</div>;
+  return <div className="flex h-screen items-center justify-center bg-black text-white/70">Abriendo el vídeo…</div>;
 }
 
 function PlayerWeb({ aviso }: { aviso: string | null }) {

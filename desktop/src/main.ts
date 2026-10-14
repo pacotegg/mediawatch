@@ -1,7 +1,8 @@
 import { app, BrowserWindow, ipcMain, Menu, session } from 'electron';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { buscarMpv, hayReproduccion, reproducir } from './mpv';
+import { iniciarActualizaciones } from './actualizaciones';
+import { buscarMpv, hayReproduccion, pararReproduccion, reproducir } from './mpv';
 
 const COOKIE = 'cineteca_session';
 const ficheroConfig = () => join(app.getPath('userData'), 'config.json');
@@ -17,6 +18,21 @@ function leerServidor(): string | null {
 }
 
 const origen = (url: string) => { try { return new URL(url).origin; } catch { return ''; } };
+
+/**
+ * Identificador nativo de la ventana, para que mpv dibuje DENTRO de ella (`--wid`) en vez de abrir otra:
+ * así el vídeo va siempre en la misma ventana y lo pinta mpv, que es lo rápido. En Windows es un HWND de
+ * 64 bits; en X11, el XID. Si no se puede averiguar, mpv abre su propia ventana y todo lo demás sigue igual.
+ */
+function widDeLaVentana(): string | null {
+  try {
+    const b = ventana?.getNativeWindowHandle();
+    if (!b) return null;
+    return (b.length >= 8 ? b.readBigUInt64LE(0) : BigInt(b.readUInt32LE(0))).toString();
+  } catch {
+    return null;
+  }
+}
 
 function abrir() {
   if (!ventana) return;
@@ -84,11 +100,24 @@ ipcMain.handle('mw:reproducir', async (e, o: any) => {
   if (hayReproduccion()) return { ok: false, error: 'Ya hay una reproducción abierta' };
   const carpetaMpv = join(app.getPath('userData'), 'mpv');
   const exe = buscarMpv([join(process.resourcesPath ?? '', 'mpv'), carpetaMpv]);
-  if (!exe) return { ok: false, error: `No se encontró mpv. Copia mpv.exe en ${carpetaMpv} o instálalo en el PATH.` };
+  if (!exe) {
+    const pista = process.platform === 'win32' ? `Copia mpv.exe en ${carpetaMpv}` : 'Instálalo con el gestor de paquetes (paquete «mpv»)';
+    return { ok: false, error: `No se encontró mpv. ${pista} o déjalo en el PATH.` };
+  }
   const galletas = await session.defaultSession.cookies.get({ url: servidor, name: COOKIE });
   if (!galletas[0]) return { ok: false, error: 'No hay sesión iniciada' };
+  const externos = Array.isArray(o.externos)
+    ? o.externos.filter((s: any) => typeof s?.id === 'string' && /^external-\d+$/.test(s.id)).slice(0, 40).map((s: any) => ({ id: s.id }))
+    : [];
   try {
-    await reproducir(exe, { servidor, token: galletas[0].value, fileId: o.fileId, itemId: o.itemId, episodeId: o.episodeId, start: o.start, title: o.title.slice(0, 200) });
+    await reproducir(exe, {
+      servidor, token: galletas[0].value, fileId: o.fileId, itemId: o.itemId, episodeId: o.episodeId,
+      start: o.start, title: o.title.slice(0, 200),
+      wid: widDeLaVentana() ?? undefined,
+      audio: entero(o.audio) ? o.audio : null,
+      subtitulo: typeof o.subtitulo === 'string' && /^(off|embedded-\d+|external-\d+)$/.test(o.subtitulo) ? o.subtitulo : null,
+      externos,
+    }, () => ventana?.webContents.send('mw:fin'));
     return { ok: true };
   } catch (err) {
     return { ok: false, error: (err as Error).message };
@@ -107,6 +136,8 @@ else {
       { label: 'Ver', submenu: [{ role: 'reload', label: 'Recargar' }, { role: 'togglefullscreen', label: 'Pantalla completa' }] },
     ]));
     crearVentana();
+    iniciarActualizaciones(() => ventana);
   });
-  app.on('window-all-closed', () => app.quit());
+  // Si se cierra la ventana con el vídeo incrustado dentro, mpv se queda sin sitio: se para con ella.
+  app.on('window-all-closed', () => { pararReproduccion(); app.quit(); });
 }
