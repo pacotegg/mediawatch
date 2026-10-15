@@ -93,7 +93,7 @@ const limpiar = (texto: unknown) => (texto ? String(texto).replace(/<[^>]+>/g, '
 const KITSU = 'https://kitsu.app/api/edge';
 
 async function kitsu<T>(ruta: string): Promise<T> {
-  const res = await fetch(KITSU + ruta, { headers: { accept: 'application/vnd.api+json' } });
+  const res = await fetch(KITSU + ruta, { signal: AbortSignal.timeout(15_000), headers: { accept: 'application/vnd.api+json' } });
   if (!res.ok) throw new AnimeError(`Kitsu respondió ${res.status}`);
   return (await res.json()) as T;
 }
@@ -142,7 +142,7 @@ async function jikan<T>(ruta: string): Promise<T> {
     if (espera > 0) await new Promise((r) => setTimeout(r, espera));
     ultimaJikan = Date.now();
 
-    const res = await fetch(JIKAN + ruta, { headers: { accept: 'application/json' } });
+    const res = await fetch(JIKAN + ruta, { signal: AbortSignal.timeout(15_000), headers: { accept: 'application/json' } });
     if (res.status === 429) {
       await new Promise((r) => setTimeout(r, 1500));
       continue;
@@ -204,6 +204,7 @@ const CAMPOS_ANILIST = `
 
 async function anilist<T>(query: string, variables: Record<string, unknown>): Promise<T> {
   const res = await fetch(ANILIST, {
+    signal: AbortSignal.timeout(15_000),
     method: 'POST',
     headers: { 'content-type': 'application/json', accept: 'application/json' },
     body: JSON.stringify({ query, variables }),

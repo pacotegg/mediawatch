@@ -21,7 +21,7 @@ async function tmdb<T>(path: string, params: Record<string, string>): Promise<T 
   url.searchParams.set('language', config.tmdbLanguage);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
 
-  const res = await fetch(url, { headers: { accept: 'application/json' } });
+  const res = await fetch(url, { signal: AbortSignal.timeout(15_000), headers: { accept: 'application/json' } });
   if (!res.ok) return null;
   return (await res.json()) as T;
 }
@@ -31,6 +31,7 @@ async function traducirConGemini(texto: string): Promise<string | null> {
   if (!apiKey || !texto.trim()) return null;
   try {
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`, {
+      signal: AbortSignal.timeout(30_000),
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

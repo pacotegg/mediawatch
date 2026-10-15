@@ -61,7 +61,7 @@ async function tmdb<T>(path: string, params: Record<string, string> = {}): Promi
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
 
   for (let attempt = 0; attempt < 3; attempt++) {
-    const res = await fetch(url, { headers: { accept: 'application/json' } });
+    const res = await fetch(url, { signal: AbortSignal.timeout(15_000), headers: { accept: 'application/json' } });
     if (res.status === 429) {
       const wait = Number(res.headers.get('retry-after') ?? 1) * 1000;
       await new Promise((r) => setTimeout(r, wait + 250));
@@ -281,7 +281,7 @@ export async function temporadasDeSerie(tmdbId: number): Promise<{ temporada: nu
 
 /** Compartida con el agente de AniList: baja una imagen al disco y devuelve su ruta. */
 export async function descargar(url: string, destination: string): Promise<string> {
-  const res = await fetch(url);
+  const res = await fetch(url, { signal: AbortSignal.timeout(60_000) });
   if (!res.ok || !res.body) throw new Error(`No se pudo descargar la imagen (${res.status})`);
   await pipeline(Readable.fromWeb(res.body as never), createWriteStream(destination));
   return destination;
@@ -460,7 +460,7 @@ export async function imagenesDeSaga(nombre: string): Promise<{ posters: ImagenD
 
     if (config.fanartApiKey) {
       try {
-        const fanartRes = await fetch(`https://webservice.fanart.tv/v3/movies/${cid}?api_key=${config.fanartApiKey}`).then((r) => r.json());
+        const fanartRes = await fetch(`https://webservice.fanart.tv/v3/movies/${cid}?api_key=${config.fanartApiKey}`, { signal: AbortSignal.timeout(15_000) }).then((r) => r.json());
         if (fanartRes.movieposter) {
           todosPosters.push(
             ...fanartRes.movieposter.map((p: any) => ({

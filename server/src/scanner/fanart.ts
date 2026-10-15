@@ -108,7 +108,7 @@ export function estadoFanart(): EstadoFanart {
 async function fanart(path: string): Promise<any | null> {
   if (!config.fanartApiKey) throw new Error('Falta la clave de fanart.tv en config.json (fanartApiKey)');
   for (let intento = 0; intento < 3; intento++) {
-    const res = await fetch(`${API}${path}?api_key=${config.fanartApiKey}`, { headers: { accept: 'application/json' } });
+    const res = await fetch(`${API}${path}?api_key=${config.fanartApiKey}`, { signal: AbortSignal.timeout(15_000), headers: { accept: 'application/json' } });
     if (res.status === 404) return null;
     if (res.status === 429 || res.status >= 500) {
       await new Promise((r) => setTimeout(r, 2_000 * (intento + 1)));

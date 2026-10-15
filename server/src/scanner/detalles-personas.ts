@@ -48,7 +48,7 @@ export const estadoDetalles = (): EstadoDetalles => ({ ...estado });
 async function tmdb<T>(path: string, idioma: string): Promise<T | null> {
   if (!config.tmdbApiKey) throw new Error('Falta la clave de TMDb');
   for (let intento = 0; intento < 4; intento++) {
-    const res = await fetch(`${API}${path}?api_key=${config.tmdbApiKey}&language=${idioma}`, { headers: { accept: 'application/json' } });
+    const res = await fetch(`${API}${path}?api_key=${config.tmdbApiKey}&language=${idioma}`, { signal: AbortSignal.timeout(15_000), headers: { accept: 'application/json' } });
     if (res.status === 429) { await new Promise((r) => setTimeout(r, 2_000 * (intento + 1))); continue; }
     if (res.status === 404) return null;
     if (!res.ok) throw new Error(`TMDb respondió ${res.status}`);

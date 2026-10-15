@@ -136,7 +136,8 @@ export function generate(fileId: number): Promise<TrickplayManifest | null> {
           '-quality', '60',
           join(dir, 'sheet-%03d.webp'),
         ],
-        { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] },
+        // Tope de 30 min (una 4K tarda unos 3): un ffmpeg colgado dejaba el lote parado para siempre.
+        { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'], timeout: 30 * 60_000 },
       );
 
       let pending = '';

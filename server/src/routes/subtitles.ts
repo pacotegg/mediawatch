@@ -133,7 +133,7 @@ export default async function subtitleRoutes(app: FastifyInstance) {
       finishedAt: null,
     });
 
-    const proc = spawn(PYTHON, args, { windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
+    const proc = spawn(PYTHON, args, { windowsHide: true, timeout: 20 * 60_000, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
     const push = (chunk: Buffer) => {
       for (const line of chunk.toString('utf8').split(/\r?\n/)) {
         if (line.trim()) job.log.push(line.trimEnd());
@@ -202,7 +202,7 @@ export default async function subtitleRoutes(app: FastifyInstance) {
 
     const langs = (languages ?? 'es,en').replace(/[^a-zA-Z,]/g, '') || 'es,en';
     const args = [SUBTITLES_API, 'buscar', '--video', file.path, '--idiomas', langs];
-    const proc = spawn(PYTHON, args, { windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' } });
+    const proc = spawn(PYTHON, args, { windowsHide: true, timeout: 90_000, env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' } });
 
     let salida = '';
     proc.stdout.on('data', (d) => { salida += d.toString('utf8'); });
@@ -258,7 +258,7 @@ export default async function subtitleRoutes(app: FastifyInstance) {
       '--sub-id', String(subId),
       '--out', outFile,
     ];
-    const proc = spawn(PYTHON, args, { windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' } });
+    const proc = spawn(PYTHON, args, { windowsHide: true, timeout: 2 * 60_000, env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' } });
 
     let salida = '';
     proc.stdout.on('data', (d) => { salida += d.toString('utf8'); });

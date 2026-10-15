@@ -278,7 +278,9 @@ async function extraerYOcrPgs(
         const proc = spawn(
           config.ffmpeg,
           ['-y', '-hide_banner', '-loglevel', 'error', '-i', videoPath, '-map', `0:${streamIndex}`, '-c:s', 'copy', tmpSup],
-          { windowsHide: true },
+          // Topes muy por encima de lo medido (extraer + OCR ~10 s): si se cuelga, sin esto el subtítulo quedaba
+          // «en curso» para siempre y no volvía a cargar hasta reiniciar el servidor.
+          { windowsHide: true, timeout: 5 * 60_000 },
         );
         proc.on('error', reject);
         proc.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`ffmpeg exit ${code}`))));
@@ -299,7 +301,7 @@ async function extraerYOcrPgs(
         const proc = spawn(
           dotnetExe,
           [pgsToSrtDll, '--input', tmpSup, '--output', tmpSrt, '--tesseractlanguage', ocrLang, '--tesseractdata', tessData],
-          { windowsHide: true },
+          { windowsHide: true, timeout: 10 * 60_000 },
         );
         proc.on('error', reject);
         proc.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`PgsToSrt exit ${code}`))));

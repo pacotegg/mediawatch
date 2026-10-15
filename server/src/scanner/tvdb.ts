@@ -26,6 +26,7 @@ let token: string | null = null;
 
 async function entrar(): Promise<string> {
   const res = await fetch(`${API}/login`, {
+    signal: AbortSignal.timeout(15_000),
     method: 'POST',
     headers: { 'content-type': 'application/json', accept: 'application/json' },
     body: JSON.stringify({ apikey: config.tvdbApiKey }),
@@ -41,7 +42,7 @@ async function tvdb<T>(path: string): Promise<T | null> {
   if (!config.tvdbApiKey) return null;
   for (let intento = 0; intento < 2; intento++) {
     const t = token ?? (await entrar());
-    const res = await fetch(`${API}${path}`, { headers: { authorization: `Bearer ${t}`, accept: 'application/json' } });
+    const res = await fetch(`${API}${path}`, { signal: AbortSignal.timeout(15_000), headers: { authorization: `Bearer ${t}`, accept: 'application/json' } });
     if (res.status === 401) { token = null; continue; }
     if (res.status === 404) return null;
     if (!res.ok) throw new Error(`TVDB respondió ${res.status}`);
