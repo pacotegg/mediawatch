@@ -2,7 +2,7 @@ import { comenzar, nombreCliente } from '../media/historial.ts';
 import { audioEnvolvente, cerrarSesiones, cerrarSesionesDe, escalera, listaDeCalidad, listaMaestra, segmento, CALIDADES } from '../media/hls.ts';
 import { spawn } from 'node:child_process';
 import { createReadStream, existsSync, mkdirSync, readFileSync, statSync, unlinkSync } from 'node:fs';
-import { stat as statAsync, writeFile } from 'node:fs/promises';
+import { readFile, stat as statAsync, writeFile } from 'node:fs/promises';
 import { parsearRango } from '../media/rango.ts';
 import { join } from 'node:path';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
@@ -132,6 +132,17 @@ export function permitidoParaUsuario(row: ReturnType<typeof fileRow>, user: any)
   if (!row) return false;
   const cat = parseRatingCategoria(row.mpaa ?? null, row.library_id ?? 0);
   return user.kid_ratings.includes(cat);
+}
+
+/**
+ * Lo mismo que `permitidoParaUsuario`, pero por título: para lo que cuelga de un título y no de un fichero
+ * (extras, tráiler). Sin esto un perfil infantil podía pedir los extras o las miniaturas de una película para
+ * adultos por su número, aunque la interfaz no se los enseñe.
+ */
+export function itemPermitido(itemId: number, user: any): boolean {
+  if (!user?.kid_ratings || !Array.isArray(user.kid_ratings) || user.kid_ratings.length === 0) return true;
+  const it = db.prepare('SELECT mpaa, library_id FROM items WHERE id = ?').get(itemId) as { mpaa: string | null; library_id: number } | undefined;
+  return Boolean(it) && user.kid_ratings.includes(parseRatingCategoria(it!.mpaa ?? null, it!.library_id ?? 0));
 }
 
 function decodeText(buf: Buffer): string {
@@ -822,7 +833,11 @@ export default async function playRoutes(app: FastifyInstance) {
     if (externalId !== null) {
       const row = db.prepare('SELECT external FROM sub_tracks WHERE id = ? AND file_id = ?').get(externalId, Number(fileId)) as { external: string } | undefined;
       if (!row?.external) return reply.code(404).send('');
-      const text = decodeText(readFileSync(row.external));
+      // Asíncrono: el .srt está junto al vídeo, en E:, y con el disco dormido la lectura síncrona congelaba
+      // el servidor ~7 s. Si ya no existe, 404 (antes saltaba como error 500).
+      const bruto = await readFile(row.external).catch(() => null);
+      if (!bruto) return reply.code(404).send('');
+      const text = decodeText(bruto);
       if (row.external.toLowerCase().endsWith('.vtt')) return reply.send(desplazarVtt(text, ajuste));
       if (/\.(ass|ssa)$/i.test(row.external)) {
         const proc = spawn(config.ffmpeg, ['-hide_banner', '-loglevel', 'error', '-i', row.external, '-f', 'webvtt', 'pipe:1'], { windowsHide: true });
@@ -871,6 +886,7 @@ export default async function playRoutes(app: FastifyInstance) {
 
   app.get('/api/play/:fileId/trickplay', async (req, reply) => {
     const fileId = Number((req.params as { fileId: string }).fileId);
+    if (!permitidoParaUsuario(fileRow(fileId), currentUser(req))) return reply.code(404).send({ error: 'Sin miniaturas' });
 
     const manifest = readManifest(fileId);
     if (manifest) return reply.header('Cache-Control', 'public, max-age=86400').send(manifest);
@@ -879,6 +895,7 @@ export default async function playRoutes(app: FastifyInstance) {
 
   app.get('/api/play/:fileId/trickplay/:index', async (req, reply) => {
     const { fileId, index } = req.params as { fileId: string; index: string };
+    if (!permitidoParaUsuario(fileRow(Number(fileId)), currentUser(req))) return reply.code(404).send({ error: 'Hoja no generada' });
     // El cliente pide `3` o `3.jpg`; lo que se sirve depende de lo que haya en disco (ver sheetPath).
     const path = sheetPath(Number(fileId), Number(index.replace(/\.(jpg|webp)$/, '')));
     if (!existsSync(path)) return reply.code(404).send({ error: 'Hoja no generada' });
@@ -1060,9 +1077,10 @@ export default async function playRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
-  app.get('/api/items/:id/extras', async (req) => ({
-    extras: extrasDe(Number((req.params as { id: string }).id)),
-  }));
+  app.get('/api/items/:id/extras', async (req) => {
+    const id = Number((req.params as { id: string }).id);
+    return { extras: itemPermitido(id, currentUser(req)) ? extrasDe(id) : [] };
+  });
 
   app.get('/api/items/:id/extras/tmdb', async (req) => {
     requireUser(req);
@@ -1091,7 +1109,10 @@ export default async function playRoutes(app: FastifyInstance) {
   });
 
   app.get('/api/extras/:id/thumb', async (req, reply) => {
-    const ruta = await miniatura(Number((req.params as { id: string }).id));
+    const id = Number((req.params as { id: string }).id);
+    const ex = extraPorId(id);
+    if (!ex || !itemPermitido(ex.item_id, currentUser(req))) return reply.code(404).send({ error: 'Sin miniatura' });
+    const ruta = await miniatura(id);
     if (!ruta) return reply.code(404).send({ error: 'Sin miniatura' });
     return reply
       .header('Content-Type', 'image/jpeg')
@@ -1106,7 +1127,7 @@ export default async function playRoutes(app: FastifyInstance) {
    */
   app.get('/api/extras/:id/stream', async (req, reply) => {
     const extra = extraPorId(Number((req.params as { id: string }).id));
-    if (!extra) return reply.code(404).send({ error: 'Extra no encontrado' });
+    if (!extra || !itemPermitido(extra.item_id, currentUser(req))) return reply.code(404).send({ error: 'Extra no encontrado' });
     const stat = await statAsync(extra.path).catch(() => null);
     if (!stat) return reply.code(410).send({ error: 'El fichero ya no esta en disco' });
 

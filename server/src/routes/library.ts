@@ -13,6 +13,7 @@ import { thumbnail } from '../media/images.ts';
 import { clearDialogue, dialogueStats, ftsQuery, indexarEnSegundoPlano, searchDialogue } from '../scanner/dialogue.ts';
 import { detallePersona } from '../scanner/people.ts';
 import { currentUser, deFuera, requireUser, sesionDe } from './auth.ts';
+import { itemPermitido } from './play.ts';
 import { marcarActividad } from '../media/ocupado.ts';
 import { loteOmdb, pararOmdb, rellenarConOmdb } from '../media/omdb.ts';
 import { letrasDe } from '../media/letras.ts';
@@ -100,11 +101,12 @@ function withProgress(rows: any[], userId: number | null) {
   });
 }
 
-export function clausulaRating(user: any): { sql: string; params: string[] } {
+/** Filtro del control parental sobre la tabla de títulos con alias `alias` (por defecto `i`). */
+export function clausulaRating(user: any, alias = 'i'): { sql: string; params: string[] } {
   const ratings = user?.kid_ratings;
   if (!Array.isArray(ratings) || ratings.length === 0) return { sql: '', params: [] };
   const placeholders = ratings.map(() => '?').join(',');
-  return { sql: `rating_categoria(i.mpaa, i.library_id) IN (${placeholders})`, params: ratings };
+  return { sql: `rating_categoria(${alias}.mpaa, ${alias}.library_id) IN (${placeholders})`, params: ratings };
 }
 
 function nextEpisode(showId: number, userId: number | null) {
@@ -723,7 +725,8 @@ export default async function libraryRoutes(app: FastifyInstance) {
     const expression = ftsQuery(q ?? '');
     if (!expression) return { hits: [], stats: dialogueStats() };
     try {
-      return { hits: searchDialogue(expression, 40), stats: dialogueStats() };
+      // Un perfil infantil solo encuentra frases de lo que puede ver (antes salían títulos para adultos).
+      return { hits: searchDialogue(expression, 40, clausulaRating(currentUser(req), 't')), stats: dialogueStats() };
     } catch (err) {
       return { hits: [], error: (err as Error).message, stats: dialogueStats() };
     }
@@ -753,6 +756,8 @@ export default async function libraryRoutes(app: FastifyInstance) {
 
     // Se pide a TMDb la primera vez y queda guardada; si falla, la ficha sigue
     // mostrándose con lo que hay en local.
+    // Un perfil infantil no ve la filmografía que no puede ver (antes salían títulos y carátulas para adultos).
+    const crPersona = clausulaRating(currentUser(req));
     let detalle = null;
     try {
       detalle = await detallePersona(id);
@@ -762,8 +767,8 @@ export default async function libraryRoutes(app: FastifyInstance) {
     const rawCredits = db
       .prepare(`SELECT ${ITEM_FIELDS}, ip.character, ip.role FROM item_people ip
                 JOIN items i ON i.id = ip.item_id JOIN libraries l ON l.id = i.library_id
-                WHERE ip.person_id = ? ORDER BY i.year DESC`)
-      .all(id) as Array<{ id: number; [key: string]: any }>;
+                WHERE ip.person_id = ? ${crPersona.sql ? `AND ${crPersona.sql}` : ''} ORDER BY i.year DESC`)
+      .all(id, ...crPersona.params) as Array<{ id: number; [key: string]: any }>;
     const seen = new Set<number>();
     const credits = rawCredits.filter((c) => {
       if (seen.has(c.id)) return false;
@@ -987,6 +992,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
   app.get('/api/items/:id/trailer', async (req) => {
     const id = Number((req.params as { id: string }).id);
     const { temporada } = req.query as { temporada?: string };
+    if (!itemPermitido(id, currentUser(req))) return { trailer: null };
     return { trailer: await trailerDe(id, temporada !== undefined && temporada !== '' ? Number(temporada) : undefined) };
   });
 

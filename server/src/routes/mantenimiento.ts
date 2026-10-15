@@ -1,4 +1,5 @@
-import { existsSync, readdirSync, statfsSync, statSync } from 'node:fs';
+import { readdirSync, statfsSync, statSync } from 'node:fs';
+import { access } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { DATA_DIR } from '../config.ts';
@@ -55,17 +56,32 @@ async function tamanoCarpeta(dir: string): Promise<{ bytes: number; ficheros: nu
  */
 type Aviso = { nivel: 'error' | 'aviso'; texto: string };
 
+/*
+ * Si las bibliotecas responden, en asíncrono y como mucho cada 5 minutos: están en E:, que se duerme, y un
+ * `existsSync` con el disco dormido congelaba el servidor ~7 s en cada consulta (Ajustes pregunta cada 60 s).
+ * Entre comprobaciones se avisa con lo de la última.
+ */
+let bibliotecasCaidas: { name: string; path: string }[] = [];
+let ultimaComprobacion = 0;
+async function comprobarBibliotecas() {
+  if (Date.now() - ultimaComprobacion < 5 * 60_000) return;
+  ultimaComprobacion = Date.now();
+  const libs = db.prepare('SELECT name, path FROM libraries').all() as { name: string; path: string }[];
+  const caidas: typeof libs = [];
+  for (const l of libs) if (!(await access(l.path).then(() => true, () => false))) caidas.push(l);
+  bibliotecasCaidas = caidas;
+}
+
 /**
  * Lo que conviene mirar y hasta ahora solo se veía yendo a buscarlo: una biblioteca que no responde (disco
  * desmontado), el registro de errores del servidor con contenido, una copia de seguridad que no se hace o el
  * disco de los datos casi lleno. Barato a propósito: no recorre carpetas.
  */
-function avisosDeSalud(): Aviso[] {
+async function avisosDeSalud(): Promise<Aviso[]> {
   const avisos: Aviso[] = [];
 
-  for (const l of db.prepare('SELECT name, path FROM libraries').all() as { name: string; path: string }[]) {
-    if (!existsSync(l.path)) avisos.push({ nivel: 'error', texto: `La biblioteca «${l.name}» no responde (${l.path}): ¿está montado el disco?` });
-  }
+  await comprobarBibliotecas();
+  for (const l of bibliotecasCaidas) avisos.push({ nivel: 'error', texto: `La biblioteca «${l.name}» no responde (${l.path}): ¿está montado el disco?` });
 
   try {
     const st = statSync(join(DATA_DIR, 'server.err'));
@@ -99,7 +115,7 @@ function avisosDeSalud(): Aviso[] {
 export default async function mantenimientoRoutes(app: FastifyInstance) {
   app.get('/api/mantenimiento/avisos', async (req, reply) => {
     if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'No autorizado' });
-    return { avisos: avisosDeSalud() };
+    return { avisos: await avisosDeSalud() };
   });
 
   app.get('/api/mantenimiento/estado', async (req, reply) => {

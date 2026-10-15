@@ -254,7 +254,8 @@ export function ftsQuery(input: string): string {
   return phrase ? `"${tokens.join(' ')}"` : tokens.map((t) => `"${t}"`).join(' ');
 }
 
-export function searchDialogue(query: string, limit = 40): DialogueHit[] {
+/** `filtro`: control parental sobre el título (alias `t`), de `clausulaRating(usuario, 't')`. */
+export function searchDialogue(query: string, limit = 40, filtro: { sql: string; params: string[] } = { sql: '', params: [] }): DialogueHit[] {
   return db
     .prepare(`SELECT
         COALESCE(f.item_id, e.show_id) AS itemId,
@@ -271,8 +272,9 @@ export function searchDialogue(query: string, limit = 40): DialogueHit[] {
       LEFT JOIN items i    ON i.id = f.item_id
       LEFT JOIN episodes e ON e.id = f.episode_id
       LEFT JOIN items s    ON s.id = e.show_id
-      WHERE dialogue MATCH ?
+      JOIN items t         ON t.id = COALESCE(f.item_id, e.show_id)
+      WHERE dialogue MATCH ? ${filtro.sql ? `AND ${filtro.sql}` : ''}
       ORDER BY rank
       LIMIT ?`)
-    .all(query, limit) as DialogueHit[];
+    .all(query, ...filtro.params, limit) as DialogueHit[];
 }
