@@ -54,7 +54,8 @@ export function buscarMpv(carpetas: string[]): string | null {
 
 let actual: ChildProcess | null = null;
 let enviar: ((...orden: unknown[]) => void) | null = null;
-export const hayReproduccion = () => actual !== null && actual.exitCode === null;
+// Un mpv matado (kill) no tiene `exitCode`: Node deja ese a null y pone `signalCode`. Hay que mirar los dos.
+export const hayReproduccion = () => actual !== null && actual.exitCode === null && actual.signalCode === null;
 export function pararReproduccion() {
   if (hayReproduccion()) actual!.kill();
 }
@@ -74,6 +75,8 @@ export function ordenar(nombre: string, valor?: unknown, pistasDe?: () => { pist
   if (!enviar) return;
   switch (nombre) {
     case 'pausa': return enviar('set_property', 'pause', Boolean(valor));
+    // La tecla multimedia de play/pausa no sabe en qué estado está el vídeo: que lo cambie mpv.
+    case 'alternar': return enviar('cycle', 'pause');
     case 'buscar': return enviar('seek', Number(valor), 'absolute');
     case 'volumen': return enviar('set_property', 'volume', Math.max(0, Math.min(100, Number(valor) * 100)));
     case 'silencio': return enviar('set_property', 'mute', Boolean(valor));

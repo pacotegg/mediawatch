@@ -178,7 +178,20 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
   const [current, setCurrent] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [buffering, setBuffering] = useState(true);
-  const [volume, setVolume] = useState(prefs.audio.defaultVolume);
+  // El volumen se recuerda en este equipo (no en el perfil: lo que suena bien en el PC no es lo de la tele del salón).
+  const [volume, setVolume] = useState(() => {
+    try {
+      const v = Number(localStorage.getItem('mw.volumen'));
+      if (localStorage.getItem('mw.volumen') !== null && Number.isFinite(v) && v >= 0 && v <= 1) return v;
+    } catch { /* sin almacenamiento: el de siempre */ }
+    return prefs.audio.defaultVolume;
+  });
+  // Solo cuando se toca el volumen: guardar el de arranque dejaría fijo el valor por defecto de Ajustes en este equipo.
+  const volumenInicial = useRef(true);
+  useEffect(() => {
+    if (volumenInicial.current) { volumenInicial.current = false; return; }
+    try { localStorage.setItem('mw.volumen', String(volume)); } catch { /* sin almacenamiento */ }
+  }, [volume]);
   const [muted, setMuted] = useState(false);
   const [controls, setControls] = useState(true);
   const [menu, setMenu] = useState<'audio' | 'subs' | 'quality' | 'chapters' | 'info' | null>(null);
@@ -480,6 +493,15 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
     else video.pause();
   }, [mpv]);
 
+  // Imagen sobre imagen: el vídeo sigue en una ventanita mientras se usa otra cosa. Solo con `<video>` (no con mpv).
+  const hayPip = !mpv && typeof document !== 'undefined' && document.pictureInPictureEnabled;
+  const togglePip = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (document.pictureInPictureElement) void document.exitPictureInPicture().catch(() => undefined);
+    else void video.requestPictureInPicture().catch(() => undefined);
+  }, []);
+
   const changeDelay = useCallback(
     (nextMs: number) => {
       setSubDelayMs(nextMs);
@@ -526,6 +548,9 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
         case 'm':
           setMuted((m) => !m);
           break;
+        case 'p':
+          if (hayPip) togglePip();
+          break;
         case 'g':
           if (subtitle) changeDelay(subDelayMs - 100);
           break;
@@ -539,7 +564,7 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [navigate, seek, showControls, togglePlay, virtual, prefs.playback.seekStep, prefs.playback.seekStepLarge, changeDelay, subDelayMs, subtitle, mpv]);
+  }, [navigate, seek, showControls, togglePlay, virtual, prefs.playback.seekStep, prefs.playback.seekStepLarge, changeDelay, subDelayMs, subtitle, mpv, hayPip, togglePip]);
 
   useEffect(() => {
     if (mpv) {
@@ -655,32 +680,79 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
   }, [audioTrack, fileId, subtitle]);
 
   /*
-   * El fichero llegó a su final en mpv (el escritorio ya lo ha dado por visto). Igual que en el navegador:
-   * si el perfil encadena episodios y hay otro, se abre en el mismo marco de vídeo; si no, se cierra.
+   * Pasar al siguiente episodio dentro de la ventana de vídeo del escritorio: se piden las pistas guardadas del
+   * siguiente, el proceso principal relanza mpv en el mismo marco y la página se recarga entera (así no queda
+   * nada del anterior: pistas, retardo, miniaturas). Devuelve si lo ha conseguido.
    */
+  const abrirSiguienteMpvRef = useRef<() => Promise<boolean>>(async () => false);
+  abrirSiguienteMpvRef.current = async () => {
+    const sig = nextEpisode;
+    if (!mpv?.siguiente || !sig?.file_id) return false;
+    try {
+      const i = await api.playInfo(sig.file_id);
+      const audio = Number(i.savedAudio);
+      const r = await mpv.siguiente({
+        fileId: sig.file_id, itemId, episodeId: sig.id, start: 0, title: i.title,
+        audio: Number.isInteger(audio) ? audio : null,
+        subtitulo: i.savedSubtitle ?? null,
+        externos: i.subtitles.filter((x) => x.source === 'external').map((x) => ({ id: x.id })),
+      });
+      if (!r.ok) return false;
+      window.location.replace(`/ver/${sig.file_id}?item=${itemId}&ep=${sig.id}&t=0&escritorio=1`);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  // El fichero llegó a su final en mpv (el escritorio ya lo ha dado por visto): como en el navegador, si el perfil
+  // encadena episodios y hay otro se abre; si no, se cierra.
   const alAcabarRef = useRef<() => void>(() => undefined);
   alAcabarRef.current = () => {
-    const sig = nextEpisode;
-    if (!mpv?.siguiente || !prefs.playback.autoPlayNext || !sig?.file_id) { salir(); return; }
-    const fileSig = sig.file_id;
-    void (async () => {
-      try {
-        const i = await api.playInfo(fileSig);
-        const audio = Number(i.savedAudio);
-        const r = await mpv.siguiente!({
-          fileId: fileSig, itemId, episodeId: sig.id, start: 0, title: i.title,
-          audio: Number.isInteger(audio) ? audio : null,
-          subtitulo: i.savedSubtitle ?? null,
-          externos: i.subtitles.filter((x) => x.source === 'external').map((x) => ({ id: x.id })),
-        });
-        // Recarga completa: así no queda nada del episodio anterior (pistas, retardo, miniaturas).
-        if (r.ok) window.location.replace(`/ver/${fileSig}?item=${itemId}&ep=${sig.id}&t=0&escritorio=1`);
-        else salir();
-      } catch {
-        salir();
-      }
-    })();
+    if (!prefs.playback.autoPlayNext) { salir(); return; }
+    void abrirSiguienteMpvRef.current().then((ok) => { if (!ok) salir(); });
   };
+
+  // Tecla multimedia «siguiente» (teclado, auriculares) mientras se ve algo con mpv.
+  useEffect(() => {
+    if (!mpv?.alTecla) return;
+    return mpv.alTecla((t) => { if (t === 'siguiente') void abrirSiguienteMpvRef.current(); });
+  }, [mpv]);
+
+  /*
+   * Teclas multimedia, auriculares Bluetooth y controles del sistema (pantalla de bloqueo, centro de control):
+   * título y carátula, saltar, y siguiente episodio. Con mpv no hay `<video>` y el navegador no lo ve; ahí las
+   * teclas las atiende el proceso principal del escritorio.
+   */
+  const accionesRef = useRef({ virtual, seek, paso: prefs.playback.seekStep, siguiente: () => undefined as void });
+  accionesRef.current = {
+    virtual, seek, paso: prefs.playback.seekStep,
+    siguiente: () => { if (nextEpisode?.file_id) navigate(`/ver/${nextEpisode.file_id}?item=${itemId}&ep=${nextEpisode.id}&t=0`, { replace: true }); },
+  };
+  const haySiguiente = Boolean(nextEpisode?.file_id);
+  useEffect(() => {
+    if (mpv || !('mediaSession' in navigator)) return;
+    const ms = navigator.mediaSession;
+    const ep = episodeId ? ficha?.episodes?.find((e) => e.id === episodeId) : undefined;
+    ms.metadata = new MediaMetadata({
+      title: ep ? `T${ep.season}E${ep.episode} · ${ep.title ?? ''}`.trim() : info?.title ?? '',
+      artist: ep ? ficha?.title ?? 'Media Watch' : ficha?.title && ficha.title !== info?.title ? ficha.title : 'Media Watch',
+      artwork: itemId ? [{ src: img.poster(itemId, 512), sizes: '512x768', type: 'image/webp' }] : [],
+    });
+    const acciones: [MediaSessionAction, MediaSessionActionHandler | null][] = [
+      ['play', () => void videoRef.current?.play().catch(() => undefined)],
+      ['pause', () => videoRef.current?.pause()],
+      ['seekbackward', (d) => accionesRef.current.seek(accionesRef.current.virtual - (d.seekOffset ?? accionesRef.current.paso))],
+      ['seekforward', (d) => accionesRef.current.seek(accionesRef.current.virtual + (d.seekOffset ?? accionesRef.current.paso))],
+      ['seekto', (d) => { if (typeof d.seekTime === 'number') accionesRef.current.seek(d.seekTime); }],
+      ['nexttrack', haySiguiente ? () => accionesRef.current.siguiente() : null],
+    ];
+    for (const [nombre, h] of acciones) { try { ms.setActionHandler(nombre, h); } catch { /* acción no soportada en este navegador */ } }
+    return () => {
+      for (const [nombre] of acciones) { try { ms.setActionHandler(nombre, null); } catch { /* idem */ } }
+      ms.metadata = null;
+    };
+  }, [mpv, info?.title, ficha, itemId, episodeId, haySiguiente]);
 
   // Lo que va contando mpv: posición, pausa, carga y qué pistas tiene puestas.
   useEffect(() => {
@@ -1143,6 +1215,15 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
                   </Menu>
                 </div>
 
+                {hayPip && (
+                  <button
+                    onClick={togglePip}
+                    title="Imagen sobre imagen (P)"
+                    className="text-mist-200 transition-transform hover:scale-110 hover:text-white"
+                  >
+                    <Icon path="M3 6h18v12H3zM12 12h7v4h-7z" size={19} />
+                  </button>
+                )}
                 <button
                   onClick={() => (document.fullscreenElement ? document.exitFullscreen() : containerRef.current?.requestFullscreen())}
                   className="text-mist-200 transition-transform hover:scale-110 hover:text-white"
