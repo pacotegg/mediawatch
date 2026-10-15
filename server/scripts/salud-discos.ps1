@@ -5,6 +5,9 @@
 # `-n standby`: un disco dormido NO se despierta para esto (se apunta como "en reposo" y se mira la vez siguiente).
 param([string]$Destino = (Join-Path $PSScriptRoot '..\..\data\salud-discos.json'))
 $ErrorActionPreference = 'Stop'
+# Registro de la última ejecución: la tarea corre como SYSTEM y, sin esto, si falla no se sabe por qué.
+Start-Transcript -LiteralPath (Join-Path $PSScriptRoot '..\..\data\salud-discos.log') -Force | Out-Null
+try {
 $smart = 'C:\Program Files\smartmontools\bin\smartctl.exe'
 $destino = $Destino
 
@@ -20,3 +23,6 @@ $tmp = "$destino.tmp"
 $json = [pscustomobject]@{ generado = (Get-Date).ToUniversalTime().ToString('o'); discos = $discos } | ConvertTo-Json -Depth 12
 [System.IO.File]::WriteAllText($tmp, $json, [System.Text.UTF8Encoding]::new($false))
 Move-Item -Force -LiteralPath $tmp -Destination $destino
+} finally {
+  Stop-Transcript | Out-Null
+}

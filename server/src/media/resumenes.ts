@@ -25,6 +25,9 @@ const HUECO_MS = 25_000;          // dos frases repetidas más separadas que est
 const EMPIEZA_ANTES_MS = 90_000;  // un resumen empieza enseguida
 const MAX_DURACION_MS = 180_000;  // más largo que esto no es un resumen
 const MISMA_POSICION_MS = 10_000;
+const MIN_DURACION_MS = 8_000;    // con los tiempos rotos (todo a 0 s) salía un «resumen» de 3 s
+// Acotaciones para sordos («(THEME MUSIC PLAYING)», «[RISAS]», «♪ … ♪»): se repiten en cualquier episodio.
+const ACOTACION = /^\s*(\(.*\)|\[.*\]|♪.*)\s*$/s;
 
 export const normalizar = (t: string) =>
   t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/<[^>]+>/g, '')
@@ -44,6 +47,7 @@ export function detectarResumen(actual: Frase[], previos: Frase[][], limiteMs = 
   let inicio: number | null = null, fin = 0, frases = 0, ultimo = -Infinity, mismaPosicion = 0;
   for (const f of actual) {
     if (f.ms >= Math.min(limiteMs, VENTANA_MS)) break;
+    if (ACOTACION.test(f.text)) continue;
     const n = normalizar(f.text);
     if (n.length < MIN_CHARS) continue;
     const donde = origen.get(n);
@@ -61,7 +65,7 @@ export function detectarResumen(actual: Frase[], previos: Frase[][], limiteMs = 
   if (inicio === null || frases < MIN_FRASES) return null;
   if (mismaPosicion > frases / 2) return null; // el mismo subtítulo repetido (episodio doble), no un resumen
   const finMs = fin + 3000; // el índice solo guarda dónde empieza cada frase
-  if (finMs - inicio > MAX_DURACION_MS) return null;
+  if (finMs - inicio > MAX_DURACION_MS || finMs - inicio < MIN_DURACION_MS) return null;
   return { inicioMs: inicio, finMs, frases };
 }
 
