@@ -143,7 +143,8 @@ ipcMain.handle('mw:reproducir', async (e, o: any) => {
    * Del tamaño de la pantalla, pero NO en modo «pantalla completa» de Windows: con `fullscreen: true` la
    * ventana hija de mpv deja de componerse y el vídeo no se ve (comprobado el 14/10). Así sí se ve.
    */
-  const pantalla = screen.getPrimaryDisplay().bounds;
+  // En la pantalla donde está la app, no siempre en la principal (con dos monitores se abría en el otro).
+  const pantalla = (ventana && !ventana.isDestroyed() ? screen.getDisplayMatching(ventana.getBounds()) : screen.getPrimaryDisplay()).bounds;
   ventanaVideo = new BrowserWindow({
     ...pantalla, frame: false, transparent: true, backgroundColor: '#00000000', show: false,
     alwaysOnTop: true, skipTaskbar: false, resizable: false,
