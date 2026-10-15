@@ -259,6 +259,20 @@ private fun Reproduciendo(
   var ultimoToque by remember { mutableStateOf(0L) }
   var enMarcha by remember { mutableStateOf(false) }
   var cargando by remember { mutableStateOf(true) }
+  // Imagen sobre imagen: solo en el móvil y con el vídeo en marcha; la ventanita no lleva controles.
+  run {
+    val actividad = generateSequence(contexto) { (it as? android.content.ContextWrapper)?.baseContext }.firstOrNull { it is casa.tvwatch.Principal } as? casa.tvwatch.Principal
+    androidx.compose.runtime.LaunchedEffect(enMarcha) {
+      casa.tvwatch.EstadoPip.listo = enMarcha && !casa.tvwatch.tele.Tele.es(contexto)
+      actividad?.actualizarPip()
+    }
+    androidx.compose.runtime.DisposableEffect(Unit) {
+      onDispose { casa.tvwatch.EstadoPip.listo = false; actividad?.actualizarPip() }
+    }
+    androidx.compose.runtime.LaunchedEffect(casa.tvwatch.EstadoPip.activo) {
+      if (casa.tvwatch.EstadoPip.activo) controlesVisibles = false
+    }
+  }
   /** La posición en segundos de película entera, para la barra. */
   var posicionUi by remember { mutableStateOf(0.0) }
   /** Mientras se arrastra la barra: a dónde se va a ir, en segundos. */
@@ -1021,7 +1035,7 @@ private fun Reproduciendo(
     }
 
     AnimatedVisibility(
-      visible = controlesVisibles && !hudSincroniaVisible,
+      visible = controlesVisibles && !hudSincroniaVisible && !casa.tvwatch.EstadoPip.activo,
       enter = fadeIn(Movimiento.aparecer(200)),
       exit = fadeOut(Movimiento.aparecer(250)),
       modifier = Modifier.fillMaxSize(),
@@ -1065,7 +1079,7 @@ private fun Reproduciendo(
      * sabe que deslizar desde el borde sale del video.
      */
     AnimatedVisibility(
-      visible = controlesVisibles && !hudSincroniaVisible,
+      visible = controlesVisibles && !hudSincroniaVisible && !casa.tvwatch.EstadoPip.activo,
       enter = fadeIn(Movimiento.aparecer(200)),
       exit = fadeOut(Movimiento.aparecer(250)),
       modifier = Modifier.align(Alignment.TopStart),

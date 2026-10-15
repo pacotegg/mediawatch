@@ -12,6 +12,11 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.57 — 15/10/2026
+
+- Reproductor: imagen sobre imagen. Al salir de la app con una película en marcha, sigue viéndose en una ventanita (Android 8 o más; en una tele no).
+- Buscar y descargar subtítulos de internet es cosa del administrador: se guardan para todos los perfiles y gastan el cupo diario de descargas. Los demás perfiles ya no ven la opción.
+
 ## 3.56 — 13/10/2026
 
 - Seguridad: la app ya no entra en la copia de seguridad automática de Android, así que la sesión iniciada no viaja a la nube ni se restaura en otro móvil. Al cambiar de móvil hay que volver a conectar y elegir perfil.
