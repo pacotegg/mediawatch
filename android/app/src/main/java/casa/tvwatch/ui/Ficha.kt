@@ -10,6 +10,8 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -1367,8 +1369,9 @@ private fun Estuche3DAndroid(
 
 /**
  * Modal inmersivo a pantalla completa para móvil que expone el Steelbook:
- * Se abre con un toque en una transición suave 3D, el disco gira hasta pararse recto a 0°,
+ * Se abre con un efecto cinemático de acercamiento y apertura 3D, el disco gira hasta pararse recto a 0°,
  * y el interior expone libreto físico y bandeja con disco.
+ * Reactivo a la orientación de pantalla (aprovecha al máximo vertical y horizontal / apaisado).
  */
 @Composable
 private fun ModalColeccionistaAndroid(
@@ -1379,6 +1382,11 @@ private fun ModalColeccionistaAndroid(
   androidx.activity.compose.BackHandler { alCerrar() }
 
   var abierta by remember { mutableStateOf(false) }
+  LaunchedEffect(Unit) {
+    delay(100)
+    abierta = true
+  }
+
   var anguloY by remember { mutableFloatStateOf(-8f) }
   val anguloYAnimado by animateFloatAsState(
     targetValue = anguloY,
@@ -1387,10 +1395,11 @@ private fun ModalColeccionistaAndroid(
   )
   val progresoApertura by animateFloatAsState(
     targetValue = if (abierta) 1f else 0f,
-    animationSpec = tween(durationMillis = 850, easing = FastOutSlowInEasing),
+    animationSpec = tween(durationMillis = 950, easing = FastOutSlowInEasing),
     label = "apertura",
   )
   val rotacionDisco = (1f - progresoApertura) * 720f
+  val escalaZoom = 0.78f + (progresoApertura * 0.22f)
 
   val resolucionTexto = if (es4k) "4K ULTRA HD" else "BLU-RAY 1080P"
   val hdrTexto = ficha.files.firstOrNull()?.hdr?.takeIf { it.isNotBlank() }
@@ -1401,7 +1410,7 @@ private fun ModalColeccionistaAndroid(
     fichero?.codec?.uppercase()
   }
 
-  Box(
+  BoxWithConstraints(
     Modifier
       .fillMaxSize()
       .background(Color(0xF506070A))
@@ -1412,6 +1421,16 @@ private fun ModalColeccionistaAndroid(
       },
     contentAlignment = Alignment.Center,
   ) {
+    val esApaisado = maxWidth > maxHeight
+    val altoCaja = if (esApaisado) {
+      (maxHeight * 0.70f).coerceIn(240.dp, 330.dp)
+    } else {
+      (maxWidth * 0.64f).coerceIn(220.dp, 285.dp)
+    }
+    val anchoCara = altoCaja * 0.68f
+    val anchoLomo = 10.dp
+    val tamanoDisco = anchoCara * 0.94f
+
     if (ficha.tieneFondo == 1) {
       Imagen(
         Api.imagen(ficha.id, "fanart", 1280),
@@ -1425,7 +1444,7 @@ private fun ModalColeccionistaAndroid(
     Box(
       Modifier
         .align(Alignment.TopEnd)
-        .padding(top = 40.dp, end = 20.dp)
+        .padding(top = if (esApaisado) 16.dp else 40.dp, end = 20.dp)
         .size(40.dp)
         .clip(CircleShape)
         .background(Color(0x33FFFFFF))
@@ -1440,28 +1459,29 @@ private fun ModalColeccionistaAndroid(
       verticalArrangement = Arrangement.Center,
       modifier = Modifier
         .fillMaxWidth()
-        .padding(horizontal = 16.dp, vertical = 24.dp),
+        .padding(horizontal = 16.dp, vertical = if (esApaisado) 8.dp else 24.dp),
     ) {
       Text(
         "EDICIÓN COLECCIONISTA",
         color = if (es4k) Color(0xFFE2B755) else Realce,
-        fontSize = 11.5.sp,
+        fontSize = if (esApaisado) 10.5.sp else 11.5.sp,
         fontWeight = FontWeight.Bold,
         letterSpacing = 2.sp,
       )
 
-      Spacer(Modifier.height(18.dp))
+      Spacer(Modifier.height(if (esApaisado) 10.dp else 18.dp))
 
-      // Steelbook interactivo en 3D
-      val anchoCara = 145.dp
-      val altoCaja = 220.dp
+      // Steelbook interactivo en 3D con efecto de acercamiento y apertura
+      val anchoTotal = anchoCara + ((anchoCara + anchoLomo) * progresoApertura)
 
       Box(
         modifier = Modifier
           .graphicsLayer {
+            scaleX = escalaZoom
+            scaleY = escalaZoom
             rotationY = anguloYAnimado
             rotationX = 3f
-            cameraDistance = 16f * density
+            cameraDistance = 18f * density
           }
           .shadow(32.dp, RoundedCornerShape(10.dp))
           .clip(RoundedCornerShape(10.dp))
@@ -1473,384 +1493,427 @@ private fun ModalColeccionistaAndroid(
           },
         contentAlignment = Alignment.Center,
       ) {
-        Row(
-          verticalAlignment = Alignment.CenterVertically,
+        Box(
+          Modifier
+            .size(width = anchoTotal, height = altoCaja),
+          contentAlignment = Alignment.Center,
         ) {
-          // Lado Izquierdo (Libreto interior de coleccionista)
-          Box(
-            Modifier
-              .size(width = anchoCara, height = altoCaja)
-              .clip(RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp))
-              .background(
-                Brush.linearGradient(
-                  listOf(Color(0xFF0F1015), Color(0xFF181A22), Color(0xFF0C0D12)),
-                ),
-              )
-              .border(1.dp, Color(0x38FFFFFF), RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp))
-              .padding(10.dp),
+          Row(
+            modifier = Modifier.fillMaxSize(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
           ) {
-            // Fondo tenue de fanart en el interior del steelbook
-            if (ficha.tieneFondo == 1) {
-              Imagen(
-                Api.imagen(ficha.id, "fanart", 400),
-                null,
-                Modifier.fillMaxSize().alpha(0.18f),
-                escala = ContentScale.Crop,
-              )
-            }
+            // Mitad Izquierda (Libreto interior visible cuando está abierta)
+            if (progresoApertura > 0.05f) {
+              Box(
+                Modifier
+                  .size(width = anchoCara * progresoApertura, height = altoCaja)
+                  .clip(RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp))
+                  .background(
+                    Brush.linearGradient(
+                      listOf(Color(0xFF0F1015), Color(0xFF181A22), Color(0xFF0C0D12)),
+                    ),
+                  )
+                  .border(1.dp, Color(0x38FFFFFF), RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp))
+                  .padding(horizontal = 8.dp, vertical = 8.dp),
+              ) {
+                if (ficha.tieneFondo == 1) {
+                  Imagen(
+                    Api.imagen(ficha.id, "fanart", 400),
+                    null,
+                    Modifier.fillMaxSize().alpha(0.18f),
+                    escala = ContentScale.Crop,
+                  )
+                }
 
-            // Clips de sujeción transparentes estilo libreto físico
-            Box(
-              Modifier
-                .size(width = 6.dp, height = 18.dp)
-                .align(Alignment.TopStart)
-                .background(Color(0x55FFFFFF), RoundedCornerShape(2.dp))
-                .border(0.5.dp, Color(0x88FFFFFF), RoundedCornerShape(2.dp)),
-            )
-            Box(
-              Modifier
-                .size(width = 6.dp, height = 18.dp)
-                .align(Alignment.BottomStart)
-                .background(Color(0x55FFFFFF), RoundedCornerShape(2.dp))
-                .border(0.5.dp, Color(0x88FFFFFF), RoundedCornerShape(2.dp)),
-            )
-
-            // Contenido del libreto interior
-            Column(
-              modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 6.dp, vertical = 2.dp),
-              verticalArrangement = Arrangement.SpaceBetween,
-            ) {
-              Column {
-                Text(
-                  "TVWATCH ARCHIVE",
-                  color = if (es4k) Color(0xFFE2B755) else Realce,
-                  fontSize = 8.sp,
-                  fontWeight = FontWeight.Bold,
-                  letterSpacing = 1.2.sp,
+                // Clips de sujeción
+                Box(
+                  Modifier
+                    .size(width = 5.dp, height = 16.dp)
+                    .align(Alignment.TopStart)
+                    .background(Color(0x55FFFFFF), RoundedCornerShape(2.dp))
+                    .border(0.5.dp, Color(0x88FFFFFF), RoundedCornerShape(2.dp)),
                 )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                  ficha.title,
-                  color = Color.White,
-                  fontSize = 12.sp,
-                  fontWeight = FontWeight.Bold,
-                  maxLines = 2,
-                  overflow = TextOverflow.Ellipsis,
-                  lineHeight = 14.sp,
+                Box(
+                  Modifier
+                    .size(width = 5.dp, height = 16.dp)
+                    .align(Alignment.BottomStart)
+                    .background(Color(0x55FFFFFF), RoundedCornerShape(2.dp))
+                    .border(0.5.dp, Color(0x88FFFFFF), RoundedCornerShape(2.dp)),
                 )
-                if (director != null) {
-                  Spacer(Modifier.height(3.dp))
-                  Text(
-                    "Dir. $director",
-                    color = TextoSuave,
-                    fontSize = 9.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                  )
-                }
-                if (actores.isNotBlank()) {
-                  Text(
-                    actores,
-                    color = TextoTenue,
-                    fontSize = 8.5.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                  )
-                }
-                ficha.tagline?.takeIf { it.isNotBlank() }?.let { tag ->
-                  Spacer(Modifier.height(4.dp))
-                  Text(
-                    "«$tag»",
-                    color = Color(0xFFCBD5E1),
-                    fontSize = 8.sp,
-                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    lineHeight = 10.sp,
-                  )
-                }
-              }
 
-              // Badges técnicos inferiores
-              Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Row(
-                  horizontalArrangement = Arrangement.spacedBy(4.dp),
-                  verticalAlignment = Alignment.CenterVertically,
+                // Contenido del libreto interior
+                Column(
+                  modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 4.dp, vertical = 2.dp)
+                    .alpha(((progresoApertura - 0.3f) / 0.7f).coerceIn(0f, 1f)),
+                  verticalArrangement = Arrangement.SpaceBetween,
                 ) {
-                  Text(
-                    if (es4k) "4K UHD" else "BD-1080",
-                    color = if (es4k) Color(0xFFE2B755) else Color.White,
-                    fontSize = 7.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier
-                      .background(Color(0x33000000), RoundedCornerShape(3.dp))
-                      .border(0.6.dp, if (es4k) Color(0x88E2B755) else Color(0x44FFFFFF), RoundedCornerShape(3.dp))
-                      .padding(horizontal = 4.dp, vertical = 1.dp),
-                  )
-                  hdrTexto?.let {
+                  Column {
                     Text(
-                      it,
-                      color = Color(0xFFE2E8F0),
-                      fontSize = 7.5.sp,
-                      fontWeight = FontWeight.SemiBold,
-                      modifier = Modifier
-                        .background(Color(0x33000000), RoundedCornerShape(3.dp))
-                        .border(0.6.dp, Color(0x33FFFFFF), RoundedCornerShape(3.dp))
-                        .padding(horizontal = 4.dp, vertical = 1.dp),
+                      "TVWATCH ARCHIVE",
+                      color = if (es4k) Color(0xFFE2B755) else Realce,
+                      fontSize = 8.sp,
+                      fontWeight = FontWeight.Bold,
+                      letterSpacing = 1.2.sp,
                     )
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                      ficha.title,
+                      color = Color.White,
+                      fontSize = if (esApaisado) 13.sp else 12.sp,
+                      fontWeight = FontWeight.Bold,
+                      maxLines = 2,
+                      overflow = TextOverflow.Ellipsis,
+                      lineHeight = 15.sp,
+                    )
+                    if (director != null) {
+                      Spacer(Modifier.height(2.dp))
+                      Text(
+                        "Dir. $director",
+                        color = TextoSuave,
+                        fontSize = 9.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                      )
+                    }
+                    if (actores.isNotBlank()) {
+                      Text(
+                        actores,
+                        color = TextoTenue,
+                        fontSize = 8.5.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                      )
+                    }
+                    ficha.tagline?.takeIf { it.isNotBlank() }?.let { tag ->
+                      Spacer(Modifier.height(3.dp))
+                      Text(
+                        "«$tag»",
+                        color = Color(0xFFCBD5E1),
+                        fontSize = 8.sp,
+                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        lineHeight = 10.sp,
+                      )
+                    }
                   }
-                }
-                Row(
-                  horizontalArrangement = Arrangement.spacedBy(4.dp),
-                  verticalAlignment = Alignment.CenterVertically,
-                ) {
-                  audioInfo?.let {
-                    Text(
-                      it,
-                      color = Color(0xFF94A3B8),
-                      fontSize = 7.sp,
-                      modifier = Modifier
-                        .background(Color(0x22FFFFFF), RoundedCornerShape(2.dp))
-                        .padding(horizontal = 3.dp, vertical = 1.dp),
-                    )
-                  }
-                  if (ficha.year != null) {
-                    Text(
-                      "${ficha.year}",
-                      color = TextoTenue,
-                      fontSize = 7.5.sp,
-                    )
-                  }
-                  if (ficha.runtime != null && ficha.runtime > 0) {
-                    Text(
-                      "• ${duracionLegible(ficha.runtime)}",
-                      color = TextoTenue,
-                      fontSize = 7.5.sp,
-                    )
+
+                  // Badges técnicos inferiores
+                  Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Row(
+                      horizontalArrangement = Arrangement.spacedBy(4.dp),
+                      verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                      Text(
+                        if (es4k) "4K UHD" else "BD-1080",
+                        color = if (es4k) Color(0xFFE2B755) else Color.White,
+                        fontSize = 7.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                          .background(Color(0x33000000), RoundedCornerShape(3.dp))
+                          .border(0.6.dp, if (es4k) Color(0x88E2B755) else Color(0x44FFFFFF), RoundedCornerShape(3.dp))
+                          .padding(horizontal = 4.dp, vertical = 1.dp),
+                      )
+                      hdrTexto?.let {
+                        Text(
+                          it,
+                          color = Color(0xFFE2E8F0),
+                          fontSize = 7.5.sp,
+                          fontWeight = FontWeight.SemiBold,
+                          modifier = Modifier
+                            .background(Color(0x33000000), RoundedCornerShape(3.dp))
+                            .border(0.6.dp, Color(0x33FFFFFF), RoundedCornerShape(3.dp))
+                            .padding(horizontal = 4.dp, vertical = 1.dp),
+                        )
+                      }
+                    }
+                    Row(
+                      horizontalArrangement = Arrangement.spacedBy(4.dp),
+                      verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                      audioInfo?.let {
+                        Text(
+                          it,
+                          color = Color(0xFF94A3B8),
+                          fontSize = 7.sp,
+                          modifier = Modifier
+                            .background(Color(0x22FFFFFF), RoundedCornerShape(2.dp))
+                            .padding(horizontal = 3.dp, vertical = 1.dp),
+                        )
+                      }
+                      if (ficha.year != null) {
+                        Text(
+                          "${ficha.year}",
+                          color = TextoTenue,
+                          fontSize = 7.5.sp,
+                        )
+                      }
+                      if (ficha.runtime != null && ficha.runtime > 0) {
+                        Text(
+                          "• ${duracionLegible(ficha.runtime)}",
+                          color = TextoTenue,
+                          fontSize = 7.5.sp,
+                        )
+                      }
+                    }
                   }
                 }
               }
             }
-          }
 
-          // Bisagra / Lomo central
-          Box(
-            Modifier
-              .size(width = 10.dp, height = altoCaja)
-              .background(
-                Brush.horizontalGradient(
-                  listOf(Color(0xFF111116), Color(0xFF2D2E38), Color(0xFF111116)),
-                ),
-              )
-              .border(0.5.dp, Color(0x30FFFFFF)),
-          )
-
-          // Bandeja derecha con disco giratorio
-          Box(
-            Modifier
-              .size(width = 175.dp, height = altoCaja)
-              .clip(RoundedCornerShape(topEnd = 8.dp, bottomEnd = 8.dp))
-              .background(Color(0xFF0E0F16))
-              .border(1.dp, Color(0x38FFFFFF), RoundedCornerShape(topEnd = 8.dp, bottomEnd = 8.dp)),
-            contentAlignment = Alignment.Center,
-          ) {
-            if (ficha.tieneFondo == 1) {
-              Imagen(
-                Api.imagen(ficha.id, "fanart", 600),
-                null,
-                Modifier.fillMaxSize().alpha(0.20f),
-                escala = ContentScale.Crop,
+            // Bisagra central
+            if (progresoApertura > 0.05f) {
+              Box(
+                Modifier
+                  .size(width = anchoLomo, height = altoCaja)
+                  .alpha(progresoApertura)
+                  .background(
+                    Brush.horizontalGradient(
+                      listOf(Color(0xFF111116), Color(0xFF2D2E38), Color(0xFF111116)),
+                    ),
+                  )
+                  .border(0.5.dp, Color(0x30FFFFFF)),
               )
             }
 
-            // Circunferencia de la bandeja de plástico
+            // Mitad Derecha (Bandeja con disco)
             Box(
               Modifier
-                .size(165.dp)
-                .clip(CircleShape)
-                .border(1.dp, Color(0x18FFFFFF), CircleShape),
-            )
-
-            // Disco a gran resolución con giro Z sincronizado a la apertura
-            val modifierDisco = Modifier
-              .size(165.dp)
-              .clip(CircleShape)
-              .shadow(14.dp, CircleShape)
-              .graphicsLayer {
-                rotationZ = rotacionDisco
-              }
-
-            if (ficha.tieneDisco == 1) {
-              Imagen(
-                Api.imagen(ficha.id, "discart", 600),
-                "Disco",
-                modifierDisco,
-                escala = ContentScale.Fit,
-              )
-            } else {
-              Imagen(
-                Api.imagen(ficha.id, "poster", 600),
-                "Disco",
-                modifierDisco,
-                escala = ContentScale.Crop,
-              )
-            }
-
-            // Reflejo iridiscente sobre el disco
-            Box(
-              modifierDisco.background(
-                Brush.sweepGradient(
-                  listOf(
-                    Color(0x28FFFFFF),
-                    Color(0x05FFFFFF),
-                    Color(0x22FFFFFF),
-                    Color(0x05FFFFFF),
-                    Color(0x28FFFFFF),
+                .size(width = anchoCara, height = altoCaja)
+                .clip(RoundedCornerShape(
+                  topStart = if (progresoApertura > 0.5f) 0.dp else 8.dp,
+                  bottomStart = if (progresoApertura > 0.5f) 0.dp else 8.dp,
+                  topEnd = 8.dp,
+                  bottomEnd = 8.dp,
+                ))
+                .background(Color(0xFF0E0F16))
+                .border(
+                  1.dp,
+                  Color(0x38FFFFFF),
+                  RoundedCornerShape(
+                    topStart = if (progresoApertura > 0.5f) 0.dp else 8.dp,
+                    bottomStart = if (progresoApertura > 0.5f) 0.dp else 8.dp,
+                    topEnd = 8.dp,
+                    bottomEnd = 8.dp,
                   ),
                 ),
-              ),
-            )
-
-            // Pivote central / hub
-            Box(
-              Modifier
-                .size(20.dp)
-                .clip(CircleShape)
-                .background(Color(0xFF1B1C24))
-                .border(1.2.dp, Color(0x55FFFFFF), CircleShape),
-            )
-          }
-        }
-
-        // Tapa frontal exterior que se abre pivotando desde la izquierda
-        if (progresoApertura < 1f) {
-          Box(
-            Modifier
-              .size(width = anchoCara + 10.dp, height = altoCaja)
-              .align(Alignment.CenterStart)
-              .graphicsLayer {
-                transformOrigin = TransformOrigin(0f, 0.5f)
-                rotationY = -progresoApertura * 140f
-                alpha = (1f - (progresoApertura * 0.7f)).coerceIn(0f, 1f)
-                cameraDistance = 16f * density
-              }
-              .shadow(24.dp, RoundedCornerShape(7.dp))
-              .clip(RoundedCornerShape(7.dp))
-              .background(Color(0xFF0C0C10))
-              .border(1.dp, Color(0x38FFFFFF), RoundedCornerShape(7.dp)),
-          ) {
-            Imagen(
-              Api.imagen(ficha.id, "poster", 600),
-              "Póster",
-              Modifier.fillMaxSize(),
-              escala = ContentScale.Crop,
-            )
-
-            Box(
-              Modifier
-                .fillMaxWidth()
-                .height(18.dp)
-                .background(if (es4k) Color(0xEE111116) else Color(0x880284C7))
-                .border(0.6.dp, if (es4k) Color(0x88E2B755) else Color(0x44FFFFFF))
-                .align(Alignment.TopCenter),
               contentAlignment = Alignment.Center,
             ) {
-              Text(
-                if (es4k) "4K ULTRA HD" else "Blu-ray",
-                color = if (es4k) Color(0xFFE2B755) else Color.White,
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.sp,
-              )
-            }
+              if (ficha.tieneFondo == 1) {
+                Imagen(
+                  Api.imagen(ficha.id, "fanart", 600),
+                  null,
+                  Modifier.fillMaxSize().alpha(0.20f),
+                  escala = ContentScale.Crop,
+                )
+              }
 
-            Box(
-              Modifier
-                .fillMaxSize()
-                .background(
-                  Brush.linearGradient(
-                    0f to Color(0x38FFFFFF),
-                    0.42f to Color(0x08FFFFFF),
-                    0.58f to Color.Transparent,
-                    1f to Color(0x35000000),
+              // Circunferencia de la bandeja
+              Box(
+                Modifier
+                  .size(tamanoDisco)
+                  .clip(CircleShape)
+                  .border(1.dp, Color(0x18FFFFFF), CircleShape),
+              )
+
+              // Disco giratorio
+              val modifierDisco = Modifier
+                .size(tamanoDisco)
+                .clip(CircleShape)
+                .shadow(14.dp, CircleShape)
+                .graphicsLayer {
+                  rotationZ = rotacionDisco
+                }
+
+              if (ficha.tieneDisco == 1) {
+                Imagen(
+                  Api.imagen(ficha.id, "discart", 600),
+                  "Disco",
+                  modifierDisco,
+                  escala = ContentScale.Fit,
+                )
+              } else {
+                Imagen(
+                  Api.imagen(ficha.id, "poster", 600),
+                  "Disco",
+                  modifierDisco,
+                  escala = ContentScale.Crop,
+                )
+              }
+
+              // Reflejo iridiscente sobre el disco
+              Box(
+                modifierDisco.background(
+                  Brush.sweepGradient(
+                    listOf(
+                      Color(0x28FFFFFF),
+                      Color(0x05FFFFFF),
+                      Color(0x22FFFFFF),
+                      Color(0x05FFFFFF),
+                      Color(0x28FFFFFF),
+                    ),
                   ),
                 ),
-            )
+              )
+
+              // Pivote central / hub
+              Box(
+                Modifier
+                  .size(altoCaja * 0.09f)
+                  .clip(CircleShape)
+                  .background(Color(0xFF1B1C24))
+                  .border(1.2.dp, Color(0x55FFFFFF), CircleShape),
+              )
+
+              // Tapa exterior abatible que cubre exactamente la caja cuando está cerrada (progreso == 0)
+              if (progresoApertura < 1f) {
+                Box(
+                  Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                      transformOrigin = TransformOrigin(0f, 0.5f)
+                      rotationY = -progresoApertura * 170f
+                      cameraDistance = 18f * density
+                    }
+                    .shadow(24.dp, RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFF0C0C10))
+                    .border(1.dp, Color(0x38FFFFFF), RoundedCornerShape(8.dp)),
+                ) {
+                  // Solo se dibuja si el ángulo no se ha girado hacia atrás del todo
+                  if (progresoApertura < 0.65f) {
+                    Imagen(
+                      Api.imagen(ficha.id, "poster", 600),
+                      "Póster",
+                      Modifier.fillMaxSize(),
+                      escala = ContentScale.Crop,
+                    )
+
+                    Box(
+                      Modifier
+                        .fillMaxWidth()
+                        .height(18.dp)
+                        .background(if (es4k) Color(0xEE111116) else Color(0x880284C7))
+                        .border(0.6.dp, if (es4k) Color(0x88E2B755) else Color(0x44FFFFFF))
+                        .align(Alignment.TopCenter),
+                      contentAlignment = Alignment.Center,
+                    ) {
+                      Text(
+                        if (es4k) "4K ULTRA HD" else "Blu-ray",
+                        color = if (es4k) Color(0xFFE2B755) else Color.White,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp,
+                      )
+                    }
+
+                    Box(
+                      Modifier
+                        .fillMaxSize()
+                        .background(
+                          Brush.linearGradient(
+                            0f to Color(0x38FFFFFF),
+                            0.42f to Color(0x08FFFFFF),
+                            0.58f to Color.Transparent,
+                            1f to Color(0x35000000),
+                          ),
+                        ),
+                    )
+
+                    Box(
+                      Modifier
+                        .fillMaxHeight()
+                        .width(7.dp)
+                        .background(
+                          Brush.horizontalGradient(
+                            0f to Color(0x40FFFFFF),
+                            0.5f to Color(0x25000000),
+                            1f to Color.Transparent,
+                          ),
+                        ),
+                    )
+                  }
+                }
+              }
+            }
           }
         }
       }
 
-      Spacer(Modifier.height(18.dp))
+      Spacer(Modifier.height(if (esApaisado) 8.dp else 16.dp))
 
       Text(
         if (abierta) "Toca la caja para cerrarla · Arrastra para inclinar en 3D" else "Toca la caja para abrirla · Arrastra para inclinar en 3D",
         color = TextoTenue,
-        fontSize = 11.5.sp,
+        fontSize = if (esApaisado) 10.5.sp else 11.5.sp,
         textAlign = TextAlign.Center,
       )
 
-      Spacer(Modifier.height(14.dp))
+      if (!esApaisado) {
+        Spacer(Modifier.height(12.dp))
 
-      Text(
-        ficha.title,
-        color = Color.White,
-        fontSize = 20.sp,
-        fontWeight = FontWeight.Bold,
-        textAlign = TextAlign.Center,
-        maxLines = 2,
-        overflow = TextOverflow.Ellipsis,
-      )
-
-      Spacer(Modifier.height(10.dp))
-
-      Row(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-      ) {
         Text(
-          resolucionTexto,
-          color = if (es4k) Color(0xFFE2B755) else Color.White,
-          fontSize = 11.5.sp,
+          ficha.title,
+          color = Color.White,
+          fontSize = 19.sp,
           fontWeight = FontWeight.Bold,
-          modifier = Modifier
-            .background(
-              if (es4k) Color(0x33E2B755) else Color(0x22FFFFFF),
-              RoundedCornerShape(6.dp),
-            )
-            .border(
-              0.8.dp,
-              if (es4k) Color(0x88E2B755) else Color(0x44FFFFFF),
-              RoundedCornerShape(6.dp),
-            )
-            .padding(horizontal = 10.dp, vertical = 4.dp),
+          textAlign = TextAlign.Center,
+          maxLines = 2,
+          overflow = TextOverflow.Ellipsis,
         )
 
-        if (hdrTexto != null) {
-          Text(
-            hdrTexto,
-            color = Color(0xFFE2E8F0),
-            fontSize = 11.5.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier
-              .background(Color(0x22FFFFFF), RoundedCornerShape(6.dp))
-              .border(0.8.dp, Color(0x33FFFFFF), RoundedCornerShape(6.dp))
-              .padding(horizontal = 10.dp, vertical = 4.dp),
-          )
-        }
+        Spacer(Modifier.height(8.dp))
 
-        if (ficha.runtime != null && ficha.runtime > 0) {
+        Row(
+          horizontalArrangement = Arrangement.spacedBy(8.dp),
+          verticalAlignment = Alignment.CenterVertically,
+        ) {
           Text(
-            duracionLegible(ficha.runtime),
-            color = Color(0xFF94A3B8),
+            resolucionTexto,
+            color = if (es4k) Color(0xFFE2B755) else Color.White,
             fontSize = 11.5.sp,
-            fontWeight = FontWeight.Medium,
+            fontWeight = FontWeight.Bold,
             modifier = Modifier
-              .background(Color(0x18FFFFFF), RoundedCornerShape(6.dp))
-              .border(0.8.dp, Color(0x22FFFFFF), RoundedCornerShape(6.dp))
+              .background(
+                if (es4k) Color(0x33E2B755) else Color(0x22FFFFFF),
+                RoundedCornerShape(6.dp),
+              )
+              .border(
+                0.8.dp,
+                if (es4k) Color(0x88E2B755) else Color(0x44FFFFFF),
+                RoundedCornerShape(6.dp),
+              )
               .padding(horizontal = 10.dp, vertical = 4.dp),
           )
+
+          if (hdrTexto != null) {
+            Text(
+              hdrTexto,
+              color = Color(0xFFE2E8F0),
+              fontSize = 11.5.sp,
+              fontWeight = FontWeight.SemiBold,
+              modifier = Modifier
+                .background(Color(0x22FFFFFF), RoundedCornerShape(6.dp))
+                .border(0.8.dp, Color(0x33FFFFFF), RoundedCornerShape(6.dp))
+                .padding(horizontal = 10.dp, vertical = 4.dp),
+            )
+          }
+
+          if (ficha.runtime != null && ficha.runtime > 0) {
+            Text(
+              duracionLegible(ficha.runtime),
+              color = Color(0xFF94A3B8),
+              fontSize = 11.5.sp,
+              fontWeight = FontWeight.Medium,
+              modifier = Modifier
+                .background(Color(0x18FFFFFF), RoundedCornerShape(6.dp))
+                .border(0.8.dp, Color(0x22FFFFFF), RoundedCornerShape(6.dp))
+                .padding(horizontal = 10.dp, vertical = 4.dp),
+            )
+          }
         }
       }
     }
