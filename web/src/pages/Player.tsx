@@ -112,6 +112,12 @@ function MenuItem({ active, onClick, children }: { active: boolean; onClick: () 
  * Dentro del cliente de escritorio la película se abre en mpv, que lee casi todo sin que el servidor transcodifique.
  * Si no se puede (sin mpv, sin sesión…) o se pide `?web=1`, se cae al reproductor del navegador de siempre.
  */
+/** Reintentar la información solo si es un fallo de red o del servidor: un 403, 404 o 410 no va a cambiar. */
+const reintentarInfo = (veces: number, e: unknown) => {
+  const status = (e as { status?: number }).status;
+  return veces < 2 && (status === undefined || status >= 500);
+};
+
 export default function Player() {
   const { fileId: fileIdParam } = useParams<{ fileId: string }>();
   const [params] = useSearchParams();
@@ -122,7 +128,10 @@ export default function Player() {
   const [fallo, setFallo] = useState<string | null>(null);
   const enVentanaDeVideo = params.get('escritorio') === '1';
   const aEscritorio = Boolean(escritorio()) && !enVentanaDeVideo && params.get('web') !== '1' && itemId > 0 && fallo === null;
-  const { data: info } = useQuery<PlayInfo>({ queryKey: ['play', fileId], queryFn: () => api.playInfo(fileId), staleTime: Infinity, enabled: aEscritorio });
+  const { data: info, error: errorInfo } = useQuery<PlayInfo>({ queryKey: ['play', fileId], queryFn: () => api.playInfo(fileId), staleTime: Infinity, enabled: aEscritorio, retry: reintentarInfo });
+  // Sin esto, un fallo al pedir la información dejaba «Abriendo el vídeo…» para siempre.
+  // Solo en el cliente de escritorio: la consulta es la misma que la del reproductor y su error llegaba aquí también.
+  useEffect(() => { if (errorInfo && escritorio() && !enVentanaDeVideo) setFallo((errorInfo as Error).message); }, [errorInfo, enVentanaDeVideo]);
 
   useEffect(() => {
     if (!aEscritorio || !info || lanzado.current) return;
@@ -211,7 +220,7 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
   const [syncing, setSyncing] = useState(false);
   const [syncNote, setSyncNote] = useState('');
 
-  const { data: info, refetch: refetchInfo } = useQuery<PlayInfo>({ queryKey: ['play', fileId], queryFn: () => api.playInfo(fileId), staleTime: Infinity });
+  const { data: info, refetch: refetchInfo, error: errorInfo } = useQuery<PlayInfo>({ queryKey: ['play', fileId], queryFn: () => api.playInfo(fileId), staleTime: Infinity, retry: reintentarInfo });
   // La busqueda en internet necesita subsfetch.py, que solo existe en el HTPC.
   const { data: subsDisp } = useQuery({ queryKey: ['subs-available'], queryFn: () => api.subtitlesAvailable(), staleTime: Infinity });
   interface CandidatoSubtitulo {
@@ -785,7 +794,8 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
   const lastAutoSkipped = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!prefs.playback.autoSkipIntro || !activeSkip || activeSkip.kind !== 'intro') return;
+    // El resumen («Anteriormente en…») se salta igual que la cabecera, con el mismo ajuste.
+    if (!prefs.playback.autoSkipIntro || !activeSkip || (activeSkip.kind !== 'intro' && activeSkip.kind !== 'recap')) return;
     if (lastAutoSkipped.current === activeSkip.start_s) return;
     lastAutoSkipped.current = activeSkip.start_s;
     seek(activeSkip.end_s);
@@ -811,6 +821,14 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
       {/* La ventana del escritorio es transparente: el vídeo lo pinta mpv por detrás y esto va encima. */}
       {conMpv && <style>{'html,body,#root{background:transparent !important}'}</style>}
       {aviso && <div className="absolute left-1/2 top-4 z-10 -translate-x-1/2 rounded-lg bg-black/80 px-4 py-2 text-sm text-amber-300">{aviso}</div>}
+      {/* Si no se puede ni pedir la información (perfil sin permiso, tiempo de hoy agotado, fichero que ya no
+          está, servidor caído), se dice por qué y se puede salir; antes se quedaba girando para siempre. */}
+      {errorInfo && !info && (
+        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-black/85 px-6 text-center">
+          <div className="max-w-md text-[15px] text-mist-100">{(errorInfo as Error).message || 'No se pudo abrir el vídeo'}</div>
+          <button onClick={salir} className="rounded-xl bg-white/12 px-5 py-2 text-[13px] text-white hover:bg-white/20">Volver</button>
+        </div>
+      )}
       {!conMpv && (
       <video
         ref={videoRef}
@@ -870,7 +888,7 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
             onClick={() => seek(activeSkip.end_s + 0.4)}
             className="glass-strong absolute right-8 bottom-28 z-20 rounded-full px-5 py-2.5 text-[13px] font-semibold transition-transform hover:scale-105 active:scale-95"
           >
-            {activeSkip.kind === 'intro' ? 'Saltar cabecera' : escenaFinal ? 'Ver escena final' : 'Saltar créditos'}
+            {activeSkip.kind === 'intro' ? 'Saltar cabecera' : activeSkip.kind === 'recap' ? 'Saltar resumen' : escenaFinal ? 'Ver escena final' : 'Saltar créditos'}
           </motion.button>
         )}
       </AnimatePresence>

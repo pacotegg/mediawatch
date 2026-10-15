@@ -336,6 +336,8 @@ function UsuariosTab() {
   const [editColor, setEditColor] = useState('#e8b64c');
   const [editIsAdmin, setEditIsAdmin] = useState(false);
   const [editIsKid, setEditIsKid] = useState(false);
+  // Minutos al día, como texto del campo ('' = sin límite).
+  const [editLimite, setEditLimite] = useState('');
   const [editKidRatings, setEditKidRatings] = useState<string[]>([]);
   const [editPin, setEditPin] = useState('');
   const [quitarPin, setQuitarPin] = useState(false);
@@ -353,6 +355,7 @@ function UsuariosTab() {
     const tieneKid = Array.isArray(u.kid_ratings) && u.kid_ratings.length > 0;
     setEditIsKid(tieneKid);
     setEditKidRatings(tieneKid ? [...u.kid_ratings!] : ['TP', '7']);
+    setEditLimite(u.limite_diario_min ? String(u.limite_diario_min) : '');
     setAviso('');
   };
 
@@ -375,15 +378,24 @@ function UsuariosTab() {
     onError: (err: Error) => setAviso(err.message),
   });
 
+  // Mismas reglas que el servidor: el administrador a cualquiera; un adulto, a otros; nadie a sí mismo.
+  const puedeLimitar = Boolean(editing) && (yo?.is_admin === 1 || (editing?.id !== yo?.id && !(yo?.kid_ratings?.length)));
+
   const updateMutation = useMutation({
     mutationFn: async () => {
       if (!editing) return;
-      const data: { name?: string; color?: string; isAdmin?: boolean; pin?: string | null; kidRatings?: string[] | null } = {
+      const data: { name?: string; color?: string; isAdmin?: boolean; pin?: string | null; kidRatings?: string[] | null; limiteDiario?: number | null } = {
         name: editName.trim(),
         color: editColor,
         isAdmin: editIsKid ? false : editIsAdmin,
         kidRatings: editIsKid && editKidRatings.length > 0 ? editKidRatings : null,
       };
+      // Nadie se pone su propio límite (el servidor lo rechaza): solo se manda al editar a otro, o siendo administrador.
+      if (puedeLimitar) {
+        const m = Number(editLimite.trim());
+        data.limiteDiario = editLimite.trim() === '' ? null : Number.isInteger(m) && m >= 1 && m <= 1440 ? m : undefined;
+        if (data.limiteDiario === undefined) throw new Error('El límite tiene que ser un número de minutos entre 1 y 1440, o vacío');
+      }
       if (quitarPin) {
         data.pin = null;
       } else if (editPin.length > 0) {
@@ -627,6 +639,24 @@ function UsuariosTab() {
             </div>
           </Field>
 
+          {puedeLimitar && (
+            <Field
+              label="Límite de tiempo al día"
+              hint="Minutos que puede ver al día, sumando todos los aparatos. Al agotarse se para lo que esté viendo y no puede empezar nada hasta mañana. Vacío: sin límite."
+            >
+              <input
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={1440}
+                placeholder="Sin límite"
+                value={editLimite}
+                onChange={(e) => setEditLimite(e.target.value)}
+                className="w-32 rounded-xl bg-white/6 px-3 py-2 text-[13px] text-mist-100 outline-none ring-1 ring-white/10 focus:ring-accent"
+              />
+            </Field>
+          )}
+
           <div className="border-b border-white/5 pb-4">
             <div className="text-[13.5px] text-mist-200">PIN de acceso</div>
             <div className="mt-1 text-[12px] text-mist-500">
@@ -730,6 +760,9 @@ function UsuariosTab() {
                         🧒 {u.kid_ratings.map((k) => k === 'TP' ? 'TP' : `+${k}`).join(' ')}
                       </span>
                     )}
+                    {u.limite_diario_min ? (
+                      <span className="rounded-md bg-white/8 px-1.5 py-0.5 text-[10.5px] text-mist-300">⏱ {u.limite_diario_min} min/día</span>
+                    ) : null}
                   </div>
                   <div className="mt-0.5 flex items-center gap-1.5 text-[11.5px]">
                     {tienePin ? (

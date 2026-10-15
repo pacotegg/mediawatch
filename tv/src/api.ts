@@ -352,7 +352,7 @@ export const api = {
     pedir<{ ok: true }>('/api/items/' + itemId + '/favorite', { method: 'POST', body: JSON.stringify({ favorite: favorito }) }),
   /** Con `perfil`, el servidor marca que pistas puede decodificar esta tele. */
   pistas: (fileId: number) =>
-    pedir<InfoReproduccion>('/api/play/' + fileId + '/info?perfil=' + PERFIL),
+    pedir<InfoReproduccion>('/api/play/' + fileId + '/info?perfil=' + PERFIL + '&resumen=1'),
   subtituloVtt: async (fileId: number, trackId: string, desde = 0, retardo = 0) => {
     const t = token();
     const url = servidor() + '/api/play/' + fileId + '/subtitle/' + trackId + '.vtt?desde=' + desde + '&retardo=' + retardo + (t ? '&token=' + t : '');

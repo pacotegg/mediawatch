@@ -579,7 +579,7 @@ private fun Reproduciendo(
       val dentro = i?.skip?.firstOrNull { r ->
         enSegundos >= r.desde && enSegundos < r.hasta - 1 && (r.kind + r.desde) !in tramosSaltados
       }
-      if (dentro != null && Ajustes.modoMaraton && dentro.kind == "intro") {
+      if (dentro != null && Ajustes.modoMaraton && (dentro.kind == "intro" || dentro.kind == "recap")) {
         tramosSaltados.add(dentro.kind + dentro.desde)
         reproductor.seekTo(((dentro.hasta - desfase) * 1000).toLong().coerceAtLeast(0L))
         tramoALaVista = null
@@ -1135,7 +1135,7 @@ private fun Reproduciendo(
     tramoALaVista?.let { tramo ->
       val encadena = tramo.kind == "credits" && siguiente != null
       Text(
-        if (encadena) "Siguiente episodio" else if (tramo.kind == "credits") "Saltar créditos" else "Saltar cabecera",
+        if (encadena) "Siguiente episodio" else if (tramo.kind == "credits") "Saltar créditos" else if (tramo.kind == "recap") "Saltar resumen" else "Saltar cabecera",
         color = Color.Black,
         fontSize = 15.sp,
         fontWeight = FontWeight.SemiBold,
