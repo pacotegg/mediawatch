@@ -7,6 +7,7 @@ import { backupBaseDeDatosEnWorker, optimizarBaseDeDatosEnWorker, tamanoBaseDeDa
 import { limpiarCache as limpiarCacheImagenes } from '../media/images.ts';
 import { limpiarHuerfanas as limpiarTrickplayHuerfano } from '../media/trickplay.ts';
 import { requireUser } from './auth.ts';
+import { avisosSmart, avisosWindows } from '../media/salud-discos.ts';
 
 /*
  * Tamaño total y número de ficheros de una carpeta, sin bajar a subcarpetas
@@ -88,6 +89,9 @@ function avisosDeSalud(): Aviso[] {
     const libre = f.bavail * f.bsize;
     if (libre < 20e9) avisos.push({ nivel: libre < 5e9 ? 'error' : 'aviso', texto: `Quedan ${(libre / 1e9).toFixed(1)} GB libres en el disco de los datos.` });
   } catch { /* plataforma sin statfs */ }
+
+  // Salud de los discos: lo que dice Windows (sin administrador) y el detalle SMART si la tarea programada lo deja.
+  avisos.push(...avisosWindows(), ...avisosSmart());
 
   return avisos;
 }

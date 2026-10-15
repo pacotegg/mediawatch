@@ -23,6 +23,7 @@
 import type { FastifyInstance } from 'fastify';
 import { requireUser, sesionDe } from './auth.ts';
 import { recogerAvisos } from '../media/avisos.ts';
+import { estadoLimite, MENSAJE_LIMITE } from '../media/limite-diario.ts';
 
 /** Cuánto aguanta un envío sin que nadie lo recoja. */
 const CADUCA_MS = 60_000;
@@ -93,6 +94,11 @@ export default async function mandoRoutes(app: FastifyInstance) {
     const tele = (req.query as { tele?: string }).tele === '1';
     // Y los avisos del administrador para este aparato: mensaje y «para».
     const avisos = recogerAvisos(sesionDe(req) ?? '');
+    // Un perfil con el tiempo de hoy agotado: lo que esté viendo se para, en cualquier aparato.
+    if (estadoLimite(user.id)?.agotado) {
+      avisos.parar = true;
+      avisos.mensaje = avisos.mensaje ?? MENSAJE_LIMITE;
+    }
     return {
       buscar: tele ? recogerBusqueda(user.id) : null,
       reproducir: tele ? recogerReproduccion(user.id) : null,

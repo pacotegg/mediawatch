@@ -26,8 +26,13 @@ CREATE TABLE IF NOT EXISTS skip_ranges (
 
 export type SkipRange = { kind: string; start_s: number; end_s: number; confidence: number };
 
-export const skipRangesFor = (episodeId: number): SkipRange[] =>
-  db.prepare('SELECT kind, start_s, end_s, confidence FROM skip_ranges WHERE episode_id = ?').all(episodeId) as SkipRange[];
+/**
+ * Los tramos de un episodio. `conResumen`: los clientes que saben qué es un resumen (`recap`) lo piden; a los que
+ * no, no se les manda, para que no lo rotulen «Saltar cabecera» o «Saltar créditos».
+ */
+export const skipRangesFor = (episodeId: number, conResumen = false): SkipRange[] =>
+  (db.prepare('SELECT kind, start_s, end_s, confidence FROM skip_ranges WHERE episode_id = ?').all(episodeId) as SkipRange[])
+    .filter((r) => conResumen || r.kind !== 'recap');
 
 export type DetectionJob = {
   running: boolean;

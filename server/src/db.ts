@@ -454,6 +454,10 @@ anadirColumna('coleccion_imagen', 'fondo', 'TEXT');
 anadirColumna('users', 'avatar', 'TEXT');
 // Franjas de edad permitidas para perfiles infantiles (JSON array ["TP", "7", ...]). Null = adulto.
 anadirColumna('users', 'kid_ratings', 'TEXT');
+// Minutos al día que puede ver el perfil (NULL: sin límite). Ver media/limite-diario.ts.
+anadirColumna('users', 'limite_diario_min', 'INTEGER');
+// Hasta cuándo ha visto el perfil las novedades (hora local, como items.added_at). Ver routes/novedades.ts.
+anadirColumna('users', 'novedades_vistas', 'TEXT');
 anadirColumna('descargas', 'codec', "TEXT NOT NULL DEFAULT 'h265'");
 db.exec("UPDATE sessions SET last_seen = created_at WHERE last_seen IS NULL");
 

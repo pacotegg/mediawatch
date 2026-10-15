@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { db } from '../db.ts';
+import { detectarResumenes } from '../media/resumenes.ts';
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS dialogue_files (
@@ -198,6 +199,12 @@ export async function indexarEnSegundoPlano(language: string): Promise<void> {
   } finally {
     estado.enCurso = false;
     estado.terminadoEn = new Date().toISOString();
+  }
+  // Con subtítulos nuevos indexados puede haber resúmenes («Anteriormente en…») nuevos: solo base, unos segundos.
+  if (estado.hechos > 0) {
+    detectarResumenes()
+      .then((r) => console.log(`[resumenes] ${r.encontrados} en ${r.analizados} episodios`))
+      .catch((e) => console.error('[resumenes]', (e as Error).message));
   }
 }
 
