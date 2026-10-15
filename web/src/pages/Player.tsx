@@ -8,6 +8,7 @@ import { escritorio } from '../lib/escritorio.ts';
 import { clock, languageName } from '../lib/format.ts';
 import { subtitleCss, usePreferences } from '../lib/preferences.tsx';
 import { applyCues, parseVtt, type Cue } from '../lib/vtt.ts';
+import { volver } from '../lib/volver.ts';
 
 const HIDE_AFTER_MS = 3200;
 const SAVE_EVERY_MS = 10_000;
@@ -139,7 +140,7 @@ export default function Player() {
         externos: info.subtitles.filter((s) => s.source === 'external').map((s) => ({ id: s.id })),
       })
       // La ventana de vídeo se abre aparte y se cierra sola; aquí se vuelve a la ficha.
-      .then((r) => { if (r.ok) navigate(-1); else setFallo(r.error ?? 'No se pudo abrir el vídeo'); })
+      .then((r) => { if (r.ok) volver(navigate, `/titulo/${itemId}`); else setFallo(r.error ?? 'No se pudo abrir el vídeo'); })
       .catch((e) => setFallo(String(e)));
   }, [aEscritorio, info, fileId, itemId, params, navigate]);
 
@@ -284,8 +285,8 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
   /** Salir del reproductor: en la ventana de vídeo del escritorio se cierra la ventana entera. */
   const salir = useCallback(() => {
     if (mpv) void mpv.video('cerrar');
-    else navigate(-1);
-  }, [mpv, navigate]);
+    else volver(navigate, itemId ? `/titulo/${itemId}` : '/');
+  }, [mpv, navigate, itemId]);
 
   const [avisoAdmin, setAvisoAdmin] = useState('');
   useEffect(() => {

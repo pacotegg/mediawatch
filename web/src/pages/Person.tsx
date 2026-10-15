@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { motion } from 'motion/react';
 import PosterCard from '../components/PosterCard.tsx';
 import { api, img } from '../lib/api.ts';
+import { volver } from '../lib/volver.ts';
 
 export default function Person() {
   const { id } = useParams<{ id: string }>();
@@ -38,7 +39,7 @@ export default function Person() {
             Reintentar
           </button>
           <button
-            onClick={() => navigate(-1)}
+            onClick={() => volver(navigate, '/')}
             className="rounded-xl bg-white/10 px-5 py-2.5 text-[13px] font-medium text-white transition hover:bg-white/16"
           >
             Volver
