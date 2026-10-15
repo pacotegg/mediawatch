@@ -19,6 +19,7 @@ import { detectForShow, detectarTodas, job, pararDeteccion, showsWithRanges, ski
 import { detectarPeliculas, jobPeliculas, pararPeliculas, resumenPeliculas, skipDePelicula } from '../media/creditos-detector.ts';
 import { currentUser, deFuera, requireUser, sesionDe } from './auth.ts';
 import type { ServerResponse } from 'node:http';
+import { estadoLimite, MENSAJE_LIMITE } from '../media/limite-diario.ts';
 
 function caps(req: FastifyRequest): ClientCaps {
   const q = req.query as Record<string, string | undefined>;
@@ -337,6 +338,7 @@ export default async function playRoutes(app: FastifyInstance) {
     if (!permitidoParaUsuario(row, user)) {
       return reply.code(403).send({ error: 'Contenido no disponible para este perfil' });
     }
+    if (user && estadoLimite(user.id)?.agotado) return reply.code(403).send({ error: MENSAJE_LIMITE, limite: true });
     // Asincrono: E: es un disco USB que se duerme y el primer acceso tarda ~7 s;
     // con existsSync/statSync esa espera congelaba el servidor para todos.
     const statFichero = await statAsync(row.path).catch(() => null);
@@ -372,7 +374,7 @@ export default async function playRoutes(app: FastifyInstance) {
       // el cliente no tenga que hacer una segunda peticion al empezar a ver.
       // En una pelicula no hay huellas que comparar: los creditos salen de los
       // capitulos del propio fichero o del detector del texto que sube.
-      skip: row.episode_id ? skipRangesFor(row.episode_id) : skipDePelicula(row.item_id ?? 0, info.chapters, info.duration),
+      skip: row.episode_id ? skipRangesFor(row.episode_id, (req.query as { resumen?: string }).resumen === '1') : skipDePelicula(row.item_id ?? 0, info.chapters, info.duration),
       size: statFichero.size,
       bitrate: info.duration > 0 ? Math.round((statFichero.size * 8) / info.duration) : 0,
       video: info.video,
@@ -431,6 +433,7 @@ export default async function playRoutes(app: FastifyInstance) {
     if (!permitidoParaUsuario(row, user)) {
       return reply.code(403).send({ error: 'Contenido no disponible para este perfil' });
     }
+    if (user && estadoLimite(user.id)?.agotado) return reply.code(403).send({ error: MENSAJE_LIMITE, limite: true });
     const statFichero = await statAsync(row.path).catch(() => null);
     if (!statFichero) return reply.code(410).send({ error: 'El fichero ya no está en disco' });
 
@@ -722,6 +725,7 @@ export default async function playRoutes(app: FastifyInstance) {
     if (!permitidoParaUsuario(row, user)) {
       return reply.code(403).send({ error: 'Contenido no disponible para este perfil' });
     }
+    if (user && estadoLimite(user.id)?.agotado) return reply.code(403).send({ error: MENSAJE_LIMITE, limite: true });
     const info = await mediaInfo(fileId);
     const q = req.query as Record<string, string | undefined>;
     const audioIndexMaestro = q.audio !== undefined ? Number(q.audio) : info.audio.find((a) => a.default)?.streamIndex ?? info.audio[0]?.streamIndex ?? 0;
@@ -958,7 +962,7 @@ export default async function playRoutes(app: FastifyInstance) {
   });
 
   app.get('/api/episodes/:id/skip', async (req) => {
-    return { ranges: skipRangesFor(Number((req.params as { id: string }).id)) };
+    return { ranges: skipRangesFor(Number((req.params as { id: string }).id), (req.query as { resumen?: string }).resumen === '1') };
   });
 
   app.get('/api/skip/status', async () => ({ job, shows: showsWithRanges() }));

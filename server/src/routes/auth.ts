@@ -260,7 +260,7 @@ export default async function authRoutes(app: FastifyInstance) {
 
   app.get('/api/users', async (req) => {
     const users = db
-      .prepare('SELECT id, name, color, is_admin, pin IS NOT NULL AS has_pin, pin_len, avatar IS NOT NULL AS has_avatar, kid_ratings FROM users ORDER BY id')
+      .prepare('SELECT id, name, color, is_admin, pin IS NOT NULL AS has_pin, pin_len, avatar IS NOT NULL AS has_avatar, kid_ratings, limite_diario_min FROM users ORDER BY id')
       .all() as any[];
     const fuera = deFuera(req);
     for (const u of users) {
@@ -434,7 +434,7 @@ export default async function authRoutes(app: FastifyInstance) {
       | undefined;
     if (!user) return reply.code(404).send({ error: 'Perfil no encontrado' });
 
-    const body = req.body as { name?: string; color?: string; isAdmin?: boolean; pin?: string | null; kidRatings?: string[] | null };
+    const body = req.body as { name?: string; color?: string; isAdmin?: boolean; pin?: string | null; kidRatings?: string[] | null; limiteDiario?: number | null };
 
     if (body.name !== undefined) {
       const nuevoNombre = body.name.trim();
@@ -466,6 +466,18 @@ export default async function authRoutes(app: FastifyInstance) {
       if (kr) {
         db.prepare('UPDATE users SET is_admin = 0 WHERE id = ?').run(id);
       }
+    }
+
+    if (body.limiteDiario !== undefined) {
+      // Las mismas reglas que el control parental: nadie se pone (ni se quita) su propio límite, y un
+      // perfil infantil no se lo cambia a otros.
+      if (!yo.is_admin && yo.id === id) return reply.code(403).send({ error: 'No puedes cambiar tu propio límite de tiempo' });
+      if (!yo.is_admin && yo.kid_ratings) return reply.code(403).send({ error: 'Solo un adulto puede poner límites de tiempo' });
+      const l = body.limiteDiario;
+      if (l !== null && (typeof l !== 'number' || !Number.isInteger(l) || l < 1 || l > 1440)) {
+        return reply.code(400).send({ error: 'El límite tiene que ser de 1 a 1440 minutos, o ninguno' });
+      }
+      db.prepare('UPDATE users SET limite_diario_min = ? WHERE id = ?').run(l, id);
     }
 
     if (body.pin !== undefined) {

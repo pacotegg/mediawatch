@@ -24,6 +24,7 @@ import playRoutes from './routes/play.ts';
 import preferenceRoutes from './routes/preferences.ts';
 import registroClienteRoutes from './routes/registro-cliente.ts';
 import subtitleRoutes from './routes/subtitles.ts';
+import novedadesRoutes from './routes/novedades.ts';
 import { scanAllEnWorker, type ScanProgress } from './scanner/scan.ts';
 import { ultimaVersionApp } from './media/version-app.ts';
 
@@ -483,6 +484,7 @@ await app.register(preferenceRoutes);
 await app.register(enrichRoutes);
 await app.register(identificarRoutes);
 await app.register(subtitleRoutes);
+await app.register(novedadesRoutes);
 await app.register(animeRoutes);
 await app.register(actividadRoutes);
 await app.register(descargaRoutes);
