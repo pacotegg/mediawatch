@@ -654,11 +654,40 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
     }
   }, [audioTrack, fileId, subtitle]);
 
+  /*
+   * El fichero llegó a su final en mpv (el escritorio ya lo ha dado por visto). Igual que en el navegador:
+   * si el perfil encadena episodios y hay otro, se abre en el mismo marco de vídeo; si no, se cierra.
+   */
+  const alAcabarRef = useRef<() => void>(() => undefined);
+  alAcabarRef.current = () => {
+    const sig = nextEpisode;
+    if (!mpv?.siguiente || !prefs.playback.autoPlayNext || !sig?.file_id) { salir(); return; }
+    const fileSig = sig.file_id;
+    void (async () => {
+      try {
+        const i = await api.playInfo(fileSig);
+        const audio = Number(i.savedAudio);
+        const r = await mpv.siguiente!({
+          fileId: fileSig, itemId, episodeId: sig.id, start: 0, title: i.title,
+          audio: Number.isInteger(audio) ? audio : null,
+          subtitulo: i.savedSubtitle ?? null,
+          externos: i.subtitles.filter((x) => x.source === 'external').map((x) => ({ id: x.id })),
+        });
+        // Recarga completa: así no queda nada del episodio anterior (pistas, retardo, miniaturas).
+        if (r.ok) window.location.replace(`/ver/${fileSig}?item=${itemId}&ep=${sig.id}&t=0&escritorio=1`);
+        else salir();
+      } catch {
+        salir();
+      }
+    })();
+  };
+
   // Lo que va contando mpv: posición, pausa, carga y qué pistas tiene puestas.
   useEffect(() => {
     if (!mpv) return;
     return mpv.alEstado((e: unknown) => {
-      const s = e as { tiempo: number; pausado: boolean; cargando: boolean; audio: number | null; subtitulo: string };
+      const s = e as { tiempo: number; pausado: boolean; cargando: boolean; audio: number | null; subtitulo: string; fin?: boolean; acabado?: boolean };
+      if (s.fin) { if (s.acabado) alAcabarRef.current(); return; }
       if (!scrubbing) setCurrent(s.tiempo ?? 0);
       playingRef.current = !s.pausado;
       setPlaying(!s.pausado);
@@ -1023,7 +1052,7 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
                       </div>
                     )}
 
-                    {subsDisp?.available && (
+                    {subsDisp?.available && yo?.is_admin === 1 && (
                       <div className="mt-2 border-t border-white/8 pt-2">
                         <button
                           onClick={buscarSubtitulos}

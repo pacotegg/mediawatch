@@ -2295,7 +2295,7 @@ async function menuPistas(fileId: number, tipo: 'audio' | 'subs', alCambiar?: (i
       texto: 'Externo (SRT): ' + (sb.title ? sb.title : idioma(sb.language) + (sb.forced ? ' (forzados)' : '')),
     });
   });
-  if (tipo === 'subs') {
+  if (tipo === 'subs' && soyAdmin) {
     opcionesSubs.push({
       i: -99,
       texto: '🔍 Buscar subtítulos en internet…',
@@ -4259,11 +4259,13 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
         texto: 'Externo (SRT): ' + (ext.title ? ext.title : idioma(ext.language) + (ext.forced ? ' (forzados)' : '')),
       });
     });
-    opciones.push({
-      valor: -5,
-      texto: '🔍 Buscar subtítulos en internet…',
-      nota: 'SubSource / OpenSubtitles',
-    });
+    if (soyAdmin) {
+      opciones.push({
+        valor: -5,
+        texto: '🔍 Buscar subtítulos en internet…',
+        nota: 'SubSource / OpenSubtitles',
+      });
+    }
     opciones.push({
       valor: -3,
       texto: 'Ajustar el desfase…',
