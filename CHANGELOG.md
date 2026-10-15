@@ -12,6 +12,11 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.58 — 15/10/2026
+
+- Reproductor: botón «Saltar resumen» para el «Anteriormente en…» del principio de los episodios (en las series donde se ha detectado). En modo maratón se salta solo, como la cabecera.
+- Cuando algo no se puede reproducir (por ejemplo, se ha acabado el tiempo de hoy de un perfil, o el título no está disponible para ese perfil), la app dice el motivo en vez de «El servidor respondió 403».
+
 ## 3.57 — 15/10/2026
 
 - Reproductor: imagen sobre imagen. Al salir de la app con una película en marcha, sigue viéndose en una ventanita (Android 8 o más; en una tele no).

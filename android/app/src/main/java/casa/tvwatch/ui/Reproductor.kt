@@ -659,7 +659,9 @@ private fun Reproduciendo(
         }
         if (a.parar) {
           mensajeAdmin = ""
-          android.widget.Toast.makeText(contexto, "El administrador ha parado la reproducción", android.widget.Toast.LENGTH_LONG).show()
+          // Si la parada trae motivo (p. ej. «Se ha acabado el tiempo de hoy»), ese; si no, la del administrador.
+          val motivo = a.mensaje?.takeIf { it.isNotBlank() } ?: "El administrador ha parado la reproducción"
+          android.widget.Toast.makeText(contexto, motivo, android.widget.Toast.LENGTH_LONG).show()
           salir()
         }
       } catch (e: Exception) { /* sin red, sin avisos */ }

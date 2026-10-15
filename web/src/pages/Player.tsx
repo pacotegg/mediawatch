@@ -298,6 +298,7 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
   }, [mpv, navigate, itemId]);
 
   const [avisoAdmin, setAvisoAdmin] = useState('');
+  const parandoRef = useRef(false);
   useEffect(() => {
     const t = window.setInterval(async () => {
       try {
@@ -306,9 +307,14 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
           setAvisoAdmin(r.mensaje);
           window.setTimeout(() => setAvisoAdmin(''), 8000);
         }
-        if (r.parar) {
+        if (r.parar && !parandoRef.current) {
+          // Una sola salida: con el límite agotado, cada pregunta (cada 5 s) vuelve a traer «parar».
+          parandoRef.current = true;
           videoRef.current?.pause();
-          salir();
+          if (mpv) void mpv.video('pausa', true);
+          // Con motivo (p. ej. «Se ha acabado el tiempo de hoy»), que se lea antes de salir.
+          if (r.mensaje) window.setTimeout(salir, 4000);
+          else salir();
         }
       } catch { /* sin red, sin avisos */ }
     }, 5000);

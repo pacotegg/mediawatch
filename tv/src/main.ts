@@ -4018,7 +4018,8 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
       .avisos()
       .then((r) => {
         if (r.mensaje) aviso('Mensaje: ' + r.mensaje);
-        if (r.parar) { aviso('El administrador ha parado la reproducción'); salir(); }
+        // Con motivo (p. ej. «Se ha acabado el tiempo de hoy»), ese; si no, la parada del administrador.
+        if (r.parar) { aviso(r.mensaje || 'El administrador ha parado la reproducción'); salir(); }
       })
       .catch(() => undefined);
   }, 5000);
