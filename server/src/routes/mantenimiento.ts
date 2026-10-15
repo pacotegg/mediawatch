@@ -1,7 +1,8 @@
-import { readdirSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, statfsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { DATA_DIR } from '../config.ts';
+import { db } from '../db.ts';
 import { backupBaseDeDatosEnWorker, optimizarBaseDeDatosEnWorker, tamanoBaseDeDatos } from '../db.ts';
 import { limpiarCache as limpiarCacheImagenes } from '../media/images.ts';
 import { limpiarHuerfanas as limpiarTrickplayHuerfano } from '../media/trickplay.ts';
@@ -51,7 +52,52 @@ async function tamanoCarpeta(dir: string): Promise<{ bytes: number; ficheros: nu
  * la base de datos, todo a la vista y a un clic desde Ajustes en vez de
  * quedarse creciendo en silencio para siempre.
  */
+type Aviso = { nivel: 'error' | 'aviso'; texto: string };
+
+/**
+ * Lo que conviene mirar y hasta ahora solo se veía yendo a buscarlo: una biblioteca que no responde (disco
+ * desmontado), el registro de errores del servidor con contenido, una copia de seguridad que no se hace o el
+ * disco de los datos casi lleno. Barato a propósito: no recorre carpetas.
+ */
+function avisosDeSalud(): Aviso[] {
+  const avisos: Aviso[] = [];
+
+  for (const l of db.prepare('SELECT name, path FROM libraries').all() as { name: string; path: string }[]) {
+    if (!existsSync(l.path)) avisos.push({ nivel: 'error', texto: `La biblioteca «${l.name}» no responde (${l.path}): ¿está montado el disco?` });
+  }
+
+  try {
+    const st = statSync(join(DATA_DIR, 'server.err'));
+    const dias = (Date.now() - st.mtimeMs) / 86_400_000;
+    if (st.size > 0 && dias < 7) {
+      avisos.push({ nivel: 'aviso', texto: `El registro de errores del servidor (data/server.err) tiene ${Math.ceil(st.size / 1024)} KB, la última vez hace ${dias < 1 ? 'menos de un día' : `${Math.floor(dias)} días`}.` });
+    }
+  } catch { /* sin registro: nada que avisar */ }
+
+  try {
+    const copias = readdirSync(join(DATA_DIR, 'copias')).filter((f) => f.startsWith('tvwatch-') && (f.endsWith('.db') || f.endsWith('.db.gz'))).sort();
+    const ultima = copias.at(-1);
+    const horas = ultima ? (Date.now() - statSync(join(DATA_DIR, 'copias', ultima)).mtimeMs) / 3_600_000 : Infinity;
+    if (horas > 36) avisos.push({ nivel: 'aviso', texto: ultima ? `La última copia de seguridad de la base tiene ${Math.floor(horas / 24)} días.` : 'No hay ninguna copia de seguridad de la base.' });
+  } catch {
+    avisos.push({ nivel: 'aviso', texto: 'No hay ninguna copia de seguridad de la base.' });
+  }
+
+  try {
+    const f = statfsSync(DATA_DIR);
+    const libre = f.bavail * f.bsize;
+    if (libre < 20e9) avisos.push({ nivel: libre < 5e9 ? 'error' : 'aviso', texto: `Quedan ${(libre / 1e9).toFixed(1)} GB libres en el disco de los datos.` });
+  } catch { /* plataforma sin statfs */ }
+
+  return avisos;
+}
+
 export default async function mantenimientoRoutes(app: FastifyInstance) {
+  app.get('/api/mantenimiento/avisos', async (req, reply) => {
+    if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'No autorizado' });
+    return { avisos: avisosDeSalud() };
+  });
+
   app.get('/api/mantenimiento/estado', async (req, reply) => {
     const user = requireUser(req);
     if (!user.is_admin) return reply.code(403).send({ error: 'No autorizado' });
@@ -60,7 +106,7 @@ export default async function mantenimientoRoutes(app: FastifyInstance) {
     const trickplay = await tamanoCarpeta(join(DATA_DIR, 'trickplay'));
     const copias = (() => {
       try {
-        return readdirSync(join(DATA_DIR, 'copias')).filter((f) => f.endsWith('.db')).sort();
+        return readdirSync(join(DATA_DIR, 'copias')).filter((f) => f.endsWith('.db') || f.endsWith('.db.gz')).sort();
       } catch {
         return [];
       }

@@ -520,6 +520,7 @@ export const api = {
       trickplay: { bytes: number; ficheros: number };
       copias: { total: number; ultima: string | null };
     }>('/api/mantenimiento/estado'),
+  mantenimientoAvisos: () => request<{ avisos: { nivel: 'error' | 'aviso'; texto: string }[] }>('/api/mantenimiento/avisos'),
   mantenimientoLimpiar: () => post<{ cacheImagenes: number; trickplayHuerfano: number }>('/api/mantenimiento/limpiar', {}),
   mantenimientoOptimizar: () => post<{ antes: number; despues: number }>('/api/mantenimiento/optimizar', {}),
   mantenimientoCopia: () => post<{ ruta: string }>('/api/mantenimiento/copia', {}),

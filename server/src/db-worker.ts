@@ -25,7 +25,7 @@ try {
     optimizarBaseDeDatos();
     parentPort?.postMessage({ ok: true });
   } else if (accion === 'backup') {
-    const destino = backupBaseDeDatos();
+    const destino = await backupBaseDeDatos();
     parentPort?.postMessage({ ok: true, destino });
   } else {
     throw new Error(`acción desconocida: ${String(accion)}`);
