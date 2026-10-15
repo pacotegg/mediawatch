@@ -110,7 +110,11 @@ ipcMain.handle('mw:guardar-servidor', async (e, url: unknown) => {
  */
 let ventanaVideo: BrowserWindow | null = null;
 
+// Al acabar un fichero solo, la interfaz decide si pasa al siguiente episodio; si no contesta, se cierra.
+let esperaSiguiente: NodeJS.Timeout | undefined;
+
 function cerrarVideo() {
+  clearTimeout(esperaSiguiente);
   pararReproduccion();
   const v = ventanaVideo;
   ventanaVideo = null;
@@ -118,26 +122,56 @@ function cerrarVideo() {
   if (ventana && !ventana.isDestroyed()) ventana.focus();
 }
 
-ipcMain.handle('mw:reproducir', async (e, o: any) => {
+type Preparado = { servidor: string; exe: string; token: string; externos: { id: string }[] };
+
+/** Lo común a abrir una reproducción y a pasar al siguiente episodio: quién pide, qué pide y con qué se reproduce. */
+async function preparar(e: Electron.IpcMainInvokeEvent, o: any): Promise<Preparado | { error: string }> {
   const servidor = leerServidor();
   // Solo la web del servidor configurado puede pedir una reproducción.
-  if (!servidor || origen(e.senderFrame?.url ?? '') !== origen(servidor)) return { ok: false, error: 'No permitido' };
-  const entero = (v: unknown) => typeof v === 'number' && Number.isInteger(v) && v >= 0;
+  if (!servidor || origen(e.senderFrame?.url ?? '') !== origen(servidor)) return { error: 'No permitido' };
   if (!entero(o?.fileId) || !entero(o?.itemId) || (o.episodeId !== null && !entero(o.episodeId)) || typeof o.start !== 'number' || !(o.start >= 0) || typeof o.title !== 'string') {
-    return { ok: false, error: 'Petición no válida' };
+    return { error: 'Petición no válida' };
   }
-  if (hayReproduccion()) return { ok: false, error: 'Ya hay una reproducción abierta' };
+  if (hayReproduccion()) return { error: 'Ya hay una reproducción abierta' };
   const carpetaMpv = join(app.getPath('userData'), 'mpv');
   const exe = buscarMpv([join(process.resourcesPath ?? '', 'mpv'), carpetaMpv]);
   if (!exe) {
     const pista = process.platform === 'win32' ? `Copia mpv.exe en ${carpetaMpv}` : 'Instálalo con el gestor de paquetes (paquete «mpv»)';
-    return { ok: false, error: `No se encontró mpv. ${pista} o déjalo en el PATH.` };
+    return { error: `No se encontró mpv. ${pista} o déjalo en el PATH.` };
   }
   const galletas = await session.defaultSession.cookies.get({ url: servidor, name: COOKIE });
-  if (!galletas[0]) return { ok: false, error: 'No hay sesión iniciada' };
+  if (!galletas[0]) return { error: 'No hay sesión iniciada' };
   const externos = Array.isArray(o.externos)
     ? o.externos.filter((s: any) => typeof s?.id === 'string' && /^external-\d+$/.test(s.id)).slice(0, 40).map((s: any) => ({ id: s.id }))
     : [];
+  return { servidor, exe, token: galletas[0].value, externos };
+}
+
+const entero = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0;
+
+/** Arranca mpv dentro de la ventana de vídeo que haya ahora. */
+function lanzarMpv(o: any, p: Preparado) {
+  return reproducir(p.exe, {
+    servidor: p.servidor, token: p.token, fileId: o.fileId, itemId: o.itemId, episodeId: o.episodeId,
+    start: o.start, title: o.title.slice(0, 200),
+    wid: widDe(ventanaVideo) ?? undefined,
+    audio: entero(o.audio) ? o.audio : null,
+    subtitulo: typeof o.subtitulo === 'string' && /^(off|embedded-\d+|external-\d+)$/.test(o.subtitulo) ? o.subtitulo : null,
+    externos: p.externos,
+    extra: opcionesExtraMpv(),
+  }, (acabado) => {
+    // Acabó solo: la web (que sabe cuál es el siguiente episodio) contesta con `mw:siguiente` o con «cerrar».
+    if (acabado && ventanaVideo && !ventanaVideo.isDestroyed()) esperaSiguiente = setTimeout(cerrarVideo, 8000);
+    else cerrarVideo();
+  }, (estado: Estado) => {
+    if (ventanaVideo && !ventanaVideo.isDestroyed()) ventanaVideo.webContents.send('mw:estado', estado);
+  });
+}
+
+ipcMain.handle('mw:reproducir', async (e, o: any) => {
+  const p = await preparar(e, o);
+  if ('error' in p) return { ok: false, error: p.error };
+  const { servidor } = p;
   const ep = o.episodeId !== null ? `&ep=${o.episodeId}` : '';
   /*
    * Del tamaño de la pantalla, pero NO en modo «pantalla completa» de Windows: con `fullscreen: true` la
@@ -164,17 +198,7 @@ ipcMain.handle('mw:reproducir', async (e, o: any) => {
   ventanaVideo.setBounds(pantalla);
 
   try {
-    await reproducir(exe, {
-      servidor, token: galletas[0].value, fileId: o.fileId, itemId: o.itemId, episodeId: o.episodeId,
-      start: o.start, title: o.title.slice(0, 200),
-      wid: widDe(ventanaVideo) ?? undefined,
-      audio: entero(o.audio) ? o.audio : null,
-      subtitulo: typeof o.subtitulo === 'string' && /^(off|embedded-\d+|external-\d+)$/.test(o.subtitulo) ? o.subtitulo : null,
-      externos,
-      extra: opcionesExtraMpv(),
-    }, cerrarVideo, (estado: Estado) => {
-      if (ventanaVideo && !ventanaVideo.isDestroyed()) ventanaVideo.webContents.send('mw:estado', estado);
-    });
+    await lanzarMpv(o, p);
     /*
      * mpv se queda con el tamaño que tenía la ventana al engancharse y dejaba un marco negro alrededor
      * del vídeo. Un cambio de tamaño de un píxel y vuelta le hace recolocarse al tamaño de verdad.
@@ -201,6 +225,21 @@ ipcMain.handle('mw:video', async (e, nombre: unknown, valor: unknown) => {
   if (nombre === 'cerrar') { cerrarVideo(); return { ok: true }; }
   ordenar(nombre, valor, pistasActuales);
   return { ok: true };
+});
+
+/** El fichero acabó y la web pide el siguiente episodio: mismo marco de vídeo, mpv nuevo. Solo desde la ventana de vídeo. */
+ipcMain.handle('mw:siguiente', async (e, o: any) => {
+  if (!ventanaVideo || ventanaVideo.isDestroyed() || e.sender !== ventanaVideo.webContents) return { ok: false, error: 'No permitido' };
+  clearTimeout(esperaSiguiente);
+  const p = await preparar(e, o);
+  if ('error' in p) return { ok: false, error: p.error };
+  try {
+    await lanzarMpv(o, p);
+    return { ok: true };
+  } catch (err) {
+    cerrarVideo();
+    return { ok: false, error: (err as Error).message };
+  }
 });
 
 if (!app.requestSingleInstanceLock()) app.quit();
