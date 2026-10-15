@@ -1,6 +1,6 @@
 {
   "name": "mediawatch-desktop",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "description": "Cliente de escritorio de Media Watch: la web del servidor más mpv para reproducir sin transcodificar",
   "main": "dist/main.js",
