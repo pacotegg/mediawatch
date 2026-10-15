@@ -816,37 +816,63 @@ body.rend-rapido .lamina img {
 /* Visor Edición Coleccionista a Pantalla Completa */
 .capa-coleccionista {
   position: fixed;
-  inset: 0;
-  background: rgba(5, 6, 9, 0.94);
-  backdrop-filter: blur(20px);
+  top: 0;
+  left: 0;
+  width: 1920px;
+  height: 1080px;
+  background: #07080c;
   z-index: 160;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  animation: aparecerColeccionista 0.3s ease-out forwards;
+  overflow: hidden;
+  animation: aparecerFondoColeccionista 0.4s ease-out forwards;
 }
 
-@keyframes aparecerColeccionista {
-  from { opacity: 0; transform: scale(0.97); }
-  to { opacity: 1; transform: scale(1); }
+@keyframes aparecerFondoColeccionista {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.coleccionista-fondo-pantalla {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1920px;
+  height: 1080px;
+  object-fit: cover;
+  opacity: 0.16;
+  filter: blur(4px);
+  pointer-events: none;
 }
 
 .coleccionista-escenario {
-  perspective: 1500px;
+  perspective: 1600px;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-top: 20px;
+  margin-top: 10px;
 }
 
 .coleccionista-estuche {
   display: flex;
   align-items: center;
+  position: relative;
   transform-style: preserve-3d;
-  transition: transform 0.18s cubic-bezier(0.1, 0, 0.2, 1);
-  box-shadow: 0 35px 80px rgba(0, 0, 0, 0.85);
+  box-shadow: 0 40px 90px rgba(0, 0, 0, 0.9);
   border-radius: 12px;
+  animation: abrirEstucheColeccionista 0.75s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform;
+}
+
+@keyframes abrirEstucheColeccionista {
+  from {
+    transform: translate(var(--origen-x, 0px), var(--origen-y, 0px)) scale(var(--escala-inicial, 0.42)) rotateY(-14deg) rotateX(2deg);
+  }
+  to {
+    transform: translate(0, 0) scale(1) rotateY(var(--rot-y, -8deg)) rotateX(2deg);
+  }
 }
 
 .coleccionista-portada {
@@ -856,8 +882,15 @@ body.rend-rapido .lamina img {
   border-radius: 10px 0 0 10px;
   overflow: hidden;
   background: #09090c;
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.22);
   border-right: none;
+  transform-origin: right center;
+  animation: desdoblarPortada 0.75s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes desdoblarPortada {
+  from { transform: rotateY(45deg); }
+  to { transform: rotateY(0deg); }
 }
 
 .coleccionista-portada img {
@@ -871,9 +904,10 @@ body.rend-rapido .lamina img {
   width: 18px;
   height: 520px;
   background: linear-gradient(to right, #111116, #2d2e38, #111116);
-  border-top: 1px solid rgba(255, 255, 255, 0.18);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+  border-top: 1px solid rgba(255, 255, 255, 0.22);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.22);
   box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.9);
+  z-index: 2;
 }
 
 .coleccionista-bandeja {
@@ -881,22 +915,30 @@ body.rend-rapido .lamina img {
   width: 480px;
   height: 520px;
   border-radius: 0 10px 10px 0;
-  background: #0f1017;
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: #0e0f16;
+  border: 1px solid rgba(255, 255, 255, 0.22);
   border-left: none;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  transform-origin: left center;
+  animation: desdoblarBandeja 0.75s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes desdoblarBandeja {
+  from { transform: rotateY(-65deg); }
+  to { transform: rotateY(0deg); }
 }
 
 .coleccionista-bandeja-fondo {
   position: absolute;
-  inset: 0;
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  opacity: 0.18;
+  opacity: 0.22;
   filter: saturate(1.2);
 }
 
@@ -906,7 +948,7 @@ body.rend-rapido .lamina img {
   height: 420px;
   border-radius: 50%;
   border: 2px dashed rgba(255, 255, 255, 0.08);
-  box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.8);
+  box-shadow: inset 0 0 35px rgba(0, 0, 0, 0.85);
 }
 
 .coleccionista-disco {
@@ -915,9 +957,15 @@ body.rend-rapido .lamina img {
   height: 420px;
   border-radius: 50%;
   object-fit: contain;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.85);
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.9);
   transform: rotate(0deg);
   z-index: 3;
+  animation: rotarDiscoSteelbook 0.85s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes rotarDiscoSteelbook {
+  from { transform: rotate(720deg); }
+  to { transform: rotate(0deg); }
 }
 
 .coleccionista-pivote {
@@ -926,14 +974,22 @@ body.rend-rapido .lamina img {
   height: 32px;
   border-radius: 50%;
   background: radial-gradient(circle, #2a2b36 0%, #101118 70%);
-  border: 2px solid rgba(255, 255, 255, 0.25);
+  border: 2px solid rgba(255, 255, 255, 0.3);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
-  z-index: 5;
+  z-index: 4;
 }
 
 .coleccionista-info {
-  margin-top: 34px;
-  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 24px;
+  animation: aparecerInfoColeccionista 0.6s ease-out 0.25s both;
+}
+
+@keyframes aparecerInfoColeccionista {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .coleccionista-titulo {
@@ -941,6 +997,7 @@ body.rend-rapido .lamina img {
   font-weight: 700;
   color: #fff;
   margin-bottom: 8px;
+  text-align: center;
 }
 
 .coleccionista-chips {
@@ -952,25 +1009,27 @@ body.rend-rapido .lamina img {
 }
 
 .coleccionista-chip {
-  padding: 4px 14px;
-  border-radius: 6px;
+  padding: 5px 14px;
+  border-radius: 8px;
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.15);
-  color: #e5e7eb;
   font-size: 14px;
   font-weight: 600;
+  letter-spacing: 0.5px;
+  color: #fff;
 }
 
 .coleccionista-chip.dorado {
-  background: rgba(226, 183, 85, 0.18);
-  border-color: rgba(226, 183, 85, 0.6);
+  background: rgba(226, 183, 85, 0.15);
+  border-color: rgba(226, 183, 85, 0.5);
   color: #e2b755;
 }
 
 .coleccionista-ayuda {
   font-size: 15px;
-  color: var(--texto-ter);
-  font-weight: 500;
+  color: var(--texto-sec);
+  letter-spacing: 0.3px;
+  text-align: center;
 }
 
 .ficha-logo {

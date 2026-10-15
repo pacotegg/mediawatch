@@ -12,6 +12,12 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.61 — 16/10/2026
+
+- Edición coleccionista 3D: apertura real tipo libro/bisagra con perspectiva física en 3D, sin deslizamiento plano.
+- Libreto interior enriquecido y de alto contraste: texto nítido y legible con dirección, reparto completo, sinopsis, badges técnicos (resolución, HDR, códec) y detalle real de pistas de audio y subtítulos.
+- Estuche en cabecera: carátula 3D integrada junto al año, calificación y datos técnicos para acceso inmediato.
+
 ## 3.60 — 16/10/2026
 
 - Edición coleccionista 3D: efecto cinemático con acercamiento y apertura real de la caja desde cerrada hasta abierta, con el disco girando en el interior hasta pararse recto.
