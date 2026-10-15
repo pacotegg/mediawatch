@@ -150,6 +150,11 @@ ipcMain.handle('mw:reproducir', async (e, o: any) => {
     webPreferences: { preload: join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
   ventanaVideo.on('closed', () => { if (ventanaVideo) { ventanaVideo = null; pararReproduccion(); } });
+  // «Siempre encima» hace falta para tapar la barra de tareas, pero solo mientras se está viendo: si se
+  // cambia de aplicación (Alt+Tab), el vídeo a pantalla completa se quedaba tapándola.
+  const video = ventanaVideo;
+  video.on('blur', () => { if (!video.isDestroyed()) video.setAlwaysOnTop(false); });
+  video.on('focus', () => { if (!video.isDestroyed()) video.setAlwaysOnTop(true); });
   // `escritorio=1`: la web pinta sus controles pero deja que el vídeo lo ponga mpv.
   await ventanaVideo.loadURL(`${servidor}/ver/${o.fileId}?item=${o.itemId}${ep}&t=${Math.floor(o.start)}&escritorio=1`);
   ventanaVideo.show();
