@@ -38,3 +38,10 @@ test('las frases cortas que se repiten en cualquier episodio no cuentan', () => 
   const cortas = ['¿Qué?', 'Sí.', 'Vamos.', 'No lo sé.', 'Gracias.'].map((text, i) => ({ text, ms: 2_000 + i * 3_000 }));
   assert.equal(detectarResumen(cortas, [cortas.map((c) => ({ ...c, ms: c.ms + 600_000 }))]), null);
 });
+
+test('las acotaciones para sordos no cuentan, y un «resumen» de pocos segundos (tiempos rotos) no vale', () => {
+  const acot = ['(THEME MUSIC PLAYING)', '(PHONE RINGING)', '[RISAS EN EL PUBLICO]', '♪ Be all right ♪', '(DOOR CLOSES LOUDLY)'];
+  assert.equal(detectarResumen(acot.map((text, i) => ({ text, ms: 2_000 + i * 6_000 })), [acot.map((text, i) => ({ text, ms: 500_000 + i * 90_000 }))]), null);
+  const enCero = frases.map((text) => ({ text, ms: 0 }));
+  assert.equal(detectarResumen(enCero, [anterior]), null);
+});
