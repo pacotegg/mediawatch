@@ -3488,7 +3488,6 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
   let retardoSubs = aj.retardoSubtitulos;
   let cerrado = false;
   let tira: Tira | null = null;
-  let reintentoTira = 0;
   /** Cortes del flujo que se han intentado recuperar, y cuándo fue el último. */
   let reintentos = 0;
   let ultimoReintento = 0;
@@ -3614,10 +3613,10 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
   /**
    * Miniatura del punto al que vas a caer.
    *
-   * La tira la fabrica el servidor una vez por fichero (solo fotogramas clave,
-   * unas 1400 miniaturas de 160 px en hojas de 10x10). Si todavía no está,
-   * contesta 202 y se vuelve a preguntar cada medio minuto: la primera vez que
-   * se ve una película tarda un rato en tenerla.
+   * La tira la fabrica el lote del servidor (solo fotogramas clave, hojas de
+   * 10x10 miniaturas de 160 px). Pedirla NO la fabrica, y el lote se aparta
+   * mientras alguien ve algo: si no está al abrir, no va a aparecer durante la
+   * película, así que se pregunta una sola vez (antes, cada 30 s hasta 20 veces).
    */
   const pedirTira = () => {
     if (cerrado || tira) return;
@@ -3625,10 +3624,6 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
       .tira(fileId)
       .then((r) => {
         if ((r as Tira).times && (r as Tira).times.length) tira = r as Tira;
-        else if (!cerrado && reintentoTira < 20) {
-          reintentoTira++;
-          window.setTimeout(pedirTira, 30000);
-        }
       })
       .catch(() => undefined);
   };
