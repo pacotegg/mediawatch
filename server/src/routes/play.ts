@@ -873,10 +873,11 @@ export default async function playRoutes(app: FastifyInstance) {
 
   app.get('/api/play/:fileId/trickplay/:index', async (req, reply) => {
     const { fileId, index } = req.params as { fileId: string; index: string };
-    const path = sheetPath(Number(fileId), Number(index.replace(/\.jpg$/, '')));
+    // El cliente pide `3` o `3.jpg`; lo que se sirve depende de lo que haya en disco (ver sheetPath).
+    const path = sheetPath(Number(fileId), Number(index.replace(/\.(jpg|webp)$/, '')));
     if (!existsSync(path)) return reply.code(404).send({ error: 'Hoja no generada' });
     return reply
-      .header('Content-Type', 'image/jpeg')
+      .header('Content-Type', path.endsWith('.webp') ? 'image/webp' : 'image/jpeg')
       .header('Cache-Control', 'public, max-age=2592000')
       .send(createReadStream(path));
   });

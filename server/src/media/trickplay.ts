@@ -30,7 +30,18 @@ export type TrickplayManifest = {
 
 const dirFor = (fileId: number) => join(ROOT, String(fileId));
 const manifestFor = (fileId: number) => join(dirFor(fileId), 'manifest.json');
-export const sheetPath = (fileId: number, index: number) => join(dirFor(fileId), `sheet-${String(index + 1).padStart(3, '0')}.jpg`);
+/*
+ * Las hojas se guardan en WebP: medido regenerando una película entera, 954 KB contra los 1.416 KB
+ * del JPEG, un 33 % menos. Proyectado a los 5.668 ficheros son unos 3,6 GB menos en el HTPC.
+ * Las que ya estaban en JPEG se siguen sirviendo tal cual —regenerarlas costaría días— así que aquí
+ * se mira primero el WebP.
+ */
+const hojaBase = (fileId: number, index: number) => join(dirFor(fileId), `sheet-${String(index + 1).padStart(3, '0')}`);
+export const sheetPathNuevo = (fileId: number, index: number) => `${hojaBase(fileId, index)}.webp`;
+export const sheetPath = (fileId: number, index: number) => {
+  const webp = sheetPathNuevo(fileId, index);
+  return existsSync(webp) ? webp : `${hojaBase(fileId, index)}.jpg`;
+};
 
 export function readManifest(fileId: number): TrickplayManifest | null {
   try {
@@ -67,8 +78,6 @@ async function imageSize(path: string): Promise<{ width: number; height: number 
 }
 
 const running = new Map<number, Promise<TrickplayManifest | null>>();
-
-export const isGenerating = (fileId: number) => running.has(fileId);
 
 /**
  * Sprite sheets for the scrub bar. Only keyframes are decoded, which is around
@@ -117,8 +126,15 @@ export function generate(fileId: number): Promise<TrickplayManifest | null> {
           '-an', '-sn', '-dn',
           '-vf', filters,
           '-fps_mode', 'passthrough',
-          '-q:v', '5',
-          join(dir, 'sheet-%03d.jpg'),
+          /*
+           * `-c:v libwebp` NO es opcional: sin él ffmpeg elige `libwebp_anim` y escribe UNA hoja
+           * animada con todo dentro en vez de una por cada 100 miniaturas.
+           * Calidad 60 (libwebp va de 0 a 100): medido sobre una película real, 954 KB frente a los
+           * 1.416 KB del JPEG, un 33 % menos. A 50 bajaba a 844 KB pero ya se nota emborronado.
+           */
+          '-c:v', 'libwebp',
+          '-quality', '60',
+          join(dir, 'sheet-%03d.webp'),
         ],
         { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] },
       );
@@ -370,13 +386,6 @@ export function generarLote(todo = false) {
   });
 
   return lote.total;
-}
-
-export function ensure(fileId: number): TrickplayManifest | null {
-  const cached = readManifest(fileId);
-  if (cached) return cached;
-  if (!running.has(fileId)) generate(fileId).catch((err) => console.error(`[trickplay ${fileId}]`, err.message));
-  return null;
 }
 
 /**

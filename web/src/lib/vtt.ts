@@ -18,7 +18,12 @@ export function parseVtt(text: string): Cue[] {
     if (!rawEnd) continue;
     const body = lines.slice(timingIndex + 1).join('\n').trim();
     if (!body) continue;
-    cues.push({ start: timestamp(rawStart), end: timestamp(rawEnd.split(' ')[0]), text: body });
+    /*
+     * `rawEnd` llega con el espacio de «--> 00:00:03.500» delante, así que partir por espacios dejaba
+     * el final en una cadena vacía: todos los diálogos acababan en 0 y `applyCues` los descartaba
+     * (`end <= 0`). Resultado: la web no enseñaba ni un subtítulo desde el primer commit.
+     */
+    cues.push({ start: timestamp(rawStart), end: timestamp(rawEnd.trim().split(/\s/)[0]), text: body });
   }
   return cues;
 }

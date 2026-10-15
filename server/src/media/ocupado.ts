@@ -28,11 +28,6 @@ export function hayAlguienViendo(): boolean {
   return Date.now() - ultimaSenal < MARGEN_MS;
 }
 
-/** Segundos desde la última señal, para poder contarlo en la interfaz. */
-export function desdeLaUltimaSenal(): number {
-  return ultimaSenal ? Math.round((Date.now() - ultimaSenal) / 1000) : -1;
-}
-
 /**
  * Espera a que la casa se quede tranquila. Devuelve false si le dicen que pare
  * mientras espera, para que el lote pueda cortar sin terminar la pieza.

@@ -103,10 +103,6 @@ export function estadoFanart(): EstadoFanart {
   return { ...estado, rellenados: { ...estado.rellenados }, sustituidos: { ...estado.sustituidos } };
 }
 
-export function pararFanart() {
-  parar = true;
-}
-
 /* ------------------------------------------------------------ fanart.tv */
 
 async function fanart(path: string): Promise<any | null> {
