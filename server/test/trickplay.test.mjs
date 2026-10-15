@@ -13,6 +13,8 @@ import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 
 const SERVER = join(dirname(fileURLToPath(import.meta.url)), '..');
+// En los ejecutores del CI no hay ffmpeg: sin él no se pueden fabricar ni el vídeo ni las hojas.
+const hayFfmpeg = spawnSync('ffmpeg', ['-version'], { stdio: 'ignore' }).status === 0;
 let proceso, datos, base, galleta, fileId, fileViejo;
 
 const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -24,6 +26,7 @@ const puertoLibre = () => new Promise((res, rej) => {
 const pedir = (ruta, opciones = {}) => fetch(base + ruta, { headers: { Cookie: galleta }, signal: AbortSignal.timeout(60_000), ...opciones });
 
 before(async () => {
+  if (!hayFfmpeg) return;
   datos = mkdtempSync(join(tmpdir(), 'mediawatch-test-'));
   // Un vídeo de verdad, corto: sin esto no hay fotogramas clave que convertir en miniaturas.
   const video = join(datos, 'prueba.mkv');
@@ -70,11 +73,13 @@ before(async () => {
 });
 
 after(async () => {
-  if (proceso && proceso.exitCode === null) { proceso.kill(); await esperar(500); }
-  if (datos) rmSync(datos, { recursive: true, force: true });
+  if (proceso && proceso.exitCode === null) { proceso.kill(); await esperar(1500); }
+  // En Windows, borrar mientras el servidor o ffmpeg aún sueltan sus ficheros da EPERM; no es un fallo
+  // de la prueba y la carpeta es temporal, así que se intenta y se deja estar.
+  try { if (datos) rmSync(datos, { recursive: true, force: true }); } catch { /* ya lo limpiará el sistema */ }
 });
 
-test('una hoja nueva se genera y se sirve en WebP', async () => {
+test('una hoja nueva se genera y se sirve en WebP', { skip: !hayFfmpeg && 'no hay ffmpeg' }, async () => {
   // Quien genera las miniaturas es el lote (la ruta del apunte solo lo lee).
   const lanzado = await pedir('/api/trickplay/lote', {
     method: 'POST', headers: { Cookie: galleta, 'Content-Type': 'application/json' }, body: JSON.stringify({ todo: true }),
@@ -99,7 +104,7 @@ test('una hoja nueva se genera y se sirve en WebP', async () => {
   assert.equal(bytes.subarray(8, 12).toString('latin1'), 'WEBP');
 });
 
-test('una hoja antigua en JPEG se sigue sirviendo', async () => {
+test('una hoja antigua en JPEG se sigue sirviendo', { skip: !hayFfmpeg && 'no hay ffmpeg' }, async () => {
   const hoja = await pedir(`/api/play/${fileViejo}/trickplay/0.jpg`);
   assert.equal(hoja.status, 200);
   assert.equal(hoja.headers.get('content-type'), 'image/jpeg');
@@ -108,6 +113,6 @@ test('una hoja antigua en JPEG se sigue sirviendo', async () => {
   assert.equal(bytes[1], 0xd8, 'no empieza como un JPEG');
 });
 
-test('una hoja que no existe da 404', async () => {
+test('una hoja que no existe da 404', { skip: !hayFfmpeg && 'no hay ffmpeg' }, async () => {
   assert.equal((await pedir(`/api/play/${fileViejo}/trickplay/99.jpg`)).status, 404);
 });
