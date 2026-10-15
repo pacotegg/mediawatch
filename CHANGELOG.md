@@ -12,6 +12,11 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.59 — 15/10/2026
+
+- Edición coleccionista 3D: nueva transición animada de apertura de caja. Con un clic se despliega la portada en 3D mientras el disco gira desacelerando elásticamente hasta clavarse en 0°, mostrando el libreto interior con ficha técnica y libreto físico.
+- Ficha: estuche 3D reubicado en la cabecera superior junto a los datos técnicos para mayor visibilidad sin tener que bajar.
+
 ## 3.58 — 15/10/2026
 
 - Reproductor: botón «Saltar resumen» para el «Anteriormente en…» del principio de los episodios (en las series donde se ha detectado). En modo maratón se salta solo, como la cabecera.
