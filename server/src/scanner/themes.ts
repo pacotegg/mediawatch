@@ -44,7 +44,7 @@ export async function descargarTema(
   if (kind === 'show' && tvdbId) {
     try {
       const url = `http://tvthemes.plexapp.com/${tvdbId}.mp3`;
-      const res = await fetch(url);
+      const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
       if (res.ok && res.body) {
         await pipeline(res.body as any, createWriteStream(targetMp3));
         console.log(`[tema] Descargado tema de serie #${itemId} (TVDB ${tvdbId}) desde Plex CDN`);
@@ -60,7 +60,7 @@ export async function descargarTema(
     try {
       const tipo = kind === 'movie' ? 'movies' : 'tv_shows';
       const apiUrl = `https://raw.githubusercontent.com/LizardByte/ThemerrDB/database/${tipo}/themoviedb/${tmdbId}.json`;
-      const res = await fetch(apiUrl);
+      const res = await fetch(apiUrl, { signal: AbortSignal.timeout(15_000) });
       if (res.ok) {
         const data = (await res.json()) as { youtube_theme_url?: string };
         if (data.youtube_theme_url) {
@@ -96,7 +96,7 @@ function descargarAudioYoutube(url: string, destinoMp3: string): Promise<boolean
       '--no-playlist',
       '--no-warnings',
       url,
-    ]);
+    ], { windowsHide: true, timeout: 3 * 60_000 });
 
     proc.on('error', (err) => {
       console.warn('[tema] Error ejecutando yt-dlp:', err.message);
