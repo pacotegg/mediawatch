@@ -81,13 +81,14 @@ export async function descargarTema(
 
 function descargarAudioYoutube(url: string, destinoMp3: string): Promise<boolean> {
   return new Promise((resolve) => {
-    // yt-dlp extrayendo los primeros 35 s de audio a MP3
+    // yt-dlp extrayendo los primeros 35 s de audio a MP3. Calidad VBR 4 (~165 kbps): con la 0 (~245 kbps)
+    // ocupaban un 38 % más para una música de fondo, con el mismo volumen (medido sobre las 917 de data/themes).
     const proc = spawn('yt-dlp', [
       '-x',
       '--audio-format',
       'mp3',
       '--audio-quality',
-      '0',
+      '4',
       '--download-sections',
       '*0-35',
       '-o',
