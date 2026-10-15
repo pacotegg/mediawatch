@@ -225,9 +225,11 @@ export type PeticionSegmento = {
   dispositivo?: string;
 };
 
+// El aparato va en la clave: dos personas viendo la misma película con los mismos ajustes compartían
+// ffmpeg, y cuando una saltaba o cerraba, `arrancar`/`cerrarSesiones` se llevaba por delante el de la otra.
 function clave(p: PeticionSegmento) {
   const a = p.audioOptions;
-  return [p.fileId, p.calidad.nombre, p.audioStreamIndex, a.mode, a.downmixStereo, a.normalize, p.audioDelayMs ?? 0, p.surround ? 's' : ''].join('|');
+  return [p.fileId, p.calidad.nombre, p.audioStreamIndex, a.mode, a.downmixStereo, a.normalize, p.audioDelayMs ?? 0, p.surround ? 's' : '', p.dispositivo ?? ''].join('|');
 }
 
 function argumentos(p: PeticionSegmento, desde: number, dir: string): string[] {
@@ -417,9 +419,9 @@ export async function segmento(p: PeticionSegmento, esperaMs = 40_000): Promise<
   throw new Error('El trozo tardó demasiado en prepararse');
 }
 
-/** Para liberar la GPU cuando alguien cierra el reproductor. */
-export function cerrarSesiones(fileId: number) {
-  for (const s of sesiones.values()) if (s.clave.startsWith(`${fileId}|`)) matar(s);
+/** Para liberar la GPU cuando alguien cierra el reproductor: solo las sesiones de su aparato. */
+export function cerrarSesiones(fileId: number, dispositivo?: string) {
+  for (const s of sesiones.values()) if (s.clave.startsWith(`${fileId}|`) && s.dispositivo === dispositivo) matar(s);
 }
 
 /**
