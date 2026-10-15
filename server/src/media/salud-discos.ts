@@ -5,8 +5,8 @@
  *    15/10/2026) y se consulta con caché de 10 minutos. Es grueso: solo avisa cuando el disco ya lo dice.
  * 2. `data/salud-discos.json`, que escribe `server/scripts/salud-discos.ps1` desde una tarea programada con
  *    administrador (smartctl no puede abrir los discos sin él). Da el detalle: sectores reasignados o pendientes,
- *    temperatura, desgaste de los SSD. Los nombres de campo son los del JSON de smartctl 7.x; NO VERIFICADOS
- *    contra una salida real hasta la primera lectura con la tarea en marcha.
+ *    temperatura, desgaste de los SSD. Campos del JSON de smartctl 7.5 comprobados el 15/10/2026 con la salida
+ *    real de los 4 discos (2 SATA, 1 NVMe, la caja USB de E: como «sat»): todos sanos, sin avisos.
  */
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
