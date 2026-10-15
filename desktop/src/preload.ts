@@ -3,7 +3,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 // Lo único que la web ve del escritorio. `reproducir` lo atiende main.ts, que comprueba que la
 // llamada viene de la propia web del servidor.
 contextBridge.exposeInMainWorld('mediawatchDesktop', {
-  version: 4,
+  version: 5,
   reproducir: (o: {
     fileId: number; itemId: number; episodeId: number | null; start: number; title: string;
     audio?: number | null; subtitulo?: string | null; externos?: { id: string }[];
@@ -20,6 +20,12 @@ contextBridge.exposeInMainWorld('mediawatchDesktop', {
     const h = (_e: unknown, v: unknown) => cb(v);
     ipcRenderer.on('mw:estado', h);
     return () => ipcRenderer.removeListener('mw:estado', h);
+  },
+  /** Teclas multimedia que la ventana de vídeo recibe del sistema y que le tocan a la web (hoy: «siguiente»). */
+  alTecla: (cb: (t: string) => void) => {
+    const h = (_e: unknown, v: string) => cb(v);
+    ipcRenderer.on('mw:tecla', h);
+    return () => ipcRenderer.removeListener('mw:tecla', h);
   },
   alActualizar: (cb: (v: { version: string }) => void) => {
     const h = (_e: unknown, v: { version: string }) => cb(v);

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, screen, session } from 'electron';
+import { app, BrowserWindow, globalShortcut, ipcMain, Menu, screen, session } from 'electron';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { iniciarActualizaciones } from './actualizaciones';
@@ -8,11 +8,21 @@ const COOKIE = 'cineteca_session';
 const ficheroConfig = () => join(app.getPath('userData'), 'config.json');
 let ventana: BrowserWindow | null = null;
 
-function leerConfig(): { servidor?: unknown; mpvArgs?: unknown } {
+function leerConfig(): { servidor?: unknown; mpvArgs?: unknown; ventana?: unknown } {
   try {
     return JSON.parse(readFileSync(ficheroConfig(), 'utf8'));
   } catch {
     return {};
+  }
+}
+
+/** Cambia solo lo que se pide y deja el resto (antes, cambiar de servidor se llevaba por delante `mpvArgs`). */
+function guardarConfig(cambios: Record<string, unknown>) {
+  try {
+    mkdirSync(app.getPath('userData'), { recursive: true });
+    writeFileSync(ficheroConfig(), JSON.stringify({ ...leerConfig(), ...cambios }));
+  } catch {
+    /* sin config no pasa nada: se abre con lo de siempre */
   }
 }
 
@@ -66,10 +76,31 @@ function abrirExterno(url: string) {
   void w.loadURL(url);
 }
 
+/** Tamaño y sitio de la ventana de la última vez, si todavía caben en alguna pantalla. */
+function ventanaGuardada(): { x?: number; y?: number; width: number; height: number; maximizada: boolean } {
+  const g = leerConfig().ventana as Record<string, unknown> | undefined;
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(v) : undefined);
+  const width = num(g?.width), height = num(g?.height), x = num(g?.x), y = num(g?.y);
+  if (!width || !height || width < 600 || height < 400) return { width: 1400, height: 860, maximizada: false };
+  const visible = x !== undefined && y !== undefined && screen.getAllDisplays().some((d) => {
+    const b = d.workArea;
+    return x < b.x + b.width - 80 && x + width > b.x + 80 && y < b.y + b.height - 80 && y + height > b.y + 40;
+  });
+  return { width, height, ...(visible ? { x, y } : {}), maximizada: g?.maximizada === true };
+}
+
 function crearVentana() {
+  const guardada = ventanaGuardada();
   ventana = new BrowserWindow({
-    width: 1400, height: 860, backgroundColor: '#08080b', title: 'Media Watch', autoHideMenuBar: true,
+    width: guardada.width, height: guardada.height, x: guardada.x, y: guardada.y,
+    backgroundColor: '#08080b', title: 'Media Watch', autoHideMenuBar: true,
     webPreferences: { preload: join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false },
+  });
+  if (guardada.maximizada) ventana.maximize();
+  const principal = ventana;
+  principal.on('close', () => {
+    if (principal.isDestroyed() || principal.isMinimized()) return;
+    guardarConfig({ ventana: { ...principal.getNormalBounds(), maximizada: principal.isMaximized() } });
   });
   // La ventana principal solo navega por el servidor; cualquier otra dirección se abre en una ventana propia.
   ventana.webContents.on('will-navigate', (e, url) => {
@@ -96,8 +127,7 @@ ipcMain.handle('mw:guardar-servidor', async (e, url: unknown) => {
   } catch {
     return { ok: false, error: 'No se pudo conectar con esa dirección' };
   }
-  mkdirSync(app.getPath('userData'), { recursive: true });
-  writeFileSync(ficheroConfig(), JSON.stringify({ servidor: limpia }));
+  guardarConfig({ servidor: limpia });
   abrir();
   return { ok: true };
 });
@@ -112,9 +142,29 @@ let ventanaVideo: BrowserWindow | null = null;
 
 // Al acabar un fichero solo, la interfaz decide si pasa al siguiente episodio; si no contesta, se cierra.
 let esperaSiguiente: NodeJS.Timeout | undefined;
+// Mientras se cambia de episodio a mano, el mpv que se para no debe cerrar la ventana al irse.
+let cambiando = false;
+
+/**
+ * Teclas multimedia del teclado y de los auriculares, solo mientras hay un vídeo: play/pausa, parar,
+ * siguiente episodio (la web sabe cuál es) y volver al principio. Al acabar se sueltan para no quitárselas
+ * a otro reproductor.
+ */
+function atajosMultimedia(activar: boolean) {
+  const teclas: Record<string, () => void> = {
+    MediaPlayPause: () => ordenar('alternar', undefined, pistasActuales),
+    MediaStop: () => cerrarVideo(),
+    MediaNextTrack: () => { if (ventanaVideo && !ventanaVideo.isDestroyed()) ventanaVideo.webContents.send('mw:tecla', 'siguiente'); },
+    MediaPreviousTrack: () => ordenar('buscar', 0, pistasActuales),
+  };
+  for (const [tecla, accion] of Object.entries(teclas)) {
+    try { if (activar) globalShortcut.register(tecla, accion); else globalShortcut.unregister(tecla); } catch { /* el sistema no la deja */ }
+  }
+}
 
 function cerrarVideo() {
   clearTimeout(esperaSiguiente);
+  atajosMultimedia(false);
   pararReproduccion();
   const v = ventanaVideo;
   ventanaVideo = null;
@@ -160,6 +210,7 @@ function lanzarMpv(o: any, p: Preparado) {
     externos: p.externos,
     extra: opcionesExtraMpv(),
   }, (acabado) => {
+    if (cambiando) return;
     // Acabó solo: la web (que sabe cuál es el siguiente episodio) contesta con `mw:siguiente` o con «cerrar».
     if (acabado && ventanaVideo && !ventanaVideo.isDestroyed()) esperaSiguiente = setTimeout(cerrarVideo, 8000);
     else cerrarVideo();
@@ -199,6 +250,7 @@ ipcMain.handle('mw:reproducir', async (e, o: any) => {
 
   try {
     await lanzarMpv(o, p);
+    atajosMultimedia(true);
     /*
      * mpv se queda con el tamaño que tenía la ventana al engancharse y dejaba un marco negro alrededor
      * del vídeo. Un cambio de tamaño de un píxel y vuelta le hace recolocarse al tamaño de verdad.
@@ -231,14 +283,24 @@ ipcMain.handle('mw:video', async (e, nombre: unknown, valor: unknown) => {
 ipcMain.handle('mw:siguiente', async (e, o: any) => {
   if (!ventanaVideo || ventanaVideo.isDestroyed() || e.sender !== ventanaVideo.webContents) return { ok: false, error: 'No permitido' };
   clearTimeout(esperaSiguiente);
-  const p = await preparar(e, o);
-  if ('error' in p) return { ok: false, error: p.error };
+  // A mitad de un episodio (tecla «siguiente»): se para el mpv de ahora, que guarda dónde iba, y se espera a que se vaya.
+  if (hayReproduccion()) {
+    cambiando = true;
+    pararReproduccion();
+    for (let i = 0; i < 60 && hayReproduccion(); i++) await new Promise((r) => setTimeout(r, 50));
+  }
   try {
-    await lanzarMpv(o, p);
-    return { ok: true };
-  } catch (err) {
-    cerrarVideo();
-    return { ok: false, error: (err as Error).message };
+    const p = await preparar(e, o);
+    if ('error' in p) return { ok: false, error: p.error };
+    try {
+      await lanzarMpv(o, p);
+      return { ok: true };
+    } catch (err) {
+      cerrarVideo();
+      return { ok: false, error: (err as Error).message };
+    }
+  } finally {
+    cambiando = false;
   }
 });
 
@@ -248,7 +310,7 @@ else {
   void app.whenReady().then(() => {
     Menu.setApplicationMenu(Menu.buildFromTemplate([
       { label: 'Archivo', submenu: [
-        { label: 'Cambiar de servidor', click: () => { try { writeFileSync(ficheroConfig(), '{}'); } catch { /* sin config */ } abrir(); } },
+        { label: 'Cambiar de servidor', click: () => { guardarConfig({ servidor: undefined }); abrir(); } },
         { role: 'quit', label: 'Salir' },
       ] },
       { label: 'Ver', submenu: [{ role: 'reload', label: 'Recargar' }, { role: 'togglefullscreen', label: 'Pantalla completa' }] },
@@ -258,4 +320,5 @@ else {
   });
   // Si se cierra la ventana con el vídeo incrustado dentro, mpv se queda sin sitio: se para con ella.
   app.on('window-all-closed', () => { pararReproduccion(); app.quit(); });
+  app.on('will-quit', () => globalShortcut.unregisterAll());
 }

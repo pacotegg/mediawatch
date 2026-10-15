@@ -10,6 +10,8 @@ export type EscritorioApi = {
   siguiente?: EscritorioApi['reproducir'];
   /** Órdenes al vídeo: pausa, buscar, volumen, silencio, audio, subtitulo, subDelay, cerrar. */
   video: (nombre: string, valor?: unknown) => Promise<{ ok: boolean }>;
+  /** Teclas multimedia del sistema que le tocan a la web (`siguiente`); cliente de escritorio ≥ 0.5. */
+  alTecla?: (cb: (tecla: string) => void) => () => void;
   /** Estado del vídeo según mpv; devuelve la función para dejar de escuchar. */
   alEstado: (cb: (e: unknown) => void) => () => void;
   alActualizar: (cb: (v: { version: string }) => void) => () => void;
