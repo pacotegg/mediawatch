@@ -373,8 +373,6 @@ function desplazamientoDe(el: HTMLElement): number {
 
 /** Mejor candidato en una dirección, dentro de la misma zona. */
 function mejorEn(desde: Nodo, direccion: number, excluir?: HTMLElement, soloDentro?: HTMLElement): HTMLElement | null {
-  let mejor: HTMLElement | null = null;
-  let mejorCoste = Infinity;
   const vertical = direccion === TECLA.ARRIBA || direccion === TECLA.ABAJO;
   const xDesde = desde.x + (vertical ? desplazamientoDe(desde.el) : 0);
 
@@ -389,6 +387,20 @@ function mejorEn(desde: Nodo, direccion: number, excluir?: HTMLElement, soloDent
     return n.x + d;
   };
 
+  const esPrimeroDeCarrusel = (el: HTMLElement) => {
+    const c = el.closest('[data-carrusel]');
+    return c ? c.querySelector<HTMLElement>('[data-nav]') === el : false;
+  };
+  const cDesde = desde.el.closest('[data-carrusel]');
+  const aDesde = desde.el.closest('.acciones');
+  const hDesde = desde.el.closest('[data-heroe-texto]');
+  const desdeEsPrimero = vertical && esPrimeroDeCarrusel(desde.el);
+  const desdeSinScroll = cDesde ? desplazamientoDe(desde.el) === 0 : true;
+
+  type Candidato = { nodo: Nodo; avance: number; desvio: number };
+  const candidatos: Candidato[] = [];
+  let minAvance = Infinity;
+
   for (let i = 0; i < indice.length; i++) {
     const n = indice[i];
     if (n.el === desde.el || n.menu !== desde.menu || n.alfabeto !== desde.alfabeto) continue;
@@ -397,38 +409,81 @@ function mejorEn(desde: Nodo, direccion: number, excluir?: HTMLElement, soloDent
 
     const dx = xVisible(n) - xDesde;
     const dy = n.y - desde.y;
-    // Lo que está fuera de la pantalla por la izquierda no es candidato al
-    // subir o bajar: no se ve, y el foco iría a una tarjeta invisible.
-    if (vertical && xVisible(n) + n.ancho / 2 < 0) continue;
+
+    // En vertical, nunca considerar elementos del mismo carrusel, barra de acciones o botones del héroe
+    if (vertical) {
+      if (cDesde && n.el.closest('[data-carrusel]') === cDesde) continue;
+      if (aDesde && n.el.closest('.acciones') === aDesde) continue;
+      if (hDesde && n.el.closest('[data-heroe-texto]') === hDesde) continue;
+    }
+
+    // En horizontal, nunca cruzar a filas superiores o inferiores
+    if (!vertical) {
+      if (Math.abs(dy) > 70) continue;
+      if (cDesde && n.el.closest('[data-carrusel]') !== cDesde) continue;
+      if (aDesde && n.el.closest('.acciones') !== aDesde) continue;
+      if (hDesde && n.el.closest('[data-heroe-texto]') !== hDesde) continue;
+    }
+
+    // Lo que está fuera de la pantalla horizontalmente no es candidato al subir o bajar
+    if (vertical && (xVisible(n) + n.ancho / 2 < 0 || xVisible(n) - n.ancho / 2 > 1920)) continue;
 
     /*
-     * Al subir o bajar, el desvío se mide hasta el BORDE más cercano del
-     * candidato, no hasta su centro. Con el centro, una fila ancha (la lista
-     * de episodios, casi todo el ancho de la pantalla) queda con el centro
-     * muy lejos del de una píldora de temporada estrecha, y bajar desde la
-     * temporada salía disparado hasta el reparto —mucho más lejos, pero mejor
-     * alineado con el centro— en vez de entrar en el episodio de justo
-     * debajo. Restar la mitad del ancho no cambia nada para las tarjetas
-     * estrechas (carátulas, píldoras): sigue haciendo falta salirse de su
-     * franja para que el desvío deje de ser cero.
+     * Al subir o bajar, el desvío se mide combinando el desborde fuera del
+     * ancho del elemento con el desvío al centro, asegurando que elementos
+     * alineados verticalmente ganen rotundamente y nunca se salte a una columna vecina.
      */
     let avance: number;
     let desvio: number;
-    if (direccion === TECLA.IZQUIERDA) { avance = -dx; desvio = Math.abs(dy); }
-    else if (direccion === TECLA.DERECHA) { avance = dx; desvio = Math.abs(dy); }
-    else if (direccion === TECLA.ARRIBA) {
+    if (direccion === TECLA.IZQUIERDA) {
+      avance = -dx;
+      desvio = Math.abs(dy);
+    } else if (direccion === TECLA.DERECHA) {
+      avance = dx;
+      desvio = Math.abs(dy);
+    } else if (direccion === TECLA.ARRIBA) {
       avance = -dy;
-      desvio = Math.max(0, Math.abs(dx) - n.ancho / 2) + Math.abs(dx) * 0.1;
+      const cDest = n.el.closest('[data-carrusel]');
+      const nEsPrimero = cDest && esPrimeroDeCarrusel(n.el) && desplazamientoDe(n.el) === 0;
+      if (desdeEsPrimero && desdeSinScroll && nEsPrimero) {
+        desvio = 0;
+      } else {
+        const fuera = Math.max(0, Math.abs(dx) - n.ancho / 2);
+        desvio = fuera * 2 + Math.abs(dx) * 0.5;
+      }
     } else {
       avance = dy;
-      desvio = Math.max(0, Math.abs(dx) - n.ancho / 2) + Math.abs(dx) * 0.1;
+      const cDest = n.el.closest('[data-carrusel]');
+      const nEsPrimero = cDest && esPrimeroDeCarrusel(n.el) && desplazamientoDe(n.el) === 0;
+      if (desdeEsPrimero && desdeSinScroll && nEsPrimero) {
+        desvio = 0;
+      } else {
+        const fuera = Math.max(0, Math.abs(dx) - n.ancho / 2);
+        desvio = fuera * 2 + Math.abs(dx) * 0.5;
+      }
     }
 
     if (avance <= 8) continue;
-    const coste = avance + desvio * 3;
+    candidatos.push({ nodo: n, avance, desvio });
+    if (avance < minAvance) minAvance = avance;
+  }
+
+  if (candidatos.length === 0) return null;
+
+  // En vertical, priorizar estrictamente la fila o sección inmediatamente contigua
+  // para que subir o bajar no salte una fila intermedia por deriva lateral.
+  let mejor: HTMLElement | null = null;
+  let mejorCoste = Infinity;
+  const ventanaVertical = vertical ? Math.max(70, minAvance * 0.5) : Infinity;
+
+  for (let i = 0; i < candidatos.length; i++) {
+    const c = candidatos[i];
+    if (vertical && c.avance > minAvance + ventanaVertical) continue;
+
+    const coste = c.avance + c.desvio * (vertical ? 4 : 3);
     if (coste < mejorCoste) {
       mejorCoste = coste;
-      mejor = n.el;
+      mejor = c.nodo.el;
     }
   }
   return mejor;
@@ -464,8 +519,50 @@ export function siguiente(direccion: number): HTMLElement | null {
     if (activa) return activa;
   }
   if (desde.menu && direccion === TECLA.DERECHA) {
-    const contenido = indice.filter((n) => !n.menu && !n.alfabeto)[0];
-    if (contenido) return contenido.el;
+    const vuelta = ultimoDelContenido && document.body.contains(ultimoDelContenido) ? ultimoDelContenido : null;
+    return vuelta || (indice.filter((n) => !n.menu && !n.alfabeto)[0] || { el: null }).el;
+  }
+
+  // Transición desde el Hero hacia ABAJO:
+  // Salir del Hero hacia abajo SIEMPRE cae en la primera tarjeta de la primera fila.
+  if (foco.closest('[data-heroe]') && direccion === TECLA.ABAJO) {
+    const primeraTarjeta = document.querySelector<HTMLElement>('.fila [data-carrusel] [data-nav], .fila [data-nav]');
+    if (primeraTarjeta) return primeraTarjeta;
+  }
+
+  // Transición desde la primera fila hacia ARRIBA (hacia el Hero):
+  if (foco.closest('.fila') && direccion === TECLA.ARRIBA) {
+    const heroe = document.querySelector<HTMLElement>('[data-heroe]');
+    if (heroe && foco.closest('.fila') === document.querySelector<HTMLElement>('.fila')) {
+      const ver = document.querySelector<HTMLElement>('[data-heroe-ver]') || document.querySelector<HTMLElement>('[data-heroe] [data-nav]');
+      if (ver) return ver;
+    }
+  }
+
+  // Transición desde la barra de acciones (.acciones) de la ficha hacia ABAJO:
+  if (foco.closest('.acciones') && direccion === TECLA.ABAJO) {
+    const temp = document.querySelector<HTMLElement>('.temporadas .activa, .temporadas [data-nav]');
+    if (temp) return temp;
+    const epi = document.querySelector<HTMLElement>('[data-lista-episodios] [data-nav]');
+    if (epi) return epi;
+    const rep = document.querySelector<HTMLElement>('.reparto [data-nav]');
+    if (rep) return rep;
+    const res = document.querySelector<HTMLElement>('.resenas [data-nav]');
+    if (res) return res;
+    const ext = document.querySelector<HTMLElement>('.extras-fila [data-nav]');
+    if (ext) return ext;
+    const fila = document.querySelector<HTMLElement>('.fila [data-nav]');
+    if (fila) return fila;
+  }
+
+  // Transición desde la primera sección bajo acciones hacia ARRIBA:
+  if (direccion === TECLA.ARRIBA) {
+    const bajoAcciones = foco.closest('.temporadas, .reparto') ||
+      (foco.closest('[data-lista-episodios]') && !document.querySelector('.temporadas'));
+    if (bajoAcciones) {
+      const rep = document.querySelector<HTMLElement>('.acciones [data-reproducir], .acciones [data-nav]');
+      if (rep) return rep;
+    }
   }
 
   // Navegación de la ficha con estuche 3D:

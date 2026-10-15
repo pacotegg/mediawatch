@@ -1482,9 +1482,9 @@ function notasHtml(ficha: Ficha): string {
   );
 }
 
-async function pantallaFicha(id: number) {
-  entrarEn('ficha-' + id, () => void pantallaFicha(id));
-  const vengoDe = volverDesde;
+async function pantallaFicha(id: number, volverA?: (() => void) | null, focoInicialId?: number) {
+  entrarEn('ficha-' + id, () => void pantallaFicha(id, volverA, focoInicialId));
+  const vengoDe = volverA || volverDesde;
   pintar('inicio', '<div class="vacio">Cargando…</div>');
 
   let ficha: Ficha;
@@ -1509,7 +1509,7 @@ async function pantallaFicha(id: number) {
         '<button class="boton" data-nav data-inicio>Ir al inicio</button></div></div>',
     );
     const rein = marco.querySelector<HTMLElement>('[data-reintentar]');
-    if (rein) rein.addEventListener('click', () => void pantallaFicha(id));
+    if (rein) rein.addEventListener('click', () => void pantallaFicha(id, volverA, focoInicialId));
     const ini = marco.querySelector<HTMLElement>('[data-inicio]');
     if (ini) ini.addEventListener('click', () => void pantallaPortada());
     enfocar(rein);
@@ -1722,8 +1722,18 @@ async function pantallaFicha(id: number) {
   cuerpo += '</div>';
   pintar('inicio', cuerpo);
 
+  marco.querySelectorAll<HTMLElement>('.tarjeta:not([data-lista])').forEach((el) => {
+    el.setAttribute('data-lista', '1');
+    el.addEventListener('click', () => {
+      const relId = Number(el.getAttribute('data-id'));
+      if (relId) {
+        void pantallaFicha(relId, () => void pantallaFicha(ficha.id, vengoDe, relId));
+      }
+    });
+  });
+
   const abrir = (fileId: number, episodeId: number | null, desde: number) =>
-    pantallaReproductor(ficha, fileId, episodeId, desde);
+    pantallaReproductor(ficha, fileId, episodeId, desde, () => void pantallaFicha(ficha.id, vengoDe, focoInicialId));
 
   const bRep = marco.querySelector<HTMLElement>('[data-reproducir]');
   if (bRep && fichero) bRep.addEventListener('click', () => abrir(fichero.id, null, reanudar));
@@ -1737,7 +1747,7 @@ async function pantallaFicha(id: number) {
       // vuelve al mismo botón y no a Reproducir.
       api
         .marcarVista(ficha.id, !vista)
-        .then(() => pantallaFicha(ficha.id))
+        .then(() => pantallaFicha(ficha.id, vengoDe, focoInicialId))
         .then(() => enfocar(marco.querySelector<HTMLElement>('[data-vista]')))
         .catch(() => aviso('No se pudo guardar'));
     });
@@ -1747,7 +1757,7 @@ async function pantallaFicha(id: number) {
   if (bEditar) {
     bEditar.addEventListener('click', () => {
       menuEditarMetadatos(ficha, () => {
-        void pantallaFicha(ficha.id);
+        void pantallaFicha(ficha.id, vengoDe, focoInicialId);
       });
     });
   }
@@ -1774,7 +1784,7 @@ async function pantallaFicha(id: number) {
   const bEstuche = marco.querySelector<HTMLElement>('[data-estuche]');
   if (bEstuche) {
     bEstuche.addEventListener('click', () => {
-      dialogoEdicionColeccionista(ficha);
+      dialogoEdicionColeccionista(ficha, bEstuche);
     });
   }
 
@@ -1876,7 +1886,7 @@ async function pantallaFicha(id: number) {
   });
 
   marco.querySelectorAll<HTMLElement>('[data-persona]').forEach((el) => {
-    el.addEventListener('click', () => void pantallaPersona(Number(el.getAttribute('data-persona')), ficha.id));
+    el.addEventListener('click', () => void pantallaPersona(Number(el.getAttribute('data-persona')), () => void pantallaFicha(ficha.id, vengoDe, focoInicialId)));
   });
 
   if (esSerie && ficha.episodes) {
@@ -2088,11 +2098,13 @@ async function pantallaFicha(id: number) {
       .catch(() => undefined);
   }
 
+  const tarjetaDeAntes = focoInicialId ? marco.querySelector<HTMLElement>('.tarjeta[data-id="' + focoInicialId + '"]') : null;
   const episodioQueToca = ficha.nextUp
     ? marco.querySelector<HTMLElement>('[data-ep="' + ficha.nextUp.id + '"]')
     : null;
   enfocar(
-    (esSerie ? episodioQueToca || marco.querySelector<HTMLElement>('[data-lista-episodios] [data-nav]') : null) ||
+    tarjetaDeAntes ||
+      (esSerie ? episodioQueToca || marco.querySelector<HTMLElement>('[data-lista-episodios] [data-nav]') : null) ||
       marco.querySelector<HTMLElement>('.acciones [data-nav]') ||
       marco.querySelector<HTMLElement>('.ficha [data-nav]'),
   );
@@ -2454,9 +2466,14 @@ async function menuPistas(fileId: number, tipo: 'audio' | 'subs', alCambiar?: (i
   });
 }
 
-async function pantallaPersona(id: number, volverA?: number) {
+async function pantallaPersona(id: number, volverA?: number | (() => void) | null) {
   entrarEn('persona-' + id, () => void pantallaPersona(id, volverA));
   pintar('inicio', '<div class="vacio">Cargando…</div>');
+  const volverFn = () => {
+    if (typeof volverA === 'function') volverA();
+    else if (volverA) void pantallaFicha(volverA);
+    else void pantallaPortada();
+  };
   let persona;
   try {
     persona = await api.persona(id);
@@ -2464,7 +2481,6 @@ async function pantallaPersona(id: number, volverA?: number) {
     pintar('inicio', '<div class="vacio">No se pudo abrir la ficha de esa persona.' +
       '<div class="acciones" data-bloque><button class="boton" data-nav data-volver>Volver</button></div></div>');
     const bVolver = marco.querySelector<HTMLElement>('[data-volver]');
-    const volverFn = () => (volverA ? void pantallaFicha(volverA) : void pantallaPortada());
     if (bVolver) bVolver.addEventListener('click', volverFn);
     enfocar(bVolver);
     alPulsar((tecla) => (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE ? (volverFn(), true) : false));
@@ -2505,8 +2521,7 @@ async function pantallaPersona(id: number, volverA?: number) {
   // Volver debe devolverte a la película desde la que entraste, no al inicio.
   alPulsar((tecla) => {
     if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE) {
-      if (volverA) void pantallaFicha(volverA);
-      else void pantallaPortada();
+      volverFn();
       return true;
     }
     return false;
@@ -2653,11 +2668,23 @@ function dialogoResena(autor: string, fuente: string, contenido: string) {
 }
 
 /** Modal inmersivo a pantalla completa para admirar la edición física coleccionista en la TV. */
-function dialogoEdicionColeccionista(ficha: Ficha) {
+function dialogoEdicionColeccionista(ficha: Ficha, elOrigen?: HTMLElement | null) {
   const teclasAntes = manejadorActual();
   const focoAntes = actual();
 
   let rotacionY = -8;
+  let deltaX = 0;
+  let deltaY = 0;
+  let escalaInicial = 0.42;
+  if (elOrigen) {
+    const rect = elOrigen.getBoundingClientRect();
+    const centroX = rect.left + rect.width / 2;
+    const centroY = rect.top + rect.height / 2;
+    deltaX = Math.round(centroX - 1920 / 2);
+    deltaY = Math.round(centroY - 1080 / 2);
+    escalaInicial = Math.max(0.35, Math.min(0.55, rect.width / 860));
+  }
+
   const es4k = (ficha.tags || []).indexOf('4K') >= 0;
   const chips: string[] = [];
   chips.push(es4k ? '4K ULTRA HD' : 'BLU-RAY 1080P');
@@ -2673,10 +2700,14 @@ function dialogoEdicionColeccionista(ficha: Ficha) {
 
   const capa = document.createElement('div');
   capa.className = 'capa capa-coleccionista';
+  capa.style.setProperty('--origen-x', deltaX + 'px');
+  capa.style.setProperty('--origen-y', deltaY + 'px');
+  capa.style.setProperty('--escala-inicial', String(escalaInicial));
   capa.innerHTML =
+    (ficha.has_fanart ? '<img class="coleccionista-fondo-pantalla" src="' + imagen.fondo(ficha.id, 1920) + '" alt="">' : '') +
     '<div class="coleccionista-escenario">' +
-    '<div class="coleccionista-estuche" style="transform: rotateY(' + rotacionY + 'deg) rotateX(2deg);">' +
-    // Portada izquierda
+    '<div class="coleccionista-estuche animando-apertura" style="--rot-y: ' + rotacionY + 'deg;">' +
+    // Cara izquierda: Portada física completa en alta definición
     '<div class="coleccionista-portada">' +
     '<div class="estuche-lomo-sup-tv' + (es4k ? ' es-4k' : '') + '" style="height: 26px;">' +
     '<span class="estuche-lomo-texto-tv" style="font-size: 11px;">' + (es4k ? '4K ULTRA HD' : 'Blu-ray') + '</span>' +
@@ -2687,14 +2718,23 @@ function dialogoEdicionColeccionista(ficha: Ficha) {
     '</div>' +
     // Bisagra central
     '<div class="coleccionista-lomo-bisagra"></div>' +
-    // Bandeja derecha con disco
+    // Cara derecha: Bandeja con disco
     '<div class="coleccionista-bandeja">' +
     (ficha.has_fanart ? '<img class="coleccionista-bandeja-fondo" src="' + imagen.fondo(ficha.id, 1280) + '" alt="">' : '') +
     '<div class="coleccionista-bandeja-circulo"></div>' +
     (ficha.has_discart
-      ? '<img class="coleccionista-disco" src="' + imagen.disco(ficha.id, 800) + '" alt="Disco ' + esc(ficha.title) + '">'
-      : '<img class="coleccionista-disco" src="' + imagen.poster(ficha.id, 800) + '" style="border-radius:50%; object-fit:cover;" alt="Disco">') +
+      ? '<img class="coleccionista-disco girando" src="' + imagen.disco(ficha.id, 800) + '" alt="Disco ' + esc(ficha.title) + '">'
+      : '<img class="coleccionista-disco girando" src="' + imagen.poster(ficha.id, 800) + '" style="border-radius:50%; object-fit:cover;" alt="Disco">') +
     '<div class="coleccionista-pivote"></div>' +
+    // Tapa frontal exterior que cubre la caja al inicio y se abre en 3D
+    '<div class="coleccionista-tapa-exterior">' +
+    '<div class="estuche-lomo-sup-tv' + (es4k ? ' es-4k' : '') + '" style="height: 26px;">' +
+    '<span class="estuche-lomo-texto-tv" style="font-size: 11px;">' + (es4k ? '4K ULTRA HD' : 'Blu-ray') + '</span>' +
+    '</div>' +
+    '<img src="' + imagen.poster(ficha.id, 1000) + '" alt="' + esc(ficha.title) + '">' +
+    '<div class="estuche-brillo-tv"></div>' +
+    '<div class="estuche-haz-luz-tv"></div>' +
+    '</div>' +
     '</div>' +
     '</div>' +
     '</div>' +
@@ -2709,10 +2749,20 @@ function dialogoEdicionColeccionista(ficha: Ficha) {
   marco.appendChild(capa);
 
   const estuche = capa.querySelector<HTMLElement>('.coleccionista-estuche')!;
+  const tapaExterior = capa.querySelector<HTMLElement>('.coleccionista-tapa-exterior');
 
   const actualizarPerspectiva = () => {
-    estuche.style.transform = 'rotateY(' + rotacionY + 'deg) rotateX(2deg)';
+    estuche.style.transform = 'translate(0, 0) scale(1) rotateY(' + rotacionY + 'deg) rotateX(2deg)';
   };
+
+  // Al terminar la animación de apertura (850ms), retirar la clase y la tapa exterior para que no estorbe ni bloquee el transform
+  setTimeout(() => {
+    estuche.classList.remove('animando-apertura');
+    if (tapaExterior && tapaExterior.parentElement) {
+      tapaExterior.parentElement.removeChild(tapaExterior);
+    }
+    actualizarPerspectiva();
+  }, 850);
 
   const cerrar = () => {
     if (capa.parentElement) capa.parentElement.removeChild(capa);
@@ -3392,7 +3442,7 @@ const NOMBRE_TRAMO: Record<string, string> = { intro: 'Saltar cabecera', credits
 /** Metraje que tiene que quedar tras los créditos para llamarlo escena final. */
 const MINIMO_POSTCREDITOS = 20;
 
-function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | null, desde: number) {
+function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | null, desde: number, alVolver?: (() => void) | null) {
   pararTemaMusical();
   window.clearInterval(temporizadorHeroe);
   alPulsar(null);
@@ -4045,7 +4095,8 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
       }).catch(() => undefined);
     }
     reproductor.cerrar();
-    void pantallaFicha(ficha.id);
+    if (alVolver) alVolver();
+    else void pantallaFicha(ficha.id);
   };
 
   /** El siguiente episodio con fichero, en orden de temporada y número. */
@@ -4069,7 +4120,8 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     const sig = siguienteEpisodio();
     if (!sig || !sig.file_id) {
       reproductor.cerrar();
-      void pantallaFicha(ficha.id);
+      if (alVolver) alVolver();
+      else void pantallaFicha(ficha.id);
       return;
     }
     reproductor.cerrar();
@@ -4098,7 +4150,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     };
     const ver = () => {
       parar();
-      pantallaReproductor(ficha, sig.file_id as number, sig.id, 0);
+      pantallaReproductor(ficha, sig.file_id as number, sig.id, 0, alVolver);
     };
     const reloj10 = window.setInterval(() => {
       quedan--;
@@ -4116,12 +4168,13 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
       }
       if (tecla === TECLA.ENTRAR) {
         if (i === 0) ver();
-        else { parar(); void pantallaFicha(ficha.id); }
+        else { parar(); if (alVolver) alVolver(); else void pantallaFicha(ficha.id); }
         return true;
       }
       if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE || tecla === TECLA.PARAR) {
         parar();
-        void pantallaFicha(ficha.id);
+        if (alVolver) alVolver();
+        else void pantallaFicha(ficha.id);
         return true;
       }
       return true;
