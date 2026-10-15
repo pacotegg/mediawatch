@@ -117,7 +117,10 @@ async function resenasTmdb(itemId: number): Promise<Review[]> {
    * se vuelve a pedir una vez para completar el inglés.
    */
   const marca = item?.tmdb_id ? `tmdb:${tipo}:${item.tmdb_id}` : null;
-  const ambas = marca ? !!db.prepare("SELECT 1 FROM resenas_revisadas WHERE imdb_id = ? AND fuente = 'tmdb-ambas'").get(marca) : true;
+  const revision = marca
+    ? (db.prepare("SELECT revisada FROM resenas_revisadas WHERE imdb_id = ? AND fuente = 'tmdb-ambas'").get(marca) as { revisada: string } | undefined)
+    : undefined;
+  const ambas = !!revision;
 
   if (guardadas.length > 0 && ambas) {
     // La más reciente, no la más vieja: una reseña que TMDb ya no devuelve se
@@ -128,6 +131,16 @@ async function resenasTmdb(itemId: number): Promise<Review[]> {
     if (dias < CACHE_DIAS) {
       return guardadas.map(({ fuente, autor, contenido, valor, url }) => ({ fuente, autor, contenido, valor, url }));
     }
+  }
+
+  /*
+   * Sin reseñas guardadas, lo que dice si ya se preguntó es la marca. Antes solo se miraba la caché
+   * cuando había alguna, y el 96 % de los títulos no tiene ninguna en TMDb (1.759 de 1.826, contado el
+   * 15/10/2026): cada vez que se abría su ficha se volvía a preguntar a TMDb dos veces, ~200 ms.
+   */
+  if (guardadas.length === 0 && revision) {
+    const dias = (Date.now() - new Date(revision.revisada).getTime()) / (1000 * 86400);
+    if (dias < CACHE_DIAS) return [];
   }
 
   if (!config.tmdbApiKey) return guardadas;
@@ -143,9 +156,14 @@ async function resenasTmdb(itemId: number): Promise<Review[]> {
       if (!res.ok) throw new Error(`TMDb ${res.status}`);
       return data?.results || [];
     };
-    const results: any[] = [...(await pedir('es')), ...(await pedir('en-US'))];
+    // Las dos a la vez: antes una detrás de otra, el doble de espera.
+    const [es, en] = await Promise.all([pedir('es'), pedir('en-US')]);
+    const results: any[] = [...es, ...en];
     if (marca) {
-      db.prepare("INSERT OR IGNORE INTO resenas_revisadas (imdb_id, fuente, revisada, encontradas) VALUES (?, 'tmdb-ambas', ?, ?)")
+      // Se renueva la fecha: con «OR IGNORE» la marca se quedaba con la del primer día y, pasado el
+      // mes, la ficha volvía a preguntar a TMDb en cada apertura.
+      db.prepare(`INSERT INTO resenas_revisadas (imdb_id, fuente, revisada, encontradas) VALUES (?, 'tmdb-ambas', ?, ?)
+                  ON CONFLICT(imdb_id, fuente) DO UPDATE SET revisada = excluded.revisada, encontradas = excluded.encontradas`)
         .run(marca, new Date().toISOString(), results.length);
     }
 
