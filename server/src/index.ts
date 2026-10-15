@@ -460,7 +460,8 @@ setTimeout(reanudarAfinadoSiPendiente, Number(process.env.MEDIAWATCH_TRICKPLAY_R
 setTimeout(reanudarLoteSiPendiente, Number(process.env.MEDIAWATCH_TRICKPLAY_REANUDAR_MS) || 3 * 60_000).unref();
 setInterval(() => void limpiarSiToca(), 7 * 24 * 60 * 60_000).unref();
 
-// Copia de seguridad diaria; se rota sola a las 14 mas recientes en `data/copias`.
+// Copia de seguridad diaria; se rota sola en `data/copias` (las 3 ultimas y la mas reciente de cada uno de los
+// ultimos 7 dias: ver rotacion-copias.ts).
 // En su propio hilo: medido, VACUUM INTO bloqueaba ~466 ms sobre 168 MB, y
 // esta corre sola, sin que nadie la pida — el servidor no debe congelarse
 // por una copia de fondo. Ver `optimizarBaseDeDatosEnWorker` en db.ts.
