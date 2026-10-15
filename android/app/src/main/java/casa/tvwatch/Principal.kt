@@ -1,6 +1,12 @@
 package casa.tvwatch
 
+import android.app.PictureInPictureParams
+import android.content.res.Configuration
+import android.os.Build
 import android.os.Bundle
+import android.util.Rational
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -93,6 +99,32 @@ import java.net.URLEncoder
  */
 class Principal : AppCompatActivity() {
 
+  /** Los parámetros de la ventanita: 16:9, y desde Android 12 entra sola al salir de la app con el vídeo en marcha. */
+  private fun parametrosPip(): PictureInPictureParams {
+    val b = PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9))
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) b.setAutoEnterEnabled(EstadoPip.listo)
+    return b.build()
+  }
+
+  /** Al cambiar el estado del reproductor, se avisa al sistema de si puede entrar en imagen sobre imagen. */
+  fun actualizarPip() {
+    if (Tele.es(this)) return
+    try { setPictureInPictureParams(parametrosPip()) } catch (e: Exception) { /* sin PiP en este aparato */ }
+  }
+
+  // Antes de Android 12 no hay entrada automática: salir con el vídeo en marcha la pide a mano.
+  override fun onUserLeaveHint() {
+    super.onUserLeaveHint()
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S && EstadoPip.listo && !Tele.es(this) && !isInPictureInPictureMode) {
+      try { enterPictureInPictureMode(parametrosPip()) } catch (e: Exception) { /* sin PiP en este aparato */ }
+    }
+  }
+
+  override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
+    super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+    EstadoPip.activo = isInPictureInPictureMode
+  }
+
   override fun onCreate(estado: Bundle?) {
     super.onCreate(estado)
     enableEdgeToEdge()
@@ -123,6 +155,15 @@ class Principal : AppCompatActivity() {
       }
     }
   }
+}
+
+/**
+ * Imagen sobre imagen. `listo`: hay un vídeo reproduciéndose en el móvil y salir de la app debe convertirlo
+ * en ventanita (lo pone el reproductor). `activo`: la ventanita está puesta ahora, y la interfaz se esconde.
+ */
+object EstadoPip {
+  var listo: Boolean = false
+  var activo by mutableStateOf(false)
 }
 
 private object Rutas {
