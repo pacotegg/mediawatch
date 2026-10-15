@@ -91,7 +91,7 @@ export default async function subtitleRoutes(app: FastifyInstance) {
   });
 
   app.post('/api/subtitles/fetch', async (req, reply) => {
-    requireUser(req);
+    if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'Solo un administrador puede buscar subtítulos' });
     if (job.running) return reply.code(409).send({ error: 'Ya hay una búsqueda de subtítulos en curso' });
     if (!existsSync(SUBSFETCH)) return reply.code(400).send({ error: 'No se encuentra subsfetch.py del pipeline' });
 
@@ -186,7 +186,7 @@ export default async function subtitleRoutes(app: FastifyInstance) {
   });
 
   app.post('/api/subtitles/search', async (req, reply) => {
-    requireUser(req);
+    if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'Solo un administrador puede buscar subtítulos' });
     const { fileId, languages } = req.body as { fileId: number; languages?: string };
     if (!fileId) return reply.code(400).send({ error: 'Falta fileId' });
 
@@ -222,7 +222,7 @@ export default async function subtitleRoutes(app: FastifyInstance) {
   });
 
   app.post('/api/subtitles/download', async (req, reply) => {
-    requireUser(req);
+    if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'Solo un administrador puede descargar subtítulos' });
     const { fileId, provider, subId, language, release, forced } = req.body as {
       fileId: number; provider: string; subId: string | number; language: string; release?: string; forced?: boolean;
     };

@@ -788,7 +788,7 @@ export default async function playRoutes(app: FastifyInstance) {
   });
 
   app.post('/api/play/:fileId/hls/cerrar', async (req) => {
-    cerrarSesiones(Number((req.params as { fileId: string }).fileId));
+    cerrarSesiones(Number((req.params as { fileId: string }).fileId), sesionDe(req) ?? undefined);
     return { ok: true };
   });
 
@@ -917,7 +917,7 @@ export default async function playRoutes(app: FastifyInstance) {
    * sesiones ajenas.
    */
   app.post('/api/play/:fileId/offsets/:trackId', async (req, reply) => {
-    requireUser(req);
+    if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'Solo un administrador' });
     const { fileId, trackId } = req.params as { fileId: string; trackId: string };
     const { offsetMs } = req.body as { offsetMs: number };
     if (typeof offsetMs !== 'number' || !Number.isFinite(offsetMs) || Math.abs(offsetMs) > 60000) {

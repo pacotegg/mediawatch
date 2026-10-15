@@ -1672,20 +1672,23 @@ private fun MenuDePistas(
         Text("     Este fichero no trae ninguno", color = TextoTenue, fontSize = 12.sp)
       }
       Spacer(Modifier.height(4.dp))
-      Text(
-        "     🔍 Buscar subtítulos en internet…",
-        color = Realce,
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Medium,
-        modifier = Modifier
-          .fillMaxWidth()
-          .resaltarFoco()
-          .clickable {
-            alBuscarSubtitulos()
-            alCerrar()
-          }
-          .padding(vertical = 8.dp),
-      )
+      // Buscar y bajar subtítulos gasta el cupo diario de OpenSubtitles: solo el administrador.
+      if (Ajustes.esAdmin) {
+        Text(
+          "     🔍 Buscar subtítulos en internet…",
+          color = Realce,
+          fontSize = 13.sp,
+          fontWeight = FontWeight.Medium,
+          modifier = Modifier
+            .fillMaxWidth()
+            .resaltarFoco()
+            .clickable {
+              alBuscarSubtitulos()
+              alCerrar()
+            }
+            .padding(vertical = 8.dp),
+        )
+      }
 
       /*
        * Desfase. Solo se enseña si hay algún subtítulo en fichero aparte: los
