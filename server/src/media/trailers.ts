@@ -62,7 +62,9 @@ async function buscar(clave: string, ruta: string): Promise<Trailer | null> {
   }
   if (!config.tmdbApiKey) return null;
   try {
-    const t = elegir(await videos(ruta, 'es-ES'), await videos(ruta, 'en-US'));
+    // Las dos a la vez: una detrás de otra, la primera apertura de la ficha esperaba el doble.
+    const [es, en] = await Promise.all([videos(ruta, 'es-ES'), videos(ruta, 'en-US')]);
+    const t = elegir(es, en);
     db.prepare(`INSERT INTO trailers (clave, youtube, idioma, calidad, comprobado) VALUES (?, ?, ?, ?, ?)
                 ON CONFLICT(clave) DO UPDATE SET youtube = excluded.youtube, idioma = excluded.idioma,
                   calidad = excluded.calidad, comprobado = excluded.comprobado`)
