@@ -468,10 +468,19 @@ export const imagen = {
 /** AVPlay abre una URL pelada: el token tiene que ir dentro. */
 export const urlExtra = (id: number) => conToken(servidor() + '/api/extras/' + id + '/stream');
 
+/*
+ * Las pistas traen dos estándares de códigos a la vez (`chi`/`zho`, `fre`/`fra`, `cze`/`ces`…). Chrome 76
+ * no tiene `Intl.DisplayNames`, así que la lista va a mano: están todos los que aparecen en la biblioteca
+ * (contados el 15/10/2026); antes salían en mayúsculas («ZHO», «NLD»).
+ */
 const IDIOMAS: Record<string, string> = {
-  spa: 'Español', eng: 'Inglés', cat: 'Catalán', glg: 'Gallego', eus: 'Euskera',
-  fre: 'Francés', ger: 'Alemán', ita: 'Italiano', por: 'Portugués', jpn: 'Japonés',
-  kor: 'Coreano', chi: 'Chino', rus: 'Ruso',
+  spa: 'Español', eng: 'Inglés', cat: 'Catalán', glg: 'Gallego', eus: 'Euskera', baq: 'Euskera',
+  fre: 'Francés', fra: 'Francés', ger: 'Alemán', deu: 'Alemán', ita: 'Italiano', por: 'Portugués',
+  jpn: 'Japonés', kor: 'Coreano', chi: 'Chino', zho: 'Chino', rus: 'Ruso', ara: 'Árabe', hin: 'Hindi',
+  dut: 'Neerlandés', nld: 'Neerlandés', cze: 'Checo', ces: 'Checo', rum: 'Rumano', ron: 'Rumano',
+  gre: 'Griego', ell: 'Griego', per: 'Persa', fas: 'Persa', swe: 'Sueco', dan: 'Danés', nor: 'Noruego',
+  nob: 'Noruego', fin: 'Finés', pol: 'Polaco', tur: 'Turco', ukr: 'Ucraniano', heb: 'Hebreo',
+  tha: 'Tailandés', vie: 'Vietnamita', ind: 'Indonesio', hun: 'Húngaro', srp: 'Serbio', asm: 'Asamés',
 };
 
 export const idioma = (codigo: string | null | undefined) => {

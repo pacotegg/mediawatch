@@ -5,8 +5,26 @@ const LANGUAGES: Record<string, string> = {
   dan: 'Danés', nor: 'Noruego', fin: 'Finés', dut: 'Neerlandés', pol: 'Polaco', tur: 'Turco',
 };
 
-export const languageName = (code?: string | null) =>
-  !code ? 'Desconocido' : LANGUAGES[code.toLowerCase()] ?? code.toUpperCase();
+/*
+ * Lo que no está en la lista lo nombra el navegador: las pistas usan dos estándares de códigos a la vez
+ * (`chi` y `zho`, `dut` y `nld`, `cze` y `ces`…) y salían en mayúsculas («ZHO»). Contado el 15/10 en la
+ * biblioteca: 9 códigos así en audio y 18 en subtítulos. `und` es «sin idioma marcado», no un idioma
+ * (el navegador lo llama «root»), y lo que no es un código (hay subtítulos con idioma «3») se deja tal cual.
+ */
+const nombresDelNavegador = (() => {
+  try { return new Intl.DisplayNames(['es'], { type: 'language' }); } catch { return null; }
+})();
+
+export const languageName = (code?: string | null) => {
+  if (!code || code.toLowerCase() === 'und') return 'Desconocido';
+  const conocido = LANGUAGES[code.toLowerCase()];
+  if (conocido) return conocido;
+  try {
+    const nombre = nombresDelNavegador?.of(code.toLowerCase());
+    if (nombre && nombre.toLowerCase() !== code.toLowerCase()) return nombre.charAt(0).toUpperCase() + nombre.slice(1);
+  } catch { /* no es un código de idioma */ }
+  return code.toUpperCase();
+};
 
 export function runtime(minutes?: number | null): string {
   if (!minutes) return '';
