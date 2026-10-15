@@ -1,5 +1,8 @@
 package casa.tvwatch.datos
 
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -99,7 +102,12 @@ object Api {
         val s = it.body?.string() ?: ""
         if (!it.isSuccessful) {
           Registro.e("api", "$que -> ${it.code} en ${ms()} ms")
-          throw FalloDeRed("El servidor respondió ${it.code}")
+          // El motivo que da el servidor (`{"error": "..."}`) dice mucho más que el código: «Se ha acabado
+          // el tiempo de hoy», «Contenido no disponible para este perfil»...
+          val motivo = try {
+            json.parseToJsonElement(s).jsonObject["error"]?.jsonPrimitive?.contentOrNull
+          } catch (e: Exception) { null }
+          throw FalloDeRed(motivo?.takeIf { m -> m.isNotBlank() } ?: "El servidor respondió ${it.code}")
         }
         if (ms() > 3_000) Registro.w("api", "$que tardó ${ms()} ms (intento $intento)")
         return s
@@ -278,7 +286,7 @@ object Api {
   /* ------------------------------------------------------- reproducción */
 
   fun infoDeReproduccion(fileId: Int, sinHevc: Boolean = false, calidad: Calidad = Calidad.ORIGINAL): InfoReproduccion =
-    pedir("/api/play/$fileId/info?" + Capacidades.consulta(sinHevc, calidad))
+    pedir("/api/play/$fileId/info?" + Capacidades.consulta(sinHevc, calidad) + "&resumen=1")
 
   /**
    * El flujo de vídeo.

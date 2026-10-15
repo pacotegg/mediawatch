@@ -3388,7 +3388,7 @@ const ESCALA_PREVIA = 2;
  * no perdérsela ni tragarse cinco minutos de rótulos—; si no queda nada, saltar
  * es dar por terminado y pasar al siguiente episodio.
  */
-const NOMBRE_TRAMO: Record<string, string> = { intro: 'Saltar cabecera', credits: 'Saltar créditos' };
+const NOMBRE_TRAMO: Record<string, string> = { intro: 'Saltar cabecera', credits: 'Saltar créditos', recap: 'Saltar resumen' };
 /** Metraje que tiene que quedar tras los créditos para llamarlo escena final. */
 const MINIMO_POSTCREDITOS = 20;
 
@@ -3727,7 +3727,8 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
       enTramo = false;
       return;
     }
-    if (aj.modoMaraton && dentro.kind === 'intro') {
+    // En maratón se salta solo la cabecera y también el resumen («Anteriormente en…»).
+    if (aj.modoMaraton && (dentro.kind === 'intro' || dentro.kind === 'recap')) {
       tramoActivo = dentro;
       saltarTramo();
       return;
@@ -3761,6 +3762,97 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     llevarA(tramo.end_s);
   };
 
+  function tratarError(mensaje: string) {
+    cargando.style.display = 'none';
+    if (cerrado) return;
+    reproductor.cerrar();
+    const donde = Math.max(0, destinoSalto !== null ? destinoSalto : reproductor.tiempo());
+
+    const quitarCapaError = () => {
+      window.clearTimeout(temporizadorReintento);
+      if (capaError && capaError.parentElement) {
+        capaError.parentElement.removeChild(capaError);
+        capaError = null;
+      }
+      alPulsar(manejarTeclas);
+    };
+
+    const reintentarYa = () => {
+      quitarCapaError();
+      cargando.style.display = 'block';
+      cargando.textContent = 'Cargando…';
+      // Si falló en crudo, reintentar por tubería (ffmpeg convierte el audio):
+      // AVPlay puede rechazar ficheros con cabeceras AAC no estándar (44.1 kHz,
+      // codec_private inflado) que ffmpeg lee sin problema.
+      if (!convertir) {
+        convertir = true;
+        seleccion.convertir = true;
+      }
+      abrirFlujo(donde);
+    };
+
+    const mostrarPanelError = (motivoError: string, intento: number, maxIntentos: number, sEspera: number) => {
+      if (!capaError) {
+        capaError = document.createElement('div');
+        capaError.className = 'capa';
+        capaError.innerHTML =
+          '<div class="panel"><h3>Error de reproducción</h3>' +
+          '<p class="dato" style="color:#f87171;font-size:18px;margin-bottom:14px" data-motivo></p>' +
+          '<p class="dato" data-estado></p>' +
+          '<button class="linea enfocado" data-reintentar>Reintentar (modo compatibilidad)</button>' +
+          '<button class="linea" data-salir>Volver a la ficha</button></div>';
+        marco.appendChild(capaError);
+
+        const txtMotivo = capaError.querySelector<HTMLElement>('[data-motivo]');
+        if (txtMotivo) txtMotivo.textContent = motivoError;
+        const btnReintentar = capaError.querySelector<HTMLElement>('[data-reintentar]');
+        if (btnReintentar) btnReintentar.addEventListener('click', reintentarYa);
+        const btnSalir = capaError.querySelector<HTMLElement>('[data-salir]');
+        if (btnSalir) btnSalir.addEventListener('click', () => { quitarCapaError(); salir(); });
+
+        let i = 0;
+        const lineas = [btnReintentar, btnSalir].filter((b): b is HTMLElement => b !== null);
+        const pintarFoco = () => lineas.forEach((el, n) => (n === i ? el.classList.add('enfocado') : el.classList.remove('enfocado')));
+
+        alPulsar((tecla) => {
+          if (tecla === TECLA.ABAJO || tecla === TECLA.ARRIBA) {
+            i = tecla === TECLA.ABAJO ? Math.min(lineas.length - 1, i + 1) : Math.max(0, i - 1);
+            pintarFoco();
+            return true;
+          }
+          if (tecla === TECLA.ENTRAR) {
+            if (i === 0) reintentarYa();
+            else { quitarCapaError(); salir(); }
+            return true;
+          }
+          if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE || tecla === TECLA.PARAR) {
+            quitarCapaError();
+            salir();
+            return true;
+          }
+          return true;
+        });
+      }
+      const txt = capaError.querySelector<HTMLElement>('[data-estado]');
+      if (intento <= maxIntentos) {
+        if (txt) txt.textContent = `Reintentando en modo compatibilidad (${intento}/${maxIntentos}) en ${sEspera} s…`;
+      } else {
+        if (txt) txt.textContent = 'No se pudo reproducir tras 4 intentos. Elige una opción:';
+      }
+    };
+
+    if (reintentos < 4) {
+      reintentos++;
+      ultimoReintento = Date.now();
+      const pausas = [3000, 8000, 15000, 22000];
+      const espera = pausas[reintentos - 1] || 10000;
+      mostrarPanelError(mensaje, reintentos, 4, Math.round(espera / 1000));
+      window.clearTimeout(temporizadorReintento);
+      temporizadorReintento = window.setTimeout(reintentarYa, espera);
+      return;
+    }
+    mostrarPanelError(mensaje, 5, 4, 0);
+  }
   const reproductor = new Reproductor({
     onTiempo: (segundos, duracion) => {
       if (capaError && capaError.parentElement) {
@@ -3816,93 +3908,16 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     onError: (mensaje) => {
       cargando.style.display = 'none';
       if (cerrado) return;
-      reproductor.cerrar();
-      const donde = Math.max(0, destinoSalto !== null ? destinoSalto : reproductor.tiempo());
-
-      const quitarCapaError = () => {
-        window.clearTimeout(temporizadorReintento);
-        if (capaError && capaError.parentElement) {
-          capaError.parentElement.removeChild(capaError);
-          capaError = null;
-        }
-        alPulsar(manejarTeclas);
-      };
-
-      const reintentarYa = () => {
-        quitarCapaError();
-        cargando.style.display = 'block';
-        cargando.textContent = 'Cargando…';
-        // Si falló en crudo, reintentar por tubería (ffmpeg convierte el audio):
-        // AVPlay puede rechazar ficheros con cabeceras AAC no estándar (44.1 kHz,
-        // codec_private inflado) que ffmpeg lee sin problema.
-        if (!convertir) {
-          convertir = true;
-          seleccion.convertir = true;
-        }
-        abrirFlujo(donde);
-      };
-
-      const mostrarPanelError = (motivoError: string, intento: number, maxIntentos: number, sEspera: number) => {
-        if (!capaError) {
-          capaError = document.createElement('div');
-          capaError.className = 'capa';
-          capaError.innerHTML =
-            '<div class="panel"><h3>Error de reproducción</h3>' +
-            '<p class="dato" style="color:#f87171;font-size:18px;margin-bottom:14px" data-motivo></p>' +
-            '<p class="dato" data-estado></p>' +
-            '<button class="linea enfocado" data-reintentar>Reintentar (modo compatibilidad)</button>' +
-            '<button class="linea" data-salir>Volver a la ficha</button></div>';
-          marco.appendChild(capaError);
-
-          const txtMotivo = capaError.querySelector<HTMLElement>('[data-motivo]');
-          if (txtMotivo) txtMotivo.textContent = motivoError;
-          const btnReintentar = capaError.querySelector<HTMLElement>('[data-reintentar]');
-          if (btnReintentar) btnReintentar.addEventListener('click', reintentarYa);
-          const btnSalir = capaError.querySelector<HTMLElement>('[data-salir]');
-          if (btnSalir) btnSalir.addEventListener('click', () => { quitarCapaError(); salir(); });
-
-          let i = 0;
-          const lineas = [btnReintentar, btnSalir].filter((b): b is HTMLElement => b !== null);
-          const pintarFoco = () => lineas.forEach((el, n) => (n === i ? el.classList.add('enfocado') : el.classList.remove('enfocado')));
-
-          alPulsar((tecla) => {
-            if (tecla === TECLA.ABAJO || tecla === TECLA.ARRIBA) {
-              i = tecla === TECLA.ABAJO ? Math.min(lineas.length - 1, i + 1) : Math.max(0, i - 1);
-              pintarFoco();
-              return true;
-            }
-            if (tecla === TECLA.ENTRAR) {
-              if (i === 0) reintentarYa();
-              else { quitarCapaError(); salir(); }
-              return true;
-            }
-            if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE || tecla === TECLA.PARAR) {
-              quitarCapaError();
-              salir();
-              return true;
-            }
-            return true;
-          });
-        }
-        const txt = capaError.querySelector<HTMLElement>('[data-estado]');
-        if (intento <= maxIntentos) {
-          if (txt) txt.textContent = `Reintentando en modo compatibilidad (${intento}/${maxIntentos}) en ${sEspera} s…`;
-        } else {
-          if (txt) txt.textContent = 'No se pudo reproducir tras 4 intentos. Elige una opción:';
-        }
-      };
-
-      if (reintentos < 4) {
-        reintentos++;
-        ultimoReintento = Date.now();
-        const pausas = [3000, 8000, 15000, 22000];
-        const espera = pausas[reintentos - 1] || 10000;
-        mostrarPanelError(mensaje, reintentos, 4, Math.round(espera / 1000));
-        window.clearTimeout(temporizadorReintento);
-        temporizadorReintento = window.setTimeout(reintentarYa, espera);
-        return;
-      }
-      mostrarPanelError(mensaje, 5, 4, 0);
+      // Un 403 (perfil sin permiso o tiempo de hoy agotado) no se arregla reintentando: se pregunta al
+      // servidor por qué y, si es eso, se dice y se vuelve a la ficha.
+      api.pistas(fileId).then(
+        () => tratarError(mensaje),
+        (e: Error & { status?: number }) => {
+          if (cerrado) return;
+          if (e.status === 403) { reproductor.cerrar(); avisoRapido(e.message); salir(); }
+          else tratarError(mensaje);
+        },
+      );
     },
     onSubtitulo: (texto, milisegundos) => {
       window.clearTimeout(temporizadorSub);

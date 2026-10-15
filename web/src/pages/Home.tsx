@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'motion/react';
 import Hero from '../components/Hero.tsx';
+import Novedades from '../components/Novedades.tsx';
 import Row from '../components/Row.tsx';
 import { api } from '../lib/api.ts';
 import { t } from '../lib/i18n.ts';
@@ -56,6 +57,8 @@ export default function Home() {
         transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
         className="relative z-10 -mt-6 space-y-9"
       >
+        {/* Sin portada destacada, el contenedor que sube para solaparse con ella la dejaba cortada arriba. */}
+        <Novedades sinPortada={!data?.hero?.length} />
         {data?.rows.map((row) => (
           <Row
             key={row.key}

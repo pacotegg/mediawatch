@@ -156,6 +156,8 @@ export type User = {
   has_pin?: number;
   has_avatar?: number;
   kid_ratings?: string[] | null;
+  /** Minutos al día que puede ver (null: sin límite). */
+  limite_diario_min?: number | null;
 };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -291,7 +293,7 @@ export const api = {
   users: () => request<{ users: User[]; setupNeeded: boolean }>('/api/users'),
   createUser: (name: string, pin?: string, kidRatings?: string[] | null) =>
     post<{ id: number }>('/api/users', { name, pin: pin || undefined, kidRatings: kidRatings || undefined }),
-  updateUser: (userId: number, data: { name?: string; color?: string; isAdmin?: boolean; pin?: string | null; kidRatings?: string[] | null }) =>
+  updateUser: (userId: number, data: { name?: string; color?: string; isAdmin?: boolean; pin?: string | null; kidRatings?: string[] | null; limiteDiario?: number | null }) =>
     request<{ ok: true }>(`/api/users/${userId}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteUser: (userId: number) =>
     request<{ ok: true }>(`/api/users/${userId}`, { method: 'DELETE' }),
@@ -393,7 +395,8 @@ export const api = {
   // Lo que el servidor tiene para este aparato: avisos del administrador.
   mando: () => request<{ mensaje: string | null; parar: boolean }>('/api/mando'),
 
-  skipRanges: (episodeId: number) => request<{ ranges: SkipRange[] }>(`/api/episodes/${episodeId}/skip`),
+  // `resumen=1`: esta web sabe qué es un resumen («Anteriormente en…»); a los clientes viejos no se les manda.
+  skipRanges: (episodeId: number) => request<{ ranges: SkipRange[] }>(`/api/episodes/${episodeId}/skip?resumen=1`),
   skipStatus: () => request<{ job: SkipJob; shows: SkipShow[] }>('/api/skip/status'),
   detectSkips: (showId: number, kind: 'cabecera' | 'creditos') => post<{ started: boolean }>('/api/skip/detect', { showId, kind }),
   plataformas: () => request<{ plataformas: Plataforma[]; total: number; consultados: number; conPlataforma: number; porPlataforma: (Plataforma & { titulos: number })[]; job: { running: boolean; total: number; hechos: number; conPlataforma: number; error: string | null } }>('/api/plataformas'),
@@ -520,6 +523,8 @@ export const api = {
       trickplay: { bytes: number; ficheros: number };
       copias: { total: number; ultima: string | null };
     }>('/api/mantenimiento/estado'),
+  novedades: () => request<{ desde: string | null; total: number; items: { id: number; title: string; kind: string; year: number | null }[] }>('/api/novedades'),
+  novedadesVistas: () => post<{ ok: boolean }>('/api/novedades/vistas', {}),
   mantenimientoAvisos: () => request<{ avisos: { nivel: 'error' | 'aviso'; texto: string }[] }>('/api/mantenimiento/avisos'),
   mantenimientoLimpiar: () => post<{ cacheImagenes: number; trickplayHuerfano: number }>('/api/mantenimiento/limpiar', {}),
   mantenimientoOptimizar: () => post<{ antes: number; despues: number }>('/api/mantenimiento/optimizar', {}),
@@ -569,7 +574,7 @@ export type TranscribeJob = {
   failed: number;
 };
 
-export type SkipRange = { kind: 'intro' | 'credits'; start_s: number; end_s: number; confidence: number };
+export type SkipRange = { kind: 'intro' | 'credits' | 'recap'; start_s: number; end_s: number; confidence: number };
 
 export type SkipJob = {
   running: boolean;
