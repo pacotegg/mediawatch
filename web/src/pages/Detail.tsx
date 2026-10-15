@@ -15,6 +15,7 @@ import { audioLabel, certification, clock, codecLabel, fileSize, languageName, r
 import { usePreferences } from '../lib/preferences.tsx';
 import { tintFrom } from '../lib/tint.ts';
 import Estuche3D from '../components/Estuche3D.tsx';
+import { volver } from '../lib/volver.ts';
 
 function opcionesDescarga(duracionSegundos?: number | null, bytesOriginal?: number | null, codec: CodecDescarga = 'h265'): [PerfilDescarga, string, string][] {
   const d = duracionSegundos && duracionSegundos > 0 ? duracionSegundos : 5400;
@@ -442,7 +443,7 @@ export default function Detail() {
             Reintentar
           </button>
           <button
-            onClick={() => navigate(-1)}
+            onClick={() => volver(navigate, '/')}
             className="rounded-xl bg-white/10 px-5 py-2.5 text-[13px] font-medium text-white transition hover:bg-white/16"
           >
             Volver
