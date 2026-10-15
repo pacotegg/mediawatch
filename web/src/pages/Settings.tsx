@@ -864,6 +864,7 @@ function MantenimientoPanel() {
   const queryClient = useQueryClient();
   const [mensaje, setMensaje] = useState('');
   const { data: estado } = useQuery({ queryKey: ['mantenimiento'], queryFn: api.mantenimientoEstado });
+  const { data: salud } = useQuery({ queryKey: ['mantenimiento-avisos'], queryFn: api.mantenimientoAvisos, refetchInterval: 60_000 });
 
   const limpiar = useMutation({
     mutationFn: api.mantenimientoLimpiar,
@@ -896,6 +897,17 @@ function MantenimientoPanel() {
       title="Mantenimiento"
       subtitle="Miniaturas huérfanas, caché sin usar y copias de la base de datos se retiran solas cada semana; aquí se puede forzar ahora mismo."
     >
+      {salud && (salud.avisos.length === 0
+        ? <p className="text-[12.5px] text-emerald-400">Todo en orden: bibliotecas accesibles, sin errores recientes y copias al día.</p>
+        : (
+          <ul className="space-y-1 text-[12.5px]">
+            {salud.avisos.map((a) => (
+              <li key={a.texto} className={a.nivel === 'error' ? 'text-red-400' : 'text-amber-300'}>
+                {a.nivel === 'error' ? '✖' : '⚠'} {a.texto}
+              </li>
+            ))}
+          </ul>
+        ))}
       <div className="grid gap-2 text-[13px] sm:grid-cols-3">
         <div><span className="text-mist-600">Base de datos: </span>{estado ? tamano(estado.baseDeDatos.bytes) : '—'}</div>
         <div><span className="text-mist-600">Caché de imágenes: </span>{estado ? `${tamano(estado.cacheImagenes.bytes)} (${estado.cacheImagenes.ficheros})` : '—'}</div>
@@ -903,7 +915,7 @@ function MantenimientoPanel() {
       </div>
       <p className="text-[12px] text-mist-600">
         Copias de seguridad: {estado?.copias.total ?? 0} guardadas
-        {estado?.copias.ultima ? `, la última ${estado.copias.ultima.replace(/^tvwatch-|\.db$/g, '')}` : ''}.
+        {estado?.copias.ultima ? `, la última ${estado.copias.ultima.replace(/^tvwatch-|\.db(\.gz)?$/g, '')}` : ''}.
       </p>
       <div className="flex flex-wrap gap-2 pt-1">
         <Button variant="ghost" onClick={() => limpiar.mutate()} disabled={trabajando}>

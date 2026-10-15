@@ -1,5 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
-import { mkdirSync, readdirSync, statSync, unlinkSync } from 'node:fs';
+import { createReadStream, createWriteStream, mkdirSync, readdirSync, renameSync, rmSync, statSync, unlinkSync } from 'node:fs';
+import { pipeline } from 'node:stream/promises';
+import { createGzip } from 'node:zlib';
 import { join } from 'node:path';
 import { Worker } from 'node:worker_threads';
 import { DATA_DIR, MODO_PORTABLE } from './config.ts';
@@ -522,18 +524,31 @@ const COPIAS_DIR = join(DATA_DIR, 'copias');
  * `rotacion-copias.ts`: se copia en cada arranque, y «las N últimas» dejaba
  * todas las copias en el mismo día).
  *
- * Sigue siendo síncrona y bloqueante —medido: ~466 ms sobre 168 MB—, así que
- * quien la llama en el servidor real usa `backupBaseDeDatosEnWorker()`, más
- * abajo, para no congelar el proceso mientras corre. Esta función tal cual
- * sigue sirviendo para el CLI y para dentro del propio worker.
+ * La copia se guarda comprimida (`.db.gz`): medido el 15/10 sobre 185 MB, gzip da el 48 % (88 MB), así que
+ * las ~10 copias que se conservan bajan de 1,8 GB a unos 0,9 GB. Para restaurar, descomprimir el `.gz`
+ * (`gzip -d`) y poner el `.db` en `data/` con el servidor parado. Las `.db` de antes siguen valiendo y
+ * rotan igual.
+ *
+ * `VACUUM INTO` bloquea ~466 ms y comprimir unos segundos de CPU: quien la llama en el servidor real usa
+ * `backupBaseDeDatosEnWorker()`, más abajo, para no congelar el proceso mientras corre.
  */
-export function backupBaseDeDatos(): string {
+export async function backupBaseDeDatos(): Promise<string> {
   mkdirSync(COPIAS_DIR, { recursive: true });
-  const nombre = `tvwatch-${new Date().toISOString().replace(/T/, '-').replace(/:/g, '-').replace(/\..+/, '')}.db`;
-  const destino = join(COPIAS_DIR, nombre);
-  db.exec(`VACUUM INTO '${destino.replace(/'/g, "''")}'`);
+  const base = `tvwatch-${new Date().toISOString().replace(/T/, '-').replace(/:/g, '-').replace(/\..+/, '')}`;
+  const sinComprimir = join(COPIAS_DIR, `${base}.db.tmp`);
+  const parcial = join(COPIAS_DIR, `${base}.db.gz.parcial`);
+  const destino = join(COPIAS_DIR, `${base}.db.gz`);
+  try {
+    db.exec(`VACUUM INTO '${sinComprimir.replace(/'/g, "''")}'`);
+    await pipeline(createReadStream(sinComprimir), createGzip({ level: 3 }), createWriteStream(parcial));
+    // Hasta que está entera no tiene el nombre de una copia: una a medias nunca cuenta ni rota a las buenas.
+    renameSync(parcial, destino);
+  } finally {
+    rmSync(sinComprimir, { force: true });
+    rmSync(parcial, { force: true });
+  }
 
-  const copias = readdirSync(COPIAS_DIR).filter((f) => f.startsWith('tvwatch-') && f.endsWith('.db'));
+  const copias = readdirSync(COPIAS_DIR).filter((f) => f.startsWith('tvwatch-') && (f.endsWith('.db') || f.endsWith('.db.gz')));
   const quedan = copiasAConservar(copias);
   for (const f of copias) if (!quedan.has(f)) unlinkSync(join(COPIAS_DIR, f));
 
