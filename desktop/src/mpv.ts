@@ -33,6 +33,8 @@ export type Estado = {
   audio: number | null;
   subtitulo: string;
   fin?: boolean;
+  /** El fichero llegó a su final solo (no lo cerró nadie): la interfaz decide si pasa al siguiente episodio. */
+  acabado?: boolean;
 };
 
 type Pista = { id: number; type: string; 'ff-index'?: number; external?: boolean; 'external-filename'?: string };
@@ -99,7 +101,7 @@ export function ordenar(nombre: string, valor?: unknown, pistasDe?: () => { pist
  * mpv aquí solo pinta: sin controles propios ni teclas, porque de eso se encarga la interfaz de la web.
  * `onEstado` la mantiene al día y `onFin` avisa cuando se cierra el vídeo.
  */
-export function reproducir(exe: string, p: Pedido, onFin: () => void, onEstado: (e: Estado) => void): Promise<void> {
+export function reproducir(exe: string, p: Pedido, onFin: (acabado: boolean) => void, onEstado: (e: Estado) => void): Promise<void> {
   return new Promise((resolve, reject) => {
     const id = randomBytes(6).toString('hex');
     const canal = process.platform === 'win32' ? `\\\\.\\pipe\\mw-${id}` : join(process.env.XDG_RUNTIME_DIR ?? '/tmp', `mw-${id}.sock`);
@@ -135,6 +137,7 @@ export function reproducir(exe: string, p: Pedido, onFin: () => void, onEstado: 
     let ultimoAviso = 0;
     let conectado = false;
     let cerrado = false;
+    let acabado = false;
     let timerReintento: NodeJS.Timeout | undefined;
     let pistas: Pista[] = [];
     let aid: number | null = null;
@@ -144,7 +147,7 @@ export function reproducir(exe: string, p: Pedido, onFin: () => void, onEstado: 
 
     const audioGuardable = () => pistas.find((t) => t.type === 'audio' && t.id === aid)?.['ff-index'] ?? null;
     const subGuardable = () => (sid === null ? 'off' : idDeServidor(pistas.find((t) => t.type === 'sub' && t.id === sid), urlDeExterno) ?? 'off');
-    const avisar = (fin = false) => onEstado({ tiempo: posicion, duracion, pausado, cargando, audio: audioGuardable(), subtitulo: subGuardable(), fin });
+    const avisar = (fin = false) => onEstado({ tiempo: posicion, duracion, pausado, cargando, audio: audioGuardable(), subtitulo: subGuardable(), fin, acabado });
 
     async function guardar() {
       if (!(posicion > 5)) return;
@@ -155,8 +158,10 @@ export function reproducir(exe: string, p: Pedido, onFin: () => void, onEstado: 
           body: JSON.stringify({
             itemId: p.itemId,
             episodeId: p.episodeId,
-            position: posicion,
+            // Al llegar al final solo se da por visto, igual que hace el reproductor de la web.
+            position: acabado && duracion > 0 ? duracion : posicion,
             duration: duracion > 0 ? duracion : undefined,
+            ...(acabado ? { watched: true } : {}),
             audio: audioGuardable(),
             subtitle: subGuardable(),
           }),
@@ -174,7 +179,7 @@ export function reproducir(exe: string, p: Pedido, onFin: () => void, onEstado: 
       enviar = null;
       void guardar();
       avisar(true);
-      onFin();
+      onFin(acabado);
     };
     proc.on('error', (err) => { cerrar(); reject(err); });
     proc.on('exit', () => {
@@ -237,7 +242,7 @@ export function reproducir(exe: string, p: Pedido, onFin: () => void, onEstado: 
           try { e = JSON.parse(l); } catch { continue; } // una línea a medias
           // Solo al terminar el fichero. `idle` NO vale: mpv ya está ocioso al arrancar (--idle=yes) y
           // avisaba antes incluso de cargar nada, así que el vídeo se cerraba solo nada más abrirlo.
-          if (e.event === 'end-file') { mandar('quit'); continue; }
+          if (e.event === 'end-file') { acabado = e.reason === 'eof'; mandar('quit'); continue; }
           if (e.event !== 'property-change') continue;
           if (e.name === 'track-list' && Array.isArray(e.data)) { pistas = e.data as Pista[]; aplicarPistas(); avisar(); }
           else if (e.name === 'aid') { aid = typeof e.data === 'number' ? e.data : null; avisar(); }
