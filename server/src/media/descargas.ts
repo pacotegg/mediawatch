@@ -133,7 +133,25 @@ export function pedir(userId: number, fileId: number, perfil: Perfil, codec: Cod
   return fila(id) as Descarga;
 }
 
-function preparar(id: number, origen: string, duracion: number, perfil: Exclude<Perfil, 'original'>, esHdr: boolean, codec: Codec, origenW: number, origenH: number) {
+/*
+ * Una conversión a la vez: cada una es un ffmpeg con la GPU a tope, compitiendo con quien esté viendo algo.
+ * Antes cada petición arrancaba la suya al momento, sin límite (y al reiniciar, todas las pendientes a la vez).
+ * Las que esperan siguen en «preparando» con progreso 0.
+ */
+const MAX_SIMULTANEAS = 1;
+type Trabajo = Parameters<typeof lanzar>;
+const cola: Trabajo[] = [];
+
+function siguiente() {
+  while (enCurso.size < MAX_SIMULTANEAS && cola.length) lanzar(...cola.shift()!);
+}
+
+function preparar(...t: Trabajo) {
+  cola.push(t);
+  siguiente();
+}
+
+function lanzar(id: number, origen: string, duracion: number, perfil: Exclude<Perfil, 'original'>, esHdr: boolean, codec: Codec, origenW: number, origenH: number) {
   const ajustes = PERFILES[perfil];
   const destino = join(DIR, `${id}-${perfil}-${codec}.mp4`);
 
@@ -222,6 +240,7 @@ function preparar(id: number, origen: string, duracion: number, perfil: Exclude<
   proc.on('error', (e) => {
     enCurso.delete(id);
     db.prepare("UPDATE descargas SET estado = 'error', error = ? WHERE id = ?").run('No arrancó ffmpeg: ' + e.message, id);
+    siguiente();
   });
 
   // `-progress` escribe pares clave=valor; el que interesa es el tiempo ya
@@ -244,6 +263,7 @@ function preparar(id: number, origen: string, duracion: number, perfil: Exclude<
 
   proc.on('close', (code) => {
     enCurso.delete(id);
+    setImmediate(siguiente);
     if (code === 0 && existsSync(destino)) {
       db.prepare("UPDATE descargas SET estado = 'lista', ruta = ?, bytes = ?, progreso = 100 WHERE id = ?").run(
         destino,
@@ -267,6 +287,9 @@ export function borrar(userId: number, id: number) {
 
   enCurso.get(id)?.proc.kill('SIGKILL');
   enCurso.delete(id);
+  // Si aún esperaba turno, fuera de la cola.
+  const enCola = cola.findIndex((t) => t[0] === id);
+  if (enCola >= 0) cola.splice(enCola, 1);
 
   const otros = db.prepare('SELECT COUNT(*) AS n FROM descargas WHERE ruta = ? AND id <> ?').get(d.ruta, id) as { n: number };
   if (d.perfil !== 'original' && d.ruta && existsSync(d.ruta) && otros.n === 0) unlinkSync(d.ruta);

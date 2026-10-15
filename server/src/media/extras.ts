@@ -194,9 +194,9 @@ export function extrasDe(itemId: number): Extra[] {
     .all(itemId) as Extra[];
 }
 
-export function extraPorId(id: number): { id: number; path: string; titulo: string } | undefined {
-  return db.prepare('SELECT id, path, titulo FROM extras WHERE id = ?').get(id) as
-    | { id: number; path: string; titulo: string }
+export function extraPorId(id: number): { id: number; item_id: number; path: string; titulo: string } | undefined {
+  return db.prepare('SELECT id, item_id, path, titulo FROM extras WHERE id = ?').get(id) as
+    | { id: number; item_id: number; path: string; titulo: string }
     | undefined;
 }
 
