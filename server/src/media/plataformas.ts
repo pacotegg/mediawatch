@@ -267,24 +267,6 @@ export function dondeVer(itemId: number, userId?: number): DondeVer {
   }
 }
 
-/** Varios títulos de una vez, para no hacer una consulta por tarjeta en una rejilla. */
-export function dondeVerVarios(ids: number[]): Map<number, DondeVer> {
-  const salida = new Map<number, DondeVer>();
-  if (!ids.length) return salida;
-  const filas = db
-    .prepare(`SELECT item_id, suscripcion FROM item_plataformas
-              WHERE item_id IN (${ids.map(() => '?').join(',')}) AND suscripcion != '[]'`)
-    .all(...ids) as { item_id: number; suscripcion: string }[];
-  for (const f of filas) {
-    try {
-      salida.set(f.item_id, { suscripcion: JSON.parse(f.suscripcion), alquiler: [], enlace: '' });
-    } catch {
-      /* fila ilegible: como si no estuviera */
-    }
-  }
-  return salida;
-}
-
 async function tmdb<T>(ruta: string, params: Record<string, string> = {}): Promise<T> {
   if (!config.tmdbApiKey) throw new Error('Falta la clave de API de TMDb');
   const url = new URL(API + ruta);

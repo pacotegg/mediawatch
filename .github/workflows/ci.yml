@@ -46,3 +46,8 @@ jobs:
       # de la API responde 401 sin sesion, tambien con rutas codificadas (/%61pi/...).
       - name: Pruebas de autenticacion del servidor
         run: npm test --workspace server
+
+      # Lo puro de la web (leer subtitulos, formatos): el `tsc` mira los tipos, no lo que hace el codigo.
+      # Aqui se colo que ningun subtitulo se veia en el navegador, desde el primer commit.
+      - name: Pruebas de la web
+        run: npm test --workspace web

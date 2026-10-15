@@ -431,5 +431,3 @@ export function cerrarSesiones(fileId: number) {
 export function cerrarSesionesDe(dispositivo: string) {
   for (const s of sesiones.values()) if (s.dispositivo === dispositivo) matar(s);
 }
-
-export const sesionesActivas = () => sesiones.size;

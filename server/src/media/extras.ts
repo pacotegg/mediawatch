@@ -243,21 +243,6 @@ export async function miniatura(id: number): Promise<string | null> {
   return existsSync(destino) ? destino : null;
 }
 
-export function reclasificarExtrasExistentes(): number {
-  const filas = db.prepare('SELECT id, titulo, path FROM extras WHERE tipo = \'Extra\'').all() as { id: number; titulo: string; path: string }[];
-  let cambiados = 0;
-  const upd = db.prepare('UPDATE extras SET tipo = ? WHERE id = ?');
-  for (const f of filas) {
-    const texto = `${f.titulo} ${basename(f.path)}`.toLowerCase();
-    const regla = REGLAS_NOMBRE.find(([rx]) => rx.test(texto))?.[1];
-    if (regla) {
-      upd.run(regla, f.id);
-      cambiados++;
-    }
-  }
-  return cambiados;
-}
-
 export function actualizarTipoExtra(id: number, nuevoTipo: string): boolean {
   const res = db.prepare('UPDATE extras SET tipo = ? WHERE id = ?').run(nuevoTipo, id);
   return res.changes > 0;
