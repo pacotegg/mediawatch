@@ -302,12 +302,17 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
     staleTime: Infinity,
   });
 
-  // The first request kicks off generation server-side; poll until the strip lands.
+  /*
+   * Una sola pregunta. Antes se repetía cada 5 s hasta que hubiera miniaturas, pensando que pedirlas las
+   * fabricaba; no es así —las hace el lote, que además se aparta mientras alguien ve algo—, así que en
+   * una película sin ellas se preguntaba toda la sesión: medido en el registro de Caddy, 5.142 respuestas
+   * 404 desde el navegador, 2.815 de ellas para un único fichero (15/10/2026). Si el lote las hace luego,
+   * se ven la próxima vez que se abra.
+   */
   const { data: trickplay } = useQuery({
     queryKey: ['trickplay', fileId],
     queryFn: () => api.trickplay(fileId),
-    refetchInterval: (q) => (q.state.data ? false : 5000),
-    staleTime: Infinity,
+    staleTime: 10 * 60_000,
   });
 
   const nextEpisode = (() => {
