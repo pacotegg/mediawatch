@@ -204,6 +204,9 @@ app.get('/api/salud', async () => {
  */
 app.addHook('onSend', async (req, reply, payload) => {
   reply.header('X-Content-Type-Options', 'nosniff');
+  // Un 410 («el fichero ya no está») se cachea por defecto en los navegadores, y una pista que luego vuelva a estar
+  // seguiría dando 410 desde la caché del cliente (visto con un 410 de un servidor de pruebas en el mismo puerto).
+  if (reply.statusCode >= 400 && req.url.startsWith('/api/') && !reply.getHeader('cache-control')) reply.header('Cache-Control', 'no-store');
   if (String(reply.getHeader('content-type') ?? '').startsWith('text/html') && !req.url.startsWith('/trailer') && !req.url.startsWith('/tv/')) {
     reply.header('Content-Security-Policy-Report-Only', CSP_WEB);
   }
