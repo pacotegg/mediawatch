@@ -68,7 +68,7 @@ export default async function animeRoutes(app: FastifyInstance) {
 
   app.get('/api/estadisticas', async (req, reply) => {
     if (!soloAdmin(req, reply)) return;
-    const dias = Math.min(Math.max(Number((req.query as { dias?: string }).dias ?? 30), 1), 365);
+    const dias = Math.min(Math.max(Math.trunc(Number((req.query as { dias?: string }).dias ?? 30)) || 30, 1), 365);
     return { biblioteca: biblioteca(), actividad: actividad(dias), salud: salud() };
   });
 
