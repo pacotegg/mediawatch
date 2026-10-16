@@ -158,8 +158,9 @@ export default async function libraryRoutes(app: FastifyInstance) {
   app.get('/api/items', async (req) => {
     const q = req.query as Record<string, string | undefined>;
     const user = currentUser(req);
-    const limit = Math.min(Number(q.limit ?? 60), 500);
-    const offset = Number(q.offset ?? 0);
+    // Un valor que no es número (`limit=abc`) daba NaN y la consulta fallaba con un 500.
+    const limit = Math.min(Math.max(Math.trunc(Number(q.limit ?? 60)) || 60, 1), 500);
+    const offset = Math.max(Math.trunc(Number(q.offset ?? 0)) || 0, 0);
     const order = SORTS[q.sort ?? 'title'] ?? SORTS.title;
 
     const where: string[] = [];
@@ -232,7 +233,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
       void descargarTema(id, item.tvdb_id, item.tmdb_id, item.kind, item.folder as string | undefined).catch(() => {});
     }
 
-    for (const k of ['poster', 'fanart', 'clearlogo', 'landscape', 'folder', 'search_title']) delete item[k];
+    for (const k of ['poster', 'fanart', 'clearlogo', 'landscape', 'discart', 'folder', 'search_title']) delete item[k];
 
     // Sin esto la ficha no sabe si el título ya está en favoritos, así que el
     // botón no puede ni marcarse ni servir para quitarlo.
@@ -382,13 +383,15 @@ export default async function libraryRoutes(app: FastifyInstance) {
       tags: etiquetasTecnicas(files),
       versions,
       progress,
+      // La saga y los parecidos, con el control parental: sin él, abrir una película apta enseñaba a un perfil
+      // infantil los títulos para adultos de su misma saga o género.
       collectionItems: item.collection
         ? withProgress(
             db
               .prepare(`SELECT ${ITEM_FIELDS} FROM items i JOIN libraries l ON l.id = i.library_id
-                        WHERE i.collection = ?
+                        WHERE i.collection = ? ${crClause}
                         ORDER BY COALESCE(i.premiered, printf('%04d-06-30', i.year)), i.title`)
-              .all(item.collection),
+              .all(item.collection, ...cr.params),
             user?.id ?? null,
           )
         : [],
@@ -400,10 +403,10 @@ export default async function libraryRoutes(app: FastifyInstance) {
                     FROM items i JOIN libraries l ON l.id = i.library_id
                     JOIN item_genres a ON a.item_id = i.id
                     JOIN item_genres b ON b.genre_id = a.genre_id AND b.item_id = ?
-                   WHERE i.id != ? AND i.kind = (SELECT kind FROM items WHERE id = ?)
+                   WHERE i.id != ? AND i.kind = (SELECT kind FROM items WHERE id = ?) ${crClause}
                    GROUP BY i.id
                    ORDER BY en_comun DESC, i.rating DESC NULLS LAST LIMIT 20`)
-        .all(id, id, id),
+        .all(id, id, id, ...cr.params),
     };
   });
 
@@ -517,7 +520,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
   });
 
   app.get('/api/collections/:name', async (req, reply) => {
-    const name = decodeURIComponent((req.params as { name: string }).name);
+    const name = (req.params as { name: string }).name; // Fastify ya la decodifica: una segunda vez rompía «100%».
     const user = currentUser(req);
     const cr = clausulaRating(user);
     const crAnd = cr.sql ? `AND ${cr.sql}` : '';
@@ -549,7 +552,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
 
   /** La imagen propia (carátula) de la saga, si la hay. */
   app.get('/api/collections/:name/imagen', async (req, reply) => {
-    const name = decodeURIComponent((req.params as { name: string }).name);
+    const name = (req.params as { name: string }).name; // Fastify ya la decodifica: una segunda vez rompía «100%».
     const { w } = req.query as { w?: string };
     const fila = db.prepare('SELECT ruta FROM coleccion_imagen WHERE coleccion = ?').get(name) as
       | { ruta: string }
@@ -559,7 +562,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
 
   /** El fondo propio (fanart) de la saga, si lo hay. */
   app.get('/api/collections/:name/fondo', async (req, reply) => {
-    const name = decodeURIComponent((req.params as { name: string }).name);
+    const name = (req.params as { name: string }).name; // Fastify ya la decodifica: una segunda vez rompía «100%».
     const { w } = req.query as { w?: string };
     const fila = db.prepare('SELECT fondo FROM coleccion_imagen WHERE coleccion = ?').get(name) as
       | { fondo: string | null }
@@ -570,13 +573,13 @@ export default async function libraryRoutes(app: FastifyInstance) {
   /** Imágenes oficiales (posters y backdrops) de TMDb para esta colección. */
   app.get('/api/collections/:name/imagenes', async (req) => {
     requireUser(req);
-    const name = decodeURIComponent((req.params as { name: string }).name);
+    const name = (req.params as { name: string }).name; // Fastify ya la decodifica: una segunda vez rompía «100%».
     const { q } = req.query as { q?: string };
     return await imagenesDeSaga(q ? q.trim() : name);
   });
 
   app.post('/api/collections/:name/arte', async (req, reply) => {
-    const name = decodeURIComponent((req.params as { name: string }).name);
+    const name = (req.params as { name: string }).name; // Fastify ya la decodifica: una segunda vez rompía «100%».
     const user = requireUser(req);
     if (!user.is_admin) return reply.code(403).send({ error: 'Solo un administrador puede cambiarla' });
     const { itemId, buzon, url, papel = 'poster' } = req.body as {
@@ -585,6 +588,8 @@ export default async function libraryRoutes(app: FastifyInstance) {
       url?: string;
       papel?: 'poster' | 'fanart';
     };
+    // `papel` entra en el nombre del fichero (`${papel}.jpg`): sin validar, `../..` sacaba la escritura de su carpeta.
+    if (papel !== 'poster' && papel !== 'fanart') return reply.code(400).send({ error: 'El papel tiene que ser poster o fanart' });
 
     const dir = join(DATA_DIR, 'artwork', 'sagas', createHash('sha1').update(name).digest('hex').slice(0, 12));
     mkdirSync(dir, { recursive: true });
@@ -656,10 +661,11 @@ export default async function libraryRoutes(app: FastifyInstance) {
   });
 
   app.post('/api/collections/:name/arte/subir', { bodyLimit: 20 * 1024 * 1024 }, async (req, reply) => {
-    const name = decodeURIComponent((req.params as { name: string }).name);
+    const name = (req.params as { name: string }).name; // Fastify ya la decodifica: una segunda vez rompía «100%».
     const user = requireUser(req);
     if (!user.is_admin) return reply.code(403).send({ error: 'Solo un administrador' });
     const { papel = 'poster' } = req.query as { papel?: 'poster' | 'fanart' };
+    if (papel !== 'poster' && papel !== 'fanart') return reply.code(400).send({ error: 'El papel tiene que ser poster o fanart' });
     const datos = req.body as Buffer | undefined;
     if (!Buffer.isBuffer(datos) || datos.length === 0) {
       return reply.code(400).send({ error: 'No llegó ninguna imagen' });

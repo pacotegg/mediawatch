@@ -172,7 +172,7 @@ export default async function enrichRoutes(app: FastifyInstance) {
     const { nombre } = req.params as { nombre: string };
     let datos: Buffer;
     try {
-      datos = readFileSync(ficheroDelBuzon(decodeURIComponent(nombre)));
+      datos = readFileSync(ficheroDelBuzon(nombre)); // Fastify ya la decodificó: una segunda vez fallaba con «%»
     } catch (err) {
       return reply.code(404).send({ error: (err as Error).message });
     }

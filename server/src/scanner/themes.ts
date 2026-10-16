@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, createWriteStream } from 'node:fs';
+import { existsSync, mkdirSync, createWriteStream, rmSync } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -37,6 +37,25 @@ export async function descargarTema(
   if (tieneTema(itemId, folder)) return true;
   // MediaWatch Server: sin yt-dlp empaquetado y con fuentes de terceros (Plex, YouTube), no se descargan temas.
   if (MODO_PORTABLE) return false;
+  // Se llama al abrir la ficha de cualquier título sin sintonía, y un fallo no se recordaba: cada apertura repetía
+  // las consultas y lanzaba otro yt-dlp (hasta 3 min). Ahora, uno a la vez por título y un intento al día.
+  if (enCurso.has(itemId)) return false;
+  const ultimo = ultimoIntento.get(itemId);
+  if (ultimo !== undefined && Date.now() - ultimo < ESPERA_REINTENTO_MS) return false;
+  enCurso.add(itemId);
+  ultimoIntento.set(itemId, Date.now());
+  try {
+    return await intentarDescargar(itemId, tvdbId, tmdbId, kind);
+  } finally {
+    enCurso.delete(itemId);
+  }
+}
+
+const enCurso = new Set<number>();
+const ultimoIntento = new Map<number, number>();
+const ESPERA_REINTENTO_MS = 24 * 60 * 60_000;
+
+async function intentarDescargar(itemId: number, tvdbId?: number | null, tmdbId?: number | null, kind?: string | null): Promise<boolean> {
 
   const targetMp3 = join(THEMES_DIR, `${itemId}.mp3`);
 
@@ -52,6 +71,8 @@ export async function descargarTema(
       }
     } catch (err: any) {
       console.warn(`[tema] Error consultando Plex CDN para #${itemId}:`, err.message);
+      // Un corte a mitad dejaba un mp3 parcial que `tieneTema` daba por bueno para siempre.
+      rmSync(targetMp3, { force: true });
     }
   }
 
@@ -69,6 +90,8 @@ export async function descargarTema(
             console.log(`[tema] Descargado tema #${itemId} (TMDB ${tmdbId}) vía ThemerrDB/YouTube`);
             return true;
           }
+          // yt-dlp muerto por el tope o fallido: sin restos que parezcan un tema.
+          rmSync(targetMp3, { force: true });
         }
       }
     } catch (err: any) {
