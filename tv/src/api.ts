@@ -502,8 +502,21 @@ export const idioma = (codigo: string | null | undefined) => {
  * hardware, así que remultiplexar para la tele solo gastaría CPU del servidor y
  * estropearía el audio multicanal.
  */
-/** Lo que esta tele decodifica; lo sabe el servidor, no hay que listar codecs aqui. */
-const PERFIL = 'samsung2021';
+/**
+ * Detecta la plataforma de Smart TV donde corre la aplicación:
+ * - 'tizen': Samsung Smart TV (AVPlay nativo).
+ * - 'webos': LG Smart TV (HTML5 <video> nativo).
+ * - 'web': navegador de desarrollo o equipo genérico.
+ */
+export function plataformaTV(): 'tizen' | 'webos' | 'web' {
+  const w = window as unknown as { tizen?: unknown; webapis?: unknown; webOS?: unknown; webOSTV?: unknown };
+  if (w.tizen || w.webapis) return 'tizen';
+  if (w.webOS || w.webOSTV || /web0s|webos/i.test(navigator.userAgent)) return 'webos';
+  return 'web';
+}
+
+/** Lo que esta tele decodifica; lo sabe el servidor según la plataforma detectada. */
+const PERFIL = plataformaTV() === 'webos' ? 'lgwebos' : 'samsung2021';
 
 /**
  * `raw=1` entrega el fichero original: AVPlay decodifica MKV, HEVC, AC3 y DD+
