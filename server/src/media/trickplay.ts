@@ -53,11 +53,24 @@ export function readManifest(fileId: number): TrickplayManifest | null {
 
 /** Reads keyframe positions from the container index without decoding anything. */
 async function keyframeTimes(path: string): Promise<number[]> {
-  const { stdout } = await run(
-    config.ffprobe,
-    ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'packet=pts_time,flags', '-of', 'csv=p=0', path],
-    { maxBuffer: 128 * 1024 * 1024, windowsHide: true },
-  );
+  // Listar los paquetes de vídeo lee casi la película entera del mismo disco que sirve el vídeo: igual que con ffmpeg,
+  // si alguien se pone a ver algo se corta (la pieza se repite después, ver generarLote).
+  const parar = new AbortController();
+  const vigilante = setInterval(() => { if (hayAlguienViendo()) parar.abort(); }, 4000);
+  let stdout: string;
+  try {
+    ({ stdout } = await run(
+      config.ffprobe,
+      ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'packet=pts_time,flags', '-of', 'csv=p=0', path],
+      // Tope de 30 min por si se cuelga; minutos de verdad en un 4K de E:.
+      { maxBuffer: 128 * 1024 * 1024, windowsHide: true, timeout: 30 * 60_000, signal: parar.signal },
+    ));
+  } catch (err) {
+    if (parar.signal.aborted) throw new Error('cortado: hay alguien viendo algo');
+    throw err;
+  } finally {
+    clearInterval(vigilante);
+  }
   const times: number[] = [];
   for (const line of stdout.split('\n')) {
     if (!line.includes(',K')) continue;
@@ -71,7 +84,7 @@ async function imageSize(path: string): Promise<{ width: number; height: number 
   const { stdout } = await run(
     config.ffprobe,
     ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', path],
-    { windowsHide: true },
+    { windowsHide: true, timeout: 60_000 },
   );
   const [width, height] = stdout.trim().split(',').map(Number);
   return { width, height };

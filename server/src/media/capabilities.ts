@@ -39,7 +39,7 @@ const CANDIDATES: { name: string; label: string; hwaccel: HwAccel }[] = [
 
 async function ffmpegText(args: string[]): Promise<string> {
   try {
-    const { stdout, stderr } = await run(config.ffmpeg, ['-hide_banner', ...args], { maxBuffer: 8 * 1024 * 1024, windowsHide: true });
+    const { stdout, stderr } = await run(config.ffmpeg, ['-hide_banner', ...args], { maxBuffer: 8 * 1024 * 1024, windowsHide: true, timeout: 120_000 });
     return stdout + stderr;
   } catch (err) {
     return String((err as { stdout?: string; stderr?: string }).stdout ?? '') + String((err as { stderr?: string }).stderr ?? '');
@@ -52,7 +52,7 @@ async function listGpus() {
     const { stdout } = await run(
       'powershell',
       ['-NoProfile', '-Command', 'Get-CimInstance Win32_VideoController | Select-Object Name,DriverVersion,AdapterRAM | ConvertTo-Json -Compress'],
-      { windowsHide: true, maxBuffer: 1024 * 1024 },
+      { windowsHide: true, maxBuffer: 1024 * 1024, timeout: 30_000 },
     );
     const parsed = JSON.parse(stdout || 'null');
     const list = Array.isArray(parsed) ? parsed : parsed ? [parsed] : [];

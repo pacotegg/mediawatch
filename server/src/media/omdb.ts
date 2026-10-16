@@ -85,7 +85,7 @@ export function rellenarConOmdb(todos = false) {
 
         try {
           const res = await fetch(
-            `http://www.omdbapi.com/?i=${encodeURIComponent(it.imdb_id)}&apikey=${encodeURIComponent(config.omdbApiKey)}`,
+            `https://www.omdbapi.com/?i=${encodeURIComponent(it.imdb_id)}&apikey=${encodeURIComponent(config.omdbApiKey)}`,
             { signal: AbortSignal.timeout(15_000) },
           );
           const datos = (await res.json()) as {

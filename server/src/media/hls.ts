@@ -411,7 +411,9 @@ export async function segmento(p: PeticionSegmento, esperaMs = 40_000): Promise<
       sesion.ultimoUso = Date.now();
       return readFileSync(rutaFinal);
     }
-    if (sesion.proc.exitCode !== null && !existsSync(rutaFinal)) {
+    // Un `kill()` deja `exitCode` en null y pone `signalCode`: sin mirar los dos (y `muerta`), quien esperaba un trozo de
+    // una sesión sustituida por un salto se quedaba los 40 s enteros en vez de fallar al momento.
+    if ((sesion.muerta || sesion.proc.exitCode !== null || sesion.proc.signalCode !== null) && !existsSync(rutaFinal)) {
       throw new Error('La conversión terminó sin producir ese trozo');
     }
     await new Promise((r) => setTimeout(r, 120));

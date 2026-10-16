@@ -648,7 +648,9 @@ function scanShowFolder(libId: number, dir: string, files: Entry[], now: string)
   }
 
   if (episodes === 0) {
-    stmt.deleteItem.run(item.id);
+    // No se borra aquí: una carpeta que no se pudo leer (disco que se desconecta) se vería igual que una serie vacía.
+    // Se deja como vieja y la limpieza del final de `scanLibrary` decide, con su guarda de borrados masivos.
+    db.prepare("UPDATE items SET scanned_at = '' WHERE id = ?").run(item.id);
     return 0;
   }
   if (latestAdded) db.prepare('UPDATE items SET added_at = ? WHERE id = ?').run(latestAdded, item.id);
@@ -720,7 +722,7 @@ async function escanearCarpetas(
  * pasa por `existsSync`, que sobre `E:\` en un momento malo del disco no es
  * gratis multiplicado por miles.
  */
-async function retirarFicherosAusentes(libraryId: number): Promise<number> {
+async function retirarFicherosAusentes(libraryId: number, forzar: boolean): Promise<number> {
   const ficheros = db
     .prepare(`SELECT f.id, f.path FROM media_files f
                LEFT JOIN items i ON i.id = f.item_id
@@ -728,33 +730,62 @@ async function retirarFicherosAusentes(libraryId: number): Promise<number> {
                LEFT JOIN items s ON s.id = e.show_id
               WHERE COALESCE(i.library_id, s.library_id) = ?`)
     .all(libraryId) as { id: number; path: string }[];
-  let retirados = 0;
+  const ausentes: number[] = [];
   const LOTE_FICHEROS = 200;
   for (let inicio = 0; inicio < ficheros.length; inicio += LOTE_FICHEROS) {
-    const lote = ficheros.slice(inicio, inicio + LOTE_FICHEROS);
+    for (const f of ficheros.slice(inicio, inicio + LOTE_FICHEROS)) if (!existsSync(f.path)) ausentes.push(f.id);
+    if (inicio + LOTE_FICHEROS < ficheros.length) await cederElHilo();
+  }
+  // Quitar un fichero cambia su id al volver a aparecer, y sin id las miniaturas de la barra se tiran: si de golpe
+  // «faltan» muchos, lo que falla es el disco, no los ficheros.
+  if (!forzar && demasiadoParaSerVerdad(ausentes.length, ficheros.length, 15)) {
+    throw new Error(`Faltan ${ausentes.length} de ${ficheros.length} ficheros de la biblioteca: parece que el disco no responde. No se ha retirado ninguno (si es verdad, escanea con --forzar).`);
+  }
+  let retirados = 0;
+  for (let inicio = 0; inicio < ausentes.length; inicio += LOTE_FICHEROS) {
     db.exec('BEGIN');
     try {
-      for (const f of lote) {
-        if (!existsSync(f.path)) {
-          stmt.clearTracks.run(f.id);
-          stmt.clearSubs.run(f.id);
-          db.prepare('DELETE FROM media_files WHERE id = ?').run(f.id);
-          retirados++;
-        }
+      for (const id of ausentes.slice(inicio, inicio + LOTE_FICHEROS)) {
+        stmt.clearTracks.run(id);
+        stmt.clearSubs.run(id);
+        db.prepare('DELETE FROM media_files WHERE id = ?').run(id);
+        retirados++;
       }
       db.exec('COMMIT');
     } catch (err) {
       db.exec('ROLLBACK');
       throw err;
     }
-    if (inicio + LOTE_FICHEROS < ficheros.length) await cederElHilo();
+    if (inicio + LOTE_FICHEROS < ausentes.length) await cederElHilo();
   }
   return retirados;
 }
 
-export async function scanLibrary(lib: LibraryConfig, onProgress?: (p: ScanProgress) => void): Promise<number> {
+/**
+ * ¿Retirar tanto de golpe es creíble? Una biblioteca de verdad pierde un puñado de títulos de vez en cuando; perder
+ * casi todos en una pasada es un disco que no responde. Con menos de 20 elementos no se aplica (bibliotecas nuevas).
+ */
+function demasiadoParaSerVerdad(quitar: number, antes: number, minimo: number): boolean {
+  return antes >= 20 && quitar > Math.max(minimo, antes * 0.3);
+}
+
+export type OpcionesEscaneo = {
+  /** Aplicar aunque se retire mucho de golpe: solo cuando el usuario sabe que es verdad. */
+  forzar?: boolean;
+};
+
+export async function scanLibrary(lib: LibraryConfig, onProgress?: (p: ScanProgress) => void, opciones: OpcionesEscaneo = {}): Promise<number> {
+  const forzar = Boolean(opciones.forzar);
   const now = new Date().toISOString();
   const row = stmt.library.get(lib.name, lib.path, lib.kind) as { id: number };
+  // Si la raíz no se puede leer (E: desconectado, USB reconectándose) no hay nada que escanear ni que retirar: parar.
+  // `listDir` devuelve [] ante cualquier error, y una biblioteca «vacía» se llevaba por delante todos sus títulos.
+  try {
+    readdirSync(lib.path);
+  } catch (err) {
+    throw new Error(`La biblioteca «${lib.name}» (${lib.path}) no responde: ${(err as Error).message}. No se ha tocado nada.`);
+  }
+  const titulosAntes = (db.prepare('SELECT COUNT(*) AS n FROM items WHERE library_id = ?').get(row.id) as { n: number }).n;
   const todo = listDir(lib.path);
   const entries = todo.filter((e) => e.isDir && !SKIP_DIRS.has(e.name.toLowerCase()) && !e.name.startsWith('_'));
 
@@ -783,18 +814,21 @@ export async function scanLibrary(lib: LibraryConfig, onProgress?: (p: ScanProgr
     if (sueltos.length > 0) console.log(`[escaneo] ${lib.name}: ${sueltos.length} videos sueltos en la raiz`);
   }
 
+  const viejos = stmt.staleItems.all(row.id, now) as { id: number }[];
+  // Borrar un título se lleva por cascada el progreso, los favoritos y el historial de todos los perfiles.
+  if (!forzar && demasiadoParaSerVerdad(viejos.length, titulosAntes, 10)) {
+    throw new Error(`Se iban a quitar ${viejos.length} de ${titulosAntes} títulos de «${lib.name}»: parece que el disco no responde. No se ha borrado nada (si es verdad, escanea con --forzar).`);
+  }
   db.exec('BEGIN');
   try {
-    for (const stale of stmt.staleItems.all(row.id, now) as { id: number }[]) {
-      stmt.deleteItem.run(stale.id);
-    }
+    for (const stale of viejos) stmt.deleteItem.run(stale.id);
     db.exec('COMMIT');
   } catch (err) {
     db.exec('ROLLBACK');
     throw err;
   }
 
-  const retirados = await retirarFicherosAusentes(row.id);
+  const retirados = await retirarFicherosAusentes(row.id, forzar);
 
   onProgress?.({ library: lib.name, done: entries.length, total: entries.length, current: '' });
   if (retirados > 0) console.log(`[escaneo] ${lib.name}: ${retirados} ficheros ya no estan en disco, retirados`);
@@ -834,10 +868,16 @@ export function rescanItem(itemId: number): boolean {
   }
 }
 
-export async function scanAll(onProgress?: (p: ScanProgress) => void) {
+export async function scanAll(onProgress?: (p: ScanProgress) => void, opciones: OpcionesEscaneo = {}) {
   const results: { name: string; count: number }[] = [];
+  const fallos: string[] = [];
+  // Una biblioteca que no responde no impide escanear las demás; el fallo se avisa al final.
   for (const lib of config.libraries) {
-    results.push({ name: lib.name, count: await scanLibrary(lib, onProgress) });
+    try {
+      results.push({ name: lib.name, count: await scanLibrary(lib, onProgress, opciones) });
+    } catch (err) {
+      fallos.push((err as Error).message);
+    }
   }
 
   /*
@@ -860,6 +900,7 @@ export async function scanAll(onProgress?: (p: ScanProgress) => void) {
     console.error('[escaneo] no se pudo plegar el WAL:', (err as Error).message);
   }
 
+  if (fallos.length > 0) throw new Error(fallos.join(' | '));
   return results;
 }
 

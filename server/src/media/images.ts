@@ -82,7 +82,7 @@ export async function thumbnail(source: string, width: number): Promise<string> 
       // se serviría como imagen rota y el navegador la guarda 30 días.
       try {
         await new Promise<void>((resolve, reject) => {
-          const proc = spawn(config.ffmpeg, args, { windowsHide: true, stdio: 'ignore' });
+          const proc = spawn(config.ffmpeg, args, { windowsHide: true, stdio: 'ignore', timeout: 60_000 });
           proc.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`ffmpeg ${code}`))));
           proc.on('error', reject);
         });

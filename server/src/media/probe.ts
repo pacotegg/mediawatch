@@ -108,7 +108,8 @@ export async function probeFile(path: string): Promise<MediaInfo> {
     // `-show_chapters` sale gratis en la misma llamada: no hay que abrir el
     // fichero dos veces para saber si trae capitulos.
     ['-v', 'quiet', '-print_format', 'json', '-show_streams', '-show_format', '-show_chapters', path],
-    { maxBuffer: 12 * 1024 * 1024, windowsHide: true },
+    // Con tope: un fichero que no responde (disco que se muere, USB dormido a medias) dejaba la petición colgada para siempre.
+    { maxBuffer: 12 * 1024 * 1024, windowsHide: true, timeout: 90_000 },
   );
   const json = JSON.parse(stdout) as {
     streams: ProbeStream[];
@@ -183,7 +184,18 @@ export async function probeFile(path: string): Promise<MediaInfo> {
 const cache = new Map<number, { info: MediaInfo; marca: string }>();
 
 /** Probes on first use and persists real ffmpeg stream indices, which NFO data does not carry. */
-export async function mediaInfo(fileId: number): Promise<MediaInfo & { path: string }> {
+const enCurso = new Map<number, Promise<MediaInfo & { path: string }>>();
+
+/** El navegador pide `info` y el flujo a la vez: un solo ffprobe por fichero, no uno por petición. */
+export function mediaInfo(fileId: number): Promise<MediaInfo & { path: string }> {
+  const ya = enCurso.get(fileId);
+  if (ya) return ya;
+  const tarea = medirFichero(fileId).finally(() => enCurso.delete(fileId));
+  enCurso.set(fileId, tarea);
+  return tarea;
+}
+
+async function medirFichero(fileId: number): Promise<MediaInfo & { path: string }> {
   const file = db.prepare('SELECT id, path, probed, duration FROM media_files WHERE id = ?').get(fileId) as
     | { id: number; path: string; probed: number; duration: number | null }
     | undefined;
