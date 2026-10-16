@@ -1,6 +1,8 @@
 package casa.tvwatch.tele
 
 import casa.tvwatch.datos.Ajustes
+import casa.tvwatch.ui.nombreAudioDeFichero
+import androidx.compose.ui.zIndex
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
@@ -44,6 +46,7 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.offset
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onKeyEvent
@@ -674,17 +677,21 @@ private fun Estuche3DTele(
           )
         }
 
-        // Reflejo holográfico dinámico (haz de luz que recorre suavemente la carátula)
+        // Reflejo holográfico dinámico (haz de luz que recorre suavemente la carátula). Se lee `desplazamientoBrillo` dentro
+        // de `drawBehind`: así solo se vuelve a DIBUJAR en cada fotograma; leído al componer, recomponía todo el estuche.
         Box(
           Modifier
             .fillMaxSize()
-            .background(
-              Brush.linearGradient(
-                (desplazamientoBrillo - 0.4f) to Color.Transparent,
-                desplazamientoBrillo to Color(0x35FFFFFF),
-                (desplazamientoBrillo + 0.4f) to Color.Transparent,
-              ),
-            ),
+            .drawBehind {
+              val d = desplazamientoBrillo
+              drawRect(
+                Brush.linearGradient(
+                  (d - 0.4f) to Color.Transparent,
+                  d to Color(0x35FFFFFF),
+                  (d + 0.4f) to Color.Transparent,
+                ),
+              )
+            },
         )
       }
     }
@@ -707,7 +714,18 @@ private fun Estuche3DTele(
 }
 
 /**
- * Modal inmersivo a pantalla completa para Google TV que expone la edición física / Steelbook.
+ * Visor «Edición coleccionista» a pantalla completa para Google TV.
+ *
+ * Una caja de dos hojas con bisagra, igual que la del móvil. La TAPA (hoja izquierda) gira 3D sobre su bisagra: cerrada está
+ * sobre la bandeja con la carátula a la vista; al abrirse pasa a la izquierda y enseña el libreto (dirección, reparto,
+ * sinopsis y ficha técnica). El disco gira hasta pararse recto. Izquierda y derecha del mando inclinan la caja; OK o Atrás
+ * cierran.
+ *
+ * Dos cosas que no son evidentes:
+ * - **La tapa va por delante de la bandeja (`zIndex`).** En un `Row` los hijos se pintan en el orden en que están, y la
+ *   tapa girada sobre la bandeja quedaba detrás: la caja «cerrada» enseñaba el disco en lugar de la carátula.
+ * - **El tamaño sale de la pantalla**, no de dp fijos: a 1080p una tele de Google TV mide 540 dp de alto, y una caja de
+ *   480 dp más el título y las etiquetas se salía por abajo.
  */
 @Composable
 private fun ModalColeccionistaTele(
@@ -718,19 +736,42 @@ private fun ModalColeccionistaTele(
   androidx.activity.compose.BackHandler { alCerrar() }
 
   var anguloY by remember { mutableFloatStateOf(-8f) }
+  var abierta by remember { mutableStateOf(false) }
   val focoModal = remember { FocusRequester() }
-  LaunchedEffect(Unit) { runCatching { focoModal.requestFocus() } }
+  LaunchedEffect(Unit) {
+    runCatching { focoModal.requestFocus() }
+    kotlinx.coroutines.delay(150)
+    abierta = true
+  }
 
   val anguloYAnimado by animateFloatAsState(
     targetValue = anguloY,
     animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
     label = "anguloY",
   )
+  val progresoApertura by animateFloatAsState(
+    targetValue = if (abierta) 1f else 0f,
+    animationSpec = tween(durationMillis = 1000, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+    label = "apertura",
+  )
 
   val resolucionTexto = if (es4k) "4K ULTRA HD" else "BLU-RAY 1080P"
-  val hdrTexto = ficha.files.firstOrNull()?.hdr?.takeIf { it.isNotBlank() }
+  val fichero = ficha.files.firstOrNull { it.episodioId == null } ?: ficha.files.firstOrNull()
+  val hdrTexto = fichero?.hdr?.takeIf { it.isNotBlank() }
+  val directores = remember(ficha) { ficha.cast.filter { it.role.contains("Direct", ignoreCase = true) }.take(2).joinToString(", ") { it.name } }
+  val actores = remember(ficha) { ficha.cast.filter { !it.role.contains("Direct", ignoreCase = true) }.take(4).joinToString(", ") { it.name } }
+  val generos = remember(ficha) { ficha.genres.take(3).joinToString(", ") }
+  val textoVideo = remember(fichero) {
+    fichero?.let { f ->
+      val dim = if (f.width != null && f.height != null) "${f.width}×${f.height}" else ""
+      listOf(dim, f.codec?.uppercase() ?: "", f.hdr ?: "").filter { it.isNotBlank() }.joinToString(" ")
+    }
+  }
+  val textoAudio = remember(fichero) {
+    fichero?.audio?.take(2)?.mapNotNull { nombreAudioDeFichero(it) }?.joinToString(" · ")?.takeIf { it.isNotBlank() }
+  }
 
-  Box(
+  androidx.compose.foundation.layout.BoxWithConstraints(
     Modifier
       .fillMaxSize()
       .background(Color(0xF406070A))
@@ -757,6 +798,15 @@ private fun ModalColeccionistaTele(
       },
     contentAlignment = Alignment.Center,
   ) {
+    val altoCaja = (maxHeight * 0.62f).coerceIn(240.dp, 420.dp)
+    // La sinopsis se queda con el hueco que sobra: con una caja baja, menos líneas, para que la ficha técnica no se corte.
+    val lineasSinopsis = ((altoCaja.value - 200f) / 15f).toInt().coerceIn(2, 6)
+    val anchoCara = altoCaja * 0.72f
+    val anchoLomo = 12.dp
+    val tamanoDisco = anchoCara * 0.94f
+    val formaIzq = RoundedCornerShape(topStart = 10.dp, bottomStart = 10.dp)
+    val formaDer = RoundedCornerShape(topEnd = 10.dp, bottomEnd = 10.dp)
+
     if (ficha.tieneFondo == 1) {
       Imagen(
         Api.imagen(ficha.id, "fanart", 1280),
@@ -771,152 +821,202 @@ private fun ModalColeccionistaTele(
       verticalArrangement = Arrangement.Center,
       modifier = Modifier.padding(24.dp),
     ) {
-      // Escenario 3D
-      Row(
-        verticalAlignment = Alignment.CenterVertically,
+      // 180° = cerrada sobre la bandeja; 0° = abierta a la izquierda.
+      val anguloTapa = (1f - progresoApertura) * 180f
+      // Cerrada, la caja es solo la hoja derecha: se corre media caja para que quede centrada en pantalla.
+      val offsetCentrado = (anchoCara * 0.5f + anchoLomo * 0.5f) * (1f - progresoApertura)
+
+      Box(
         modifier = Modifier
           .graphicsLayer {
+            val zoom = 0.86f + progresoApertura * 0.14f
+            scaleX = zoom
+            scaleY = zoom
+            translationX = -offsetCentrado.toPx()
             rotationY = anguloYAnimado
             rotationX = 2f
             cameraDistance = 22f * density
           }
-          .shadow(40.dp, RoundedCornerShape(12.dp)),
+          .shadow(36.dp, RoundedCornerShape(12.dp)),
+        contentAlignment = Alignment.Center,
       ) {
-        // Portada izquierda
-        Box(
-          Modifier
-            .size(width = 330.dp, height = 480.dp)
-            .clip(RoundedCornerShape(topStart = 10.dp, bottomStart = 10.dp))
-            .background(Color(0xFF09090C))
-            .border(1.dp, Color(0x38FFFFFF), RoundedCornerShape(topStart = 10.dp, bottomStart = 10.dp)),
+        Row(
+          modifier = Modifier.size(width = anchoCara * 2 + anchoLomo, height = altoCaja),
+          verticalAlignment = Alignment.CenterVertically,
         ) {
-          Imagen(
-            Api.imagen(ficha.id, "poster", 1000),
-            ficha.title,
-            Modifier.fillMaxSize(),
-            escala = ContentScale.Crop,
-          )
+          // Tapa: gira sobre su borde derecho (la bisagra).
+          Box(
+            modifier = Modifier
+              .zIndex(1f)
+              .size(width = anchoCara, height = altoCaja)
+              .graphicsLayer {
+                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(1f, 0.5f)
+                rotationY = anguloTapa
+                cameraDistance = 22f * density
+              },
+          ) {
+            if (anguloTapa > 90f) {
+              // Cara exterior: la carátula. Contra-giro de 180° para que no salga en espejo.
+              Box(
+                Modifier
+                  .fillMaxSize()
+                  .graphicsLayer { rotationY = 180f }
+                  .clip(RoundedCornerShape(10.dp))
+                  .background(Color(0xFF09090C))
+                  .border(1.dp, Color(0x38FFFFFF), RoundedCornerShape(10.dp)),
+              ) {
+                Imagen(
+                  Api.imagen(ficha.id, "poster", 800),
+                  ficha.title,
+                  Modifier.fillMaxSize(),
+                  escala = ContentScale.Crop,
+                )
+                Box(
+                  Modifier
+                    .fillMaxWidth()
+                    .height(24.dp)
+                    .background(if (es4k) Color(0xEE111116) else Color(0x880284C7))
+                    .border(0.6.dp, if (es4k) Color(0x88E2B755) else Color(0x44FFFFFF))
+                    .align(Alignment.TopCenter),
+                  contentAlignment = Alignment.Center,
+                ) {
+                  Text(
+                    if (es4k) "4K ULTRA HD" else "Blu-ray",
+                    color = if (es4k) Color(0xFFE2B755) else Color.White,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                  )
+                }
+                Box(
+                  Modifier
+                    .fillMaxSize()
+                    .background(
+                      Brush.linearGradient(
+                        0f to Color(0x38FFFFFF),
+                        0.42f to Color(0x08FFFFFF),
+                        0.58f to Color.Transparent,
+                        1f to Color(0x35000000),
+                      ),
+                    ),
+                )
+              }
+            } else {
+              // Cara interior: el libreto.
+              Column(
+                Modifier
+                  .fillMaxSize()
+                  .clip(formaIzq)
+                  .background(Color(0xFF14151C))
+                  .border(1.dp, Color(0x44FFFFFF), formaIzq)
+                  .padding(start = 18.dp, end = 14.dp, top = 14.dp, bottom = 12.dp),
+              ) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                  Text("TVWATCH ARCHIVE", color = Color(0xFFE2B755), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
+                  ficha.year?.let { Text("$it", color = Color(0xFF94A3B8), fontSize = 10.sp, fontWeight = FontWeight.SemiBold) }
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                  ficha.title,
+                  color = Color.White,
+                  fontSize = 19.sp,
+                  fontWeight = FontWeight.Bold,
+                  maxLines = 2,
+                  overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                  lineHeight = 22.sp,
+                )
+                Spacer(Modifier.height(6.dp))
+                @Composable
+                fun fila(clave: String, valor: String, anchoClave: androidx.compose.ui.unit.Dp = 58.dp) {
+                  if (valor.isBlank()) return
+                  Row(Modifier.padding(top = 2.dp)) {
+                    Text(clave, color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(anchoClave))
+                    Text(valor, color = Color(0xFFCBD5E1), fontSize = 11.sp, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                  }
+                }
+                fila("Dirección", directores)
+                fila("Reparto", actores)
+                fila("Género", generos)
+                ficha.plot?.takeIf { it.isNotBlank() }?.let { plot ->
+                  Spacer(Modifier.height(8.dp))
+                  Text(
+                    plot,
+                    color = Color(0xFFE2E8F0),
+                    fontSize = 11.sp,
+                    lineHeight = 15.sp,
+                    maxLines = lineasSinopsis,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                  )
+                }
+                Spacer(Modifier.weight(1f))
+                Box(Modifier.fillMaxWidth().height(0.6.dp).background(Color(0x33E2B755)))
+                Spacer(Modifier.height(4.dp))
+                fila("Vídeo", textoVideo ?: "", 46.dp)
+                fila("Audio", textoAudio ?: "", 46.dp)
+              }
+            }
+          }
 
-          // Header 4K / Blu-ray
+          // Bisagra central
           Box(
             Modifier
-              .fillMaxWidth()
-              .height(24.dp)
-              .background(if (es4k) Color(0xEE111116) else Color(0x880284C7))
-              .border(0.6.dp, if (es4k) Color(0x88E2B755) else Color(0x44FFFFFF))
-              .align(Alignment.TopCenter),
+              .size(width = anchoLomo, height = altoCaja)
+              .background(Brush.horizontalGradient(listOf(Color(0xFF111116), Color(0xFF2D2E38), Color(0xFF111116))))
+              .border(0.5.dp, Color(0x30FFFFFF)),
+          )
+
+          // Bandeja con el disco (fija; la tapa se abre sobre ella)
+          Box(
+            Modifier
+              .size(width = anchoCara, height = altoCaja)
+              .clip(formaDer)
+              .background(Color(0xFF0E0F16))
+              .border(1.dp, Color(0x38FFFFFF), formaDer),
             contentAlignment = Alignment.Center,
           ) {
-            Text(
-              if (es4k) "4K ULTRA HD" else "Blu-ray",
-              color = if (es4k) Color(0xFFE2B755) else Color.White,
-              fontSize = 11.sp,
-              fontWeight = FontWeight.Bold,
-              letterSpacing = 1.sp,
-            )
-          }
-
-          // Brillo reflectante
-          Box(
-            Modifier
-              .fillMaxSize()
-              .background(
-                Brush.linearGradient(
-                  0f to Color(0x35FFFFFF),
-                  0.45f to Color(0x06FFFFFF),
-                  0.6f to Color.Transparent,
-                  1f to Color(0x40000000),
-                ),
-              ),
-          )
-        }
-
-        // Bisagra central
-        Box(
-          Modifier
-            .size(width = 16.dp, height = 480.dp)
-            .background(
-              Brush.horizontalGradient(
-                listOf(Color(0xFF111116), Color(0xFF2D2E38), Color(0xFF111116)),
-              ),
-            )
-            .border(0.5.dp, Color(0x30FFFFFF)),
-        )
-
-        // Bandeja derecha con disco
-        Box(
-          Modifier
-            .size(width = 440.dp, height = 480.dp)
-            .clip(RoundedCornerShape(topEnd = 10.dp, bottomEnd = 10.dp))
-            .background(Color(0xFF0E0F16))
-            .border(1.dp, Color(0x38FFFFFF), RoundedCornerShape(topEnd = 10.dp, bottomEnd = 10.dp)),
-          contentAlignment = Alignment.Center,
-        ) {
-          if (ficha.tieneFondo == 1) {
-            Imagen(
-              Api.imagen(ficha.id, "fanart", 1280),
-              null,
-              Modifier.fillMaxSize().alpha(0.20f),
-              escala = ContentScale.Crop,
-            )
-          }
-
-          // Circunferencia de la bandeja
-          Box(
-            Modifier
-              .size(390.dp)
-              .clip(CircleShape)
-              .border(1.dp, Color(0x18FFFFFF), CircleShape),
-          )
-
-          // Disco a gran resolución orientado derecho (0°)
-          if (ficha.tieneDisco == 1) {
-            Imagen(
-              Api.imagen(ficha.id, "discart", 800),
-              "Disco",
+            if (ficha.tieneFondo == 1) {
+              Imagen(
+                Api.imagen(ficha.id, "fanart", 800),
+                null,
+                Modifier.fillMaxSize().alpha(0.20f),
+                escala = ContentScale.Crop,
+              )
+            }
+            Box(
               Modifier
-                .size(390.dp)
+                .size(tamanoDisco)
                 .clip(CircleShape)
-                .shadow(16.dp, CircleShape),
-              escala = ContentScale.Fit,
+                .border(1.dp, Color(0x18FFFFFF), CircleShape),
             )
-          } else {
+            // El disco entra girando y se para recto (0°) cuando la tapa termina de abrirse.
+            val modifierDisco = Modifier
+              .size(tamanoDisco)
+              .clip(CircleShape)
+              .shadow(14.dp, CircleShape)
+              .graphicsLayer { rotationZ = (1f - progresoApertura) * 720f }
             Imagen(
-              Api.imagen(ficha.id, "poster", 800),
+              if (ficha.tieneDisco == 1) Api.imagen(ficha.id, "discart", 800) else Api.imagen(ficha.id, "poster", 800),
               "Disco",
+              modifierDisco,
+              escala = if (ficha.tieneDisco == 1) ContentScale.Fit else ContentScale.Crop,
+            )
+            Box(
               Modifier
-                .size(390.dp)
+                .size(altoCaja * 0.08f)
                 .clip(CircleShape)
-                .shadow(16.dp, CircleShape),
-              escala = ContentScale.Crop,
+                .background(Color(0xFF1B1C24))
+                .border(1.5.dp, Color(0x55FFFFFF), CircleShape),
             )
           }
-
-          // Pivote central / hub
-          Box(
-            Modifier
-              .size(30.dp)
-              .clip(CircleShape)
-              .background(Color(0xFF1B1C24))
-              .border(1.5.dp, Color(0x55FFFFFF), CircleShape),
-          )
         }
       }
 
-      Spacer(Modifier.height(28.dp))
-
-      Text(
-        ficha.title,
-        color = Color.White,
-        fontSize = 26.sp,
-        fontWeight = FontWeight.Bold,
-      )
-
-      Spacer(Modifier.height(10.dp))
+      Spacer(Modifier.height(18.dp))
 
       Row(
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.alpha(progresoApertura),
       ) {
         Text(
           resolucionTexto,
@@ -924,18 +1024,10 @@ private fun ModalColeccionistaTele(
           fontSize = 13.sp,
           fontWeight = FontWeight.Bold,
           modifier = Modifier
-            .background(
-              if (es4k) Color(0x33E2B755) else Color(0x22FFFFFF),
-              RoundedCornerShape(6.dp),
-            )
-            .border(
-              0.8.dp,
-              if (es4k) Color(0x88E2B755) else Color(0x44FFFFFF),
-              RoundedCornerShape(6.dp),
-            )
+            .background(if (es4k) Color(0x33E2B755) else Color(0x22FFFFFF), RoundedCornerShape(6.dp))
+            .border(0.8.dp, if (es4k) Color(0x88E2B755) else Color(0x44FFFFFF), RoundedCornerShape(6.dp))
             .padding(horizontal = 12.dp, vertical = 5.dp),
         )
-
         if (hdrTexto != null) {
           Text(
             hdrTexto,
@@ -948,7 +1040,6 @@ private fun ModalColeccionistaTele(
               .padding(horizontal = 12.dp, vertical = 5.dp),
           )
         }
-
         if (ficha.runtime != null && ficha.runtime > 0) {
           Text(
             duracionLegible(ficha.runtime),
@@ -963,14 +1054,13 @@ private fun ModalColeccionistaTele(
         }
       }
 
-      Spacer(Modifier.height(14.dp))
+      Spacer(Modifier.height(10.dp))
 
       Text(
-        "◀ ▶ Inclinar perspectiva 3D · Enter o Atrás para volver",
+        "◀ ▶ Inclinar perspectiva 3D · OK o Atrás para volver",
         color = Color(0x88FFFFFF),
-        fontSize = 14.sp,
+        fontSize = 13.sp,
       )
     }
   }
 }
-

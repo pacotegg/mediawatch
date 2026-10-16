@@ -4,6 +4,8 @@ interface Estuche3DProps {
   posterUrl: string;
   discartUrl: string | null;
   title: string;
+  /** Si la copia es 4K: la cabecera dice «4K ULTRA HD» solo entonces (antes lo ponía siempre, también en un 1080p). */
+  es4k?: boolean;
 }
 
 /**
@@ -14,7 +16,7 @@ interface Estuche3DProps {
  * - Orificio central pasante real y anillo de policarbonato con reflejo.
  * - Lomo y cabecera de metacrilato "4K Ultra HD" con relieve.
  */
-export default function Estuche3D({ posterUrl, discartUrl, title }: Estuche3DProps) {
+export default function Estuche3D({ posterUrl, discartUrl, title, es4k = false }: Estuche3DProps) {
   const [extraido, setExtraido] = useState(false);
   const marcoRef = useRef<HTMLDivElement>(null);
 
@@ -183,9 +185,15 @@ export default function Estuche3D({ posterUrl, discartUrl, title }: Estuche3DPro
           }}
         >
           {/* Cabecera biselada de estuche Blu-ray en relieve con pestaña translúcida */}
-          <div className="absolute top-0 inset-x-0 h-6 bg-gradient-to-b from-sky-400/40 to-sky-600/20 backdrop-blur-[4px] border-b border-white/20 z-20 flex items-center justify-between px-3">
-            <div className="flex items-center gap-1 opacity-80">
-              <span className="text-[8px] font-black tracking-widest text-white/95 drop-shadow">4K ULTRA HD</span>
+          <div
+            className={`absolute top-0 inset-x-0 h-6 backdrop-blur-[4px] border-b z-20 flex items-center justify-between px-3 ${
+              es4k ? 'bg-ink-950/90 border-amber-300/50' : 'bg-gradient-to-b from-sky-400/40 to-sky-600/20 border-white/20'
+            }`}
+          >
+            <div className="flex items-center gap-1 opacity-90">
+              <span className={`text-[8px] font-black tracking-widest drop-shadow ${es4k ? 'text-amber-300' : 'text-white/95'}`}>
+                {es4k ? '4K ULTRA HD' : 'BLU-RAY'}
+              </span>
             </div>
             {/* Pestaña de cierre del estuche */}
             <div className="w-12 h-1.5 bg-white/35 rounded-full border border-white/30 shadow-inner" />
