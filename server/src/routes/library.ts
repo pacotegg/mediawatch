@@ -5,7 +5,7 @@ import { createReadStream, existsSync, mkdirSync, readFileSync, rmSync, writeFil
 import { stat as statAsync } from 'node:fs/promises';
 import { extname, join, resolve, sep } from 'node:path';
 import { ficheroDelBuzon } from '../media/buzon.ts';
-import { descargar, formatoDeImagen, imagenesDeSaga } from '../scanner/tmdb.ts';
+import { descargar, formatoDeImagen, imagenesDeSaga, urlDeArteValida } from '../scanner/tmdb.ts';
 import { descargarTema, rutaTema, tieneTema } from '../scanner/themes.ts';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { db, normalize } from '../db.ts';
@@ -607,6 +607,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
     };
 
     if (url) {
+      if (!urlDeArteValida(url)) return reply.code(400).send({ error: 'Esa dirección no es una imagen de TMDb ni de fanart.tv' });
       let destino: string;
       try {
         destino = await descargar(url, join(dir, `${papel}.jpg`));

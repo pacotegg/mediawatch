@@ -163,3 +163,16 @@ test('favoritos y resenas: el perfil infantil no ve lo que no puede ver; favorit
   assert.deepEqual((await (await pedir('GET', `/api/items/${a}/reviews`, { galleta: galletaNino })).json()).items, []);
   assert.equal((await pedir('GET', `/api/items/${a}/theme`, { galleta: galletaNino })).status, 404);
 });
+
+test('arte por URL: solo imagenes de TMDb o fanart.tv; cualquier otra direccion se rechaza antes de pedirla', async () => {
+  const t = ids['ES:TP'].item;
+  const malas = ['http://127.0.0.1:8730/api/salud', 'http://image.tmdb.org/x.jpg', 'https://evil.example/x.jpg', 'https://image.tmdb.org.evil.example/x.jpg',
+    'https://usuario:clave@image.tmdb.org/x.jpg', 'file:///C:/Windows/win.ini', 'no es una url'];
+  for (const url of malas) {
+    assert.equal((await pedir('POST', '/api/enrich/arte', { galleta: galletaAdmin, cuerpo: { itemId: t, papel: 'poster', url } })).status, 400, 'titulo: ' + url);
+    assert.equal((await pedir('POST', `/api/collections/${encodeURIComponent('Saga X')}/arte`, { galleta: galletaAdmin, cuerpo: { url, papel: 'poster' } })).status, 400, 'saga: ' + url);
+  }
+  // Una de las permitidas no se rechaza por la URL (sin internet fallara despues, con 502, pero no con 400).
+  const ok = await pedir('POST', '/api/enrich/arte', { galleta: galletaAdmin, cuerpo: { itemId: t, papel: 'poster', url: 'https://image.tmdb.org/t/p/original/no-existe-prueba.jpg' } });
+  assert.notEqual(ok.status, 400);
+});

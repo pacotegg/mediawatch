@@ -1,4 +1,4 @@
-import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, randomInt, scryptSync, timingSafeEqual } from 'node:crypto';
 import { createReadStream, existsSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
@@ -21,7 +21,7 @@ const COOKIE = 'cineteca_session';
 const PAIRING_TTL_MS = 10 * 60_000;
 
 /** Codes live in memory only: they are useless after ten minutes anyway. */
-const pending = new Map<string, { token: string; createdAt: number; userId: number | null }>();
+const pending = new Map<string, { token: string; createdAt: number; userId: number | null; secreto?: string }>();
 const AVATAR_COLORS = ['#e8b64c', '#5ac8fa', '#ff6b6b', '#8e7cff', '#3ddc97', '#ff9f43', '#f368e0', '#54a0ff'];
 
 function hashPin(pin: string): string {
@@ -234,6 +234,19 @@ export function requireUser(req: FastifyRequest): User {
 export function userCount(): number {
   return (db.prepare('SELECT COUNT(*) AS n FROM users').get() as { n: number }).n;
 }
+
+/**
+ * Quita los códigos caducados. Si uno se aprobó y la tele no llegó a recogerlo, la sesión ya estaba creada en la base
+ * con un token que nadie tiene: se retira también, en vez de dejarla huérfana 180 días.
+ */
+function barrerEmparejados() {
+  for (const [key, value] of pending) {
+    if (Date.now() - value.createdAt <= PAIRING_TTL_MS) continue;
+    if (value.userId) db.prepare('DELETE FROM sessions WHERE token = ?').run(hashToken(value.token));
+    pending.delete(key);
+  }
+}
+setInterval(barrerEmparejados, 5 * 60_000).unref();
 
 export default async function authRoutes(app: FastifyInstance) {
   app.get('/api/auth/dispositivos', async (req) => {
@@ -592,13 +605,23 @@ export default async function authRoutes(app: FastifyInstance) {
     // Emparejar un aparato es algo que se hace en el salon, con la tele
     // delante. Desde internet no hace falta y solo seria superficie regalada.
     if (deFuera(req)) return reply.code(403).send({ error: 'El emparejado se hace desde la red de casa' });
-    const code = String(Math.floor(100000 + Math.random() * 900000));
-    const token = randomBytes(32).toString('hex');
-    pending.set(code, { token, createdAt: Date.now(), userId: null });
-
-    for (const [key, value] of pending) {
-      if (Date.now() - value.createdAt > PAIRING_TTL_MS) pending.delete(key);
+    /*
+     * El secreto lo inventa la tele y solo ella lo conoce (el código sí se ve en pantalla). Sin él, quien adivinara
+     * un código —800.000 combinaciones— y consultara `device/poll` más deprisa que la tele (cada 2 s) se llevaba el
+     * token en cuanto alguien lo aprobaba. Opcional para que la tele con la app vieja siga emparejándose; con él, el
+     * token solo se entrega a quien lo presente.
+     */
+    const { secreto } = ((req.body ?? {}) as { secreto?: unknown });
+    if (secreto !== undefined && (typeof secreto !== 'string' || !/^[0-9a-f]{32,128}$/i.test(secreto))) {
+      return reply.code(400).send({ error: 'El secreto del emparejado no es válido' });
     }
+    // Sin repetir un código que siga vivo: dos teles a la vez se pisarían.
+    let code = '';
+    do { code = String(randomInt(100000, 1000000)); } while (pending.has(code));
+    const token = randomBytes(32).toString('hex');
+    pending.set(code, { token, createdAt: Date.now(), userId: null, secreto: typeof secreto === 'string' ? hashToken(secreto) : undefined });
+
+    barrerEmparejados();
 
     // La tele enseña este enlace como QR: se escanea con el móvil y el
     // emparejado se resuelve solo, sin salir de la app ni teclear nada.
@@ -632,6 +655,8 @@ export default async function authRoutes(app: FastifyInstance) {
       return reply.code(410).send({ error: 'El código ha caducado' });
     }
 
+    // Un código se aprueba una vez: la segunda insertaba la misma sesión otra vez y daba un 500.
+    if (entry.userId) return reply.code(409).send({ error: 'Ese código ya está aprobado' });
     entry.userId = user.id;
     db.prepare('INSERT INTO sessions (token, user_id, created_at, cifrado) VALUES (?,?,?,1)').run(hashToken(entry.token), user.id, new Date().toISOString());
     return { ok: true, user: user.name };
@@ -661,6 +686,7 @@ export default async function authRoutes(app: FastifyInstance) {
     olvidarFallos(req.ip);
     if (user.pin && pin) db.prepare('UPDATE users SET pin_len = ? WHERE id = ?').run(String(pin).length, user.id);
 
+    if (entry.userId) return reply.code(409).send({ error: 'Ese código ya está aprobado' });
     entry.userId = user.id;
     db.prepare('INSERT INTO sessions (token, user_id, created_at, cifrado) VALUES (?,?,?,1)').run(hashToken(entry.token), user.id, new Date().toISOString());
     return { ok: true, user: user.name };
@@ -686,6 +712,16 @@ export default async function authRoutes(app: FastifyInstance) {
     const { code } = req.query as { code?: string };
     const entry = code ? pending.get(code) : undefined;
     if (!entry) return reply.code(404).send({ error: 'Código desconocido' });
+    // Con secreto, solo quien lo presenta (cabecera, para que no quede en los registros de la URL) puede ni siquiera
+    // saber si el código existe: a los demás, la misma respuesta que a un código inventado.
+    if (entry.secreto) {
+      const presentado = req.headers['x-emparejado'];
+      const huella = typeof presentado === 'string' && presentado ? Buffer.from(hashToken(presentado), 'hex') : null;
+      const esperado = Buffer.from(entry.secreto, 'hex');
+      if (!huella || huella.length !== esperado.length || !timingSafeEqual(huella, esperado)) {
+        return reply.code(404).send({ error: 'Código desconocido' });
+      }
+    }
     if (!entry.userId) return { paired: false };
 
     pending.delete(code!);

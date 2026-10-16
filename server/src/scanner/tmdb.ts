@@ -1,5 +1,5 @@
-import { createWriteStream, mkdirSync, writeFileSync } from 'node:fs';
-import { Readable } from 'node:stream';
+import { closeSync, createWriteStream, mkdirSync, openSync, readSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { join } from 'node:path';
 import { DATA_DIR, config } from '../config.ts';
@@ -280,11 +280,32 @@ export async function temporadasDeSerie(tmdbId: number): Promise<{ temporada: nu
 }
 
 /** Compartida con el agente de AniList: baja una imagen al disco y devuelve su ruta. */
+const MAX_IMAGEN = 25 * 1024 * 1024;
 export async function descargar(url: string, destination: string): Promise<string> {
   const res = await fetch(url, { signal: AbortSignal.timeout(60_000) });
   if (!res.ok || !res.body) throw new Error(`No se pudo descargar la imagen (${res.status})`);
-  await pipeline(Readable.fromWeb(res.body as never), createWriteStream(destination));
-  return destination;
+  // Ni más de 25 MB (una respuesta enorme llenaba el disco) ni algo que no sea una imagen (una página de error
+  // guardada como .jpg dejaba una carátula rota para siempre). Se baja a un temporal y solo entonces se coloca.
+  const parcial = destination + '.parcial';
+  try {
+    let bytes = 0;
+    const tope = new Transform({
+      transform(trozo, _c, cb) {
+        bytes += trozo.length;
+        if (bytes > MAX_IMAGEN) cb(new Error('La imagen es demasiado grande'));
+        else cb(null, trozo);
+      },
+    });
+    await pipeline(Readable.fromWeb(res.body as never), tope, createWriteStream(parcial));
+    const cabeza = Buffer.alloc(16);
+    const fd = openSync(parcial, 'r');
+    try { readSync(fd, cabeza, 0, 16, 0); } finally { closeSync(fd); }
+    if (!formatoDeImagen(cabeza)) throw new Error('Lo que se ha bajado no es una imagen JPEG, PNG ni WebP');
+    renameSync(parcial, destination);
+    return destination;
+  } finally {
+    rmSync(parcial, { force: true });
+  }
 }
 
 /* ------------------------------------------------- galeria de imagenes */
@@ -555,7 +576,24 @@ const COLUMNA_DE: Record<Papel, string> = {
  * Queda apuntada en `arte_fijado` para que el escaner no la pise en la
  * siguiente pasada, que es lo que hacia que cambiar una caratula no durase nada.
  */
+/**
+ * Las únicas direcciones de las que se baja una imagen que ELIGE un cliente: las galerías de TMDb y de fanart.tv. Sin
+ * esto, un administrador (o una sesión suya olvidada) hacía que el servidor pidiera cualquier dirección, también las de
+ * la red de casa (127.0.0.1, el router…), y guardaba lo que contestaran.
+ */
+const ORIGENES_DE_ARTE = new Set(['image.tmdb.org', 'assets.fanart.tv']);
+export function urlDeArteValida(url: unknown): url is string {
+  if (typeof url !== 'string') return false;
+  try {
+    const u = new URL(url);
+    return u.protocol === 'https:' && !u.username && !u.password && ORIGENES_DE_ARTE.has(u.hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
 export async function ponerArte(itemId: number, papel: Papel, url: string) {
+  if (!urlDeArteValida(url)) throw new Error('Esa dirección no es una imagen de TMDb ni de fanart.tv');
   const dir = carpetaDeArte(itemId);
   const destino = await descargar(url, join(dir, FICHERO_DE[papel]));
   fijarArte(itemId, papel, destino);

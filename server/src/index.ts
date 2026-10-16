@@ -93,7 +93,7 @@ app.addHook('onRequest', async (req, reply) => {
 
   reply.header('Access-Control-Allow-Origin', origin);
   reply.header('Vary', 'Origin');
-  reply.header('Access-Control-Allow-Headers', 'Authorization, Content-Type, Range');
+  reply.header('Access-Control-Allow-Headers', 'Authorization, Content-Type, Range, X-Emparejado');
   reply.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   reply.header('Access-Control-Expose-Headers', 'Content-Range, Accept-Ranges, Content-Length, X-TvWatch-Mode');
 
