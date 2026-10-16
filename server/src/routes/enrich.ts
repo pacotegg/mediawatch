@@ -42,7 +42,7 @@ export default async function enrichRoutes(app: FastifyInstance) {
     if (!config.tmdbApiKey) return reply.code(400).send({ error: 'Configura primero la clave de API de TMDb' });
     if (job.running) return reply.code(409).send({ error: 'Ya hay una búsqueda en curso' });
 
-    const limit = Math.min(Number((req.body as { limit?: number })?.limit ?? 40), 200);
+    const limit = Math.min(Math.max(1, Math.trunc(Number((req.body as { limit?: number })?.limit ?? 40)) || 40), 200);
     Object.assign(job, { running: true, done: 0, total: limit, candidates: [], error: null, finishedAt: null });
 
     queueMicrotask(async () => {
@@ -62,8 +62,9 @@ export default async function enrichRoutes(app: FastifyInstance) {
     return { started: true, limit };
   });
 
-  app.get('/api/enrich/candidates', async (req) => {
-    requireUser(req);
+  // Los candidatos llevan los títulos con datos por completar, adultos incluidos: solo el administrador (los ve en Metadatos).
+  app.get('/api/enrich/candidates', async (req, reply) => {
+    if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'Solo un administrador' });
     return { running: job.running, done: job.done, total: job.total, error: job.error, candidates: job.candidates };
   });
 
@@ -95,6 +96,7 @@ export default async function enrichRoutes(app: FastifyInstance) {
     if (!user.is_admin) return reply.code(403).send({ error: 'No autorizado' });
     const body = req.body as Parameters<typeof applyProposal>[0];
     if (!body?.itemId || !body?.tmdbId) return reply.code(400).send({ error: 'Faltan datos de la propuesta' });
+    if (!Array.isArray(body.fields)) return reply.code(400).send({ error: 'Faltan los campos a aplicar' });
 
     try {
       const result = await applyProposal({ ...body, identidad: MODO_PORTABLE });

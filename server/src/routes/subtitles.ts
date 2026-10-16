@@ -44,27 +44,30 @@ const OUTCOME: Record<number, string> = {
 };
 
 export default async function subtitleRoutes(app: FastifyInstance) {
+  // Rutas del servidor, títulos y registro del trabajo: solo para el administrador. La pestaña de subtítulos la
+  // abre cualquiera y pregunta por el estado, así que a los demás se les da el estado sin nada de lo anterior.
   app.get('/api/subtitles/available', async (req) => {
-    requireUser(req);
-    return { available: existsSync(SUBSFETCH), script: SUBSFETCH };
+    const user = requireUser(req);
+    return { available: existsSync(SUBSFETCH), ...(user.is_admin ? { script: SUBSFETCH } : {}) };
   });
 
   app.get('/api/subtitles/job', async (req) => {
-    requireUser(req);
+    const user = requireUser(req);
     return {
       ...job,
+      ...(user.is_admin ? {} : { fileId: null, title: '', log: [] }),
       outcome: job.exitCode === null ? null : (OUTCOME[job.exitCode] ?? `Terminó con código ${job.exitCode}`),
     };
   });
 
-  app.get('/api/subtitles/transcribe', async (req) => {
-    requireUser(req);
+  app.get('/api/subtitles/transcribe', async (req, reply) => {
+    if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'Solo un administrador' });
     return transcribeJob;
   });
 
-  app.get('/api/subtitles/missing', async (req) => {
-    requireUser(req);
-    const limit = Math.min(Number((req.query as { limit?: string }).limit ?? 60), 300);
+  app.get('/api/subtitles/missing', async (req, reply) => {
+    if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'Solo un administrador' });
+    const limit = Math.min(Math.max(1, Math.trunc(Number((req.query as { limit?: string }).limit ?? 60)) || 60), 300);
     return { stats: missingSubtitleStats(), files: filesWithoutSubtitles(limit) };
   });
 
@@ -115,7 +118,7 @@ export default async function subtitleRoutes(app: FastifyInstance) {
     const args = [
       SUBSFETCH,
       file.path,
-      '--idiomas', (languages ?? 'es,en').replace(/\s/g, ''),
+      '--idiomas', String(languages ?? '').replace(/[^a-zA-Z,]/g, '') || 'es,en',
       '--out', outDir,
       ...(forced ? ['--forzados'] : []),
       ...(mux ? ['--mux'] : []),

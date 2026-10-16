@@ -510,9 +510,15 @@ export async function caratula(tipo: string, ruta: string): Promise<string> {
   if (existsSync(destino)) return destino;
   const r = await fetch(`${IMAGENES}/${tipo}/${ruta}`, { signal: AbortSignal.timeout(20_000) });
   if (!r.ok || !r.body) throw new Error('TMDb no sirvió la imagen (' + r.status + ')');
-  const parcial = destino + '.parcial';
-  await pipeline(Readable.fromWeb(r.body as never), createWriteStream(parcial));
-  const { renameSync } = await import('node:fs');
-  renameSync(parcial, destino);
+  // Nombre propio por petición: dos iguales a la vez escribían en el mismo fichero y dejaban una imagen mezclada.
+  const parcial = `${destino}.${process.pid}-${Math.random().toString(36).slice(2)}.parcial`;
+  const { renameSync, rmSync } = await import('node:fs');
+  try {
+    await pipeline(Readable.fromWeb(r.body as never), createWriteStream(parcial));
+    renameSync(parcial, destino);
+  } catch (e) {
+    rmSync(parcial, { force: true });
+    throw e;
+  }
   return destino;
 }

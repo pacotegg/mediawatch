@@ -30,6 +30,8 @@ const MAX_LINEA = 1000;
 const MAX_FICHERO = 1024 * 1024;
 const MAX_USUARIO = 20 * 1024 * 1024;
 const DIAS = 14;
+/** Un aparato inventado por petición llenaría la carpeta de ficheros diminutos y cada envío recorrería todos. */
+const MAX_FICHEROS = 60;
 
 /** Peticiones por sesión y minuto. Un cliente sano manda una cada pocos segundos como mucho. */
 const MAX_POR_MINUTO = 20;
@@ -68,7 +70,7 @@ function podar(carpeta: string) {
   }
   ficheros = ficheros.filter((f) => ahora - f.mtime <= DIAS * 86_400_000).sort((a, b) => a.mtime - b.mtime);
   let total = ficheros.reduce((s, f) => s + f.size, 0);
-  while (total > MAX_USUARIO && ficheros.length > 1) {
+  while ((total > MAX_USUARIO || ficheros.length > MAX_FICHEROS) && ficheros.length > 1) {
     const viejo = ficheros.shift()!;
     try { unlinkSync(viejo.ruta); } catch { /* ya no estaba */ }
     total -= viejo.size;

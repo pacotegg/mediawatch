@@ -40,14 +40,30 @@ export const DEFAULT_PREFERENCES: Preferences = {
   interface: { reduceMotion: false, showWatched: true, themeMusic: true, case3D: true },
 };
 
+const VALORES: Record<string, readonly string[]> = { mode: ['normal', 'dialogue', 'night'], background: ['none', 'shadow', 'box'] };
+
+/** Solo entran las claves que ya existen en la sección y con el mismo tipo: lo demás se descarta. */
+function seccion<T extends object>(base0: T, dada: unknown): T {
+  const base = base0 as Record<string, unknown>;
+  const fuera = { ...base };
+  if (!dada || typeof dada !== 'object' || Array.isArray(dada)) return fuera as T;
+  for (const [k, v] of Object.entries(dada)) {
+    if (!(k in base) || typeof v !== typeof base[k]) continue;
+    if (typeof v === 'number' && !Number.isFinite(v)) continue;
+    if (typeof v === 'string' && (v.length > 20 || (VALORES[k] && !VALORES[k].includes(v)))) continue;
+    fuera[k] = v;
+  }
+  return fuera as T;
+}
+
 /** Shallow-merges each section so new defaults appear without wiping stored values. */
 function merge(stored: Partial<Preferences> | null): Preferences {
-  if (!stored) return DEFAULT_PREFERENCES;
+  if (!stored || typeof stored !== 'object') return DEFAULT_PREFERENCES;
   return {
-    playback: { ...DEFAULT_PREFERENCES.playback, ...stored.playback },
-    audio: { ...DEFAULT_PREFERENCES.audio, ...stored.audio },
-    subtitles: { ...DEFAULT_PREFERENCES.subtitles, ...stored.subtitles },
-    interface: { ...DEFAULT_PREFERENCES.interface, ...stored.interface },
+    playback: seccion(DEFAULT_PREFERENCES.playback, stored.playback),
+    audio: seccion(DEFAULT_PREFERENCES.audio, stored.audio),
+    subtitles: seccion(DEFAULT_PREFERENCES.subtitles, stored.subtitles),
+    interface: seccion(DEFAULT_PREFERENCES.interface, stored.interface),
   };
 }
 
@@ -124,7 +140,7 @@ export default async function preferenceRoutes(app: FastifyInstance) {
     if (typeof body.transcodeQuality === 'number') next.transcodeQuality = Math.min(35, Math.max(12, body.transcodeQuality));
     if (typeof body.tonemap === 'boolean') next.tonemap = body.tonemap;
     if (typeof body.tmdbApiKey === 'string') next.tmdbApiKey = body.tmdbApiKey.trim();
-    if (typeof body.tmdbLanguage === 'string') next.tmdbLanguage = body.tmdbLanguage;
+    if (typeof body.tmdbLanguage === 'string' && /^[a-z]{2}(-[A-Z]{2})?$/.test(body.tmdbLanguage)) next.tmdbLanguage = body.tmdbLanguage;
 
     saveConfig(next);
     return { ok: true, hasTmdbKey: Boolean(config.tmdbApiKey) };
