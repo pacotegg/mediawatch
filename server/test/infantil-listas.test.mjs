@@ -5,7 +5,7 @@
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -56,6 +56,9 @@ before(async () => {
     d.prepare('INSERT INTO item_genres (item_id, genre_id) VALUES (?,?)').run(it, genero);
     const f = d.prepare('INSERT INTO media_files (item_id, path, duration, probed) VALUES (?,?,5400,1) RETURNING id').get(it, 'C:/no/existe/' + titulo + '.mkv').id;
     ids[mpaa] = { item: it, file: f };
+    const caratula = join(datos, `caratula-${it}.jpg`);
+    writeFileSync(caratula, 'imagen de prueba');
+    d.prepare('UPDATE items SET poster = ?, fanart = ? WHERE id = ?').run(caratula, caratula, it);
     d.prepare('INSERT INTO item_people (item_id, person_id, role) VALUES (?,?,?)').run(it, persona, 'actor');
     d.prepare("INSERT INTO extras (item_id, path, titulo, tipo, scanned_at) VALUES (?,?,?,?,?)").run(it, 'C:/no/existe/extra-' + titulo + '.mkv', 'Extra', 'Trailer', 'x');
     d.prepare('INSERT INTO dialogue (text, file_id, start_ms) VALUES (?,?,?)').run('una frase compartida muy especial', f, 1000);
@@ -126,4 +129,37 @@ test('el papel del arte de una saga se valida: no se puede salir de su carpeta',
   assert.equal(r.status, 400);
   const r2 = await pedir('POST', `/api/collections/${encodeURIComponent('Saga X')}/arte/subir?papel=${encodeURIComponent('../../fuera')}`, { galleta: galletaAdmin });
   assert.equal(r2.status, 400);
+});
+
+test('caratulas y fondos de un titulo para adultos: 404 para el perfil infantil, 200 para el adulto', async () => {
+  const a = ids['ES:18'].item, t = ids['ES:TP'].item;
+  for (const papel of ['poster', 'fanart']) {
+    assert.equal((await pedir('GET', `/api/items/${a}/${papel}`, { galleta: galletaAdmin })).status, 200, papel + ' adulto');
+    assert.equal((await pedir('GET', `/api/items/${a}/${papel}`, { galleta: galletaNino })).status, 404, papel + ' infantil');
+    assert.equal((await pedir('GET', `/api/items/${t}/${papel}`, { galleta: galletaNino })).status, 200, papel + ' apto');
+  }
+});
+
+test('progreso: valores que no valen dan 400, no 500; lo normal sigue funcionando', async () => {
+  const t = ids['ES:TP'].item;
+  const malos = [{}, { itemId: 'abc', position: 5 }, { itemId: t, position: 'x' }, { itemId: t, position: -4 }, { itemId: 999999, position: 5 }];
+  for (const cuerpo of malos) assert.equal((await pedir('POST', '/api/progress', { galleta: galletaNino, cuerpo })).status, 400, JSON.stringify(cuerpo));
+  assert.equal((await pedir('POST', '/api/progress', { galleta: galletaNino, cuerpo: { itemId: t, position: 120, duration: 5400 } })).status, 200);
+  assert.equal((await pedir('POST', `/api/items/999999/watched`, { galleta: galletaNino, cuerpo: { watched: true } })).status, 404);
+  assert.equal((await pedir('POST', `/api/items/${t}/watched`, { galleta: galletaNino, cuerpo: { watched: true } })).status, 200);
+});
+
+test('favoritos y resenas: el perfil infantil no ve lo que no puede ver; favorito de un titulo que no existe da 404', async () => {
+  const a = ids['ES:18'].item, t = ids['ES:TP'].item;
+  // Estaba en favoritos de antes de restringir el perfil: se guarda por la base, no por la API.
+  const bd = new DatabaseSync(join(datos, 'tvwatch.db'));
+  bd.exec('PRAGMA busy_timeout = 10000');
+  bd.prepare('INSERT OR IGNORE INTO favorites (user_id, item_id, added_at) VALUES (?,?,?)').run(nino, a, 'x');
+  bd.close();
+  assert.equal((await pedir('POST', `/api/items/${t}/favorite`, { galleta: galletaNino, cuerpo: { favorite: true } })).status, 200);
+  const favs = await (await pedir('GET', '/api/favorites', { galleta: galletaNino })).json();
+  assert.deepEqual(titulos(favs), ['Pelicula apta']);
+  assert.equal((await pedir('POST', '/api/items/999999/favorite', { galleta: galletaNino, cuerpo: { favorite: true } })).status, 404);
+  assert.deepEqual((await (await pedir('GET', `/api/items/${a}/reviews`, { galleta: galletaNino })).json()).items, []);
+  assert.equal((await pedir('GET', `/api/items/${a}/theme`, { galleta: galletaNino })).status, 404);
 });
