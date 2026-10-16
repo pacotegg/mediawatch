@@ -206,6 +206,14 @@ export function aplicar(plan: PlanNumeracion) {
   const colocar = db.prepare('UPDATE episodes SET season = ?, episode = ? WHERE id = ?');
   const devolver = db.prepare('UPDATE episodes SET season = -1000 - season WHERE show_id = ? AND season < -999');
 
+  // El plan llega del cliente: cada episodio a mover tiene que ser de esta serie.
+  const dueno = db.prepare('SELECT show_id FROM episodes WHERE id = ?');
+  for (const cambio of mover) {
+    if ((dueno.get(cambio.episodeId) as { show_id: number } | undefined)?.show_id !== plan.showId) {
+      throw new Error(`El episodio ${cambio.episodeId} no es de esta serie`);
+    }
+  }
+
   db.exec('BEGIN');
   try {
     // Solo tiene sentido conservar el absoluto si la serie venía sin repartir.
