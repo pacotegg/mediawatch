@@ -42,15 +42,26 @@ export const DEFAULT_PREFERENCES: Preferences = {
 
 const VALORES: Record<string, readonly string[]> = { mode: ['normal', 'dialogue', 'night'], background: ['none', 'shadow', 'box'] };
 
-/** Solo entran las claves que ya existen en la sección y con el mismo tipo: lo demás se descarta. */
+/**
+ * Las claves conocidas conservan su tipo. Las desconocidas (los clientes guardan ajustes propios que el servidor no
+ * conoce: `adaptativo`, `heroTrailer`, `language`...) se admiten, pero solo como valores simples y acotados: nada de
+ * objetos anidados, nombres raros, textos largos ni cientos de claves.
+ */
 function seccion<T extends object>(base0: T, dada: unknown): T {
   const base = base0 as Record<string, unknown>;
   const fuera = { ...base };
   if (!dada || typeof dada !== 'object' || Array.isArray(dada)) return fuera as T;
+  let extra = 0;
   for (const [k, v] of Object.entries(dada)) {
-    if (!(k in base) || typeof v !== typeof base[k]) continue;
+    if (!/^[A-Za-z][A-Za-z0-9_]{0,31}$/.test(k)) continue;
     if (typeof v === 'number' && !Number.isFinite(v)) continue;
-    if (typeof v === 'string' && (v.length > 20 || (VALORES[k] && !VALORES[k].includes(v)))) continue;
+    if (typeof v === 'string' && (v.length > 40 || (VALORES[k] && !VALORES[k].includes(v)))) continue;
+    if (k in base) {
+      if (typeof v !== typeof base[k]) continue;
+    } else {
+      if (typeof v !== 'boolean' && typeof v !== 'number' && typeof v !== 'string') continue;
+      if (++extra > 30) break;
+    }
     fuera[k] = v;
   }
   return fuera as T;

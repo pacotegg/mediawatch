@@ -57,12 +57,17 @@ after(async () => {
 test('preferencias: lo que no es una preferencia no se guarda', async () => {
   const res = await pedir('PUT', '/api/preferences', {
     galleta: galletaNormal,
-    cuerpo: { basura: 'x'.repeat(5000), playback: { seekStep: 30, intruso: 1, resume: 'si', maxHeight: null }, audio: { mode: 'ruidoso' }, subtitles: 'hola', interface: { reduceMotion: true } },
+    cuerpo: { basura: 'x'.repeat(5000), playback: { seekStep: 30, adaptativo: 'siempre', objeto: { a: 1 }, 'clave rara!': 1, resume: 'si', maxHeight: null }, audio: { mode: 'ruidoso' }, subtitles: 'hola', interface: { reduceMotion: true, heroTrailer: false, language: 'es', largo: 'x'.repeat(500) } },
   });
   assert.equal(res.status, 200);
   const p = await (await pedir('GET', '/api/preferences', { galleta: galletaNormal })).json();
   assert.equal(p.basura, undefined);
-  assert.equal(p.playback.intruso, undefined);
+  assert.equal(p.playback.adaptativo, 'siempre', 'los ajustes propios de un cliente (que el servidor no conoce) se conservan');
+  assert.equal(p.interface.heroTrailer, false);
+  assert.equal(p.interface.language, 'es');
+  assert.equal(p.playback.objeto, undefined, 'un objeto anidado no entra');
+  assert.equal(p.playback['clave rara!'], undefined, 'un nombre de clave raro no entra');
+  assert.equal(p.interface.largo, undefined, 'un texto largo no entra');
   assert.equal(p.playback.seekStep, 30, 'lo valido se conserva');
   assert.equal(p.playback.resume, true, 'tipo equivocado: queda el de por defecto');
   assert.equal(p.playback.maxHeight, 0);
