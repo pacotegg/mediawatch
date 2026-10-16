@@ -336,7 +336,10 @@ export const api = {
   /** Solo los avisos del administrador, sin llevarse las órdenes del móvil (para dentro del reproductor). */
   avisos: () => pedir<{ mensaje: string | null; parar: boolean }>('/api/mando'),
 
-  iniciarEmparejado: () => pedir<{ code: string; expiresInSeconds: number; url: string }>('/api/auth/device/start', { method: 'POST' }),
+  // El secreto lo inventa esta tele y solo ella lo conoce: sin él, quien adivinara el código en la red de casa podía
+  // recoger el token antes que la tele. Va en el cuerpo al empezar y en una cabecera al sondear (no en la URL).
+  iniciarEmparejado: (secreto: string) =>
+    pedir<{ code: string; expiresInSeconds: number; url: string }>('/api/auth/device/start', { method: 'POST', body: JSON.stringify({ secreto }) }),
 
   persona: (id: number) =>
     pedir<{
@@ -384,8 +387,8 @@ export const api = {
   // `solo=1`: mirar si ya está hecha, sin pedir que la fabrique. Generarla
   // mientras se ve la película deja al vídeo sin disco.
   tira: (fileId: number) => pedir<Tira | { generating: boolean }>('/api/play/' + fileId + '/trickplay?solo=1'),
-  comprobarEmparejado: (codigo: string) =>
-    pedir<{ paired: boolean; token?: string; user?: { name: string } }>('/api/auth/device/poll?code=' + codigo),
+  comprobarEmparejado: (codigo: string, secreto: string) =>
+    pedir<{ paired: boolean; token?: string; user?: { name: string } }>('/api/auth/device/poll?code=' + codigo, { headers: { 'X-Emparejado': secreto } }),
   perfiles: () =>
     pedir<{ users: { id: number; name: string; color: string; has_pin: number; pin_len?: number | null }[] }>('/api/users'),
   emparejarConPin: (codigo: string, userId: number, pin: string) =>

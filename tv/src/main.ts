@@ -5419,7 +5419,11 @@ async function pantallaConexion() {
   dibujar(null, 'Conectando…');
 
   try {
-    const inicio = await api.iniciarEmparejado();
+    // 24 bytes al azar, solo en memoria de esta pantalla: es lo que impide que otro recoja el token de esta tele.
+    const bytes = new Uint8Array(24);
+    window.crypto.getRandomValues(bytes);
+    const secreto = Array.prototype.map.call(bytes, (b: number) => ('0' + b.toString(16)).slice(-2)).join('');
+    const inicio = await api.iniciarEmparejado(secreto);
     codigoActual = inicio.code;
     perfiles = await api.perfiles().then((r) => r.users).catch(() => []);
     dibujar(inicio.code, '', inicio.url);
@@ -5432,7 +5436,7 @@ async function pantallaConexion() {
         return;
       }
       try {
-        const estado = await api.comprobarEmparejado(inicio.code);
+        const estado = await api.comprobarEmparejado(inicio.code, secreto);
         if (estado.paired && estado.token) {
           guardarToken(estado.token);
           void arrancar();

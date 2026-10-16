@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { config, MODO_PORTABLE } from '../config.ts';
 import { BUZON, ficheroDelBuzon, loDelBuzon } from '../media/buzon.ts';
 import { requireUser } from './auth.ts';
-import { applyProposal, buildCandidates, candidateForItem, formatoDeImagen, imagenesDe, missingCount, ponerArte, ponerArteDeDatos, search, soltarArte, TmdbError, type Candidate, type Papel } from '../scanner/tmdb.ts';
+import { applyProposal, buildCandidates, candidateForItem, formatoDeImagen, imagenesDe, missingCount, ponerArte, ponerArteDeDatos, search, soltarArte, TmdbError, urlDeArteValida, type Candidate, type Papel } from '../scanner/tmdb.ts';
 
 /** 20 MB: un fondo 4K en PNG pasa de los 2 MB que admite el resto del servidor. */
 const TOPE_SUBIDA = 20 * 1024 * 1024;
@@ -126,6 +126,7 @@ export default async function enrichRoutes(app: FastifyInstance) {
     if (!itemId || !papel || !['poster', 'fanart', 'clearlogo', 'landscape', 'discart'].includes(papel)) {
       return reply.code(400).send({ error: 'Falta el título o el tipo de imagen' });
     }
+    if (url && !urlDeArteValida(url)) return reply.code(400).send({ error: 'Esa dirección no es una imagen de TMDb ni de fanart.tv' });
     try {
       return url ? await ponerArte(itemId, papel, url) : soltarArte(itemId, papel);
     } catch (err) {
