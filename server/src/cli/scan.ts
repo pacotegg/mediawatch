@@ -12,7 +12,7 @@ const results = await scanAll((p) => {
     process.stdout.write(`\r${line.padEnd(70)}`);
     lastLine = line;
   }
-});
+}, { forzar: process.argv.includes('--forzar') });
 
 process.stdout.write('\r'.padEnd(72) + '\r');
 for (const r of results) console.log(`  ${r.name.padEnd(16)} ${r.count}`);

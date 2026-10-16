@@ -219,7 +219,7 @@ export async function miniatura(id: number): Promise<string | null> {
     try {
       const { stdout } = await run(config.ffprobe, [
         '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', extra.path,
-      ], { windowsHide: true });
+      ], { windowsHide: true, timeout: 60_000 });
       const d = Number(stdout.trim());
       if (d > 0) {
         db.prepare('UPDATE extras SET duration = ? WHERE id = ?').run(d, id);

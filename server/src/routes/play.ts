@@ -497,7 +497,7 @@ export default async function playRoutes(app: FastifyInstance) {
     const audioIndex = pedida ?? info.audio.find((a) => a.default)?.streamIndex ?? info.audio[0]?.streamIndex ?? 0;
     const plan = planPlayback(info, caps(req), audioIndex, tasaDe(statFichero.size, info));
     const start = Math.max(0, Number(q.t ?? 0)) || 0;
-    const audioDelayMs = Math.max(-10_000, Math.min(10_000, Number(q.audiodelay ?? 0)));
+    const audioDelayMs = Math.max(-10_000, Math.min(10_000, Number(q.audiodelay ?? 0) || 0));
 
     /*
      * `raw=1` is for players that decode more than a browser does — the
@@ -848,7 +848,7 @@ export default async function playRoutes(app: FastifyInstance) {
         segmento: Number(n),
         audioStreamIndex: audioIndex,
         audioOptions: opcionesAudio(q, info.audio.find((a) => a.streamIndex === audioIndex)?.channels ?? 2),
-        audioDelayMs: Math.max(-10_000, Math.min(10_000, Number(q.audiodelay ?? 0))),
+        audioDelayMs: Math.max(-10_000, Math.min(10_000, Number(q.audiodelay ?? 0) || 0)),
         surround: q.surround === '1',
         dispositivo: sesionDe(req) ?? undefined,
       });
@@ -897,7 +897,7 @@ export default async function playRoutes(app: FastifyInstance) {
       const text = decodeText(bruto);
       if (row.external.toLowerCase().endsWith('.vtt')) return reply.send(desplazarVtt(text, ajuste));
       if (/\.(ass|ssa)$/i.test(row.external)) {
-        const proc = spawn(config.ffmpeg, ['-hide_banner', '-loglevel', 'error', '-i', row.external, '-f', 'webvtt', 'pipe:1'], { windowsHide: true });
+        const proc = spawn(config.ffmpeg, ['-hide_banner', '-loglevel', 'error', '-i', row.external, '-f', 'webvtt', 'pipe:1'], { windowsHide: true, timeout: 60_000 });
         proc.on('error', (e) => console.error('[subtitulos] no arrancó ffmpeg:', e.message));
         // Si el cliente se va antes de terminar, que no quede ffmpeg suelto.
         req.raw.on('close', () => proc.kill('SIGKILL'));
