@@ -79,7 +79,13 @@ object Api {
   /** Pasado este tiempo no se empieza otro reintento: mejor decir que falla que dejar la pantalla esperando. */
   private const val NO_REINTENTAR_DESDE_MS = 8_000L
 
-  fun texto(ruta: String, cuerpo: String? = null): String {
+  /**
+   * `topeSegundos`: lo que se espera la respuesta entera. 25 s valen para casi todo; la búsqueda y la bajada de
+   * subtítulos de internet tardan más en el servidor (su tope es de 90 s y 2 min) y a los 25 s se daban por fallidas.
+   */
+  fun texto(ruta: String, cuerpo: String? = null, topeSegundos: Long = 25): String {
+    val cliente = if (topeSegundos == 25L) httpTexto
+      else http.newBuilder().callTimeout(topeSegundos, TimeUnit.SECONDS).readTimeout(topeSegundos, TimeUnit.SECONDS).build()
     // Sin servidor aún (primera apertura, pantalla de conexión): no es un fallo de red.
     if (Ajustes.servidor.isEmpty()) throw FalloDeRed("Todavía no hay servidor configurado.")
     val maxIntentos = if (cuerpo == null) 3 else 1
@@ -91,7 +97,7 @@ object Api {
 
     for (intento in 1..maxIntentos) {
       val r = try {
-        httpTexto.newCall(peticion(ruta, cuerpo)).execute()
+        cliente.newCall(peticion(ruta, cuerpo)).execute()
       } catch (e: Exception) {
         ultimoError = e
         if (intento < maxIntentos && ms() < NO_REINTENTAR_DESDE_MS) {
@@ -371,7 +377,7 @@ object Api {
   }
 
   fun buscarSubtitulos(fileId: Int): Boolean = try {
-    texto("/api/subtitles/fetch", "{\"fileId\":$fileId,\"wait\":true}")
+    texto("/api/subtitles/fetch", "{\"fileId\":$fileId,\"wait\":true}", topeSegundos = 21 * 60)
     true
   } catch (e: Exception) {
     false
@@ -379,7 +385,7 @@ object Api {
 
   fun buscarCandidatosSubtitulos(fileId: Int, languages: String = "es,en"): List<CandidatoSubtitulo> = try {
     val res = json.decodeFromString<RespuestaBusquedaSubtitulos>(
-      texto("/api/subtitles/search", "{\"fileId\":$fileId,\"languages\":\"$languages\"}")
+      texto("/api/subtitles/search", "{\"fileId\":$fileId,\"languages\":\"$languages\"}", topeSegundos = 100)
     )
     res.candidates
   } catch (e: Exception) {
@@ -396,7 +402,7 @@ object Api {
       if (c.forced) append(",\"forced\":true")
       append('}')
     }
-    val res = json.decodeFromString<RespuestaDescargaSubtitulo>(texto("/api/subtitles/download", cuerpo))
+    val res = json.decodeFromString<RespuestaDescargaSubtitulo>(texto("/api/subtitles/download", cuerpo, topeSegundos = 130))
     res.ok
   } catch (e: Exception) {
     false
