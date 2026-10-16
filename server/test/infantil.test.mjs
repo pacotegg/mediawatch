@@ -85,3 +85,17 @@ for (const [nombre, ruta, metodo, cuerpo] of [
     assert.notEqual(r.status, 403);
   });
 }
+
+for (const [nombre, ruta] of [
+  ['subtitulo incrustado', (id) => `/api/play/${id}/subtitle/embedded-2`],
+  ['subtitulo externo', (id) => `/api/play/${id}/subtitle/external-1`],
+  ['desfases guardados', (id) => `/api/play/${id}/offsets`],
+  ['medicion de sincronia', (id) => `/api/play/${id}/resync/embedded-2`],
+]) {
+  test(`perfil infantil: ${nombre} de un titulo para adultos da 403`, async () => {
+    assert.equal((await pedir('GET', ruta(adulto), { galleta: galletaNino })).status, 403);
+  });
+  test(`perfil infantil: ${nombre} de un titulo apto no da 403`, async () => {
+    assert.notEqual((await pedir('GET', ruta(apta), { galleta: galletaNino })).status, 403);
+  });
+}

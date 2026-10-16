@@ -1,5 +1,5 @@
 import { comenzar, nombreCliente } from '../media/historial.ts';
-import { audioEnvolvente, cerrarSesiones, cerrarSesionesDe, escalera, listaDeCalidad, listaMaestra, segmento, CALIDADES } from '../media/hls.ts';
+import { audioEnvolvente, cerrarSesiones, cerrarSesionesDe, escalera, listaDeCalidad, listaMaestra, segmento, troceado, numeroDeSegmentos, CALIDADES } from '../media/hls.ts';
 import { spawn } from 'node:child_process';
 import { createReadStream, existsSync, mkdirSync, readFileSync, statSync, unlinkSync } from 'node:fs';
 import { readFile, stat as statAsync, writeFile } from 'node:fs/promises';
@@ -31,6 +31,16 @@ function caps(req: FastifyRequest): ClientCaps {
     maxHeightHevc: Number(q.maxHeightHevc ?? 0) || 0,
     maxKbps: Number(q.maxKbps ?? 0) || 0,
   };
+}
+
+/**
+ * La pista de audio que pide el cliente (`?audio=`), como entero. `undefined` si no la pide; `null` si manda algo que
+ * no es un número entero: antes `Number('abc')` daba NaN y acababa en `-map 0:NaN` de ffmpeg, un proceso lanzado en vano.
+ */
+function pistaPedida(valor: string | undefined): number | undefined | null {
+  if (valor === undefined) return undefined;
+  const n = Number(valor);
+  return Number.isInteger(n) && n >= 0 && n < 1000 ? n : null;
 }
 
 /** Tasa media del fichero en bits por segundo, para el tope de calidad. */
@@ -167,11 +177,14 @@ function decodeText(buf: Buffer): string {
  * el parámetro pasó a ser con signo y los dos ajustes se suman antes de
  * llamar.
  */
-function desplazarVtt(text: string, segundos: number): string {
+export function desplazarVtt(text: string, segundos: number): string {
   if (segundos === 0) return text;
   const aSeg = (h: string, m: string, sg: string, ms: string) => Number(h) * 3600 + Number(m) * 60 + Number(sg) + Number(ms) / 1000;
   const aTexto = (t: number) => {
-    const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sg = Math.floor(t % 60), ms = Math.round((t % 1) * 1000);
+    // En milisegundos enteros desde el principio: redondear solo la fracción dejaba «.1000» (cuatro cifras) con
+    // desfases como 0,4996, un tiempo que WebVTT no admite y que hacía desaparecer el subtítulo.
+    const total = Math.max(0, Math.round(t * 1000));
+    const h = Math.floor(total / 3_600_000), m = Math.floor((total % 3_600_000) / 60_000), sg = Math.floor((total % 60_000) / 1000), ms = total % 1000;
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sg).padStart(2, '0')}.${String(ms).padStart(3, '0')}`;
   };
   const bloques = text.replace(/\r\n/g, '\n').split(/\n{2,}/);
@@ -340,6 +353,33 @@ async function extraerYOcrPgs(
   return tarea;
 }
 
+/*
+ * Extraer un subtítulo incrustado hace que ffmpeg lea la película ENTERA de E: (no se puede saltar al final de un MKV
+ * para sacar una pista): decenas de GB en un 4K. Antes cada petición lanzaba el suyo y lo mataba si el cliente cerraba,
+ * así que cambiar de subtítulo un par de veces repetía lecturas enteras sin llegar a guardar nunca el resultado. Ahora
+ * una sola extracción por pista, compartida por quien la pida, que sigue aunque el cliente se vaya (así la próxima vez
+ * sale de la caché) y con un tope de tiempo por si ffmpeg se cuelga.
+ */
+const extracciones = new Map<string, Promise<string>>();
+function extraerSubtituloIncrustado(ruta: string, streamIndex: number, cachePath: string): Promise<string> {
+  const clave = cachePath;
+  const en = extracciones.get(clave);
+  if (en) return en;
+  const tarea = (async () => {
+    const proc = spawn(
+      config.ffmpeg,
+      ['-hide_banner', '-loglevel', 'error', '-nostdin', '-i', ruta, '-map', `0:${streamIndex}`, '-f', 'webvtt', 'pipe:1'],
+      { windowsHide: true, timeout: 15 * 60_000 },
+    );
+    proc.on('error', (e) => console.error('[subtitulos] no arrancó ffmpeg:', e.message));
+    const vtt = await recoger(proc);
+    if (vtt) await writeFile(cachePath, vtt).catch(() => {});
+    return vtt;
+  })().finally(() => extracciones.delete(clave));
+  extracciones.set(clave, tarea);
+  return tarea;
+}
+
 export default async function playRoutes(app: FastifyInstance) {
   app.get('/api/play/:fileId/info', async (req, reply) => {
     const fileId = Number((req.params as { fileId: string }).fileId);
@@ -451,10 +491,12 @@ export default async function playRoutes(app: FastifyInstance) {
     // Alguien está viendo algo: los trabajos de fondo se apartan del disco.
     marcarActividad();
 
+    const pedida = pistaPedida(q.audio);
+    if (pedida === null) return reply.code(400).send({ error: 'La pista de audio no es válida' });
     const info = await mediaInfo(fileId);
-    const audioIndex = q.audio !== undefined ? Number(q.audio) : info.audio.find((a) => a.default)?.streamIndex ?? info.audio[0]?.streamIndex ?? 0;
+    const audioIndex = pedida ?? info.audio.find((a) => a.default)?.streamIndex ?? info.audio[0]?.streamIndex ?? 0;
     const plan = planPlayback(info, caps(req), audioIndex, tasaDe(statFichero.size, info));
-    const start = Math.max(0, Number(q.t ?? 0));
+    const start = Math.max(0, Number(q.t ?? 0)) || 0;
     const audioDelayMs = Math.max(-10_000, Math.min(10_000, Number(q.audiodelay ?? 0)));
 
     /*
@@ -739,7 +781,9 @@ export default async function playRoutes(app: FastifyInstance) {
     if (user && estadoLimite(user.id)?.agotado) return reply.code(403).send({ error: MENSAJE_LIMITE, limite: true });
     const info = await mediaInfo(fileId);
     const q = req.query as Record<string, string | undefined>;
-    const audioIndexMaestro = q.audio !== undefined ? Number(q.audio) : info.audio.find((a) => a.default)?.streamIndex ?? info.audio[0]?.streamIndex ?? 0;
+    const pedidaMaestro = pistaPedida(q.audio);
+    if (pedidaMaestro === null) return reply.code(400).send({ error: 'La pista de audio no es válida' });
+    const audioIndexMaestro = pedidaMaestro ?? info.audio.find((a) => a.default)?.streamIndex ?? info.audio[0]?.streamIndex ?? 0;
 
     return reply
       .header('Content-Type', 'application/vnd.apple.mpegurl')
@@ -783,7 +827,17 @@ export default async function playRoutes(app: FastifyInstance) {
     const cal = CALIDADES.find((c) => c.nombre === calidad);
     if (!cal) return reply.code(404).send({ error: 'Calidad desconocida' });
 
-    const audioIndex = q.audio !== undefined ? Number(q.audio) : info.audio.find((a) => a.default)?.streamIndex ?? info.audio[0]?.streamIndex ?? 0;
+    // El trozo tiene que ser uno que exista: entero, no negativo y dentro de la duración. Sin esto, `-5` o `99999999`
+    // arrancaban un ffmpeg (y su carpeta de trabajo) para un trozo imposible.
+    const numero = Number(n);
+    // La misma cuenta que usa la lista de reproducción: si difirieran, se rechazaría el último trozo y la película se atascaría.
+    const total = numeroDeSegmentos(info.duration, troceado(info).duracion);
+    if (!/^\d+$/.test(n) || !Number.isInteger(numero) || numero < 0 || numero >= Math.max(total, 1)) {
+      return reply.code(400).send({ error: 'Ese trozo no existe' });
+    }
+    const pedidaTrozo = pistaPedida(q.audio);
+    if (pedidaTrozo === null) return reply.code(400).send({ error: 'La pista de audio no es válida' });
+    const audioIndex = pedidaTrozo ?? info.audio.find((a) => a.default)?.streamIndex ?? info.audio[0]?.streamIndex ?? 0;
 
     try {
       const datos = await segmento({
@@ -811,6 +865,9 @@ export default async function playRoutes(app: FastifyInstance) {
 
   app.get('/api/play/:fileId/subtitle/:trackId', async (req, reply) => {
     const { fileId, trackId } = req.params as { fileId: string; trackId: string };
+    // Los diálogos de un título que el perfil no puede ver tampoco: sin esto salían (y se extraían, o se pasaban por
+    // OCR, gastando disco) por el número del fichero.
+    if (!permitidoParaUsuario(fileRow(Number(fileId)), currentUser(req))) return reply.code(403).send('');
     const id = trackId.replace(/\.vtt$/, '');
     // `desde`: el vídeo va por tubería cortado en ese segundo, y los tiempos
     // tienen que ir restados para que cuadren. Sin él, tal cual.
@@ -869,15 +926,7 @@ export default async function playRoutes(app: FastifyInstance) {
         return reply.send(ajuste !== 0 ? desplazarVtt(vtt, ajuste) : vtt);
       }
 
-      const proc = spawn(
-        config.ffmpeg,
-        ['-hide_banner', '-loglevel', 'error', '-i', file.path, '-map', `0:${streamIndex}`, '-f', 'webvtt', 'pipe:1'],
-        { windowsHide: true },
-      );
-      proc.on('error', (e) => console.error('[subtitulos] no arrancó ffmpeg:', e.message));
-      req.raw.on('close', () => proc.kill('SIGKILL'));
-      const vtt = await recoger(proc);
-      if (vtt) writeFile(cachePath, vtt).catch(() => {});
+      const vtt = await extraerSubtituloIncrustado(file.path, streamIndex, cachePath);
       return reply.send(ajuste !== 0 ? desplazarVtt(vtt, ajuste) : vtt);
     }
 
@@ -928,8 +977,9 @@ export default async function playRoutes(app: FastifyInstance) {
     return { parando: pararLote() };
   });
 
-  app.get('/api/play/:fileId/offsets', async (req) => {
+  app.get('/api/play/:fileId/offsets', async (req, reply) => {
     const fileId = Number((req.params as { fileId: string }).fileId);
+    if (!permitidoParaUsuario(fileRow(fileId), currentUser(req))) return reply.code(403).send({ error: 'Contenido no disponible para este perfil' });
     const rows = db.prepare('SELECT track_id, offset_ms, sigma, method FROM sub_offsets WHERE file_id = ?').all(fileId) as any[];
     return Object.fromEntries(rows.map((r) => [r.track_id, { offsetMs: r.offset_ms, sigma: r.sigma, method: r.method }]));
   });
@@ -966,9 +1016,10 @@ export default async function playRoutes(app: FastifyInstance) {
     return { started: true };
   });
 
-  app.get('/api/play/:fileId/resync/:trackId', async (req) => {
+  app.get('/api/play/:fileId/resync/:trackId', async (req, reply) => {
     const { fileId, trackId } = req.params as { fileId: string; trackId: string };
     const id = Number(fileId);
+    if (!permitidoParaUsuario(fileRow(id), currentUser(req))) return reply.code(403).send({ error: 'Contenido no disponible para este perfil' });
     const stored = offsetFor(id, trackId);
     return {
       measuring: isMeasuring(id, trackId),
@@ -979,10 +1030,16 @@ export default async function playRoutes(app: FastifyInstance) {
   });
 
   app.get('/api/episodes/:id/skip', async (req) => {
+    const ep = db.prepare('SELECT show_id FROM episodes WHERE id = ?').get(Number((req.params as { id: string }).id)) as { show_id: number } | undefined;
+    if (ep && !itemPermitido(ep.show_id, currentUser(req))) return { ranges: [] };
     return { ranges: skipRangesFor(Number((req.params as { id: string }).id), (req.query as { resumen?: string }).resumen === '1') };
   });
 
-  app.get('/api/skip/status', async () => ({ job, shows: showsWithRanges() }));
+  // La lista de series con tramos lleva títulos: un perfil infantil no debe ver los de adultos.
+  app.get('/api/skip/status', async (req) => {
+    const user = currentUser(req);
+    return { job, shows: (showsWithRanges() as { id: number }[]).filter((s) => itemPermitido(s.id, user)) };
+  });
 
   app.post('/api/skip/detect', async (req, reply) => {
     const user = requireUser(req);
@@ -1083,8 +1140,10 @@ export default async function playRoutes(app: FastifyInstance) {
   });
 
   app.get('/api/items/:id/extras/tmdb', async (req) => {
-    requireUser(req);
-    return { videos: await extrasTmdb(Number((req.params as { id: string }).id)) };
+    const user = requireUser(req);
+    const id = Number((req.params as { id: string }).id);
+    if (!itemPermitido(id, user)) return { videos: [] };
+    return { videos: await extrasTmdb(id) };
   });
 
   app.post('/api/items/:id/extras/download', async (req, reply) => {
@@ -1092,9 +1151,10 @@ export default async function playRoutes(app: FastifyInstance) {
     if (!user.is_admin) return reply.code(403).send({ error: 'Solo un administrador puede descargar extras' });
     if (deFuera(req)) return reply.code(403).send({ error: 'Descargar extras a la biblioteca se hace desde la red de casa' });
     const itemId = Number((req.params as { id: string }).id);
-    const { youtubeKey, titulo, tipo } = req.body as { youtubeKey: string; titulo: string; tipo: string };
-    if (!youtubeKey || !titulo) return reply.code(400).send({ error: 'Faltan parámetros' });
-    const res = await descargarExtraTmdb(itemId, youtubeKey, titulo, tipo || 'Featurette');
+    const { youtubeKey, titulo, tipo } = (req.body ?? {}) as { youtubeKey: unknown; titulo: unknown; tipo: unknown };
+    if (typeof youtubeKey !== 'string' || typeof titulo !== 'string' || !youtubeKey || !titulo) return reply.code(400).send({ error: 'Faltan parámetros' });
+    if (tipo !== undefined && typeof tipo !== 'string') return reply.code(400).send({ error: 'Tipo inválido' });
+    const res = await descargarExtraTmdb(itemId, youtubeKey, titulo, (tipo as string | undefined) || 'Featurette');
     return res;
   });
 
