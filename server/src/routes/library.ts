@@ -788,6 +788,8 @@ export default async function libraryRoutes(app: FastifyInstance) {
     app.get(`/api/items/:id/${route}`, async (req, reply) => {
       const id = Number((req.params as { id: string }).id);
       const width = (req.query as { w?: string }).w ? Number((req.query as { w: string }).w) : undefined;
+      // Un perfil infantil no recibe las imágenes de un título que no puede ver, aunque sepa su número.
+      if (!itemPermitido(id, currentUser(req))) return reply.code(404).send({ error: 'Sin imagen' });
       const row = db.prepare(`SELECT ${column} AS src FROM items WHERE id = ?`).get(id) as { src: string | null } | undefined;
       return serveArt(reply, row?.src ?? null, width);
     });
@@ -796,7 +798,8 @@ export default async function libraryRoutes(app: FastifyInstance) {
   app.get('/api/episodes/:id/thumb', async (req, reply) => {
     const id = Number((req.params as { id: string }).id);
     const width = (req.query as { w?: string }).w ? Number((req.query as { w: string }).w) : undefined;
-    const row = db.prepare('SELECT thumb AS src FROM episodes WHERE id = ?').get(id) as { src: string | null } | undefined;
+    const row = db.prepare('SELECT thumb AS src, show_id FROM episodes WHERE id = ?').get(id) as { src: string | null; show_id: number } | undefined;
+    if (row && !itemPermitido(row.show_id, currentUser(req))) return reply.code(404).send({ error: 'Sin imagen' });
     return serveArt(reply, row?.src ?? null, width);
   });
 
@@ -871,13 +874,19 @@ export default async function libraryRoutes(app: FastifyInstance) {
     return { parando: pararOmdb() };
   });
 
-  app.post('/api/progress', async (req) => {
+  app.post('/api/progress', async (req, reply) => {
     marcarActividad();
     const user = requireUser(req);
-    const { itemId, episodeId, position, duration, watched, audio, subtitle } = req.body as {
+    const { itemId, episodeId, position, duration, watched, audio, subtitle } = (req.body ?? {}) as {
       itemId: number; episodeId?: number | null; position: number; duration?: number; watched?: boolean;
       audio?: number | string | null; subtitle?: string | null;
     };
+    // Sin validar, un cuerpo vacío o un título que no existe daban un 500 sin explicación.
+    if (!Number.isInteger(itemId) || typeof position !== 'number' || !Number.isFinite(position) || position < 0) {
+      return reply.code(400).send({ error: 'Falta el título o la posición, o no son números válidos' });
+    }
+    if (episodeId != null && !Number.isInteger(episodeId)) return reply.code(400).send({ error: 'Episodio no válido' });
+    if (!db.prepare('SELECT 1 FROM items WHERE id = ?').get(itemId)) return reply.code(400).send({ error: 'Ese título no existe' });
     /*
      * Un cero no es una duración, es que el cliente no la sabía. Como el
      * guardado hace `COALESCE(?, duration)` y COALESCE solo esquiva NULL, un
@@ -899,10 +908,12 @@ export default async function libraryRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
-  app.post('/api/items/:id/watched', async (req) => {
+  app.post('/api/items/:id/watched', async (req, reply) => {
     const user = requireUser(req);
     const id = Number((req.params as { id: string }).id);
-    const { watched, episodeId } = req.body as { watched: boolean; episodeId?: number | null };
+    if (!Number.isInteger(id) || !db.prepare('SELECT 1 FROM items WHERE id = ?').get(id)) return reply.code(404).send({ error: 'Título no encontrado' });
+    const { watched, episodeId } = (req.body ?? {}) as { watched: boolean; episodeId?: number | null };
+    if (episodeId != null && !Number.isInteger(episodeId)) return reply.code(400).send({ error: 'Episodio no válido' });
     guardarProgreso(user.id, id, episodeId ?? null, 0, null, watched ? 1 : 0);
     return { ok: true };
   });
@@ -954,6 +965,23 @@ export default async function libraryRoutes(app: FastifyInstance) {
     });
     if (!dentro) return reply.code(400).send({ error: 'La carpeta no esta dentro de ninguna biblioteca; no se toca' });
 
+    /*
+     * Cuarto cerrojo: si en esa carpeta hay ficheros o carpetas de OTRO título, no se borra. Borrar uno se lleva
+     * la carpeta entera, y con carpetas anidadas o compartidas se llevaría también lo ajeno. Hoy no hay ninguna
+     * en la biblioteca (comprobado el 15/10 con los 1.949 títulos), pero un escaneo futuro puede crearlas.
+     */
+    const dentroDe = (ruta: string) => {
+      const r = resolve(ruta).toLowerCase();
+      return r === carpeta.toLowerCase() || r.startsWith(carpeta.toLowerCase() + sep);
+    };
+    const ajenos =
+      (db.prepare('SELECT folder AS ruta FROM items WHERE id != ?').all(id) as { ruta: string }[]).filter((o) => dentroDe(o.ruta)).length +
+      (db.prepare(`SELECT f.path AS ruta FROM media_files f LEFT JOIN episodes e ON e.id = f.episode_id
+                    WHERE COALESCE(f.item_id, e.show_id) != ?`).all(id) as { ruta: string }[]).filter((o) => dentroDe(o.ruta)).length;
+    if (ajenos > 0) {
+      return reply.code(409).send({ error: `En esa carpeta hay ${ajenos} cosa(s) de otro título; no se borra para no llevárselas. Sepáralas antes.` });
+    }
+
     const ficheros = (db.prepare(`SELECT COUNT(*) AS n FROM media_files f
                                     LEFT JOIN episodes e ON e.id = f.episode_id
                                    WHERE f.item_id = ? OR e.show_id = ?`).get(id, id) as { n: number }).n;
@@ -970,16 +998,19 @@ export default async function libraryRoutes(app: FastifyInstance) {
 
   app.get('/api/favorites', async (req) => {
     const user = requireUser(req);
+    // Con control parental: lo que ya estuviera en favoritos antes de restringir el perfil no se enseña.
+    const cr = clausulaRating(user);
     return db
       .prepare(`SELECT ${ITEM_FIELDS} FROM favorites fv JOIN items i ON i.id = fv.item_id
-                JOIN libraries l ON l.id = i.library_id WHERE fv.user_id = ? ORDER BY fv.added_at DESC`)
-      .all(user.id);
+                JOIN libraries l ON l.id = i.library_id WHERE fv.user_id = ? ${cr.sql ? `AND ${cr.sql}` : ''} ORDER BY fv.added_at DESC`)
+      .all(user.id, ...cr.params);
   });
 
-  app.post('/api/items/:id/favorite', async (req) => {
+  app.post('/api/items/:id/favorite', async (req, reply) => {
     const user = requireUser(req);
     const id = Number((req.params as { id: string }).id);
-    const { favorite } = req.body as { favorite: boolean };
+    if (!Number.isInteger(id) || !db.prepare('SELECT 1 FROM items WHERE id = ?').get(id)) return reply.code(404).send({ error: 'Título no encontrado' });
+    const { favorite } = (req.body ?? {}) as { favorite: boolean };
     if (favorite) {
       db.prepare('INSERT OR IGNORE INTO favorites (user_id, item_id, added_at) VALUES (?,?,?)').run(user.id, id, new Date().toISOString());
     } else {
@@ -990,6 +1021,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
 
   app.get('/api/items/:id/reviews', async (req) => {
     const id = Number((req.params as { id: string }).id);
+    if (!itemPermitido(id, currentUser(req))) return { items: [] };
     const items = await obtenerResenas(id);
     return { items };
   });
@@ -1008,12 +1040,12 @@ export default async function libraryRoutes(app: FastifyInstance) {
     const row = db.prepare('SELECT folder, kind, tvdb_id, tmdb_id FROM items WHERE id = ?').get(id) as
       | { folder: string; kind: string; tvdb_id: number | null; tmdb_id: number | null }
       | undefined;
-    let themePath = rutaTema(id, row?.folder);
+    if (!itemPermitido(id, currentUser(req))) return reply.code(404).send({ error: 'Sin tema' });
+    const themePath = rutaTema(id, row?.folder);
+    // Sin tema: se intenta bajar en segundo plano (la ficha ya lo hace al abrirse) y se contesta 404 enseguida;
+    // antes la petición esperaba la descarga entera, de hasta varios minutos con yt-dlp.
     if (!themePath && row && (row.tvdb_id || row.tmdb_id)) {
-      try {
-        const ok = await descargarTema(id, row.tvdb_id, row.tmdb_id, row.kind, row.folder);
-        if (ok) themePath = rutaTema(id, row.folder);
-      } catch {}
+      void descargarTema(id, row.tvdb_id, row.tmdb_id, row.kind, row.folder).catch(() => {});
     }
     if (!themePath) return reply.code(404).send({ error: 'Sin tema' });
     let stat;
