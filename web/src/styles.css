@@ -247,9 +247,9 @@ video::-webkit-media-controls {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  *:not(.animar-siempre):not(.animar-siempre *),
+  *:not(.animar-siempre)::before,
+  *:not(.animar-siempre)::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
