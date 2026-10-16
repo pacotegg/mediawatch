@@ -71,6 +71,7 @@ export function recogerBusqueda(userId: number): string | null {
 }
 
 export type TeclaMando = 'arriba' | 'abajo' | 'izquierda' | 'derecha' | 'ok' | 'atras' | 'play_pause';
+const TECLAS: string[] = ['arriba', 'abajo', 'izquierda', 'derecha', 'ok', 'atras', 'play_pause'];
 const teclas = new Map<number, { tecla: TeclaMando; enviado: number }>();
 
 export function enviarTecla(userId: number, tecla: TeclaMando) {
@@ -112,7 +113,8 @@ export default async function mandoRoutes(app: FastifyInstance) {
   app.post('/api/mando/reproducir', async (req, reply) => {
     const user = requireUser(req);
     const { fileId, itemId, episodeId, position } = (req.body ?? {}) as Partial<OrdenDeReproduccion>;
-    if (!fileId || !itemId) return reply.code(400).send({ error: 'Falta el fichero' });
+    if (!Number.isInteger(Number(fileId)) || !Number.isInteger(Number(itemId)) || !fileId || !itemId) return reply.code(400).send({ error: 'Falta el fichero' });
+    if (episodeId && !Number.isInteger(Number(episodeId))) return reply.code(400).send({ error: 'Episodio no válido' });
     enviarReproduccion(user.id, {
       fileId: Number(fileId),
       itemId: Number(itemId),
@@ -126,7 +128,7 @@ export default async function mandoRoutes(app: FastifyInstance) {
   app.post('/api/mando/tecla', async (req, reply) => {
     const user = requireUser(req);
     const { tecla } = (req.body ?? {}) as { tecla?: TeclaMando };
-    if (!tecla) return reply.code(400).send({ error: 'Falta la tecla' });
+    if (!tecla || !TECLAS.includes(tecla)) return reply.code(400).send({ error: 'Falta la tecla' });
     enviarTecla(user.id, tecla);
     return { enviado: tecla };
   });

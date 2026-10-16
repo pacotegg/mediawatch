@@ -15,7 +15,8 @@ import {
   refrescarPlataformas,
   resumenPlataformas,
 } from '../media/plataformas.ts';
-import { requireUser } from './auth.ts';
+import { currentUser, requireUser } from './auth.ts';
+import { itemPermitido } from './play.ts';
 
 const MIME: Record<string, string> = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp' };
 
@@ -64,7 +65,12 @@ export default async function plataformaRoutes(app: FastifyInstance) {
   app.post('/api/mis-plataformas', guardarMias);
 
   /** Dónde ver un título de la biblioteca, para la insignia de la ficha: solo las plataformas de este perfil. */
-  app.get('/api/items/:id/plataformas', async (req) => dondeVer(Number((req.params as { id: string }).id), requireUser(req).id));
+  app.get('/api/items/:id/plataformas', async (req) => {
+    const user = requireUser(req);
+    const id = Number((req.params as { id: string }).id);
+    if (!itemPermitido(id, user)) return { suscripcion: [], alquiler: [], enlace: '' };
+    return dondeVer(id, user.id);
+  });
 
   app.get('/api/plataformas/:clave/catalogo', async (req, reply) => {
     const { clave } = req.params as { clave: string };
@@ -101,7 +107,7 @@ export default async function plataformaRoutes(app: FastifyInstance) {
    */
   app.get('/api/items/:id/plataformas/:clave/enlace', async (req, reply) => {
     const { id, clave } = req.params as { id: string; clave: string };
-    const t = tmdbDeItem(Number(id));
+    const t = itemPermitido(Number(id), currentUser(req)) ? tmdbDeItem(Number(id)) : null;
     if (!t) return { url: null, tipo: null, respaldo: '' };
     try {
       return await enlaceDirecto(t.kind, t.tmdbId, clave);
