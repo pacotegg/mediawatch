@@ -25,6 +25,7 @@ import preferenceRoutes from './routes/preferences.ts';
 import registroClienteRoutes from './routes/registro-cliente.ts';
 import subtitleRoutes from './routes/subtitles.ts';
 import novedadesRoutes from './routes/novedades.ts';
+import systemRoutes from './routes/system.ts';
 import { scanAllEnWorker, type ScanProgress } from './scanner/scan.ts';
 import { ultimaVersionApp } from './media/version-app.ts';
 
@@ -516,6 +517,7 @@ await app.register(mandoRoutes);
 await app.register(mantenimientoRoutes);
 await app.register(plataformaRoutes);
 await app.register(registroClienteRoutes);
+await app.register(systemRoutes);
 
 let scanning = false;
 

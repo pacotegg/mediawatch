@@ -1,0 +1,18 @@
+services:
+  mediawatch:
+    build: .
+    container_name: mediawatch
+    restart: unless-stopped
+    ports:
+      - "8730:8730"
+    environment:
+      - TZ=Europe/Madrid
+    volumes:
+      # Carpeta donde se guarda la base de datos, configuracion y caratulas
+      - ./data:/data
+      # Carpetas de tu coleccion (anade o cambia segun tus discos)
+      - /ruta/a/tus/peliculas:/media/peliculas:ro
+      - /ruta/a/tus/series:/media/series:ro
+    # Descomenta la siguiente seccion si dispones de GPU Intel para transcodificacion por hardware:
+    # devices:
+    #   - /dev/dri:/dev/dri

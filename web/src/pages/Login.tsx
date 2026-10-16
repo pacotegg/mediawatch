@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { motion } from 'motion/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type User } from '../lib/api.ts';
+import SetupWizard from '../components/SetupWizard.tsx';
 
 function Avatar({ user, onClick }: { user: User; onClick: () => void }) {
   return (
@@ -38,7 +39,6 @@ export default function Login() {
   const { data, isLoading, isError: sinServidor, refetch } = useQuery({ queryKey: ['users'], queryFn: api.users });
   const [selected, setSelected] = useState<User | null>(null);
   const [pin, setPin] = useState('');
-  const [newName, setNewName] = useState('');
   const [error, setError] = useState('');
 
   const login = useMutation({
@@ -51,15 +51,6 @@ export default function Login() {
     },
   });
 
-  const create = useMutation({
-    mutationFn: () => api.createUser(newName.trim()),
-    onSuccess: async (created) => {
-      await api.login(created.id);
-      queryClient.invalidateQueries();
-    },
-    onError: (err: Error) => setError(err.message),
-  });
-
   const pick = (user: User) => {
     setError('');
     if (user.has_pin) setSelected(user);
@@ -69,6 +60,10 @@ export default function Login() {
   if (isLoading) return <div className="grid min-h-screen place-items-center text-mist-500">Cargando…</div>;
 
   const setup = data?.setupNeeded;
+
+  if (setup) {
+    return <SetupWizard onComplete={() => { window.location.href = '/'; }} />;
+  }
 
   if (sinServidor && !data) {
     return (
@@ -94,28 +89,7 @@ export default function Login() {
           <span className="text-2xl font-semibold tracking-tight">Media Watch</span>
         </div>
 
-        {setup ? (
-          <>
-            <p className="mb-8 text-sm text-mist-500">Crea el primer perfil para empezar</p>
-            <div className="glass mx-auto flex max-w-sm gap-2 rounded-2xl p-2">
-              <input
-                autoFocus
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && newName.trim() && create.mutate()}
-                placeholder="Tu nombre"
-                className="flex-1 bg-transparent px-3 py-2 text-sm outline-none placeholder:text-mist-600"
-              />
-              <button
-                disabled={!newName.trim() || create.isPending}
-                onClick={() => create.mutate()}
-                className="rounded-xl bg-mist-100 px-4 py-2 text-sm font-semibold text-ink-950 disabled:opacity-40"
-              >
-                Crear
-              </button>
-            </div>
-          </>
-        ) : selected ? (
+        {selected ? (
           <form
             onSubmit={(e) => {
               e.preventDefault();

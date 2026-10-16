@@ -316,16 +316,14 @@ export default async function authRoutes(app: FastifyInstance) {
     // además que el Host sea localhost y que el Origin, si viene, sea el propio servidor.
     if (first && MODO_PORTABLE) {
       const host = String(req.headers.host ?? '').toLowerCase();
-      const hostSinPuerto = host.replace(/:\d+$/, '');
       const origen = req.headers.origin;
       let origenPropio = true;
       if (origen) {
         try { origenPropio = new URL(origen).host.toLowerCase() === host; } catch { origenPropio = false; }
       }
-      const ipLocal = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.ip);
-      const hostLocal = ['localhost', '127.0.0.1', '[::1]'].includes(hostSinPuerto);
-      if (!ipLocal || !hostLocal || !origenPropio) {
-        return reply.code(403).send({ error: 'El primer administrador solo puede crearse desde este equipo' });
+      const ipLocal = esIpLocalOTailscale(req.ip);
+      if (!ipLocal || deFuera(req) || !origenPropio) {
+        return reply.code(403).send({ error: 'El primer administrador solo puede crearse desde la red local' });
       }
     }
     // MediaWatch Server: el primer perfil es el administrador y quien llegue antes se queda
@@ -346,6 +344,21 @@ export default async function authRoutes(app: FastifyInstance) {
       const row = db
         .prepare('INSERT INTO users (name, color, pin, pin_len, is_admin, kid_ratings, created_at) VALUES (?,?,?,?,?,?,?) RETURNING id')
         .get(name.trim(), color, pin ? hashPin(pin) : null, pin ? String(pin).length : null, finalAdmin, kidRatingsJson, new Date().toISOString()) as { id: number };
+
+      if (first) {
+        const token = randomBytes(32).toString('hex');
+        db.prepare('INSERT INTO sessions (token, user_id, created_at, cifrado) VALUES (?,?,?,1)').run(hashToken(token), row.id, new Date().toISOString());
+        const cifrada = req.headers['x-forwarded-proto'] === 'https' || req.protocol === 'https';
+        reply.setCookie(COOKIE, token, {
+          path: '/',
+          httpOnly: true,
+          sameSite: 'lax',
+          secure: cifrada,
+          maxAge: 60 * 60 * 24 * 365,
+        });
+        return { id: row.id, token };
+      }
+
       return { id: row.id };
     } catch {
       return reply.code(409).send({ error: 'Ya existe un perfil con ese nombre' });
