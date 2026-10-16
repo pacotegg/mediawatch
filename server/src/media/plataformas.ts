@@ -455,15 +455,37 @@ function enBiblioteca(tmdbIds: number[], kind: 'movie' | 'show'): Map<number, nu
   return m;
 }
 
+/**
+ * Qué se le puede enseñar de TMDb a un perfil con límite de edad (`kid_ratings`), que no conoce los títulos de fuera.
+ * - Películas: solo las que TMDb clasifica en España como A/Ai (todos los públicos) o 7/7i, según lo que permita el perfil.
+ *   TMDb pone 12 y 16 en el MISMO nivel (medido: `certification=12` y `=16` devuelven 1.085 las dos), así que no se
+ *   puede dejar pasar «12» sin dejar pasar «16»: un perfil que llegue a 12 queda en lo de 7. Lo que no tiene
+ *   clasificación, queda fuera (el filtro de TMDb lo excluye).
+ * - Series: `discover/tv` no tiene filtro por edad, así que no se ofrece nada.
+ * `null`: sin límite. `'nada'`: no hay nada que ofrecer.
+ */
+export function filtroDeEdad(kind: 'movie' | 'show', categorias: string[] | null | undefined): Record<string, string> | 'nada' | null {
+  if (!Array.isArray(categorias) || categorias.length === 0) return null;
+  if (kind === 'show') return 'nada';
+  const clasificaciones: string[] = [];
+  if (categorias.includes('TP')) clasificaciones.push('A', 'Ai');
+  if (categorias.includes('7')) clasificaciones.push('7', '7i');
+  if (clasificaciones.length === 0) return 'nada';
+  return { certification_country: 'ES', certification: clasificaciones.join('|') };
+}
+
 export async function catalogo(
   clave: string,
   kind: 'movie' | 'show',
   orden: string,
   pagina: number,
-): Promise<{ total: number; paginas: number; items: FichaPlataforma[] }> {
+  categoriasDelPerfil?: string[] | null,
+): Promise<{ total: number; paginas: number; items: FichaPlataforma[]; restringido?: boolean }> {
   const plat = PLATAFORMAS.find((p) => p.clave === clave);
   if (!plat) throw new Error('Plataforma desconocida: ' + clave);
   const tipo = kind === 'movie' ? 'movie' : 'tv';
+  const edad = filtroDeEdad(kind, categoriasDelPerfil);
+  if (edad === 'nada') return { total: 0, paginas: 0, items: [], restringido: true };
   const r = await tmdb<RespuestaDescubrir>('/discover/' + tipo, {
     watch_region: 'ES',
     with_watch_providers: String(plat.id),
@@ -471,12 +493,15 @@ export async function catalogo(
     sort_by: orden,
     page: String(Math.max(1, Math.min(500, pagina))),
     language: config.tmdbLanguage,
+    include_adult: 'false',
+    ...(edad ?? {}),
   });
 
   const mapa = enBiblioteca(r.results.map((x) => x.id), kind);
   return {
     total: r.total_results,
     paginas: r.total_pages,
+    ...(edad ? { restringido: true } : {}),
     items: r.results.map((x) => {
       const fecha = x.release_date || x.first_air_date || '';
       return {

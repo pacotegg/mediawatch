@@ -80,7 +80,7 @@ export default async function plataformaRoutes(app: FastifyInstance) {
     const orden = ORDENES[q.orden ?? 'popular'] ?? ORDENES.popular;
     const ordenReal = kind === 'show' && orden.startsWith('primary_release_date') ? 'first_air_date.desc' : orden;
     try {
-      return await catalogo(clave, kind, ordenReal, Number(q.pagina ?? 1) || 1);
+      return await catalogo(clave, kind, ordenReal, Number(q.pagina ?? 1) || 1, currentUser(req)?.kid_ratings);
     } catch (err) {
       return reply.code(502).send({ error: (err as Error).message });
     }

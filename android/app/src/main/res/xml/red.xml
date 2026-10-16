@@ -7,12 +7,14 @@
   No se puede acotar por dirección porque la elige el usuario al conectar (y
   cambia si cambia el router), así que se permite en general. Lo que viaja por
   ahí no sale de la red de casa.
+
+  Solo se confía en las CA del sistema (no en las que instale el usuario): el dominio de fuera lleva un certificado
+  público, y una CA instalada a mano abriría la puerta a interceptar la sesión. (16/10/2026)
 -->
 <network-security-config>
   <base-config cleartextTrafficPermitted="true">
     <trust-anchors>
       <certificates src="system" />
-      <certificates src="user" />
     </trust-anchors>
   </base-config>
 </network-security-config>
