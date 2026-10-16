@@ -56,7 +56,11 @@ export function olvidarToken() {
   }
 }
 
-async function pedir<T>(ruta: string, opciones?: RequestInit): Promise<T> {
+/**
+ * `tope`: cuánto se espera la respuesta. 12 s valen para casi todo; las búsquedas y bajadas de subtítulos de internet
+ * pueden tardar más en el servidor (su propio tope es de 90 s y 2 min) y la tele las daba por fallidas a los 12 s.
+ */
+async function pedir<T>(ruta: string, opciones?: RequestInit, tope = 12000): Promise<T> {
   const cabeceras: Record<string, string> = {};
   if (opciones && opciones.body) cabeceras['Content-Type'] = 'application/json';
 
@@ -69,7 +73,7 @@ async function pedir<T>(ruta: string, opciones?: RequestInit): Promise<T> {
 
   for (let intento = 1; intento <= maxIntentos; intento++) {
     const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
-    const reloj = ctrl ? window.setTimeout(() => ctrl.abort(), 12000) : 0;
+    const reloj = ctrl ? window.setTimeout(() => ctrl.abort(), tope) : 0;
     try {
       const opts = Object.assign({ headers: cabeceras }, opciones, ctrl ? { signal: ctrl.signal } : {});
       const res = await fetch(servidor() + ruta, opts);
@@ -372,17 +376,17 @@ export const api = {
     pedir<{ ok: boolean; exitCode: number | null; outcome?: string; title?: string }>('/api/subtitles/fetch', {
       method: 'POST',
       body: JSON.stringify({ fileId, languages: 'es,en', wait: true }),
-    }),
+    }, 21 * 60_000),
   buscarCandidatosSubtitulos: (fileId: number, languages = 'es,en') =>
     pedir<{ ok: boolean; candidates: CandidatoSubtitulo[] }>('/api/subtitles/search', {
       method: 'POST',
       body: JSON.stringify({ fileId, languages }),
-    }),
+    }, 100_000),
   descargarCandidatoSubtitulo: (fileId: number, c: CandidatoSubtitulo) =>
     pedir<{ ok: boolean; trackId?: string; fileName?: string }>('/api/subtitles/download', {
       method: 'POST',
       body: JSON.stringify({ fileId, provider: c.provider, subId: c.providerId, language: c.language, release: c.release, forced: c.forced }),
-    }),
+    }, 130_000),
   // Devuelve 202 con `{generating}` mientras el servidor la fabrica.
   // `solo=1`: mirar si ya está hecha, sin pedir que la fabrique. Generarla
   // mientras se ve la película deja al vídeo sin disco.
