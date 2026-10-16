@@ -1,0 +1,15 @@
+{
+  "id": "casa.tvwatch",
+  "version": "1.0.0",
+  "vendor": "MediaWatch",
+  "type": "web",
+  "main": "index.html",
+  "title": "Media Watch",
+  "icon": "icon.png",
+  "largeIcon": "icon.png",
+  "resolution": "1920x1080",
+  "transparent": false,
+  "requiredPermissions": [
+    "network"
+  ]
+}

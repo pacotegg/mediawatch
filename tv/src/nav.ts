@@ -664,7 +664,10 @@ export function manejadorActual(): Manejador | null {
 
 export function iniciarNavegacion() {
   document.addEventListener('keydown', (e) => {
-    const tecla = e.keyCode;
+    let tecla = e.keyCode;
+    // En televisores LG webOS, la tecla Atrás del Magic Remote envía keyCode 461.
+    // Se unifica con TECLA.ATRAS (10009) para que toda la navegación y menús respondan idénticos.
+    if (tecla === 461) tecla = TECLA.ATRAS;
 
     /*
      * Si la pantalla activa revienta manejando una tecla, la excepcion subia

@@ -7,6 +7,7 @@ import {
   servidor,
   token,
   idioma,
+  plataformaTV,
   urlReproduccion,
   urlExtra,
   type Extra,
@@ -88,6 +89,13 @@ function versionTizen(): string {
   } catch (e) {
     return '?';
   }
+}
+
+function infoPlataforma(): string {
+  const plat = plataformaTV();
+  if (plat === 'tizen') return 'Samsung Tizen ' + versionTizen();
+  if (plat === 'webos') return 'LG webOS';
+  return 'Web / Emulador';
 }
 
 /*
@@ -5127,8 +5135,8 @@ function pantallaAjustes() {
       '<button class="boton" data-nav data-desemparejar>' + tr('Desemparejar esta tele', 'Unpair this TV') + '</button>') +
 
     grupo(tr('Acerca de', 'About'), '',
-      '<p class="dato">Media Watch para Samsung Tizen · Creado por Paco Gamiz</p>' +
-      '<p class="dato">App ' + VERSION_APP + ' · Tizen ' + esc(versionTizen()) + ' · ' + bibliotecas.length + ' ' + tr('bibliotecas', 'libraries') + '</p>') +
+      '<p class="dato">Media Watch para Smart TV · Creado por Paco Gamiz</p>' +
+      '<p class="dato">App ' + VERSION_APP + ' · ' + esc(infoPlataforma()) + ' · ' + bibliotecas.length + ' ' + tr('bibliotecas', 'libraries') + '</p>') +
 
     '</div>';
 

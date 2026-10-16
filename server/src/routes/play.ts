@@ -235,18 +235,21 @@ const PERFILES: Record<string, { audio: Set<string> }> = {
   samsung2021: {
     audio: new Set(['aac', 'ac3', 'eac3', 'eac3_ddp_atmos', 'eac3/atmos', 'mp3', 'opus', 'wmav2', 'wmapro', 'pcm_s16le', 'pcm_s24le', 'ac4']),
   },
+  lgwebos: {
+    audio: new Set(['aac', 'ac3', 'eac3', 'eac3_ddp_atmos', 'eac3/atmos', 'mp3', 'opus', 'pcm_s16le', 'pcm_s24le']),
+  },
 };
 
 /**
  * Qué audio lee el cliente que pregunta.
  *
- * Hay dos formas de decirlo. Un nombre de perfil —`samsung2021`— vale cuando el
+ * Hay dos formas de decirlo. Un nombre de perfil —`samsung2021`, `lgwebos`— vale cuando el
  * aparato es siempre el mismo y su ficha técnica está publicada. Un móvil no:
  * dos Android de la misma marca traen decodificadores distintos según el chip,
  * así que la aplicación mira su propio `MediaCodecList` y manda la lista real,
  * `lista:aac,mp3,opus,flac`. Adivinarlo desde aquí sería inventárselo.
  */
-function audioDelCliente(perfil: string | undefined): Set<string> | null {
+export function audioDelCliente(perfil: string | undefined): Set<string> | null {
   if (!perfil) return null;
   if (perfil.startsWith('lista:')) {
     const codecs = perfil.slice(6).split(',').map((c) => c.trim().toLowerCase()).filter(Boolean);
@@ -255,7 +258,7 @@ function audioDelCliente(perfil: string | undefined): Set<string> | null {
   return PERFILES[perfil]?.audio ?? null;
 }
 
-function audioCompatible(perfil: string | undefined, codec: string | undefined): boolean {
+export function audioCompatible(perfil: string | undefined, codec: string | undefined): boolean {
   const p = audioDelCliente(perfil);
   if (!p) return true; // sin perfil no se sabe: no se estorba
   return p.has(String(codec ?? '').toLowerCase());
