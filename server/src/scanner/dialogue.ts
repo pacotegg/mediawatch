@@ -2,24 +2,28 @@ import { readFileSync } from 'node:fs';
 import { db } from '../db.ts';
 import { detectarResumenes } from '../media/resumenes.ts';
 
-db.exec(`
-CREATE TABLE IF NOT EXISTS dialogue_files (
-  file_id    INTEGER PRIMARY KEY REFERENCES media_files(id) ON DELETE CASCADE,
-  track_id   TEXT NOT NULL,
-  language   TEXT,
-  cues       INTEGER NOT NULL,
-  indexed_at TEXT NOT NULL
-);
+try {
+  db.exec(`
+  CREATE TABLE IF NOT EXISTS dialogue_files (
+    file_id    INTEGER PRIMARY KEY REFERENCES media_files(id) ON DELETE CASCADE,
+    track_id   TEXT NOT NULL,
+    language   TEXT,
+    cues       INTEGER NOT NULL,
+    indexed_at TEXT NOT NULL
+  );
 
--- remove_diacritics 2 so "senor" finds "señor" and "accion" finds "acción":
--- nobody types accents into a search box.
-CREATE VIRTUAL TABLE IF NOT EXISTS dialogue USING fts5(
-  text,
-  file_id UNINDEXED,
-  start_ms UNINDEXED,
-  tokenize='unicode61 remove_diacritics 2'
-);
-`);
+  -- remove_diacritics 2 so "senor" finds "señor" and "accion" finds "acción":
+  -- nobody types accents into a search box.
+  CREATE VIRTUAL TABLE IF NOT EXISTS dialogue USING fts5(
+    text,
+    file_id UNINDEXED,
+    start_ms UNINDEXED,
+    tokenize='unicode61 remove_diacritics 2'
+  );
+  `);
+} catch (err) {
+  console.warn('[dialogue] FTS5 no disponible en este motor SQLite; búsqueda por diálogo desactivada:', (err as Error).message);
+}
 
 const TIMING = /(\d{2}):(\d{2}):(\d{2})[,.](\d{3})\s*-->/;
 

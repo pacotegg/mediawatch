@@ -230,12 +230,40 @@ function SubtitlesTab() {
 }
 
 function LibraryTab() {
+  const queryClient = useQueryClient();
   const { data: stats } = useQuery({ queryKey: ['stats'], queryFn: api.stats });
   const { data: libraries } = useQuery({ queryKey: ['libraries'], queryFn: api.libraries });
   const { data: sessions } = useQuery({ queryKey: ['sessions'], queryFn: api.sessions, refetchInterval: 4000 });
+  const { data: serverSettings } = useQuery({ queryKey: ['server-settings'], queryFn: api.serverSettings });
   const [message, setMessage] = useState('');
   const [code, setCode] = useState('');
   const [pairResult, setPairResult] = useState('');
+
+  const [modalLib, setModalLib] = useState(false);
+  const [libNombre, setLibNombre] = useState('Películas');
+  const [libTipo, setLibTipo] = useState<'movie' | 'show'>('movie');
+  const [rutaActual, setRutaActual] = useState('');
+  const [rutaSeleccionada, setRutaSeleccionada] = useState('');
+
+  const { data: browseData, isLoading: loadingBrowse } = useQuery({
+    queryKey: ['browse', rutaActual],
+    queryFn: () => api.systemBrowse(rutaActual || undefined),
+    enabled: modalLib,
+  });
+
+  const saveLib = useMutation({
+    mutationFn: async () => {
+      const actuales = (serverSettings?.libraries ?? []).map((l) => ({ name: l.name, path: l.path, kind: l.kind as 'movie' | 'show' }));
+      const nuevas = [...actuales, { name: libNombre.trim(), path: rutaSeleccionada, kind: libTipo }];
+      await api.saveSystemLibraries(nuevas);
+    },
+    onSuccess: () => {
+      setModalLib(false);
+      queryClient.invalidateQueries({ queryKey: ['libraries'] });
+      queryClient.invalidateQueries({ queryKey: ['server-settings'] });
+      scan.mutate();
+    },
+  });
 
   const pair = useMutation({
     mutationFn: () => api.pairDevice(code),
@@ -270,6 +298,90 @@ function LibraryTab() {
             </div>
           ))}
         </div>
+        <div className="pt-2 flex justify-end">
+          <Button variant="ghost" onClick={() => { setRutaActual(''); setRutaSeleccionada(''); setModalLib(true); }}>
+            + Añadir carpeta
+          </Button>
+        </div>
+
+        {modalLib && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+            <div className="w-full max-w-lg rounded-3xl border border-white/15 bg-ink-900 p-6 shadow-2xl flex flex-col max-h-[85vh]">
+              <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                <h3 className="text-sm font-semibold text-white">Añadir carpeta de biblioteca</h3>
+                <button onClick={() => setModalLib(false)} className="rounded-lg p-1 text-mist-400 hover:text-white">✕</button>
+              </div>
+              <div className="py-4 space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-mist-300 mb-1">Nombre</label>
+                    <input
+                      type="text"
+                      value={libNombre}
+                      onChange={(e) => setLibNombre(e.target.value)}
+                      className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white focus:border-accent focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-mist-300 mb-1">Tipo</label>
+                    <select
+                      value={libTipo}
+                      onChange={(e) => setLibTipo(e.target.value as 'movie' | 'show')}
+                      className="w-full rounded-xl border border-white/10 bg-ink-950 px-3 py-2 text-xs text-white focus:border-accent focus:outline-none"
+                    >
+                      <option value="movie">Películas</option>
+                      <option value="show">Series</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-medium text-mist-300">Explorar servidor:</span>
+                    {browseData?.parent && (
+                      <button
+                        onClick={() => { setRutaActual(browseData.parent || ''); setRutaSeleccionada(browseData.parent || ''); }}
+                        className="text-xs text-accent hover:underline"
+                      >
+                        ↑ Subir nivel
+                      </button>
+                    )}
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/30 p-2 font-mono text-xs text-mist-300 truncate">
+                    {rutaActual || '(Raíz del sistema)'}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-white/10 bg-black/20 p-2 overflow-y-auto max-h-48 space-y-1">
+                  {loadingBrowse ? (
+                    <div className="py-4 text-center text-xs text-mist-500">Cargando…</div>
+                  ) : browseData?.dirs && browseData.dirs.length > 0 ? (
+                    browseData.dirs.map((dir) => (
+                      <div
+                        key={dir.path}
+                        onClick={() => { setRutaActual(dir.path); setRutaSeleccionada(dir.path); }}
+                        className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs cursor-pointer transition ${
+                          rutaSeleccionada === dir.path ? 'bg-accent/20 text-accent font-semibold' : 'text-mist-200 hover:bg-white/5'
+                        }`}
+                      >
+                        <span>📁</span>
+                        <span className="truncate">{dir.name}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="py-4 text-center text-xs text-mist-500">No hay subcarpetas aquí.</div>
+                  )}
+                </div>
+              </div>
+              <div className="pt-3 border-t border-white/10 flex justify-end gap-2">
+                <Button variant="ghost" onClick={() => setModalLib(false)}>Cancelar</Button>
+                <Button disabled={!rutaSeleccionada || !libNombre.trim() || saveLib.isPending} onClick={() => saveLib.mutate()}>
+                  Añadir carpeta
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </Panel>
 
       <Panel title="Reproducciones activas" subtitle="Qué está sirviendo el servidor ahora mismo y en qué modo.">

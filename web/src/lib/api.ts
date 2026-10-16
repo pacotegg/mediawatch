@@ -372,6 +372,16 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patch),
     }),
+  systemBrowse: (dir?: string) =>
+    request<{ current: string; parent: string | null; dirs: { name: string; path: string }[] }>(
+      `/api/system/browse${dir ? `?dir=${encodeURIComponent(dir)}` : ''}`,
+    ),
+  saveSystemLibraries: (libraries: { name: string; path: string; kind: 'movie' | 'show' }[]) =>
+    request<{ ok: true; libraries: { name: string; path: string; kind: 'movie' | 'show' }[] }>('/api/system/libraries', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ libraries }),
+    }),
 
   identificarEstado: () => request<IdentificarEstado>('/api/identificar/estado'),
   identificarEjecutar: () => post<{ arrancado: boolean; motivo?: string }>('/api/identificar/ejecutar', {}),
