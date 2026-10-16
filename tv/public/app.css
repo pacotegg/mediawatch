@@ -813,7 +813,17 @@ body.rend-rapido .lamina img {
   transform: translateX(-50%) translateY(0);
 }
 
-/* Visor Edición Coleccionista a Pantalla Completa */
+/*
+ * Visor Edición Coleccionista a pantalla completa.
+ *
+ * Una caja de dos hojas con bisagra. La TAPA (hoja izquierda) tiene dos caras: por fuera la carátula, por dentro el libreto.
+ * Cerrada está girada 180° sobre la bandeja con la carátula a la vista (la caja se ve entera, sin asomar el disco); al abrirse
+ * pasa a la izquierda girando sobre la bisagra y enseña el libreto.
+ *
+ * Todo se anima con transform y opacity: en la tele, animar width obliga a recalcular el diseño en cada fotograma
+ * (ver la nota del disco del estuche, arriba). Las hojas miden lo mismo (400 x 580) para que la tapa cierre sobre la bandeja
+ * sin dejar nada a la vista; el pivote está en el centro de la bisagra (16 px), por eso calc(100% + 8px).
+ */
 .capa-coleccionista {
   position: fixed;
   top: 0;
@@ -848,7 +858,7 @@ body.rend-rapido .lamina img {
 }
 
 .coleccionista-escenario {
-  perspective: 1600px;
+  perspective: 1800px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -856,64 +866,184 @@ body.rend-rapido .lamina img {
 }
 
 .coleccionista-estuche {
-  display: flex;
-  align-items: center;
   position: relative;
   transform-style: preserve-3d;
-  box-shadow: 0 40px 90px rgba(0, 0, 0, 0.9);
-  border-radius: 12px;
-  animation: abrirEstucheColeccionista 0.75s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transition: transform 0.16s ease-out;
   will-change: transform;
+}
+
+/* both: el estado final se mantiene hasta que el script suelta la clase (1,3 s) y pone la inclinación a mano. */
+.coleccionista-estuche.animando-apertura {
+  animation: abrirEstucheColeccionista 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 @keyframes abrirEstucheColeccionista {
   from {
-    transform: translate(var(--origen-x, 0px), var(--origen-y, 0px)) scale(var(--escala-inicial, 0.42)) rotateY(-14deg) rotateX(2deg);
+    transform: translate(var(--origen-x, 0px), var(--origen-y, 0px)) scale(var(--escala-inicial, 0.42)) rotateY(-18deg) rotateX(4deg);
   }
   to {
     transform: translate(0, 0) scale(1) rotateY(var(--rot-y, -8deg)) rotateX(2deg);
   }
 }
 
-.coleccionista-portada {
+.coleccionista-libro {
   position: relative;
-  width: 360px;
-  height: 520px;
-  border-radius: 10px 0 0 10px;
+  display: flex;
+  align-items: stretch;
+  transform-style: preserve-3d;
+}
+
+/* Cerrada, la caja es solo la hoja derecha: se centra corriendo el libro media caja (400 + 16) / 2 a la izquierda. */
+.animando-apertura .coleccionista-libro {
+  animation: centrarLibroColeccionista 0.95s cubic-bezier(0.5, 0, 0.15, 1) 0.3s both;
+}
+
+@keyframes centrarLibroColeccionista {
+  from { transform: translateX(-208px); }
+  to { transform: translateX(0); }
+}
+
+.coleccionista-pagina {
+  position: relative;
+  width: 400px;
+  height: 580px;
+  transform-style: preserve-3d;
+}
+
+.coleccionista-tapa {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  transform-origin: calc(100% + 8px) 50%;
+  transform-style: preserve-3d;
+}
+
+/* Los 2 px de profundidad evitan que la tapa y la bandeja, en el mismo plano al cerrar, se pisen. */
+.animando-apertura .coleccionista-tapa {
+  animation: abrirTapaColeccionista 0.95s cubic-bezier(0.5, 0, 0.15, 1) 0.3s both;
+}
+
+@keyframes abrirTapaColeccionista {
+  from { transform: translateZ(2px) rotateY(180deg); }
+  to { transform: translateZ(2px) rotateY(0deg); }
+}
+
+.cara {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
   background: #09090c;
   border: 1px solid rgba(255, 255, 255, 0.22);
-  border-right: none;
-  transform-origin: right center;
-  animation: desdoblarPortada 0.75s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  box-sizing: border-box;
+  /* Cada cara se oculta cuando mira hacia atrás: sin esto la carátula se veía en espejo mientras giraba. */
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
 }
 
-@keyframes desdoblarPortada {
-  from { transform: rotateY(45deg); }
-  to { transform: rotateY(0deg); }
+.cara-exterior {
+  transform: rotateY(180deg);
+  border-radius: 10px;
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.85);
 }
 
-.coleccionista-portada img {
+/* Abierta, la cara exterior queda oculta: que su destello infinito no siga trabajando. */
+.coleccionista-estuche:not(.animando-apertura) .cara-exterior .estuche-haz-luz-tv {
+  animation: none;
+}
+
+.cara-exterior img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
 }
 
+.cara-interior {
+  display: flex;
+  flex-direction: column;
+  padding: 30px 30px 26px 36px;
+  background: #14151c;
+  border-right: none;
+  border-radius: 10px 0 0 10px;
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.85);
+}
+
+.libreto-cabecera {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: #e2b755;
+}
+
+.libreto-titulo {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-bottom: 14px;
+  font-size: 34px;
+  font-weight: 800;
+  line-height: 1.12;
+  color: #fff;
+}
+
+.libreto-fila {
+  display: flex;
+  gap: 10px;
+  margin-top: 5px;
+  font-size: 17px;
+  line-height: 1.35;
+  color: #cbd5e1;
+}
+
+.libreto-fila b {
+  flex: 0 0 98px;
+  font-weight: 600;
+  color: #94a3b8;
+}
+
+.libreto-sinopsis {
+  display: -webkit-box;
+  -webkit-line-clamp: 7;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-top: 16px;
+  font-size: 17px;
+  line-height: 1.42;
+  color: #e2e8f0;
+}
+
+.libreto-tecnica {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+}
+
 .coleccionista-lomo-bisagra {
-  width: 18px;
-  height: 520px;
+  flex: 0 0 16px;
+  width: 16px;
+  height: 580px;
   background: linear-gradient(to right, #111116, #2d2e38, #111116);
   border-top: 1px solid rgba(255, 255, 255, 0.22);
   border-bottom: 1px solid rgba(255, 255, 255, 0.22);
+  box-sizing: border-box;
   box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.9);
-  z-index: 2;
 }
 
 .coleccionista-bandeja {
   position: relative;
-  width: 480px;
-  height: 520px;
+  box-sizing: border-box;
+  flex: 0 0 400px;
+  width: 400px;
+  height: 580px;
   border-radius: 0 10px 10px 0;
   background: #0e0f16;
   border: 1px solid rgba(255, 255, 255, 0.22);
@@ -922,13 +1052,7 @@ body.rend-rapido .lamina img {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  transform-origin: left center;
-  animation: desdoblarBandeja 0.75s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-@keyframes desdoblarBandeja {
-  from { transform: rotateY(-65deg); }
-  to { transform: rotateY(0deg); }
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.85);
 }
 
 .coleccionista-bandeja-fondo {
@@ -944,8 +1068,8 @@ body.rend-rapido .lamina img {
 
 .coleccionista-bandeja-circulo {
   position: absolute;
-  width: 420px;
-  height: 420px;
+  width: 384px;
+  height: 384px;
   border-radius: 50%;
   border: 2px dashed rgba(255, 255, 255, 0.08);
   box-shadow: inset 0 0 35px rgba(0, 0, 0, 0.85);
@@ -953,14 +1077,17 @@ body.rend-rapido .lamina img {
 
 .coleccionista-disco {
   position: relative;
-  width: 420px;
-  height: 420px;
+  width: 360px;
+  height: 360px;
   border-radius: 50%;
   object-fit: contain;
   box-shadow: 0 18px 45px rgba(0, 0, 0, 0.9);
-  transform: rotate(0deg);
   z-index: 3;
-  animation: rotarDiscoSteelbook 0.85s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Sale girando y se para recto (0°) justo cuando la tapa termina de abrirse. */
+.animando-apertura .coleccionista-disco {
+  animation: rotarDiscoSteelbook 1.15s cubic-bezier(0.16, 1, 0.3, 1) 0.3s both;
 }
 
 @keyframes rotarDiscoSteelbook {
@@ -983,8 +1110,8 @@ body.rend-rapido .lamina img {
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-top: 24px;
-  animation: aparecerInfoColeccionista 0.6s ease-out 0.25s both;
+  margin-top: 34px;
+  animation: aparecerInfoColeccionista 0.6s ease-out 0.9s both;
 }
 
 @keyframes aparecerInfoColeccionista {
@@ -992,20 +1119,12 @@ body.rend-rapido .lamina img {
   to { opacity: 1; transform: translateY(0); }
 }
 
-.coleccionista-titulo {
-  font-size: 28px;
-  font-weight: 700;
-  color: #fff;
-  margin-bottom: 8px;
-  text-align: center;
-}
-
 .coleccionista-chips {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 10px;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
 .coleccionista-chip {
@@ -1013,7 +1132,7 @@ body.rend-rapido .lamina img {
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.15);
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   letter-spacing: 0.5px;
   color: #fff;

@@ -2698,6 +2698,26 @@ function dialogoEdicionColeccionista(ficha: Ficha, elOrigen?: HTMLElement | null
     chips.push(horas > 0 ? horas + 'h ' + mins + 'm' : mins + 'm');
   }
 
+  /*
+   * Libreto de la hoja de dentro: lo que se vería impreso en el interior de una edición de coleccionista. Todo sale de la
+   * ficha que ya está cargada; lo que falte, no se pinta.
+   */
+  const nombresDe = (rol: string, tope: number) =>
+    (ficha.cast || []).filter((p) => p.role === rol).slice(0, tope).map((p) => p.name).join(', ');
+  const direccion = nombresDe('director', 2);
+  const reparto = nombresDe('actor', 4);
+  const generos = (ficha.genres || []).slice(0, 3).join(', ');
+  const fichaVideo = ficha.files.filter((f) => f.id !== undefined && f.height).sort((a, b) => (b.height || 0) - (a.height || 0))[0];
+  const textoVideo = fichaVideo
+    ? (fichaVideo.width || '?') + '×' + fichaVideo.height + (fichaVideo.video_codec ? ' ' + fichaVideo.video_codec.toUpperCase() : '') + (fichaVideo.hdr ? ' · ' + fichaVideo.hdr : '')
+    : '';
+  const textoAudio = (ficha.tags || []).filter((t) => t === 'Atmos' || t === 'DTS-HD' || t === 'TrueHD' || t === '5.1' || t === '7.1').join(' · ');
+  const fila = (clave: string, valor: string) =>
+    valor ? '<div class="libreto-fila"><b>' + clave + '</b><span>' + esc(valor) + '</span></div>' : '';
+
+  const marcaFormato = '<div class="estuche-lomo-sup-tv' + (es4k ? ' es-4k' : '') + '" style="height: 28px;">' +
+    '<span class="estuche-lomo-texto-tv" style="font-size: 12px;">' + (es4k ? '4K ULTRA HD' : 'Blu-ray') + '</span></div>';
+
   const capa = document.createElement('div');
   capa.className = 'capa capa-coleccionista';
   capa.style.setProperty('--origen-x', deltaX + 'px');
@@ -2707,39 +2727,40 @@ function dialogoEdicionColeccionista(ficha: Ficha, elOrigen?: HTMLElement | null
     (ficha.has_fanart ? '<img class="coleccionista-fondo-pantalla" src="' + imagen.fondo(ficha.id, 1920) + '" alt="">' : '') +
     '<div class="coleccionista-escenario">' +
     '<div class="coleccionista-estuche animando-apertura" style="--rot-y: ' + rotacionY + 'deg;">' +
-    // Cara izquierda: Portada física completa en alta definición
-    '<div class="coleccionista-portada">' +
-    '<div class="estuche-lomo-sup-tv' + (es4k ? ' es-4k' : '') + '" style="height: 26px;">' +
-    '<span class="estuche-lomo-texto-tv" style="font-size: 11px;">' + (es4k ? '4K ULTRA HD' : 'Blu-ray') + '</span>' +
-    '</div>' +
+    '<div class="coleccionista-libro">' +
+    // Hoja izquierda: la tapa. Cerrada, está girada 180° sobre la bandeja con la carátula a la vista; al abrirse pasa a la
+    // izquierda y enseña el libreto. Dos caras, cada una oculta cuando mira hacia atrás: sin eso, la carátula se veía en espejo
+    // mientras giraba.
+    '<div class="coleccionista-pagina">' +
+    '<div class="coleccionista-tapa">' +
+    '<div class="cara cara-exterior">' + marcaFormato +
     '<img src="' + imagen.poster(ficha.id, 1000) + '" alt="' + esc(ficha.title) + '">' +
-    '<div class="estuche-brillo-tv"></div>' +
-    '<div class="estuche-haz-luz-tv"></div>' +
+    '<div class="estuche-brillo-tv"></div><div class="estuche-haz-luz-tv"></div></div>' +
+    '<div class="cara cara-interior">' +
+    '<div class="libreto-cabecera"><span>TVWATCH ARCHIVE</span><span>' + (ficha.year ? esc(String(ficha.year)) : '') + '</span></div>' +
+    '<div class="libreto-titulo">' + esc(ficha.title) + '</div>' +
+    fila('Dirección', direccion) + fila('Reparto', reparto) + fila('Género', generos) +
+    (ficha.plot ? '<div class="libreto-sinopsis">' + esc(ficha.plot) + '</div>' : '') +
+    '<div class="libreto-tecnica">' + fila('Vídeo', textoVideo) + fila('Audio', textoAudio) +
+    fila('Duración', ficha.runtime ? Math.floor(ficha.runtime / 60) + ' h ' + Math.round(ficha.runtime % 60) + ' min' : '') + '</div>' +
+    '</div>' +
+    '</div>' +
     '</div>' +
     // Bisagra central
     '<div class="coleccionista-lomo-bisagra"></div>' +
-    // Cara derecha: Bandeja con disco
+    // Hoja derecha: bandeja con el disco
     '<div class="coleccionista-bandeja">' +
     (ficha.has_fanart ? '<img class="coleccionista-bandeja-fondo" src="' + imagen.fondo(ficha.id, 1280) + '" alt="">' : '') +
     '<div class="coleccionista-bandeja-circulo"></div>' +
     (ficha.has_discart
-      ? '<img class="coleccionista-disco girando" src="' + imagen.disco(ficha.id, 800) + '" alt="Disco ' + esc(ficha.title) + '">'
-      : '<img class="coleccionista-disco girando" src="' + imagen.poster(ficha.id, 800) + '" style="border-radius:50%; object-fit:cover;" alt="Disco">') +
+      ? '<img class="coleccionista-disco" src="' + imagen.disco(ficha.id, 800) + '" alt="Disco ' + esc(ficha.title) + '">'
+      : '<img class="coleccionista-disco" src="' + imagen.poster(ficha.id, 800) + '" style="border-radius:50%; object-fit:cover;" alt="Disco">') +
     '<div class="coleccionista-pivote"></div>' +
-    // Tapa frontal exterior que cubre la caja al inicio y se abre en 3D
-    '<div class="coleccionista-tapa-exterior">' +
-    '<div class="estuche-lomo-sup-tv' + (es4k ? ' es-4k' : '') + '" style="height: 26px;">' +
-    '<span class="estuche-lomo-texto-tv" style="font-size: 11px;">' + (es4k ? '4K ULTRA HD' : 'Blu-ray') + '</span>' +
-    '</div>' +
-    '<img src="' + imagen.poster(ficha.id, 1000) + '" alt="' + esc(ficha.title) + '">' +
-    '<div class="estuche-brillo-tv"></div>' +
-    '<div class="estuche-haz-luz-tv"></div>' +
     '</div>' +
     '</div>' +
     '</div>' +
     '</div>' +
     '<div class="coleccionista-info">' +
-    '<div class="coleccionista-titulo">' + esc(ficha.title) + '</div>' +
     '<div class="coleccionista-chips">' +
     chips.map((c) => '<span class="coleccionista-chip' + (c.indexOf('4K') >= 0 ? ' dorado' : '') + '">' + esc(c) + '</span>').join('') +
     '</div>' +
@@ -2749,35 +2770,32 @@ function dialogoEdicionColeccionista(ficha: Ficha, elOrigen?: HTMLElement | null
   marco.appendChild(capa);
 
   const estuche = capa.querySelector<HTMLElement>('.coleccionista-estuche')!;
-  const tapaExterior = capa.querySelector<HTMLElement>('.coleccionista-tapa-exterior');
+  let abierto = false;
 
   const actualizarPerspectiva = () => {
     estuche.style.transform = 'translate(0, 0) scale(1) rotateY(' + rotacionY + 'deg) rotateX(2deg)';
   };
 
-  // Al terminar la animación de apertura (850ms), retirar la clase y la tapa exterior para que no estorbe ni bloquee el transform
-  setTimeout(() => {
+  // Al acabar la animación (zoom + giro de la tapa, 1,3 s) se suelta la clase: la tapa y el libro ya están en su sitio
+  // definitivo, y el transform en línea deja inclinar con las flechas sin que la animación lo pise.
+  const temporizadorApertura = window.setTimeout(() => {
     estuche.classList.remove('animando-apertura');
-    if (tapaExterior && tapaExterior.parentElement) {
-      tapaExterior.parentElement.removeChild(tapaExterior);
-    }
+    abierto = true;
     actualizarPerspectiva();
-  }, 850);
+  }, 1300);
 
   const cerrar = () => {
+    window.clearTimeout(temporizadorApertura);
     if (capa.parentElement) capa.parentElement.removeChild(capa);
     alPulsar(teclasAntes);
     if (focoAntes) enfocar(focoAntes);
   };
 
   alPulsar((tecla) => {
-    if (tecla === TECLA.IZQUIERDA) {
-      rotacionY = Math.max(-28, rotacionY - 5);
-      actualizarPerspectiva();
-      return true;
-    }
-    if (tecla === TECLA.DERECHA) {
-      rotacionY = Math.min(28, rotacionY + 5);
+    if (tecla === TECLA.IZQUIERDA || tecla === TECLA.DERECHA) {
+      // Antes de que termine la apertura, la animación manda: tocar el transform ahora lo haría saltar.
+      if (!abierto) return true;
+      rotacionY = tecla === TECLA.IZQUIERDA ? Math.max(-28, rotacionY - 5) : Math.min(28, rotacionY + 5);
       actualizarPerspectiva();
       return true;
     }
