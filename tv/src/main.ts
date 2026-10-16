@@ -4677,14 +4677,137 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     const ahora = reproductor.tiempo();
     let actualN = 0;
     for (let n = 0; n < caps.length; n++) if (ahora >= caps[n].start) actualN = n;
-    const opciones: OpcionLista[] = caps.map((c, n) => ({ valor: n, texto: c.title, nota: reloj(c.start) }));
-    menuLista(
-      'Capítulos',
-      opciones,
-      actualN,
-      (n) => llevarA(caps[n].start),
-      () => alPulsar(manejarTeclas),
-    );
+
+    const capa = document.createElement('div');
+    capa.className = 'capa capa-capitulos';
+
+    let tarjetasHtml = '';
+    const anchoThumb = 300;
+    const altoThumb = 169;
+
+    for (let n = 0; n < caps.length; n++) {
+      const c = caps[n];
+      const esActual = n === actualN;
+      const dur = Math.max(0, c.end - c.start);
+      const transcurrido = Math.max(0, ahora - c.start);
+      const pct = dur > 0 ? Math.min(100, Math.max(0, Math.round((transcurrido / dur) * 100))) : 0;
+
+      let estiloThumb = '';
+      let claseThumb = 'thumb-capitulo';
+      if (tira && tira.times && tira.times.length) {
+        const nTile = miniaturaPara(c.start);
+        const porHoja = tira.columns * tira.rows;
+        const hoja = Math.floor(nTile / porHoja);
+        const dentro = nTile % porHoja;
+        const col = dentro % tira.columns;
+        const fila = Math.floor(dentro / tira.columns);
+        const bgSize = (tira.columns * anchoThumb) + 'px ' + (tira.rows * altoThumb) + 'px';
+        const bgPos = '-' + (col * anchoThumb) + 'px -' + (fila * altoThumb) + 'px';
+        estiloThumb = 'background-image:url(' + imagen.tira(fileId, hoja) + ');background-size:' + bgSize + ';background-position:' + bgPos + ';';
+      } else {
+        claseThumb += ' thumb-fallback';
+      }
+
+      tarjetasHtml +=
+        '<div class="tarjeta-capitulo' + (esActual ? ' activa' : '') + '" data-idx="' + n + '">' +
+        '<div class="' + claseThumb + '" style="' + estiloThumb + '">' +
+        (claseThumb.indexOf('thumb-fallback') >= 0
+          ? '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m10 9 5 3-5 3V9z"/></svg>'
+          : '') +
+        (esActual ? '<span class="badge-reproduciendo">EN REPRODUCCIÓN</span>' : '') +
+        (dur > 0 ? '<span class="dur-cap">' + reloj(dur) + '</span>' : '') +
+        '<span class="tiempo-cap">' + reloj(c.start) + '</span>' +
+        (esActual ? '<div class="barra-cap"><i style="width:' + pct + '%"></i></div>' : '') +
+        '</div>' +
+        '<div class="meta-capitulo">' +
+        '<div class="tit-cap">' + esc(c.title || 'Capítulo ' + (n + 1)) + '</div>' +
+        '<div class="rango-cap">' + reloj(c.start) + ' – ' + reloj(c.end) + '</div>' +
+        '</div>' +
+        '</div>';
+    }
+
+    capa.innerHTML =
+      '<div class="panel-capitulos">' +
+      '<div class="cabecera-capitulos">' +
+      '<h3>Capítulos</h3>' +
+      '<span class="sub-cabecera-capitulos">' + caps.length + ' capítulos</span>' +
+      '</div>' +
+      '<div class="carrusel-capitulos">' +
+      tarjetasHtml +
+      '</div>' +
+      '</div>';
+
+    marco.appendChild(capa);
+
+    const tarjetas: HTMLElement[] = [];
+    capa.querySelectorAll<HTMLElement>('.tarjeta-capitulo').forEach((el) => tarjetas.push(el));
+    let i = actualN;
+
+    const pintarFoco = () => {
+      for (let n = 0; n < tarjetas.length; n++) {
+        if (n === i) {
+          tarjetas[n].classList.add('enfocado');
+          tarjetas[n].scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        } else {
+          tarjetas[n].classList.remove('enfocado');
+        }
+      }
+    };
+
+    pintarFoco();
+
+    const cerrar = () => {
+      if (capa.parentElement) capa.parentElement.removeChild(capa);
+      alPulsar(manejarTeclas);
+    };
+
+    tarjetas.forEach((el, idx) => {
+      el.addEventListener('click', () => {
+        cerrar();
+        llevarA(caps[idx].start);
+      });
+    });
+
+    alPulsar((tecla) => {
+      if (tecla === TECLA.IZQUIERDA) {
+        if (i > 0) {
+          i--;
+          pintarFoco();
+        }
+        return true;
+      }
+      if (tecla === TECLA.DERECHA) {
+        if (i < caps.length - 1) {
+          i++;
+          pintarFoco();
+        }
+        return true;
+      }
+      if (tecla === TECLA.ARRIBA) {
+        if (i > 0) {
+          i = Math.max(0, i - 4);
+          pintarFoco();
+        }
+        return true;
+      }
+      if (tecla === TECLA.ABAJO) {
+        if (i < caps.length - 1) {
+          i = Math.min(caps.length - 1, i + 4);
+          pintarFoco();
+        }
+        return true;
+      }
+      if (tecla === TECLA.ENTRAR) {
+        cerrar();
+        llevarA(caps[i].start);
+        return true;
+      }
+      if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE || tecla === 461) {
+        cerrar();
+        return true;
+      }
+      return true;
+    });
   };
 
   /* -------------------------------------------------------------- teclado */

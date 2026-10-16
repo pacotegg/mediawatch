@@ -3735,3 +3735,163 @@ body.viendo-extra .marco * {
   gap: 14px;
 }
 
+/* ---------------------------------------------------- carrusel de capítulos TV */
+
+.capa-capitulos {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 60px;
+}
+
+.panel-capitulos {
+  width: 1780px;
+  padding: 26px 32px 30px;
+  border-radius: 26px;
+  background: rgba(14, 16, 22, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.92);
+}
+
+.cabecera-capitulos {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  padding: 0 4px;
+}
+
+.cabecera-capitulos h3 {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.sub-cabecera-capitulos {
+  font-size: 20px;
+  color: var(--texto-ter);
+}
+
+.carrusel-capitulos {
+  display: flex;
+  gap: 22px;
+  overflow-x: hidden;
+  padding: 12px 6px 18px;
+  scroll-behavior: smooth;
+}
+
+.tarjeta-capitulo {
+  flex: 0 0 320px;
+  width: 320px;
+  cursor: pointer;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 10px;
+  transition: transform 0.16s ease, outline-color 0.16s ease, background 0.16s ease;
+  outline: 3px solid transparent;
+  outline-offset: 4px;
+}
+
+.tarjeta-capitulo.enfocado {
+  background: rgba(255, 255, 255, 0.12);
+  outline-color: #fff;
+  transform: scale(1.05);
+  z-index: 2;
+}
+
+.tarjeta-capitulo.activa {
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
+}
+
+.thumb-capitulo {
+  position: relative;
+  width: 300px;
+  height: 169px;
+  border-radius: 12px;
+  overflow: hidden;
+  background-color: #12131a;
+  background-repeat: no-repeat;
+}
+
+.thumb-capitulo.thumb-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #1a1c27, #0e0f16);
+  color: #64687a;
+}
+
+.tiempo-cap {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.85);
+  font-family: monospace;
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.dur-cap {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.7);
+  font-family: monospace;
+  font-size: 14px;
+  color: #a0a5b8;
+}
+
+.badge-reproduciendo {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  background: #3b82f6;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.5px;
+}
+
+.barra-cap {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.barra-cap i {
+  display: block;
+  height: 100%;
+  background: #3b82f6;
+}
+
+.meta-capitulo {
+  padding: 10px 4px 2px;
+}
+
+.tit-cap {
+  font-size: 19px;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rango-cap {
+  margin-top: 3px;
+  font-family: monospace;
+  font-size: 15px;
+  color: var(--texto-ter);
+}
+

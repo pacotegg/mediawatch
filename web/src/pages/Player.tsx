@@ -9,6 +9,7 @@ import { clock, languageName } from '../lib/format.ts';
 import { subtitleCss, usePreferences } from '../lib/preferences.tsx';
 import { applyCues, parseVtt, type Cue } from '../lib/vtt.ts';
 import { volver } from '../lib/volver.ts';
+import { ChapterTray } from '../components/ChapterTray.tsx';
 
 const HIDE_AFTER_MS = 3200;
 const SAVE_EVERY_MS = 10_000;
@@ -603,14 +604,24 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
         case 'h':
           if (subtitle) changeDelay(subDelayMs + 100);
           break;
+        case 'c':
+        case 'C':
+          if (info?.chapters && info.chapters.length > 1) {
+            setMenu((m) => (m === 'chapters' ? null : 'chapters'));
+          }
+          break;
         case 'Escape':
-          if (mpv || !document.fullscreenElement) salir();
+          if (menu !== null) {
+            setMenu(null);
+          } else if (mpv || !document.fullscreenElement) {
+            salir();
+          }
           break;
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [navigate, seek, showControls, togglePlay, virtual, prefs.playback.seekStep, prefs.playback.seekStepLarge, changeDelay, subDelayMs, subtitle, mpv, hayPip, togglePip]);
+  }, [navigate, seek, showControls, togglePlay, virtual, prefs.playback.seekStep, prefs.playback.seekStepLarge, changeDelay, subDelayMs, subtitle, mpv, hayPip, togglePip, menu, info?.chapters]);
 
   useEffect(() => {
     if (mpv) {
@@ -1110,6 +1121,23 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
             </div>
 
             <div className="pb-[max(1.25rem,env(safe-area-inset-bottom))] pl-[max(1.25rem,env(safe-area-inset-left))] pr-[max(1.25rem,env(safe-area-inset-right))]">
+              <AnimatePresence>
+                {menu === 'chapters' && info?.chapters && info.chapters.length > 1 && (
+                  <ChapterTray
+                    chapters={info.chapters}
+                    currentTime={virtual}
+                    duration={duration}
+                    trickplay={trickplay}
+                    fileId={fileId}
+                    onSelect={(time) => {
+                      seek(time);
+                      setMenu(null);
+                    }}
+                    onClose={() => setMenu(null)}
+                  />
+                )}
+              </AnimatePresence>
+
               {/* El disco, quieto, justo encima de la barra: va con los controles y en pausa se queda con ellos. */}
               {ficha?.has_discart === 1 && !buffering && (
                 <img src={img.discart(itemId, 600)} alt="" className="pointer-events-none mb-3 w-28 md:w-40 drop-shadow-[0_18px_30px_rgba(0,0,0,0.6)]" />
@@ -1365,33 +1393,15 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
                 )}
 
                 {info?.chapters && info.chapters.length > 1 && (
-                  <div className="relative">
-                    <button
-                      onClick={() => setMenu(menu === 'chapters' ? null : 'chapters')}
-                      className={`rounded-lg px-2.5 py-1.5 text-[12px] transition-colors hover:bg-white/10 ${menu === 'chapters' ? 'bg-white/10' : ''}`}
-                    >
-                      Capítulos
-                    </button>
-                    <Menu open={menu === 'chapters'} onClose={() => setMenu(null)} title="Capítulos">
-                      <div className="max-h-72 overflow-y-auto">
-                        {info.chapters.map((ch, idx) => (
-                          <MenuItem
-                            key={idx}
-                            active={virtual >= ch.start && virtual < ch.end}
-                            onClick={() => {
-                              seek(ch.start);
-                              setMenu(null);
-                            }}
-                          >
-                            <div className="flex items-center justify-between w-full gap-3">
-                              <span className="truncate">{ch.title || `Capítulo ${idx + 1}`}</span>
-                              <span className="font-mono text-[11px] text-mist-500 shrink-0">{clock(ch.start)}</span>
-                            </div>
-                          </MenuItem>
-                        ))}
-                      </div>
-                    </Menu>
-                  </div>
+                  <button
+                    onClick={() => setMenu(menu === 'chapters' ? null : 'chapters')}
+                    className={`rounded-lg px-2.5 py-1.5 text-[12px] font-medium transition-colors ${
+                      menu === 'chapters' ? 'bg-white/20 text-white ring-1 ring-white/30' : 'text-mist-200 hover:bg-white/10 hover:text-white'
+                    }`}
+                    title="Ver capítulos visuales (tecla c)"
+                  >
+                    Capítulos ({info.chapters.length})
+                  </button>
                 )}
 
                 <div className="relative">
