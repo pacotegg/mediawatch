@@ -209,8 +209,16 @@ function recommend(encoders: EncoderProbe[], tonemap: boolean, gpus: { name: str
 
 let cached: Capabilities | null = null;
 
-export async function detectCapabilities(force = false): Promise<Capabilities> {
-  if (cached && !force) return cached;
+let enCursoDeteccion: Promise<Capabilities> | null = null;
+
+/** Probar cada codificador con vídeo real es pesado: dos peticiones a la vez comparten la misma comprobación. */
+export function detectCapabilities(force = false): Promise<Capabilities> {
+  if (cached && !force) return Promise.resolve(cached);
+  if (!enCursoDeteccion) enCursoDeteccion = detectar().finally(() => { enCursoDeteccion = null; });
+  return enCursoDeteccion;
+}
+
+async function detectar(): Promise<Capabilities> {
 
   const [encoderList, hwaccelList, gpus] = await Promise.all([
     ffmpegText(['-encoders']),
