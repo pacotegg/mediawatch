@@ -66,7 +66,7 @@ function aImagen(a: Arte): ImagenTvdb {
 
 /** El id de TVDB de una película, buscándola por su IMDb. */
 export async function idDePeliculaTvdb(imdbId: string): Promise<number | null> {
-  const r = await tvdb<{ movie?: { id: number } }[]>(`/search/remoteid/${imdbId}`);
+  const r = await tvdb<{ movie?: { id: number } }[]>(`/search/remoteid/${encodeURIComponent(imdbId)}`);
   const m = r?.find((x) => x.movie)?.movie;
   return m?.id ?? null;
 }

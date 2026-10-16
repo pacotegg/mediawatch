@@ -116,3 +116,14 @@ test('metadatos: la lista de candidatos es del administrador', async () => {
   assert.equal((await pedir('GET', '/api/enrich/candidates', { galleta: galletaNormal })).status, 403);
   assert.equal((await pedir('GET', '/api/enrich/candidates', { galleta: galletaAdmin })).status, 200);
 });
+
+test('sin cuerpo: las rutas contestan 4xx, no 500 (tampoco el inicio de sesion, que es publico)', async () => {
+  for (const [metodo, ruta] of [['POST', '/api/auth/login'], ['POST', '/api/users'], ['POST', '/api/enrich/search'], ['PATCH', '/api/extras/1']]) {
+    const res = await pedir(metodo, ruta, { galleta: galletaAdmin });
+    assert.ok(res.status >= 400 && res.status < 500, `${metodo} ${ruta} -> ${res.status}`);
+  }
+});
+
+test('estadisticas con un numero de dias que no es un numero no da 500', async () => {
+  assert.equal((await pedir('GET', '/api/estadisticas?dias=x', { galleta: galletaAdmin })).status, 200);
+});

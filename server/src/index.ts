@@ -254,7 +254,28 @@ app.post('/api/csp', async (req, reply) => {
  * tele se estaba quedando colgado.
  */
 app.addHook('onError', async (req, _reply, err) => {
-  console.error(`[error] ${req.method} ${req.url.slice(0, 80)} -> ${err.message}`);
+  console.error(`[error] ${req.method} ${sinToken(req.url).slice(0, 80)} -> ${err.message}`);
+});
+
+/*
+ * Una petición sin cuerpo llega a las rutas con `req.body` indefinido, y las que hacen `const { x } = req.body`
+ * reventaban con un 500 en vez de contestar 400 (el inicio de sesión, abierto a todos, incluido). Con un objeto vacío
+ * cada ruta aplica su propia validación.
+ */
+app.addHook('preHandler', async (req) => {
+  if (req.body === undefined && (req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH')) req.body = {};
+});
+
+/*
+ * Un fallo interno no cuenta su mensaje a quien lo provoca: salía «ENOENT: no such file or directory, open 'E:\...'»
+ * y rutas del servidor a cualquier perfil. El detalle sigue en server.err (gancho onError, arriba). Los errores de la
+ * petición (4xx) se contestan como siempre.
+ */
+app.setErrorHandler((err, _req, reply) => {
+  const codigo = (err as { statusCode?: number }).statusCode;
+  const estado = codigo && codigo >= 400 ? codigo : 500;
+  if (estado >= 500) return reply.code(estado).send({ statusCode: estado, error: 'Internal Server Error', message: 'Error interno del servidor' });
+  return reply.send(err);
 });
 
 /*

@@ -30,10 +30,11 @@ async function traducirConGemini(texto: string): Promise<string | null> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || !texto.trim()) return null;
   try {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`, {
+    const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent', {
       signal: AbortSignal.timeout(30_000),
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      // La clave por cabecera y no en la URL: las URL acaban en registros de proxys y de errores.
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
       body: JSON.stringify({
         contents: [{ parts: [{ text: `Traduce al español de España de forma natural y profesional la siguiente biografía. NO uses formato Markdown, negritas ni asteriscos (*) para los títulos ni nombres. Devuelve únicamente el texto traducido limpio:\n\n${texto}` }] }],
       }),

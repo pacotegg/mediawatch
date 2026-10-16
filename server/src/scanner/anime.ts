@@ -267,7 +267,9 @@ export async function buscarAnime(titulo: string, anio?: number | null): Promise
 }
 
 export async function detalleAnime(id: string): Promise<PropuestaAnime> {
-  const [fuente, numero] = id.split(':');
+  const [fuente, numero] = String(id).split(':');
+  // El id llega del cliente y acaba en la ruta de la API externa.
+  if (!/^\d{1,10}$/.test(numero ?? '')) throw new AnimeError('Identificador de anime no válido');
   if (fuente === 'kitsu') return detalleKitsu(numero);
   if (fuente === 'mal') return detalleJikan(Number(numero));
   if (fuente === 'anilist') return detalleAniList(Number(numero));
@@ -363,6 +365,7 @@ export async function aplicarAnime(peticion: AplicarAnime) {
   mkdirSync(dir, { recursive: true });
 
   const cambios: Record<string, string | number> = {};
+  if (!Array.isArray(peticion.campos)) throw new AnimeError('Faltan los campos a aplicar');
   const quiere = (campo: string, actual: unknown) => peticion.campos.includes(campo as never) && (peticion.overwrite || actual == null);
 
   if (quiere('poster', item.poster) && p.portadaUrl) cambios.poster = await descargar(p.portadaUrl, join(dir, 'poster.jpg'));
