@@ -4,24 +4,30 @@ interface Estuche3DProps {
   posterUrl: string;
   discartUrl: string | null;
   title: string;
-  /** Si la copia es 4K: la cabecera dice «4K ULTRA HD» solo entonces (antes lo ponía siempre, también en un 1080p). */
+  /** Si la copia es 4K: la cabecera dice «4K ULTRA HD» solo entonces. */
   es4k?: boolean;
+  onAbrirColeccionista?: () => void;
 }
 
 /**
  * Estuche coleccionista físico en 3D interactivo con acabado AAA.
  * - Inclinación y paralaje fluido sin re-renders continuos de React (CSS variables).
- * - Extracción suave del disco con giro de 220° y elevación física.
+ * - Extracción suave y continua del disco con giro y elevación física por GPU.
  * - Iridiscencia óptica espectral viva (arcoíris Blu-ray) y conos especulares.
  * - Orificio central pasante real y anillo de policarbonato con reflejo.
- * - Lomo y cabecera de metacrilato "4K Ultra HD" con relieve.
+ * - Lomo y cabecera de metacrilato con relieve.
  */
-export default function Estuche3D({ posterUrl, discartUrl, title, es4k = false }: Estuche3DProps) {
+export default function Estuche3D({
+  posterUrl,
+  discartUrl,
+  title,
+  es4k = false,
+  onAbrirColeccionista,
+}: Estuche3DProps) {
   const [extraido, setExtraido] = useState(false);
   const marcoRef = useRef<HTMLDivElement>(null);
 
-  // Solo el ratón inclina el estuche y saca el disco al pasar por encima. En pantallas táctiles el
-  // navegador emula «mouseenter» y luego «click» en el mismo toque: el disco salía y volvía a entrar.
+  // Solo el ratón inclina el estuche al pasar por encima.
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.pointerType !== 'mouse' || !marcoRef.current) return;
     const r = marcoRef.current.getBoundingClientRect();
@@ -54,7 +60,7 @@ export default function Estuche3D({ posterUrl, discartUrl, title, es4k = false }
   return (
     <div
       ref={marcoRef}
-      className="group relative select-none cursor-pointer pr-56 sm:pr-64 py-4"
+      className="group relative select-none cursor-pointer pr-32 sm:pr-40 py-4 animar-siempre"
       style={{
         perspective: '1200px',
         // @ts-ignore
@@ -67,18 +73,22 @@ export default function Estuche3D({ posterUrl, discartUrl, title, es4k = false }
       onPointerMove={handlePointerMove}
       onPointerEnter={handlePointerEnter}
       onPointerLeave={handlePointerLeave}
-      onClick={() => setExtraido((prev) => !prev)}
+      onClick={() => {
+        if (onAbrirColeccionista) onAbrirColeccionista();
+        else setExtraido((prev) => !prev);
+      }}
       role="button"
       tabIndex={0}
       aria-pressed={extraido}
-      aria-label={`${title}: ${extraido ? 'guardar' : 'sacar'} el disco`}
+      aria-label={`${title}: ver edición coleccionista física`}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          setExtraido((prev) => !prev);
+          if (onAbrirColeccionista) onAbrirColeccionista();
+          else setExtraido((prev) => !prev);
         }
       }}
-      title={`${title} (Haz clic o pasa el ratón para extraer el disco)`}
+      title={`${title} · Clic para abrir edición coleccionista`}
     >
       <div
         className="relative w-[220px] h-[324px]"
@@ -92,9 +102,9 @@ export default function Estuche3D({ posterUrl, discartUrl, title, es4k = false }
         <div
           className="absolute -bottom-7 left-3 right-8 h-8 rounded-full bg-black/85 blur-xl pointer-events-none"
           style={{
-            transform: extraido ? 'scale(1.35) translateX(60px)' : 'scale(1) translateX(0)',
+            transform: extraido ? 'scale(1.25) translateX(45px)' : 'scale(1) translateX(0)',
             opacity: extraido ? 0.95 : 0.65,
-            transition: 'transform 0.85s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.85s ease',
+            transition: 'transform 0.55s cubic-bezier(0.2, 0, 0, 1), opacity 0.55s ease',
           }}
         />
 
@@ -102,16 +112,16 @@ export default function Estuche3D({ posterUrl, discartUrl, title, es4k = false }
         {/* DISCO ÓPTICO (DISCART) EXTRAÍBLE CON FÍSICA, GIRO Y LUZ        */}
         {/* ============================================================== */}
         <div
-          className="absolute top-8 bottom-8 right-0 w-[246px] h-[246px] rounded-full pointer-events-none"
+          className="absolute top-9 bottom-9 right-1 w-[230px] h-[230px] rounded-full pointer-events-none"
           style={{
+            transformStyle: 'preserve-3d',
             transform: extraido
-              ? 'translateX(200px) rotate(0deg) translateZ(10px) scale(1.02)'
-              : 'translateX(12px) rotate(-360deg) translateZ(0px) scale(0.95)',
-            transition: 'transform 0.85s cubic-bezier(0.16, 1, 0.3, 1), filter 0.85s ease',
-            filter: extraido
-              ? 'drop-shadow(-4px 18px 25px rgba(0,0,0,0.85)) drop-shadow(0 4px 10px rgba(0,0,0,0.6))'
-              : 'drop-shadow(-2px 8px 12px rgba(0,0,0,0.5))',
+              ? 'translateX(110px) rotate(0deg) translateZ(8px) scale(1.02)'
+              : 'translateX(0px) rotate(-180deg) translateZ(-2px) scale(0.96)',
+            transition: 'transform 0.55s cubic-bezier(0.2, 0, 0, 1)',
+            boxShadow: extraido ? '0 16px 36px rgba(0, 0, 0, 0.85)' : 'none',
             willChange: 'transform',
+            zIndex: 1,
           }}
         >
           {/* Superficie base del disco y bisel de policarbonato */}
@@ -140,7 +150,7 @@ export default function Estuche3D({ posterUrl, discartUrl, title, es4k = false }
               style={{
                 mixBlendMode: 'screen',
                 opacity: extraido ? 0.72 : 0.3,
-                transition: 'opacity 0.6s ease',
+                transition: 'opacity 0.4s ease',
                 background:
                   'conic-gradient(from 45deg, transparent 0%, rgba(255, 0, 150, 0.55) 12%, rgba(0, 240, 255, 0.65) 25%, rgba(0, 255, 120, 0.55) 38%, rgba(255, 240, 0, 0.65) 50%, rgba(255, 0, 150, 0.55) 62%, rgba(0, 240, 255, 0.65) 75%, rgba(180, 0, 255, 0.55) 88%, transparent 100%)',
               }}
@@ -165,11 +175,11 @@ export default function Estuche3D({ posterUrl, discartUrl, title, es4k = false }
             {/* ANILLO CENTRAL Y HUECO TRANSPARENTE DEL DISCO              */}
             {/* ========================================================== */}
             {/* Pista de datos interna plateada */}
-            <div className="absolute inset-[74px] rounded-full border border-white/35 bg-white/10 backdrop-blur-[1px] pointer-events-none shadow-inner" />
+            <div className="absolute inset-[70px] rounded-full border border-white/35 bg-white/10 backdrop-blur-[1px] pointer-events-none shadow-inner" />
             {/* Anillo de sujeción de policarbonato translúcido */}
-            <div className="absolute inset-[84px] rounded-full border-2 border-white/45 bg-slate-900/50 backdrop-blur-[2px] pointer-events-none flex items-center justify-center">
+            <div className="absolute inset-[80px] rounded-full border-2 border-white/45 bg-slate-900/50 backdrop-blur-[2px] pointer-events-none flex items-center justify-center">
               {/* Agujero central real (spindle) transparente */}
-              <div className="w-[34px] h-[34px] rounded-full bg-ink-950/95 ring-2 ring-black/75 shadow-inner" />
+              <div className="w-[32px] h-[32px] rounded-full bg-ink-950/95 ring-2 ring-black/75 shadow-inner" />
             </div>
           </div>
         </div>
@@ -178,10 +188,11 @@ export default function Estuche3D({ posterUrl, discartUrl, title, es4k = false }
         {/* CAJA FÍSICA / ESTUCHE DE METACRILATO CON PROFUNDIDAD 3D        */}
         {/* ============================================================== */}
         <div
-          className="relative w-full h-full overflow-hidden rounded-[10px] border border-white/25 bg-ink-950 shadow-[0_28px_50px_-10px_rgba(0,0,0,0.92),-12px_14px_30px_rgba(0,0,0,0.7)]"
+          className="relative w-full h-full overflow-hidden rounded-[10px] border border-white/25 bg-ink-950 shadow-[0_28px_50px_-10px_rgba(0,0,0,0.92),-12px_14px_30px_rgba(0,0,0,0.7)] transition-all duration-300 group-hover:border-accent/60 group-hover:shadow-[0_0_0_2px_rgba(56,189,248,0.4),0_30px_60px_rgba(0,0,0,0.95)]"
           style={{
             transformStyle: 'preserve-3d',
             transform: 'translateZ(6px)',
+            zIndex: 2,
           }}
         >
           {/* Cabecera biselada de estuche Blu-ray en relieve con pestaña translúcida */}
@@ -244,6 +255,15 @@ export default function Estuche3D({ posterUrl, discartUrl, title, es4k = false }
                 'linear-gradient(125deg, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0.06) 38%, transparent 54%, rgba(0,0,0,0.3) 100%)',
             }}
           />
+        </div>
+
+        {/* Rótulo de ayuda interactiva que aparece al posar el ratón */}
+        <div
+          className={`absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap px-3 py-1 rounded-full text-[11px] font-semibold tracking-wide bg-ink-950/95 border border-white/20 text-white shadow-xl pointer-events-none transition-all duration-200 z-40 ${
+            extraido ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1'
+          }`}
+        >
+          Edición física · Clic para abrir
         </div>
       </div>
     </div>

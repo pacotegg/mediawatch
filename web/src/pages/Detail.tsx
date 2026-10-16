@@ -15,6 +15,7 @@ import { audioLabel, certification, clock, codecLabel, fileSize, languageName, r
 import { usePreferences } from '../lib/preferences.tsx';
 import { tintFrom } from '../lib/tint.ts';
 import Estuche3D from '../components/Estuche3D.tsx';
+import ModalColeccionista from '../components/ModalColeccionista.tsx';
 import { volver } from '../lib/volver.ts';
 
 function opcionesDescarga(duracionSegundos?: number | null, bytesOriginal?: number | null, codec: CodecDescarga = 'h265'): [PerfilDescarga, string, string][] {
@@ -308,6 +309,7 @@ export default function Detail() {
   const [borrando, setBorrando] = useState(false);
   const [temaSonando, setTemaSonando] = useState(false);
   const [temaMute, setTemaMute] = useState(false);
+  const [mostrarColeccionista, setMostrarColeccionista] = useState(false);
 
   const { data: item, isLoading, refetch } = useQuery({ queryKey: ['item', itemId], queryFn: () => api.item(itemId) });
   /*
@@ -513,6 +515,15 @@ export default function Detail() {
       <AnimatePresence>{numerando && <NumeracionFixer showId={itemId} onClose={() => setNumerando(false)} />}</AnimatePresence>
       <AnimatePresence>{anime && <AnimeFixer itemId={itemId} onClose={() => setAnime(false)} />}</AnimatePresence>
       <AnimatePresence>
+        {mostrarColeccionista && item && (
+          <ModalColeccionista
+            item={item}
+            es4k={es4kItem}
+            onClose={() => setMostrarColeccionista(false)}
+          />
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
         {dialogoBorrar && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
             <div className="w-full max-w-md rounded-2xl border border-red-500/30 bg-ink-950 p-6 shadow-2xl">
@@ -567,22 +578,6 @@ export default function Detail() {
           className="absolute inset-0"
           style={{ background: `linear-gradient(to right, rgb(var(--tint) / 0.32), rgb(var(--tint) / 0.06) 45%, transparent 70%)` }}
         />
-        {/*
-          * En una pantalla estrecha estas etiquetas caían justo encima de las
-          * notas: el texto sube 208 px sobre el fotograma y ahí es donde están
-          * ellas. Desde `sm` hay sitio de sobra y se quedan donde estaban, en
-          * la esquina de la imagen; por debajo se enseñan más abajo, en su
-          * propia línea, con el resto de la ficha.
-          */}
-        {badges.length > 0 && (
-          <div className="absolute right-5 bottom-4 z-20 hidden max-w-[42%] flex-wrap justify-end gap-1.5 sm:right-8 sm:flex">
-            {badges.map((b, i) => (
-              <Badge key={`${b}-${i}`} tone={b === '4K' || b?.startsWith('HDR') || b === 'DV' ? 'accent' : 'plain'}>
-                {b}
-              </Badge>
-            ))}
-          </div>
-        )}
       </div>
 
       <div className="relative z-10 mx-auto -mt-52 max-w-[1500px] px-4 sm:px-8">
@@ -638,17 +633,17 @@ export default function Detail() {
               )}
             </div>
 
+            {item.genres.length > 0 && <div className="mb-3 text-[14px] text-mist-500">{item.genres.slice(0, 4).join(', ')}</div>}
+
             {badges.length > 0 && (
-              <div className="mb-3 flex flex-wrap gap-1.5 sm:hidden">
+              <div className="mb-4 flex flex-wrap gap-1.5">
                 {badges.map((b, i) => (
-                  <Badge key={'m-' + b + '-' + i} tone={b === '4K' || b?.startsWith('HDR') || b === 'DV' ? 'accent' : 'plain'}>
+                  <Badge key={`${b}-${i}`} tone={b === '4K' || b?.startsWith('HDR') || b === 'DV' ? 'accent' : 'plain'}>
                     {b}
                   </Badge>
                 ))}
               </div>
             )}
-
-            {item.genres.length > 0 && <div className="mb-4 text-[14px] text-mist-500">{item.genres.slice(0, 4).join(', ')}</div>}
 
             {donde && donde.suscripcion.length > 0 && (
               <div className="mb-4 flex flex-wrap items-center gap-2 text-[13px] text-mist-400">
@@ -911,6 +906,7 @@ export default function Detail() {
                 discartUrl={item.has_discart === 1 ? img.discart(itemId, 600, item.arte_actualizado) : null}
                 title={item.title}
                 es4k={es4kItem}
+                onAbrirColeccionista={() => setMostrarColeccionista(true)}
               />
             </div>
           ) : item.has_poster ? (
@@ -930,6 +926,7 @@ export default function Detail() {
                 discartUrl={item.has_discart === 1 ? img.discart(itemId, 600, item.arte_actualizado) : null}
                 title={item.title}
                 es4k={es4kItem}
+                onAbrirColeccionista={() => setMostrarColeccionista(true)}
               />
             </div>
           ) : item.has_poster ? (
