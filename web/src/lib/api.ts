@@ -382,6 +382,18 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ libraries }),
     }),
+  licencia: () =>
+    request<{ valid: boolean; tier: 'free' | 'pro'; issuedTo?: string; expiresAt?: number; features: string[]; error?: string }>('/api/licencia'),
+  saveLicencia: (licenseKey: string) =>
+    request<{ ok: true; licencia: { valid: boolean; tier: 'free' | 'pro'; issuedTo?: string; expiresAt?: number; features: string[] } }>('/api/licencia', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ licenseKey }),
+    }),
+  deleteLicencia: () =>
+    request<{ ok: true; licencia: { valid: boolean; tier: 'free' | 'pro'; issuedTo?: string; expiresAt?: number; features: string[] } }>('/api/licencia', {
+      method: 'DELETE',
+    }),
 
   identificarEstado: () => request<IdentificarEstado>('/api/identificar/estado'),
   identificarEjecutar: () => post<{ arrancado: boolean; motivo?: string }>('/api/identificar/ejecutar', {}),

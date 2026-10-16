@@ -65,6 +65,7 @@ export type AppConfig = {
    * que cambie el dominio.
    */
   publicUrl: string;
+  licenseKey?: string;
 };
 
 const DEFAULT_LIBRARIES: LibraryConfig[] = [
