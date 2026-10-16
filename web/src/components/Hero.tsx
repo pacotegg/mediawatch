@@ -52,6 +52,8 @@ export default function Hero({ items }: { items: ItemSummary[] }) {
   useEffect(() => {
     if (!trailerYoutube) return;
     const handleMsg = (e: MessageEvent) => {
+      // Solo lo que cuenta el reproductor incrustado: cualquier otra ventana puede mandar mensajes a esta.
+      if (e.source !== iframeRef.current?.contentWindow) return;
       try {
         const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
         const state = data?.info?.playerState !== undefined ? data.info.playerState : data?.info;

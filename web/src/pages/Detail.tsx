@@ -655,7 +655,7 @@ export default function Detail() {
                 {donde.suscripcion.map((p) => (
                   <a
                     key={p.clave}
-                    href={donde.enlace || undefined}
+                    href={/^https:\/\//i.test(donde.enlace) ? donde.enlace : undefined}
                     target="_blank"
                     rel="noreferrer"
                     className="rounded-full border border-white/15 bg-white/6 px-3 py-1 font-medium text-mist-100 hover:bg-white/12"

@@ -408,16 +408,41 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
           })
       : '';
 
+  /*
+   * Dónde empezar cada vez que se carga la fuente. Con el flujo transcodificado la posición va dentro de la URL (`t`);
+   * con reproducción directa y con HLS no, y la fuente arrancaba SIEMPRE en el segundo cero: «Continuar viendo»
+   * (`?t=`), una búsqueda de diálogos y cambiar de pista de audio o de calidad a mitad de película volvían al principio.
+   * Medido con un vídeo directo y `t=60`: a los 6 s iba por el segundo 7,6.
+   */
+  const inicioRef = useRef(offset);
+  inicioRef.current = offset;
+  const timeshiftRef = useRef(isTimeshift);
+  timeshiftRef.current = isTimeshift;
+
   // Reloading the source is how seeking works while transcoding, so restore playback after it lands.
   useEffect(() => {
     const video = videoRef.current;
     if (conMpv || !video || !src) return;
 
+    const inicio = timeshiftRef.current ? 0 : inicioRef.current;
+    let alCargar: (() => void) | null = null;
+    // Para `<video>` (directo y HLS nativo): al conocer la duración, saltar al sitio. hls.js usa `startPosition`.
+    const irAlInicio = () => {
+      if (inicio <= 1) return;
+      alCargar = () => {
+        alCargar = null;
+        video.currentTime = Number.isFinite(video.duration) && video.duration > 3 ? Math.min(inicio, video.duration - 2) : inicio;
+      };
+      video.addEventListener('loadedmetadata', alCargar, { once: true });
+    };
+    const quitarInicio = () => { if (alCargar) video.removeEventListener('loadedmetadata', alCargar); };
+
     if (!usaHls) {
       video.src = src;
+      irAlInicio();
       video.load();
       video.play().catch(() => undefined);
-      return;
+      return quitarInicio;
     }
 
     // hls.js pesa ~500 KB y solo hace falta fuera de casa (o con «adaptativo: siempre»): se baja
@@ -426,6 +451,7 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
     let hls: HlsInstancia | null = null;
     const nativo = () => {
       video.src = src;
+      irAlInicio();
       video.load();
       video.play().catch(() => undefined);
     };
@@ -450,6 +476,7 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
           // se quede pensando para acabar bajando igual.
           startLevel: -1,
           maxBufferLength: 30,
+          startPosition: inicio > 1 ? inicio : -1,
         });
         hls = h;
 
@@ -473,6 +500,7 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
 
     return () => {
       cancelado = true;
+      quitarInicio();
       hls?.destroy();
       // Libera la GPU en el servidor en cuanto se cierra el reproductor.
       navigator.sendBeacon?.(`/api/play/${fileId}/hls/cerrar`);
