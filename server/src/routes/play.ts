@@ -16,6 +16,7 @@ import { cobertura, generarLote, lote, pararLote, readManifest, sheetPath } from
 import { marcarActividad } from '../media/ocupado.ts';
 import { extraPorId, extrasDe, miniatura, extrasTmdb, descargarExtraTmdb, actualizarTipoExtra } from '../media/extras.ts';
 import { detectForShow, detectarTodas, job, pararDeteccion, showsWithRanges, skipRangesFor } from '../media/intros.ts';
+import { creditosDeEpisodio } from '../media/creditos-episodio.ts';
 import { detectarPeliculas, jobPeliculas, pararPeliculas, resumenPeliculas, skipDePelicula } from '../media/creditos-detector.ts';
 import { currentUser, deFuera, requireUser, sesionDe } from './auth.ts';
 import type { ServerResponse } from 'node:http';
@@ -423,9 +424,19 @@ export default async function playRoutes(app: FastifyInstance) {
       chapters: info.chapters,
       // Cabecera y creditos del episodio, si se han detectado. Van aqui para que
       // el cliente no tenga que hacer una segunda peticion al empezar a ver.
+      // Si el episodio no tiene creditos en la base de datos, se prueban los capitulos del contenedor.
       // En una pelicula no hay huellas que comparar: los creditos salen de los
       // capitulos del propio fichero o del detector del texto que sube.
-      skip: row.episode_id ? skipRangesFor(row.episode_id, (req.query as { resumen?: string }).resumen === '1') : skipDePelicula(row.item_id ?? 0, info.chapters, info.duration),
+      skip: row.episode_id
+        ? (() => {
+            const rangos = skipRangesFor(row.episode_id, (req.query as { resumen?: string }).resumen === '1');
+            if (!rangos.some((r) => r.kind === 'credits')) {
+              const porCapitulos = creditosDeEpisodio(info.chapters, info.duration);
+              return porCapitulos.length ? rangos.concat(porCapitulos) : rangos;
+            }
+            return rangos;
+          })()
+        : skipDePelicula(row.item_id ?? 0, info.chapters, info.duration),
       size: statFichero.size,
       bitrate: info.duration > 0 ? Math.round((statFichero.size * 8) / info.duration) : 0,
       video: info.video,

@@ -43,6 +43,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -576,9 +577,20 @@ private fun Reproduciendo(
       }
       // ¿Estamos dentro de una cabecera o de los créditos detectados?
       val i = info
-      val dentro = i?.skip?.firstOrNull { r ->
+      val deLosDetectados = i?.skip?.firstOrNull { r ->
         enSegundos >= r.desde && enSegundos < r.hasta - 1 && (r.kind + r.desde) !in tramosSaltados
       }
+      // Solo el 60 % de los episodios tiene el tramo de créditos detectado. Sin él, en una serie con episodio siguiente,
+      // los últimos 40 s hacen de créditos para ofrecer igualmente «Siguiente episodio» (misma regla que la tele y la web).
+      // La duración se lee de `i` y no de `duracionConocida`: esa se fijó al lanzar el efecto, con `info` aún sin cargar (0.0).
+      val duracionViva = i?.duration ?: 0.0
+      val respaldoDeCreditos = if (
+        deLosDetectados == null && siguiente != null && i != null && duracionViva > 300 &&
+        i.skip.none { it.kind == "credits" } &&
+        enSegundos >= duracionViva - 40 && enSegundos < duracionViva - 1 &&
+        ("credits" + (duracionViva - 40)) !in tramosSaltados
+      ) RangoSalto("credits", duracionViva - 40, duracionViva) else null
+      val dentro = deLosDetectados ?: respaldoDeCreditos
       if (dentro != null && Ajustes.modoMaraton && (dentro.kind == "intro" || dentro.kind == "recap")) {
         tramosSaltados.add(dentro.kind + dentro.desde)
         reproductor.seekTo(((dentro.hasta - desfase) * 1000).toLong().coerceAtLeast(0L))
@@ -1136,24 +1148,109 @@ private fun Reproduciendo(
      */
     tramoALaVista?.let { tramo ->
       val encadena = tramo.kind == "credits" && siguiente != null
-      Text(
-        if (encadena) "Siguiente episodio" else if (tramo.kind == "credits") "Saltar créditos" else if (tramo.kind == "recap") "Saltar resumen" else "Saltar cabecera",
-        color = Color.Black,
-        fontSize = 15.sp,
-        fontWeight = FontWeight.SemiBold,
-        modifier = Modifier
-          .align(Alignment.BottomEnd)
-          .padding(end = 24.dp, bottom = 96.dp)
-          .then(if (tramoEnfocado) Modifier.border(3.dp, Realce, RoundedCornerShape(10.dp)) else Modifier)
-          .clip(RoundedCornerShape(10.dp))
-          .background(Color.White)
-          .clickable {
-            tramosSaltados += tramo.kind + tramo.desde
-            tramoALaVista = null
-            if (encadena) pasarAlSiguiente() else irA(tramo.hasta)
+      val sig = siguiente
+      if (encadena && sig != null) {
+        sig.let { ep ->
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+              .align(Alignment.BottomEnd)
+              .padding(end = 24.dp, bottom = 96.dp)
+              .clip(RoundedCornerShape(18.dp))
+              .background(Color(0xF012141D))
+              .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(18.dp))
+              .then(if (tramoEnfocado) Modifier.border(3.dp, Realce, RoundedCornerShape(18.dp)) else Modifier)
+              .padding(12.dp)
+          ) {
+            if (ep.tieneFoto == 1) {
+              Box(
+                modifier = Modifier
+                  .size(width = 114.dp, height = 64.dp)
+                  .clip(RoundedCornerShape(10.dp))
+                  .background(Color.Black)
+              ) {
+                Imagen(Api.fotoDeEpisodio(ep.id, 320), ep.title, Modifier.fillMaxSize())
+              }
+              Spacer(Modifier.width(12.dp))
+            }
+            Column(modifier = Modifier.widthIn(max = 240.dp)) {
+              Text(
+                "SIGUIENTE EPISODIO",
+                color = Realce,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp
+              )
+              Text(
+                ep.title ?: "Episodio ${ep.episode}",
+                color = Color.White,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+              )
+              Text(
+                "Temporada ${ep.season} · Episodio ${ep.episode}",
+                color = TextoSuave,
+                fontSize = 11.sp
+              )
+              Spacer(Modifier.height(8.dp))
+              Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(
+                  contentAlignment = Alignment.Center,
+                  modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Realce)
+                    .clickable {
+                      tramosSaltados += tramo.kind + tramo.desde
+                      tramoALaVista = null
+                      pasarAlSiguiente()
+                    }
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                  Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = SobreRealce, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Ver ahora", color = SobreRealce, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                  }
+                }
+                Box(
+                  contentAlignment = Alignment.Center,
+                  modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0x22FFFFFF))
+                    .clickable {
+                      tramosSaltados += tramo.kind + tramo.desde
+                      tramoALaVista = null
+                    }
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                  Text("Créditos", color = Color.White, fontSize = 11.sp)
+                }
+              }
+            }
           }
-          .padding(horizontal = 20.dp, vertical = 12.dp),
-      )
+        }
+      } else {
+        Text(
+          if (tramo.kind == "credits") "Saltar créditos" else if (tramo.kind == "recap") "Saltar resumen" else "Saltar cabecera",
+          color = Color.Black,
+          fontSize = 15.sp,
+          fontWeight = FontWeight.SemiBold,
+          modifier = Modifier
+            .align(Alignment.BottomEnd)
+            .padding(end = 24.dp, bottom = 96.dp)
+            .then(if (tramoEnfocado) Modifier.border(3.dp, Realce, RoundedCornerShape(10.dp)) else Modifier)
+            .clip(RoundedCornerShape(10.dp))
+            .background(Color.White)
+            .clickable {
+              tramosSaltados += tramo.kind + tramo.desde
+              tramoALaVista = null
+              irA(tramo.hasta)
+            }
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        )
+      }
     }
 
     cuentaAtras?.let { c ->
