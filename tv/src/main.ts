@@ -3495,6 +3495,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     // cuando aparecen los controles, y además quedan por encima del degradado.
     '<div class="subtitulos-tv" data-subtitulos></div>' +
     '<button class="salto-tramo" data-tramo></button>' +
+    '<div class="tarjeta-watch-next" data-watch-next></div>' +
     '<div class="info-repro" data-info></div>' +
     '<div class="cargando" data-cargando>Cargando…</div>' +
     '</div>';
@@ -3782,12 +3783,86 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
    * que es donde la gente ha aprendido el gesto— y se quita en cuanto se pulsa
    * cualquier flecha, para no estorbar a quien no quiere saltar.
    */
-  /*
-   * Solo el 60 % de los episodios tiene el tramo de créditos detectado. En una serie con episodio siguiente, si no lo hay,
-   * los últimos 40 s hacen de créditos para ofrecer igualmente «Siguiente episodio». Es UN objeto, creado una vez: se
-   * compara por referencia y, si cambiase en cada llamada, el botón se reiniciaría cada segundo.
-   */
+  const tarjetaWatchNext = marco.querySelector<HTMLElement>('[data-watch-next]')!;
+  let cuentaAtrasWatchNext = 0;
+  let temporizadorWatchNext = 0;
+  let watchNextCancelado = false;
+  let watchNextFocoPrimario = true;
   let creditosDeRespaldo: RangoSalto | null = null;
+
+  const cerrarWatchNext = () => {
+    window.clearInterval(temporizadorWatchNext);
+    temporizadorWatchNext = 0;
+    lienzo.classList.remove('creditos-reducido');
+    tarjetaWatchNext.classList.remove('visible');
+    tarjetaWatchNext.innerHTML = '';
+  };
+
+  const pintarFocoWatchNext = () => {
+    const bVer = tarjetaWatchNext.querySelector<HTMLElement>('[data-wn-ver]');
+    const bCred = tarjetaWatchNext.querySelector<HTMLElement>('[data-wn-cred]');
+    if (bVer && bCred) {
+      bVer.className = 'boton-watch-next primario' + (watchNextFocoPrimario ? ' enfocado' : '');
+      bCred.className = 'boton-watch-next secundario' + (!watchNextFocoPrimario ? ' enfocado' : '');
+    }
+  };
+
+  const mostrarWatchNext = (sig: NonNullable<Ficha['episodes']>[number]) => {
+    if (watchNextCancelado || temporizadorWatchNext) return;
+    cuentaAtrasWatchNext = 12;
+    watchNextFocoPrimario = true;
+    lienzo.classList.add('creditos-reducido');
+    tarjetaWatchNext.classList.add('visible');
+    const tieneFoto = Boolean(sig.has_thumb);
+    const urlFoto = tieneFoto ? imagen.episodio(sig.id, 480) : '';
+
+    tarjetaWatchNext.innerHTML =
+      '<div class="watch-next-cuerpo">' +
+      (tieneFoto
+        ? '<div class="watch-next-miniatura-wrap">' +
+          '<img class="watch-next-miniatura" src="' + esc(urlFoto) + '" alt="" />' +
+          '<div class="watch-next-play-badge"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5-11-6.5Z"/></svg></div>' +
+          '</div>'
+        : '') +
+      '<div class="watch-next-info">' +
+      '<div class="watch-next-etiqueta">SIGUIENTE EPISODIO</div>' +
+      '<div class="watch-next-titulo">' + esc(sig.title || 'Episodio ' + sig.episode) + '</div>' +
+      '<div class="watch-next-sub">Temporada ' + sig.season + ' · Episodio ' + sig.episode + '</div>' +
+      (sig.plot ? '<div class="watch-next-sinopsis">' + esc(sig.plot) + '</div>' : '') +
+      '</div>' +
+      '</div>' +
+      '<div class="watch-next-botones">' +
+      '<button class="boton-watch-next primario enfocado" data-wn-ver>Ver ahora (<span data-wn-cuenta>' + cuentaAtrasWatchNext + '</span>s)</button>' +
+      '<button class="boton-watch-next secundario" data-wn-cred>Ver créditos</button>' +
+      '</div>';
+
+    const bVer = tarjetaWatchNext.querySelector<HTMLElement>('[data-wn-ver]');
+    const bCred = tarjetaWatchNext.querySelector<HTMLElement>('[data-wn-cred]');
+    const elCuenta = tarjetaWatchNext.querySelector<HTMLElement>('[data-wn-cuenta]');
+
+    if (bVer) {
+      bVer.addEventListener('click', () => {
+        cerrarWatchNext();
+        saltarTramo();
+      });
+    }
+    if (bCred) {
+      bCred.addEventListener('click', () => {
+        watchNextCancelado = true;
+        cerrarWatchNext();
+      });
+    }
+
+    temporizadorWatchNext = window.setInterval(() => {
+      cuentaAtrasWatchNext--;
+      if (elCuenta) elCuenta.textContent = String(cuentaAtrasWatchNext);
+      if (cuentaAtrasWatchNext <= 0) {
+        cerrarWatchNext();
+        saltarTramo();
+      }
+    }, 1000);
+  };
+
   const revisarTramo = (segundos: number) => {
     if (!infoServidor) return;
     const haySiguiente = !!siguienteEpisodio();
@@ -3808,6 +3883,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     if (!dentro) {
       botonTramo.classList.remove('visible', 'enfocado');
       enTramo = false;
+      cerrarWatchNext();
       return;
     }
     // En maratón se salta solo la cabecera y también el resumen («Anteriormente en…»).
@@ -3816,6 +3892,14 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
       saltarTramo();
       return;
     }
+
+    const sig = siguienteEpisodio();
+    if (dentro.kind === 'credits' && sig && !watchNextCancelado) {
+      mostrarWatchNext(sig);
+      enTramo = true;
+      return;
+    }
+
     botonTramo.textContent = hayEscenaFinal(dentro)
       ? 'Ver escena final'
       : dentro.kind === 'credits' && haySiguiente ? 'Siguiente episodio' : NOMBRE_TRAMO[dentro.kind] || 'Saltar';
@@ -4643,6 +4727,11 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     if (tecla === TECLA.INFO) { alternarInfo(); mostrar(); return true; }
 
     if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE) {
+      if (temporizadorWatchNext) {
+        watchNextCancelado = true;
+        cerrarWatchNext();
+        return true;
+      }
       if (infoVisible) { alternarInfo(); return true; }
       if (enTramo) { soltarTramo(); return true; }
       /*
@@ -4661,6 +4750,26 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
         return true;
       }
       salir();
+      return true;
+    }
+
+    // Navegación en la tarjeta Watch Next
+    if (temporizadorWatchNext) {
+      if (tecla === TECLA.IZQUIERDA || tecla === TECLA.DERECHA) {
+        watchNextFocoPrimario = !watchNextFocoPrimario;
+        pintarFocoWatchNext();
+        return true;
+      }
+      if (tecla === TECLA.ENTRAR) {
+        if (watchNextFocoPrimario) {
+          cerrarWatchNext();
+          saltarTramo();
+        } else {
+          watchNextCancelado = true;
+          cerrarWatchNext();
+        }
+        return true;
+      }
       return true;
     }
 

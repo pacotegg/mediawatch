@@ -239,6 +239,8 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
   const [candidatos, setCandidatos] = useState<CandidatoSubtitulo[]>([]);
   const [descargandoId, setDescargandoId] = useState<string | null>(null);
   const [buscandoSubs, setBuscandoSubs] = useState(false);
+  const [watchNextCancelado, setWatchNextCancelado] = useState(false);
+  const [cuentaAtrasNext, setCuentaAtrasNext] = useState(12);
 
   const buscarSubtitulos = async () => {
     setBuscandoSubs(true);
@@ -623,10 +625,16 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
     }
   }, [volume, muted, mpv]);
 
+  // Al pasar al siguiente episodio con el botón, este queda visto: el guardado de limpieza al desmontar (92 % de la
+  // película, no «visto») lo desharía. La marca se apaga al cambiar de fichero.
+  const marcadoVistoRef = useRef(false);
+  useEffect(() => { marcadoVistoRef.current = false; }, [fileId]);
+
   // Persist position so "continue watching" survives a reload or a jump to another device.
   useEffect(() => {
     if (!itemId || conMpv) return;
     const save = () => {
+      if (marcadoVistoRef.current) return;
       const position = (isTimeshift ? offset : 0) + (videoRef.current?.currentTime ?? 0);
       if (position > 5) {
         api.saveProgress({
@@ -757,6 +765,23 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
     void abrirSiguienteMpvRef.current().then((ok) => { if (!ok) salir(); });
   };
 
+  /*
+   * «Siguiente episodio» a mano, desde el botón de los créditos: da este por visto y pasa al siguiente sin esperar a que
+   * acabe (con mpv, en la misma ventana de vídeo).
+   */
+  const irAlSiguiente = () => {
+    if (!nextEpisode?.file_id) return;
+    marcadoVistoRef.current = true;
+    if (itemId) {
+      api.saveProgress({
+        itemId, episodeId, position: duration, duration, watched: true,
+        audio: audioTrackRef.current, subtitle: subtitleRef.current ?? 'off',
+      }).catch(() => undefined);
+    }
+    if (mpv) { void abrirSiguienteMpvRef.current().then((ok) => { if (!ok) salir(); }); return; }
+    navigate(`/ver/${nextEpisode.file_id}?item=${itemId}&ep=${nextEpisode.id}&t=0`, { replace: true });
+  };
+
   // Tecla multimedia «siguiente» (teclado, auriculares) mientras se ve algo con mpv.
   useEffect(() => {
     if (!mpv?.alTecla) return;
@@ -827,6 +852,34 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
   const activeSkip = (skip?.ranges ?? info?.skip)?.find((r) => virtual >= r.start_s && virtual < r.end_s - 2);
   const lastAutoSkipped = useRef<number | null>(null);
 
+  /*
+   * En una serie, al llegar a los créditos se activa la experiencia «Watch Next» (pantalla reducida y tarjeta del siguiente episodio).
+   * Solo el 60 % de los episodios tiene el tramo de créditos detectado: sin él, los últimos 40 s hacen de créditos de respaldo.
+   */
+  const sinCreditos = !(skip?.ranges ?? info?.skip ?? []).some((r) => r.kind === 'credits');
+  const siguienteEnCreditos = haySiguiente && activeSkip?.kind === 'credits';
+  const siguienteEnCola = haySiguiente && !activeSkip && sinCreditos && duration > 300 && duration - virtual < 40 && duration - virtual > 1;
+  const enModoWatchNext = (siguienteEnCreditos || siguienteEnCola) && !watchNextCancelado;
+
+  // Cuenta atrás para reproducir el siguiente episodio si está en modo Watch Next
+  useEffect(() => {
+    if (!enModoWatchNext) {
+      setCuentaAtrasNext(12);
+      return;
+    }
+    const t = window.setInterval(() => {
+      setCuentaAtrasNext((c) => {
+        if (c <= 1) {
+          window.clearInterval(t);
+          irAlSiguiente();
+          return 0;
+        }
+        return c - 1;
+      });
+    }, 1000);
+    return () => window.clearInterval(t);
+  }, [enModoWatchNext]);
+
   useEffect(() => {
     // El resumen («Anteriormente en…») se salta igual que la cabecera, con el mismo ajuste.
     if (!prefs.playback.autoSkipIntro || !activeSkip || (activeSkip.kind !== 'intro' && activeSkip.kind !== 'recap')) return;
@@ -864,37 +917,60 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
         </div>
       )}
       {!conMpv && (
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        onClick={togglePlay}
-        onPlay={() => setPlaying(true)}
-        onPause={() => setPlaying(false)}
-        onWaiting={() => setBuffering(true)}
-        onPlaying={() => setBuffering(false)}
-        onCanPlay={() => setBuffering(false)}
-        onTimeUpdate={(e) => !scrubbing && setCurrent(e.currentTarget.currentTime)}
-        onEnded={() => {
-          if (itemId) {
-            api.saveProgress({
-              itemId,
-              episodeId,
-              position: duration,
-              duration,
-              watched: true,
-              audio: audioTrackRef.current,
-              subtitle: subtitleRef.current ?? 'off',
-            }).catch(() => undefined);
-          }
-          if (prefs.playback.autoPlayNext && nextEpisode?.file_id) {
-            navigate(`/ver/${nextEpisode.file_id}?item=${itemId}&ep=${nextEpisode.id}&t=0`, { replace: true });
-          } else {
-            salir();
-          }
+      <div
+        className={`relative h-full w-full transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+          enModoWatchNext
+            ? 'cursor-pointer origin-top-right scale-[0.48] translate-x-[-2vw] translate-y-[4vh] rounded-2xl shadow-2xl ring-2 ring-white/20 overflow-hidden z-20'
+            : ''
+        }`}
+        onClick={() => {
+          if (enModoWatchNext) setWatchNextCancelado(true);
         }}
-        className="h-full w-full"
-      />
+      >
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          onClick={(e) => {
+            if (enModoWatchNext) {
+              e.stopPropagation();
+              setWatchNextCancelado(true);
+            } else {
+              togglePlay();
+            }
+          }}
+          onPlay={() => setPlaying(true)}
+          onPause={() => setPlaying(false)}
+          onWaiting={() => setBuffering(true)}
+          onPlaying={() => setBuffering(false)}
+          onCanPlay={() => setBuffering(false)}
+          onTimeUpdate={(e) => !scrubbing && setCurrent(e.currentTarget.currentTime)}
+          onEnded={() => {
+            if (itemId) {
+              api.saveProgress({
+                itemId,
+                episodeId,
+                position: duration,
+                duration,
+                watched: true,
+                audio: audioTrackRef.current,
+                subtitle: subtitleRef.current ?? 'off',
+              }).catch(() => undefined);
+            }
+            if (prefs.playback.autoPlayNext && nextEpisode?.file_id) {
+              navigate(`/ver/${nextEpisode.file_id}?item=${itemId}&ep=${nextEpisode.id}&t=0`, { replace: true });
+            } else {
+              salir();
+            }
+          }}
+          className="h-full w-full object-contain"
+        />
+        {enModoWatchNext && (
+          <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+            <span className="glass-strong rounded-full px-4 py-2 text-xs font-semibold text-white">⤢ Maximizar créditos</span>
+          </div>
+        )}
+      </div>
       )}
 
       <AnimatePresence>
@@ -912,17 +988,86 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
         )}
       </AnimatePresence>
 
+      {/* Tarjeta «Watch Next» interactiva estilo Netflix / Plex cuando el vídeo entra en créditos */}
       <AnimatePresence>
-        {activeSkip && (
+        {enModoWatchNext && nextEpisode && (
+          <motion.div
+            key="watch-next-card"
+            initial={{ opacity: 0, x: -40, y: 20 }}
+            animate={{ opacity: 1, x: 0, y: 0 }}
+            exit={{ opacity: 0, x: -30 }}
+            transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+            className="absolute left-8 md:left-14 bottom-14 md:bottom-20 z-30 max-w-[460px] rounded-3xl bg-[#0c0d12]/92 p-6 md:p-7 shadow-2xl ring-1 ring-white/15 backdrop-blur-xl"
+          >
+            <div className="flex items-center gap-2 mb-2.5">
+              <span className="h-2 w-2 rounded-full bg-accent animate-pulse" />
+              <span className="text-[11px] font-bold tracking-widest text-accent uppercase">Siguiente episodio</span>
+            </div>
+
+            {nextEpisode.has_thumb ? (
+              <div className="relative mb-3.5 aspect-video w-full overflow-hidden rounded-2xl border border-white/10 shadow-lg bg-black">
+                <img
+                  src={`/api/episodes/${nextEpisode.id}/thumb`}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
+                <div className="absolute right-2.5 bottom-2.5 flex h-7 w-7 items-center justify-center rounded-full bg-black/65 text-white backdrop-blur-md border border-white/20">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M8 5.5v13l11-6.5-11-6.5Z" />
+                  </svg>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="text-xl md:text-2xl font-bold text-white mb-1 leading-snug truncate">
+              {nextEpisode.title ? `${nextEpisode.title}` : `Episodio ${nextEpisode.episode}`}
+            </div>
+            <div className="text-xs font-semibold text-mist-400 mb-2.5">
+              Temporada {nextEpisode.season} · Episodio {nextEpisode.episode}
+            </div>
+
+            {nextEpisode.plot && (
+              <p className="text-xs text-mist-300 line-clamp-2 leading-relaxed mb-5">
+                {nextEpisode.plot}
+              </p>
+            )}
+
+            <div className="flex items-center gap-3">
+              <button
+                onClick={irAlSiguiente}
+                className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-accent px-5 py-3 text-[13px] font-bold text-ink-950 transition-transform hover:scale-[1.03] active:scale-[0.98] shadow-lg shadow-accent/25"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M8 5.5v13l11-6.5-11-6.5Z" />
+                </svg>
+                <span>Ver ahora ({cuentaAtrasNext}s)</span>
+              </button>
+              <button
+                onClick={() => setWatchNextCancelado(true)}
+                className="rounded-xl bg-white/10 px-4 py-3 text-[13px] font-semibold text-mist-200 hover:bg-white/15 hover:text-white transition-colors"
+              >
+                Ver créditos
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Botón clásico de salto (para intros, resumen o si se minimiza la tarjeta) */}
+      <AnimatePresence>
+        {((activeSkip && !enModoWatchNext) || (siguienteEnCola && watchNextCancelado)) && (
           <motion.button
+            key="boton-de-salto"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 12 }}
             transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-            onClick={() => seek(activeSkip.end_s + 0.4)}
+            onClick={() => (siguienteEnCreditos || siguienteEnCola ? irAlSiguiente() : activeSkip && seek(activeSkip.end_s + 0.4))}
             className="glass-strong absolute right-8 bottom-28 z-20 rounded-full px-5 py-2.5 text-[13px] font-semibold transition-transform hover:scale-105 active:scale-95"
           >
-            {activeSkip.kind === 'intro' ? 'Saltar cabecera' : activeSkip.kind === 'recap' ? 'Saltar resumen' : escenaFinal ? 'Ver escena final' : 'Saltar créditos'}
+            {siguienteEnCreditos || siguienteEnCola
+              ? 'Siguiente episodio'
+              : activeSkip?.kind === 'intro' ? 'Saltar cabecera' : activeSkip?.kind === 'recap' ? 'Saltar resumen' : escenaFinal ? 'Ver escena final' : 'Saltar créditos'}
           </motion.button>
         )}
       </AnimatePresence>
