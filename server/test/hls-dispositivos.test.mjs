@@ -80,3 +80,14 @@ test('dos aparatos con los mismos ajustes tienen cada uno su sesion, y cerrar la
   assert.equal((await pedir('POST', `/api/play/${fileId}/hls/cerrar`, galletaA)).status, 200);
   assert.equal(carpetas().length, 1, 'cerrar el aparato A debia dejar solo la sesion de B: ' + carpetas().join(', '));
 });
+
+test('trozos con numeros imposibles se rechazan sin lanzar ffmpeg ni crear carpetas de trabajo', { skip: !hayFfmpeg && 'sin ffmpeg' }, async () => {
+  const antes = carpetas().length;
+  for (const n of ['-5', 'abc', '99999999', '1.5']) {
+    const r = await pedir('GET', `/api/play/${fileId}/hls/baja/${n}.ts`, galletaA);
+    assert.equal(r.status, 400, `n=${n} dio ${r.status}`);
+  }
+  const mal = await pedir('GET', `/api/play/${fileId}/hls/baja/0.ts?audio=abc`, galletaA);
+  assert.equal(mal.status, 400, 'audio no numerico');
+  assert.equal(carpetas().length, antes, 'se crearon carpetas de trabajo para peticiones imposibles');
+});
