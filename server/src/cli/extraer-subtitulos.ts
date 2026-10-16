@@ -60,6 +60,15 @@ import { probeFile } from '../media/probe.ts';
 
 const run = promisify(execFile);
 const probar = process.argv.includes('--probar');
+/*
+ * Escribe `.srt` en `E:`, así que ya no se lanza solo: la tarea de inicio de sesión «TvWatch-ExtraerSubtitulos» lo
+ * ejecutaba sin argumentos en cada arranque. La extracción grande terminó el 15/10 (las últimas pasadas dan 0 ficheros).
+ * Sin argumentos no hace nada; `--probar` cuenta y mide sin escribir; `--aplicar` escribe.
+ */
+if (!probar && !process.argv.includes('--aplicar')) {
+  console.log('extraer-subtitulos: sin argumentos no hace nada. Usa --probar (solo cuenta) o --aplicar (escribe .srt junto a los vídeos).');
+  process.exit(0);
+}
 const CONCURRENCIA = 2;
 
 type Fichero = { fileId: number; path: string };
