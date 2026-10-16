@@ -21,6 +21,7 @@ const TABS = [
   { key: 'pin', label: 'PIN' },
   { key: 'actividad', label: 'Actividad' },
   { key: 'server', label: 'Servidor' },
+  { key: 'licencia', label: 'Coleccionista' },
 ] as const;
 
 type Tab = (typeof TABS)[number]['key'];
@@ -1262,6 +1263,119 @@ function ServerTab() {
   );
 }
 
+function LicenciaTab() {
+  const queryClient = useQueryClient();
+  const { data: licencia } = useQuery({ queryKey: ['licencia'], queryFn: api.licencia });
+  const [keyInput, setKeyInput] = useState('');
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+
+  const activar = useMutation({
+    mutationFn: () => api.saveLicencia(keyInput.trim()),
+    onSuccess: () => {
+      setError('');
+      setKeyInput('');
+      setMessage('¡Licencia Pro activada con éxito!');
+      queryClient.invalidateQueries({ queryKey: ['licencia'] });
+    },
+    onError: (err: Error) => {
+      setMessage('');
+      setError(err.message || 'Error validando la licencia');
+    },
+  });
+
+  const retirar = useMutation({
+    mutationFn: api.deleteLicencia,
+    onSuccess: () => {
+      setMessage('Licencia retirada.');
+      queryClient.invalidateQueries({ queryKey: ['licencia'] });
+    },
+  });
+
+  const esPro = licencia?.valid && licencia?.tier === 'pro';
+
+  return (
+    <div className="space-y-6">
+      {esPro ? (
+        <div className="rounded-3xl border border-amber-500/30 bg-gradient-to-br from-amber-500/15 via-amber-500/5 to-transparent p-6 sm:p-8 shadow-2xl backdrop-blur-md">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500/20 text-amber-400 ring-1 ring-amber-500/40 shadow-lg shadow-amber-500/20">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+              </svg>
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-white tracking-tight">Media Watch Coleccionista Pro</h2>
+              <p className="text-xs text-amber-300/80">Edición de lujo activa y verificada offline</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
+            <div className="rounded-xl bg-black/25 p-3.5 border border-white/5">
+              <div className="text-[11px] text-mist-400">Titular registrado</div>
+              <div className="text-sm font-semibold text-white mt-0.5">{licencia.issuedTo || 'Titular Pro'}</div>
+            </div>
+            <div className="rounded-xl bg-black/25 p-3.5 border border-white/5">
+              <div className="text-[11px] text-mist-400">Modalidad</div>
+              <div className="text-sm font-semibold text-white mt-0.5">
+                {licencia.expiresAt === 0
+                  ? 'Licencia Vitalicia (Lifetime)'
+                  : `Válida hasta ${new Date(licencia.expiresAt || 0).toLocaleDateString('es-ES')}`}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-6 space-y-2">
+            <div className="text-xs font-semibold uppercase tracking-wider text-amber-400/90">Funciones de lujo activas:</div>
+            <ul className="text-xs text-mist-300 space-y-1.5">
+              <li className="flex items-center gap-2">✓ <span>Estuches coleccionista 3D con apertura de bisagra, discart animado y libreto interior</span></li>
+              <li className="flex items-center gap-2">✓ <span>Búsqueda exacta por frase de diálogo (Whisper Speech-to-Text con FTS5)</span></li>
+              <li className="flex items-center gap-2">✓ <span>Música de cabecera temática (Theme Music) en las fichas de títulos</span></li>
+              <li className="flex items-center gap-2">✓ <span>Descargas de alta fidelidad sin conexión</span></li>
+            </ul>
+          </div>
+
+          <div className="mt-8 pt-4 border-t border-white/10 flex justify-end">
+            <Button variant="ghost" onClick={() => retirar.mutate()} disabled={retirar.isPending}>
+              Retirar licencia de este servidor
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-3xl border border-white/10 bg-white/4 p-6 sm:p-8 backdrop-blur-md space-y-6">
+          <div>
+            <h2 className="text-xl font-bold text-white tracking-tight">Edición Coleccionista</h2>
+            <p className="mt-1 text-xs text-mist-400">
+              Desbloquea la experiencia cinematográfica de salón completa: estuches 3D con libretos, búsqueda por diálogos y sintonías temáticas.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <label className="block text-xs font-medium text-mist-300">
+              Pega tu clave de licencia Media Watch:
+            </label>
+            <textarea
+              rows={4}
+              value={keyInput}
+              onChange={(e) => setKeyInput(e.target.value)}
+              placeholder="-----BEGIN MEDIA WATCH LICENSE-----&#10;...&#10;-----END MEDIA WATCH LICENSE-----"
+              className="w-full rounded-2xl border border-white/10 bg-black/40 p-3 font-mono text-xs text-white placeholder-mist-600 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+            />
+            {error && <div className="text-xs text-red-400 bg-red-500/10 p-2.5 rounded-xl border border-red-500/20">{error}</div>}
+            {message && <div className="text-xs text-emerald-400 bg-emerald-500/10 p-2.5 rounded-xl border border-emerald-500/20">{message}</div>}
+
+            <div className="pt-2">
+              <Button onClick={() => activar.mutate()} disabled={!keyInput.trim() || activar.isPending}>
+                {activar.isPending ? 'Verificando…' : 'Activar licencia Pro'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TabsBar({
   tabs,
   activeTab,
@@ -1375,7 +1489,7 @@ export default function Settings() {
   const { data: yo } = useQuery({ queryKey: ['me'], queryFn: api.me, staleTime: Infinity });
   // Solo el administrador ve gestión, escaneo, análisis y servidor. Los demás solo ven sus preferencias personales y PIN.
   const pestanas = TABS.filter((t) => {
-    const soloAdmin = ['usuarios', 'actividad', 'server', 'library', 'analysis', 'metadata'];
+    const soloAdmin = ['usuarios', 'actividad', 'server', 'library', 'analysis', 'metadata', 'licencia'];
     if (soloAdmin.includes(t.key)) return yo?.is_admin === 1;
     if (t.key === 'pin') return yo?.is_admin !== 1;
     return true;
@@ -1397,6 +1511,7 @@ export default function Settings() {
       {tab === 'pin' && <PinTab />}
       {tab === 'actividad' && <Actividad />}
       {tab === 'server' && <ServerTab />}
+      {tab === 'licencia' && <LicenciaTab />}
     </div>
   );
 }
