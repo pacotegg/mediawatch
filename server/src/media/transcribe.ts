@@ -121,7 +121,8 @@ export async function transcribe(fileId: number, options: { model?: string; lang
       '--modelo', options.model ?? 'small',
       ...(language ? ['--idioma', language] : []),
     ],
-    { windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } },
+    // Un cuarto de hora para una película en CPU; 4 h de tope por si Whisper se cuelga (si no, `running` no se libera nunca).
+    { windowsHide: true, timeout: 4 * 3600_000, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } },
   );
 
   const push = (chunk: Buffer) => {
