@@ -454,6 +454,8 @@ export default function Detail() {
   }
 
   const movieFile = item.files.find((f) => !f.episode_id);
+  // Misma regla que el servidor para la etiqueta «4K» (etiquetas.ts): 1400 px de alto o 3000 de ancho.
+  const es4kItem = item.files.some((f) => (f.height ?? 0) >= 1400 || (f.width ?? 0) >= 3000);
   const movieProgress = item.progress.find((p) => p.episode_id === null);
   const esFavorita = item.favorite === 1;
   const estaVista = movieProgress?.watched === 1;
@@ -908,6 +910,7 @@ export default function Detail() {
                 posterUrl={img.poster(itemId, 500, item.arte_actualizado)}
                 discartUrl={item.has_discart === 1 ? img.discart(itemId, 600, item.arte_actualizado) : null}
                 title={item.title}
+                es4k={es4kItem}
               />
             </div>
           ) : item.has_poster ? (
@@ -926,6 +929,7 @@ export default function Detail() {
                 posterUrl={img.poster(itemId, 500, item.arte_actualizado)}
                 discartUrl={item.has_discart === 1 ? img.discart(itemId, 600, item.arte_actualizado) : null}
                 title={item.title}
+                es4k={es4kItem}
               />
             </div>
           ) : item.has_poster ? (

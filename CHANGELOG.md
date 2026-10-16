@@ -12,6 +12,15 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.62 — 16/10/2026
+
+- Edición coleccionista 3D (móvil): con la caja cerrada se veía el disco en vez de la carátula, porque la tapa quedaba pintada detrás de la bandeja. Ahora la tapa va por delante y se ve girar al abrirla.
+- Edición coleccionista 3D (móvil): el libreto decía «AUDIO: HEVC» (el códec de vídeo) cuando aún no estaba cargada la información de reproducción. Ahora sale el audio real del fichero, por ejemplo «TrueHD Atmos 7.1».
+- Edición coleccionista 3D (Google TV): el visor se rehace con la misma apertura que el móvil —tapa de dos caras que gira sobre la bisagra, libreto con dirección, reparto, sinopsis y ficha técnica, disco que gira hasta pararse recto— y su tamaño sale de la pantalla (antes se salía por abajo a 1080p).
+- Estuche de Google TV: el destello de la carátula se dibuja sin recomponer todo el estuche en cada fotograma.
+- Buscar y bajar subtítulos de internet (administradores): esperan lo que espera el servidor (hasta 90 s y 2 min) en vez de darse por fallidos a los 25 s y no decir nada.
+- Seguridad: la app solo confía en los certificados del sistema, no en los que instale el usuario.
+
 ## 3.61 — 16/10/2026
 
 - Edición coleccionista 3D: apertura real tipo libro/bisagra con perspectiva física en 3D, sin deslizamiento plano.

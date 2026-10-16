@@ -36,6 +36,7 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -72,6 +73,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import casa.tvwatch.datos.Ajustes
 import casa.tvwatch.datos.Api
+import casa.tvwatch.datos.AudioDeFichero
 import casa.tvwatch.datos.EleccionDePistas
 import casa.tvwatch.datos.InfoReproduccion
 import casa.tvwatch.datos.Pistas
@@ -1202,6 +1204,24 @@ private fun estimarDescargas(duracionSegundos: Double, bytesOriginal: Long?, cod
   )
 }
 
+/** «TrueHD Atmos 7.1», «DD+ 5.1»... a partir del códec y los canales que apunta el servidor. */
+internal fun nombreAudioDeFichero(a: AudioDeFichero): String? {
+  val codec = a.codec?.lowercase() ?: return null
+  val nombre = when {
+    codec.contains("atmos") && codec.startsWith("truehd") -> "TrueHD Atmos"
+    codec.contains("atmos") -> "Dolby Atmos"
+    codec.startsWith("truehd") -> "TrueHD"
+    codec.startsWith("eac3") -> "DD+"
+    codec.startsWith("ac3") -> "DD"
+    codec.startsWith("dtshd") -> "DTS-HD"
+    codec.startsWith("dts") -> "DTS"
+    codec.startsWith("aac") -> "AAC"
+    else -> codec.uppercase()
+  }
+  val canales = when (a.channels) { 8 -> " 7.1"; 6 -> " 5.1"; 2 -> " 2.0"; else -> "" }
+  return nombre + canales
+}
+
 @Composable
 private fun Estuche3DAndroid(
   itemId: Int,
@@ -1410,8 +1430,11 @@ private fun ModalColeccionistaAndroid(
   val generos = remember(ficha) { ficha.genres.take(3).joinToString(", ") }
   val fichero = ficha.files.firstOrNull { it.episodioId == null } ?: ficha.files.firstOrNull()
   val codecVideo = remember(fichero) { fichero?.codec?.uppercase() ?: if (es4k) "HEVC" else "H.264" }
-  val audioTracksTexto = remember(infoPistas) {
-    infoPistas?.audio?.take(2)?.joinToString(" · ") { etiquetaAudio(it) } ?: fichero?.codec?.uppercase()
+  // Con la información de reproducción, el detalle real; sin ella, lo que el servidor ya sabe del fichero. Antes el
+  // respaldo era el códec de VÍDEO (HEVC) puesto como si fuera el audio.
+  val audioTracksTexto = remember(infoPistas, fichero) {
+    infoPistas?.audio?.take(2)?.joinToString(" · ") { etiquetaAudio(it) }
+      ?: fichero?.audio?.take(2)?.mapNotNull { nombreAudioDeFichero(it) }?.joinToString(" · ")?.takeIf { it.isNotBlank() }
   }
   val subsTexto = remember(infoPistas) {
     infoPistas?.subtitles?.mapNotNull { it.language?.uppercase() }?.distinct()?.take(4)?.joinToString(", ")
@@ -1512,6 +1535,9 @@ private fun ModalColeccionistaAndroid(
           // Tapa Izquierda (gira en 3D sobre su bisagra derecha)
           Box(
             modifier = Modifier
+              // Por encima de la bandeja: en un Row los hijos se pintan en orden, así que sin esto la tapa, girada sobre
+              // la bandeja al estar cerrada, quedaba DETRÁS y la caja cerrada enseñaba el disco en vez de la carátula.
+              .zIndex(1f)
               .size(width = anchoCara, height = altoCaja)
               .graphicsLayer {
                 transformOrigin = TransformOrigin(1f, 0.5f) // Pivote en la bisagra derecha

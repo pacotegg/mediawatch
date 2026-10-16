@@ -678,6 +678,13 @@ data class RespuestaTrailer(val trailer: Trailer? = null)
 data class RespuestaResenas(val items: List<Resena> = emptyList())
 
 @Serializable
+data class AudioDeFichero(
+  val codec: String? = null,
+  val language: String? = null,
+  val channels: Int? = null,
+)
+
+@Serializable
 data class Fichero(
   val id: Int,
   @SerialName("episode_id") val episodioId: Int? = null,
@@ -687,6 +694,8 @@ data class Fichero(
   @SerialName("video_codec") val codec: String? = null,
   val hdr: String? = null,
   val size: Long? = null,
+  /** Las pistas de audio del fichero, tal y como las apunta el servidor (sin ir a probar el fichero). */
+  val audio: List<AudioDeFichero> = emptyList(),
 )
 
 @Serializable
