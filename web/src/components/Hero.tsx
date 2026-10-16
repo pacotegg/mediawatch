@@ -25,7 +25,8 @@ export default function Hero({ items }: { items: ItemSummary[] }) {
   }, [items.length, trailerYoutube]);
 
   if (items.length === 0) return null;
-  const item = items[index];
+  // Si la lista se acorta al refrescarse, `index` puede quedarse fuera.
+  const item = items[index % items.length];
 
   useEffect(() => {
     setTrailerYoutube(null);

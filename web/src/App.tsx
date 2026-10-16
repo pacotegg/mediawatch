@@ -67,7 +67,7 @@ export default function App() {
   const location = useLocation();
   const { collapsed, toggle, width } = useSidebar();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const { data: user, isLoading, isError } = useQuery({ queryKey: ['me'], queryFn: api.me, retry: false });
+  const { data: user, isLoading, isError, error, refetch } = useQuery({ queryKey: ['me'], queryFn: api.me, retry: false });
   const { prefs } = usePreferences();
   useReducirMovimiento(prefs.interface.reduceMotion);
 
@@ -75,6 +75,22 @@ export default function App() {
     return <div className="grid min-h-screen place-items-center bg-ink-950 text-mist-600">Media Watch</div>;
   }
 
+  // Solo un 401 es «no hay sesión». Con el servidor reiniciándose o sin red, enseñar el inicio de sesión hacía creer que
+  // se había perdido la sesión; se dice qué pasa y se puede reintentar.
+  const status = (error as { status?: number } | null)?.status;
+  if (isError && status !== 401) {
+    return (
+      <div className="grid min-h-screen place-items-center bg-ink-950 px-6 text-center">
+        <div>
+          <p className="mb-1 text-base font-medium text-mist-100">No se puede conectar con el servidor</p>
+          <p className="mb-5 text-xs text-mist-500">Puede estar reiniciándose. Tu sesión sigue guardada.</p>
+          <button onClick={() => void refetch()} className="rounded-xl bg-accent px-4 py-2 text-xs font-semibold text-ink-950 hover:brightness-110">
+            Reintentar
+          </button>
+        </div>
+      </div>
+    );
+  }
   if (isError || !user) return <Login />;
 
   const isPlayer = location.pathname.startsWith('/ver/');

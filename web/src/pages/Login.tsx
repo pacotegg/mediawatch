@@ -35,7 +35,7 @@ function Avatar({ user, onClick }: { user: User; onClick: () => void }) {
 
 export default function Login() {
   const queryClient = useQueryClient();
-  const { data, isLoading } = useQuery({ queryKey: ['users'], queryFn: api.users });
+  const { data, isLoading, isError: sinServidor, refetch } = useQuery({ queryKey: ['users'], queryFn: api.users });
   const [selected, setSelected] = useState<User | null>(null);
   const [pin, setPin] = useState('');
   const [newName, setNewName] = useState('');
@@ -44,7 +44,11 @@ export default function Login() {
   const login = useMutation({
     mutationFn: (vars: { userId: number; pin?: string }) => api.login(vars.userId, vars.pin),
     onSuccess: () => queryClient.invalidateQueries(),
-    onError: (err: Error) => setError(err.message),
+    onError: (err: Error) => {
+      setError(err.message);
+      // Un PIN fallado se borra: si no, hay que vaciar el campo a mano antes de reintentar.
+      setPin('');
+    },
   });
 
   const create = useMutation({
@@ -65,6 +69,19 @@ export default function Login() {
   if (isLoading) return <div className="grid min-h-screen place-items-center text-mist-500">Cargando…</div>;
 
   const setup = data?.setupNeeded;
+
+  if (sinServidor && !data) {
+    return (
+      <div className="grid min-h-screen place-items-center px-6 text-center">
+        <div>
+          <p className="mb-5 text-sm text-mist-400">No se puede conectar con el servidor.</p>
+          <button onClick={() => void refetch()} className="rounded-xl bg-mist-100 px-4 py-2 text-sm font-semibold text-ink-950">
+            Reintentar
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="tinted grid min-h-screen place-items-center px-6" style={{ ['--tint' as string]: '240 165 74' }}>
