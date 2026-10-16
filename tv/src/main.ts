@@ -80,7 +80,7 @@ const ICONOS: Record<string, string> = {
 };
 
 /* La misma que `version` de public/config.xml: al subirla, subir las dos. */
-const VERSION_APP = '1.0.0';
+const VERSION_APP = '3.64.0';
 
 function versionTizen(): string {
   try {
@@ -2487,10 +2487,15 @@ async function pantallaPersona(id: number, volverA?: number | (() => void) | nul
     persona = await api.persona(id);
   } catch (e) {
     pintar('inicio', '<div class="vacio">No se pudo abrir la ficha de esa persona.' +
-      '<div class="acciones" data-bloque><button class="boton" data-nav data-volver>Volver</button></div></div>');
+      '<div class="acciones" data-bloque>' +
+      '<button class="boton primario" data-nav data-reintentar>Reintentar</button>' +
+      '<button class="boton" data-nav data-volver>Volver</button>' +
+      '</div></div>');
+    const bReintentar = marco.querySelector<HTMLElement>('[data-reintentar]');
     const bVolver = marco.querySelector<HTMLElement>('[data-volver]');
+    if (bReintentar) bReintentar.addEventListener('click', () => void pantallaPersona(id, volverA));
     if (bVolver) bVolver.addEventListener('click', volverFn);
-    enfocar(bVolver);
+    enfocar(bReintentar || bVolver);
     alPulsar((tecla) => (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE ? (volverFn(), true) : false));
     return;
   }
@@ -2525,7 +2530,8 @@ async function pantallaPersona(id: number, volverA?: number | (() => void) | nul
     });
   }
 
-  enfocar(marco.querySelector<HTMLElement>('.rejilla [data-nav]'));
+  const focoInicial = marco.querySelector<HTMLElement>('.rejilla [data-nav]') || marco.querySelector<HTMLElement>('.persona-bio');
+  enfocar(focoInicial);
   // Volver debe devolverte a la película desde la que entraste, no al inicio.
   alPulsar((tecla) => {
     if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE) {
@@ -5027,10 +5033,10 @@ function elecciones(campo: string, opciones: Opcion[], valorActual: string | num
   );
 }
 
-/** Qué campo se acaba de tocar, para reenfocarlo tras repintar en vez de subir arriba. */
+/** Qué campo se acaba de tocar, para reenfocarlo si hiciera falta. */
 let focoAjustesDespues: string | null = null;
 
-function pantallaAjustes() {
+function pantallaAjustes(pestanaInicial?: string) {
   const a = ajustes();
 
   const siNo = (campo: string, activo: boolean, es: string, en: string) =>
@@ -5039,15 +5045,46 @@ function pantallaAjustes() {
       { valor: 'no', texto: tr(es + ': no', en + ': off') },
     ], activo ? 'si' : 'no');
 
-  /*
-   * Orden: primero lo que se toca viendo algo (reproducción, audio, subtítulos, saltos), después el
-   * aspecto, luego idioma y menú, y al final lo de administración y el aparato. Antes eran 15 grupos
-   * seguidos que mezclaban preferencias con tareas de mantenimiento.
-   */
-  const cuerpo =
-    '<div class="ajustes" data-bloque>' +
-    '<h1 class="titulo-pantalla">' + esc(t('settings')) + '</h1>' +
+  const pestanas = [
+    { id: 'reproduccion', titulo: tr('Reproducción', 'Playback') },
+    { id: 'audio-subs', titulo: tr('Audio y subtítulos', 'Audio & subtitles') },
+    { id: 'pantalla', titulo: tr('Pantalla e interfaz', 'Display & interface') },
+  ];
+  if (soyAdmin) {
+    pestanas.push({ id: 'mantenimiento', titulo: tr('Mantenimiento', 'Maintenance') });
+  }
+  pestanas.push({ id: 'sistema', titulo: tr('Sistema', 'System') });
 
+  let pestanaActivaId = pestanas[0].id;
+  if (pestanaInicial && pestanas.some((p) => p.id === pestanaInicial)) {
+    pestanaActivaId = pestanaInicial;
+  } else if (focoAjustesDespues) {
+    if (['reanudar', 'saltoCorto', 'saltoLargo', 'horaDeFin', 'modoMaraton', 'saltarCabecera'].indexOf(focoAjustesDespues) >= 0) {
+      pestanaActivaId = 'reproduccion';
+    } else if (['modoAudio', 'passthroughAvanzado', 'tamanoSubtitulos', 'fondoSubtitulos'].indexOf(focoAjustesDespues) >= 0) {
+      pestanaActivaId = 'audio-subs';
+    } else if (['heroeRotar', 'heroeSegundos', 'musicaCabecera', 'estuche3D', 'salvaMenu', 'salvaPausa', 'rendimiento', 'idiomaInterfaz'].indexOf(focoAjustesDespues) >= 0) {
+      pestanaActivaId = 'pantalla';
+    }
+  }
+
+  const cabeceraTabs =
+    '<div class="ajustes-cabecera">' +
+    '<h1 class="titulo-pantalla">' + esc(t('settings')) + '</h1>' +
+    '<div class="ajustes-pestanas" role="tablist">' +
+    pestanas
+      .map(function (p) {
+        return (
+          '<button class="pestana-ajustes' + (p.id === pestanaActivaId ? ' activa' : '') + '" data-nav data-pestana="' + p.id + '">' +
+          esc(p.titulo) +
+          '</button>'
+        );
+      })
+      .join('') +
+    '</div></div>';
+
+  const panelReproduccion =
+    '<div class="panel-ajustes' + (pestanaActivaId === 'reproduccion' ? '' : ' oculto') + '" data-panel="reproduccion">' +
     grupo(tr('Reproducción', 'Playback'), tr('Dónde empieza, cuánto salta cada flecha y si encadena episodios.', 'Where it starts, how far each arrow jumps and whether episodes chain.'),
       elecciones('reanudar', [{ valor: 'si', texto: tr('Reanudar donde lo dejé', 'Resume where I left off') }, { valor: 'no', texto: tr('Empezar de cero', 'Start over') }], a.reanudar ? 'si' : 'no') +
       elecciones('saltoCorto', [10, 15, 30].map(function (n: number) { return { valor: n, texto: tr('Atrás ', 'Back ') + n + ' s' }; }), a.saltoCorto) +
@@ -5055,7 +5092,13 @@ function pantallaAjustes() {
       elecciones('horaDeFin', [{ valor: 'si', texto: tr('Mostrar «termina a las…»', 'Show «ends at…»') }, { valor: 'no', texto: tr('Solo lo que queda', 'Time left only') }], a.horaDeFin ? 'si' : 'no') +
       siNo('modoMaraton', a.modoMaraton, 'Modo maratón (salta la cabecera al encadenar)', 'Binge mode (skips intros when chaining)'),
     ) +
+    grupo(tr('Saltar cabecera y créditos', 'Skip intro and credits'), tr('Muestra el botón para saltar la cabecera de las series y los créditos finales.', 'Shows the button to skip series intros and end credits.'),
+      elecciones('saltarCabecera', [{ valor: 'si', texto: tr('Ofrecer saltar', 'Offer to skip') }, { valor: 'no', texto: tr('No ofrecer', "Don't offer") }], a.saltarCabecera ? 'si' : 'no'),
+    ) +
+    '</div>';
 
+  const panelAudioSubs =
+    '<div class="panel-ajustes' + (pestanaActivaId === 'audio-subs' ? '' : ' oculto') + '" data-panel="audio-subs">' +
     grupo(
       tr('Audio', 'Audio'),
       tr('Lo normal deja la pista intacta y la barra recibe el Atmos tal cual. Los otros dos modos obligan a recodificar el audio a DD+, así que se pierde el Atmos: úsalos solo cuando hagan falta.',
@@ -5064,9 +5107,10 @@ function pantallaAjustes() {
         { valor: 'normal', texto: tr('Original', 'Original') },
         { valor: 'night', texto: tr('Volumen nocturno', 'Night mode') },
         { valor: 'dialogue', texto: tr('Voces claras', 'Clear voice') },
-      ], a.modoAudio),
+      ], a.modoAudio) +
+      siNo('passthroughAvanzado', a.passthroughAvanzado, 'Passthrough avanzado (DTS / TrueHD)', 'Advanced passthrough (DTS / TrueHD)') +
+      '<p class="dato">' + tr('Paso directo a la barra de sonido por eARC sin transcodificar a DD+. Requiere que la barra/receptor decodifique DTS/TrueHD o habrá silencio.', 'Direct passthrough to soundbar via eARC without transcoding to DD+. Requires soundbar/receiver to decode DTS/TrueHD or there will be silence.') + '</p>',
     ) +
-
     grupo(tr('Subtítulos', 'Subtitles'), tr('Los pinta la aplicación a partir de los que van dentro del vídeo: nunca se queman.', 'Drawn by the app from the tracks inside the video: never burned in.'),
       elecciones('tamanoSubtitulos', [
         { valor: 80, texto: tr('Pequeños', 'Small') }, { valor: 100, texto: tr('Normales', 'Normal') },
@@ -5077,16 +5121,24 @@ function pantallaAjustes() {
       ], a.fondoSubtitulos) +
       '<button class="boton" data-nav data-posicion-subs>' + tr('Ajustar la altura…', 'Adjust height…') + '</button>',
     ) +
+    '</div>';
 
-    grupo(tr('Saltar cabecera y créditos', 'Skip intro and credits'), tr('Muestra el botón para saltar la cabecera de las series y los créditos finales.', 'Shows the button to skip series intros and end credits.'),
-      elecciones('saltarCabecera', [{ valor: 'si', texto: tr('Ofrecer saltar', 'Offer to skip') }, { valor: 'no', texto: tr('No ofrecer', "Don't offer") }], a.saltarCabecera ? 'si' : 'no'),
-    ) +
-
-    grupo(tr('Pantalla', 'Display'), tr('La portada, la música y el estuche de las fichas, y cuándo sale el salvapantallas. En pausa el margen es mayor a propósito: seguramente te has levantado un momento.', 'Home screen, theme music, the 3D case and when the screensaver kicks in. Paused, the delay is longer on purpose: you probably just stepped away.'),
+  const panelPantalla =
+    '<div class="panel-ajustes' + (pestanaActivaId === 'pantalla' ? '' : ' oculto') + '" data-panel="pantalla">' +
+    grupo(tr('Portada', 'Home screen'), tr('Rotación y tiempo de las carátulas destacadas de la portada.', 'Rotation and delay of featured items on the home screen.'),
       elecciones('heroeRotar', [{ valor: 'si', texto: tr('Portada: va cambiando', 'Home: rotates') }, { valor: 'no', texto: tr('Portada: fija', 'Home: fixed') }], a.heroeRotar ? 'si' : 'no') +
-      elecciones('heroeSegundos', [6, 9, 12, 20].map(function (n: number) { return { valor: n, texto: tr('Cada ', 'Every ') + n + ' s' }; }), a.heroeSegundos) +
+      elecciones('heroeSegundos', [6, 9, 12, 20].map(function (n: number) { return { valor: n, texto: tr('Cada ', 'Every ') + n + ' s' }; }), a.heroeSegundos),
+    ) +
+    grupo(tr('Aspecto y rendimiento', 'Appearance and performance'), tr('Música de las fichas, estuche 3D coleccionista y fluidez visual.', 'Theme music, 3D collector case and visual smoothness.'),
       siNo('musicaCabecera', a.musicaCabecera, 'Música de cabecera', 'Theme music') +
       siNo('estuche3D', a.estuche3D, 'Estuche 3D', '3D case') +
+      elecciones('rendimiento', [
+        { valor: 'completo', texto: tr('Todos los efectos', 'All effects') },
+        { valor: 'medio', texto: tr('Equilibrado', 'Balanced') },
+        { valor: 'rapido', texto: tr('Máxima fluidez', 'Smoothest') },
+      ], a.rendimiento),
+    ) +
+    grupo(tr('Salvapantallas', 'Screensaver'), tr('Cuándo sale el salvapantallas de fondos. En pausa el margen es mayor a propósito: seguramente te has levantado un momento.', 'When the backdrop screensaver kicks in. Paused, the delay is longer on purpose: you probably just stepped away.'),
       elecciones('salvaMenu', [
         { valor: 0, texto: tr('Salvapantallas en el menú: no', 'Screensaver in menus: off') }, { valor: 1, texto: '1 min' },
         { valor: 2, texto: '2 min' }, { valor: 5, texto: '5 min' },
@@ -5094,14 +5146,8 @@ function pantallaAjustes() {
       elecciones('salvaPausa', [
         { valor: 0, texto: tr('Salvapantallas en pausa: no', 'Screensaver when paused: off') }, { valor: 3, texto: '3 min' },
         { valor: 5, texto: '5 min' }, { valor: 10, texto: '10 min' },
-      ], a.salvaPausa) +
-      elecciones('rendimiento', [
-        { valor: 'completo', texto: tr('Todos los efectos', 'All effects') },
-        { valor: 'medio', texto: tr('Equilibrado', 'Balanced') },
-        { valor: 'rapido', texto: tr('Máxima fluidez', 'Smoothest') },
-      ], a.rendimiento),
+      ], a.salvaPausa),
     ) +
-
     grupo(tr('Idioma y menú', 'Language and menu'), tr('Idioma de la interfaz y orden de las secciones del menú.', 'Interface language and the order of menu sections.'),
       elecciones('idiomaInterfaz', [
         { valor: 'en', texto: 'English' },
@@ -5109,9 +5155,11 @@ function pantallaAjustes() {
       ], a.idiomaInterfaz) +
       '<button class="boton" data-nav data-reordenar>' + tr('Reordenar o esconder secciones', 'Reorder or hide sections') + '</button>',
     ) +
+    '</div>';
 
-    (soyAdmin
-      ? grupo(
+  const panelMantenimiento = soyAdmin
+    ? '<div class="panel-ajustes' + (pestanaActivaId === 'mantenimiento' ? '' : ' oculto') + '" data-panel="mantenimiento">' +
+      grupo(
         tr('Mantenimiento', 'Maintenance'),
         tr('Tareas de la biblioteca que corren en el servidor y se pausan solas si alguien está viendo algo. Las miniaturas de la barra se hacen una vez por película (solo fotogramas clave); hacerlas todas son días de máquina.',
           'Library tasks that run on the server and pause by themselves while someone is watching. Seek-bar thumbnails are made once per movie (keyframes only); doing them all takes days.'),
@@ -5126,21 +5174,68 @@ function pantallaAjustes() {
         '<p class="dato" data-estado-notas>…</p>' +
         '<button class="boton" data-nav data-notas>' + tr('Rellenar notas que faltan (OMDb)', 'Fill missing ratings (OMDb)') + '</button>' +
         '<button class="boton" data-nav data-parar-notas>' + tr('Parar notas', 'Stop ratings') + '</button>',
-      )
-      : '') +
+      ) +
+      '</div>'
+    : '';
 
+  const panelSistema =
+    '<div class="panel-ajustes' + (pestanaActivaId === 'sistema' ? '' : ' oculto') + '" data-panel="sistema">' +
     grupo(tr('Servidor y esta tele', 'Server and this TV'), '',
       '<p class="dato">' + esc(servidor()) + '</p>' +
       '<button class="boton" data-nav data-servidor>' + tr('Cambiar servidor', 'Change server') + '</button>' +
       '<button class="boton" data-nav data-desemparejar>' + tr('Desemparejar esta tele', 'Unpair this TV') + '</button>') +
-
     grupo(tr('Acerca de', 'About'), '',
       '<p class="dato">Media Watch para Smart TV · Creado por Paco Gamiz</p>' +
       '<p class="dato">App ' + VERSION_APP + ' · ' + esc(infoPlataforma()) + ' · ' + bibliotecas.length + ' ' + tr('bibliotecas', 'libraries') + '</p>') +
+    '</div>';
 
+  const cuerpo =
+    '<div class="ajustes" data-bloque>' +
+    cabeceraTabs +
+    panelReproduccion +
+    panelAudioSubs +
+    panelPantalla +
+    panelMantenimiento +
+    panelSistema +
     '</div>';
 
   pintar('ajustes', cuerpo);
+
+  const activarPestana = (id: string) => {
+    pestanaActivaId = id;
+    marco.querySelectorAll<HTMLElement>('.pestana-ajustes').forEach((btn) => {
+      if (btn.getAttribute('data-pestana') === id) btn.classList.add('activa');
+      else btn.classList.remove('activa');
+    });
+    marco.querySelectorAll<HTMLElement>('.panel-ajustes').forEach((p) => {
+      if (p.getAttribute('data-panel') === id) p.classList.remove('oculto');
+      else p.classList.add('oculto');
+    });
+    const lienzo = document.querySelector<HTMLElement>('[data-lienzo]');
+    if (lienzo) lienzo.style.transform = '';
+    indexar();
+  };
+
+  marco.querySelectorAll<HTMLElement>('.pestana-ajustes').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-pestana');
+      if (!id) return;
+      if (pestanaActivaId !== id) {
+        activarPestana(id);
+      } else {
+        const panelActivo = marco.querySelector<HTMLElement>('.panel-ajustes[data-panel="' + id + '"]');
+        const primerElem = panelActivo ? panelActivo.querySelector<HTMLElement>('[data-nav]') : null;
+        if (primerElem) enfocar(primerElem);
+      }
+    });
+  });
+
+  alEnfocar((el: HTMLElement) => {
+    const pestana = el.getAttribute('data-pestana');
+    if (pestana && pestana !== pestanaActivaId) {
+      activarPestana(pestana);
+    }
+  });
 
   marco.querySelectorAll<HTMLElement>('[data-campo]').forEach(function (el: HTMLElement) {
     el.addEventListener('click', function () {
@@ -5157,14 +5252,25 @@ function pantallaAjustes() {
       else if (campo === 'tamanoSubtitulos') guardarAjustes({ tamanoSubtitulos: Number(valor) });
       else if (campo === 'fondoSubtitulos') guardarAjustes({ fondoSubtitulos: valor === 'caja' ? 'caja' : 'sombra' });
       else if (campo === 'modoAudio') guardarAjustes({ modoAudio: valor as 'normal' | 'night' | 'dialogue' });
+      else if (campo === 'passthroughAvanzado') guardarAjustes({ passthroughAvanzado: valor === 'si' });
       else if (campo === 'saltarCabecera') guardarAjustes({ saltarCabecera: valor === 'si' });
       else if (campo === 'modoMaraton') guardarAjustes({ modoMaraton: valor === 'si' });
       else if (campo === 'musicaCabecera') guardarAjustes({ musicaCabecera: valor === 'si' });
       else if (campo === 'estuche3D') guardarAjustes({ estuche3D: valor === 'si' });
       else if (campo === 'horaDeFin') guardarAjustes({ horaDeFin: valor === 'si' });
-      else if (campo === 'idiomaInterfaz') guardarAjustes({ idiomaInterfaz: valor as 'en' | 'es' });
-      focoAjustesDespues = campo;
-      pantallaAjustes();
+      else if (campo === 'idiomaInterfaz') {
+        guardarAjustes({ idiomaInterfaz: valor as 'en' | 'es' });
+        pantallaAjustes('pantalla');
+        return;
+      }
+
+      const padre = el.closest('.opciones');
+      if (padre) {
+        padre.querySelectorAll('.eleccion').forEach(function (b) {
+          b.classList.remove('activa');
+        });
+        el.classList.add('activa');
+      }
     });
   });
 
@@ -5309,9 +5415,20 @@ function pantallaAjustes() {
     ? marco.querySelector<HTMLElement>('[data-campo="' + focoAjustesDespues + '"].activa')
     : null;
   focoAjustesDespues = null;
-  enfocar(volver || marco.querySelector<HTMLElement>('.ajustes [data-nav]'));
+  enfocar(volver || marco.querySelector<HTMLElement>('.pestana-ajustes.activa') || marco.querySelector<HTMLElement>('.ajustes [data-nav]'));
   alPulsar(function (tecla: number) {
-    return tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE ? atrasHaciaMenu() : false;
+    if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE) {
+      const act = actual();
+      if (act && !act.classList.contains('pestana-ajustes')) {
+        const pestanaActiva = marco.querySelector<HTMLElement>('.pestana-ajustes.activa');
+        if (pestanaActiva) {
+          enfocar(pestanaActiva);
+          return true;
+        }
+      }
+      return atrasHaciaMenu();
+    }
+    return false;
   });
 }
 
@@ -5579,7 +5696,7 @@ function pantallaOrdenMenu() {
     const listo = marco.querySelector<HTMLElement>('[data-listo]');
     if (listo) {
       listo.addEventListener('click', () => {
-        pantallaAjustes();
+        pantallaAjustes('pantalla');
       });
     }
 
@@ -5596,7 +5713,7 @@ function pantallaOrdenMenu() {
           dibujar(clave);
           return true;
         }
-        pantallaAjustes();
+        pantallaAjustes('pantalla');
         return true;
       }
 
@@ -5840,7 +5957,7 @@ function pantallaPinEmparejar(perfil: { id: number; name: string; has_pin: numbe
 
 function pantallaServidor() {
   let valor = servidor().replace('http://', '');
-  const volverA = () => (token() ? pantallaAjustes() : void pantallaConexion());
+  const volverA = () => (token() ? pantallaAjustes('sistema') : void pantallaConexion());
 
   const dibujar = () => {
     pantallaSimple(

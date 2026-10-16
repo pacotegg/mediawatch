@@ -80,12 +80,14 @@ function normalizarSegundos(seg?: Segmento | null): { start_s: number; end_s: nu
   return null;
 }
 
-async function sincronizarSeries(aplicar: boolean) {
-  console.log('\n=== SINCRONIZANDO SERIES (IntroDB + SkipDB) ===');
+async function sincronizarSeries(aplicar: boolean, forzarTodos = false) {
+  console.log('\n=== SINCRONIZANDO TODAS LAS SERIES (IntroDB + SkipDB) ===');
   const rows = db.prepare(`
     SELECT e.id as episode_id, e.season, e.episode, s.title as serie, s.imdb_id, f.duration,
            (SELECT start_s FROM skip_ranges WHERE episode_id = e.id AND kind = 'credits') as cred_existente,
-           (SELECT start_s FROM skip_ranges WHERE episode_id = e.id AND kind = 'intro') as intro_existente
+           (SELECT confidence FROM skip_ranges WHERE episode_id = e.id AND kind = 'credits') as cred_conf,
+           (SELECT start_s FROM skip_ranges WHERE episode_id = e.id AND kind = 'intro') as intro_existente,
+           (SELECT confidence FROM skip_ranges WHERE episode_id = e.id AND kind = 'intro') as intro_conf
     FROM episodes e
     JOIN items s ON s.id = e.show_id
     JOIN media_files f ON f.episode_id = e.id
@@ -99,7 +101,9 @@ async function sincronizarSeries(aplicar: boolean) {
     imdb_id: string;
     duration: number;
     cred_existente: number | null;
+    cred_conf: number | null;
     intro_existente: number | null;
+    intro_conf: number | null;
   }[];
 
   console.log(`Total episodios con IMDb a revisar: ${rows.length}`);
@@ -116,13 +120,18 @@ async function sincronizarSeries(aplicar: boolean) {
 
   let consultados = 0;
   let creditosNuevos = 0;
+  let creditosActualizados = 0;
   let introsNuevas = 0;
+  let introsActualizadas = 0;
   let serieActual = '';
   const now = new Date().toISOString();
 
   for (const r of rows) {
-    // Si ya tiene intro y créditos en skip_ranges, no consultamos
-    if (r.cred_existente !== null && r.intro_existente !== null) continue;
+    const necesitaCred = forzarTodos || r.cred_existente === null || (r.cred_conf ?? 0) < 85;
+    const necesitaIntro = forzarTodos || r.intro_existente === null || (r.intro_conf ?? 0) < 85;
+
+    // Si ya tiene intro y créditos verificados en BD (confianza 85), saltar para ahorrar llamadas
+    if (!necesitaCred && !necesitaIntro) continue;
 
     if (r.serie !== serieActual) {
       serieActual = r.serie;
@@ -137,12 +146,18 @@ async function sincronizarSeries(aplicar: boolean) {
     }
 
     // Créditos (outro)
-    if (r.cred_existente === null && data.outro) {
+    if (necesitaCred && data.outro) {
       const seg = normalizarSegundos(data.outro);
       if (seg && seg.start_s < r.duration) {
         const fin = Math.min(seg.end_s, r.duration);
-        creditosNuevos++;
-        console.log(`  [CRÉDITOS] S${r.season}E${r.episode}: ${seg.start_s}s - ${fin}s (duración: ${r.duration}s)`);
+        const eraNuevo = r.cred_existente === null;
+        if (eraNuevo) {
+          creditosNuevos++;
+          console.log(`  [CRÉDITOS NUEVO] S${r.season}E${r.episode}: ${seg.start_s}s - ${fin}s`);
+        } else {
+          creditosActualizados++;
+          console.log(`  [CRÉDITOS ACTUALIZADO] S${r.season}E${r.episode}: ${seg.start_s}s - ${fin}s (antes: ${r.cred_existente}s, conf: ${r.cred_conf} -> 85)`);
+        }
         if (aplicar) {
           insertStmt.run(r.episode_id, 'credits', seg.start_s, fin, 85, now);
         }
@@ -150,21 +165,29 @@ async function sincronizarSeries(aplicar: boolean) {
     }
 
     // Cabecera (intro)
-    if (r.intro_existente === null && data.intro) {
+    if (necesitaIntro && data.intro) {
       const seg = normalizarSegundos(data.intro);
       if (seg && seg.end_s < r.duration * 0.5) {
-        introsNuevas++;
-        console.log(`  [INTRO]    S${r.season}E${r.episode}: ${seg.start_s}s - ${seg.end_s}s`);
+        const eraNuevo = r.intro_existente === null;
+        if (eraNuevo) {
+          introsNuevas++;
+          console.log(`  [INTRO NUEVA]    S${r.season}E${r.episode}: ${seg.start_s}s - ${seg.end_s}s`);
+        } else {
+          introsActualizadas++;
+          console.log(`  [INTRO ACTUALIZADA] S${r.season}E${r.episode}: ${seg.start_s}s - ${seg.end_s}s (antes: ${r.intro_existente}s)`);
+        }
         if (aplicar) {
           insertStmt.run(r.episode_id, 'intro', seg.start_s, seg.end_s, 85, now);
         }
       }
     }
 
-    await new Promise((res) => setTimeout(res, 100));
+    await new Promise((res) => setTimeout(res, 90));
   }
 
-  console.log(`\nResumen series: ${consultados} consultas, ${creditosNuevos} créditos, ${introsNuevas} intros.`);
+  console.log(`\nResumen series: ${consultados} consultas realizadas.`);
+  console.log(`Créditos: ${creditosNuevos} nuevos, ${creditosActualizados} actualizados.`);
+  console.log(`Intros: ${introsNuevas} nuevas, ${introsActualizadas} actualizadas.`);
 }
 
 async function sincronizarPeliculas(aplicar: boolean) {
@@ -303,11 +326,12 @@ async function afinarSeriesCreditos(aplicar: boolean) {
 
 async function main() {
   const aplicar = process.argv.includes('--aplicar');
+  const forzar = process.argv.includes('--forzar');
   const soloPeliculas = process.argv.includes('peliculas');
   const soloSeries = process.argv.includes('series');
   const afinar = process.argv.includes('afinar');
 
-  console.log(`[MediaWatch IntroDB Sync] Iniciando (modo: ${aplicar ? 'GUARDAR EN BD (--aplicar)' : 'DRY-RUN DE PRUEBA'})`);
+  console.log(`[MediaWatch IntroDB Sync] Iniciando (modo: ${aplicar ? 'GUARDAR EN BD (--aplicar)' : 'DRY-RUN DE PRUEBA'}${forzar ? ', FORZAR TODOS' : ''})`);
 
   if (afinar) {
     await afinarSeriesCreditos(aplicar);
@@ -315,7 +339,7 @@ async function main() {
   }
 
   if (!soloPeliculas) {
-    await sincronizarSeries(aplicar);
+    await sincronizarSeries(aplicar, forzar);
   }
 
   if (!soloSeries) {

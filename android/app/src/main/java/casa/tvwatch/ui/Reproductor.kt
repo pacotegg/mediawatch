@@ -44,15 +44,30 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import androidx.core.graphics.drawable.toBitmap
+import coil.compose.AsyncImagePainter
+import coil.compose.rememberAsyncImagePainter
+import coil.request.ImageRequest
+import casa.tvwatch.datos.Capitulo
+import casa.tvwatch.datos.TrickplayManifest
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
@@ -247,6 +262,8 @@ private fun Reproduciendo(
   val eleccion = remember(fileId) { EleccionDePistas.tomar(fileId) }
   var pistaAudio by remember(fileId) { mutableStateOf<Int?>(eleccion?.audioId) }
   var menuAbierto by remember { mutableStateOf(false) }
+  var bandejaCapitulosAbierta by remember { mutableStateOf(false) }
+  var trickplay by remember(fileId) { mutableStateOf<TrickplayManifest?>(null) }
   /*
    * Cómo encaja el vídeo. Sin clave en el `remember` y guardado en Ajustes:
    * es una manía de la persona, no de la película. Quien elige «rellenar»
@@ -402,6 +419,7 @@ private fun Reproduciendo(
         i = withContext(Dispatchers.IO) { Api.infoDeReproduccion(fileId, sinHevc = true, calidad = calidad) }
       }
       info = i
+      trickplay = withContext(Dispatchers.IO) { Api.trickplay(fileId) }
       // La pista que se pone al empezar: la primera que el aparato sepa leer.
       // Si ninguna vale, la primera y que el servidor la convierta. Al
       // recargar por un cambio de calidad se conserva la que ya estaba.
@@ -1120,6 +1138,23 @@ private fun Reproduciendo(
           overflow = TextOverflow.Ellipsis,
           modifier = Modifier.weight(1f).padding(end = 12.dp),
         )
+        if (!info?.chapters.isNullOrEmpty() && (info?.chapters?.size ?: 0) > 1) {
+          Box(
+            Modifier
+              .padding(end = 4.dp)
+              .size(48.dp)
+              .clip(RoundedCornerShape(100.dp))
+              .clickable { bandejaCapitulosAbierta = !bandejaCapitulosAbierta },
+            contentAlignment = Alignment.Center,
+          ) {
+            Icon(
+              Icons.AutoMirrored.Filled.List,
+              contentDescription = "Capítulos",
+              tint = if (bandejaCapitulosAbierta) Realce else Color.White,
+              modifier = Modifier.size(24.dp),
+            )
+          }
+        }
         BotonDeCast(Modifier.size(40.dp).padding(end = 4.dp))
         // La rueda dentada de siempre, sin pastilla ni texto: es el gesto que
         // ya está aprendido y deja el hueco para el título, que es lo que
@@ -1430,6 +1465,28 @@ private fun Reproduciendo(
         },
         alCerrar = { hudSincroniaVisible = false },
       )
+    }
+
+    AnimatedVisibility(
+      visible = bandejaCapitulosAbierta && !casa.tvwatch.EstadoPip.activo,
+      enter = fadeIn(Movimiento.aparecer(200)),
+      exit = fadeOut(Movimiento.aparecer(250)),
+      modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp),
+    ) {
+      info?.chapters?.let { caps ->
+        BandejaCapitulos(
+          capitulos = caps,
+          posicionActual = arrastre ?: posicionUi,
+          duracion = duracionConocida,
+          trickplay = trickplay,
+          fileId = fileId,
+          alElegir = { seg ->
+            bandejaCapitulosAbierta = false
+            irA(seg)
+          },
+          alCerrar = { bandejaCapitulosAbierta = false },
+        )
+      }
     }
   }
 }
@@ -2648,6 +2705,318 @@ private fun HudSincroniaSubtitulos(
             .clickable { alCerrar() }
             .padding(horizontal = 10.dp, vertical = 6.dp),
         )
+      }
+    }
+  }
+}
+
+/**
+ * Renderiza la miniatura del capítulo recortando el fotograma exacto de la hoja de
+ * sprites de trickplay generada por el servidor, o muestra un icono de fallback si no hay trickplay.
+ */
+@Composable
+private fun FotoCapituloTrickplay(
+  fileId: Int,
+  tiempo: Double,
+  trickplay: TrickplayManifest?,
+  modifier: Modifier = Modifier,
+) {
+  if (trickplay == null || trickplay.times.isEmpty()) {
+    Box(
+      modifier = modifier.background(Color(0xFF1B1D26)),
+      contentAlignment = Alignment.Center,
+    ) {
+      Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = TextoSuave, modifier = Modifier.size(28.dp))
+    }
+    return
+  }
+
+  // Buscar índice de tiempo más cercano
+  var mejorIdx = 0
+  var menorDif = kotlin.math.abs(trickplay.times[0] - tiempo)
+  for (i in 1 until trickplay.times.size) {
+    val dif = kotlin.math.abs(trickplay.times[i] - tiempo)
+    if (dif < menorDif) {
+      menorDif = dif
+      mejorIdx = i
+    }
+  }
+
+  val porHoja = maxOf(1, trickplay.columns * trickplay.rows)
+  val hoja = mejorIdx / porHoja
+  val dentro = mejorIdx % porHoja
+  val col = dentro % trickplay.columns
+  val fila = dentro / trickplay.columns
+
+  val urlHoja = remember(fileId, hoja) { Api.fotoTrickplayHoja(fileId, hoja) }
+  val context = LocalContext.current
+  val request = remember(urlHoja) {
+    ImageRequest.Builder(context)
+      .data(urlHoja)
+      .apply { Ajustes.token?.let { addHeader("Authorization", "Bearer $it") } }
+      .build()
+  }
+  val painter = rememberAsyncImagePainter(request)
+  val state = painter.state
+
+  if (state is AsyncImagePainter.State.Success) {
+    val bitmap = remember(state.result) { state.result.drawable.toBitmap().asImageBitmap() }
+    val celdaAncho = bitmap.width / trickplay.columns
+    val celdaAlto = bitmap.height / trickplay.rows
+    Canvas(modifier = modifier) {
+      val srcOffset = IntOffset(col * celdaAncho, fila * celdaAlto)
+      val srcSize = IntSize(celdaAncho, celdaAlto)
+      drawImage(
+        image = bitmap,
+        srcOffset = srcOffset,
+        srcSize = srcSize,
+        dstOffset = IntOffset.Zero,
+        dstSize = IntSize(size.width.toInt(), size.height.toInt()),
+      )
+    }
+  } else {
+    Box(
+      modifier = modifier.background(Color(0xFF1B1D26)),
+      contentAlignment = Alignment.Center,
+    ) {
+      Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = TextoSuave, modifier = Modifier.size(24.dp))
+    }
+  }
+}
+
+/**
+ * Carrusel interactivo horizontal de capítulos con miniaturas de trickplay reales.
+ */
+@Composable
+private fun BandejaCapitulos(
+  capitulos: List<Capitulo>,
+  posicionActual: Double,
+  duracion: Double,
+  trickplay: TrickplayManifest?,
+  fileId: Int,
+  alElegir: (Double) -> Unit,
+  alCerrar: () -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  // Determinar capítulo activo según la posición de reproducción
+  val indiceActivo = remember(capitulos, posicionActual) {
+    var idx = 0
+    for (i in capitulos.indices) {
+      if (posicionActual >= capitulos[i].start) {
+        idx = i
+      }
+    }
+    idx
+  }
+
+  val listState = rememberLazyListState()
+  LaunchedEffect(indiceActivo) {
+    if (indiceActivo in capitulos.indices) {
+      listState.animateScrollToItem(maxOf(0, indiceActivo - 1))
+    }
+  }
+
+  Box(
+    modifier = modifier
+      .fillMaxWidth()
+      .padding(horizontal = 16.dp, vertical = 10.dp)
+      .clip(RoundedCornerShape(20.dp))
+      .background(Color(0xF210121A))
+      .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(20.dp))
+      .padding(14.dp),
+  ) {
+    Column {
+      // Cabecera del carrusel
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Box(
+            modifier = Modifier
+              .size(28.dp)
+              .clip(RoundedCornerShape(8.dp))
+              .background(Realce.copy(alpha = 0.2f)),
+            contentAlignment = Alignment.Center,
+          ) {
+            Icon(
+              Icons.AutoMirrored.Filled.List,
+              contentDescription = null,
+              tint = Realce,
+              modifier = Modifier.size(16.dp),
+            )
+          }
+          Spacer(Modifier.width(10.dp))
+          Text(
+            "Capítulos",
+            color = Color.White,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Bold,
+          )
+          Spacer(Modifier.width(8.dp))
+          Text(
+            "(${capitulos.size})",
+            color = TextoSuave,
+            fontSize = 13.sp,
+          )
+          if (indiceActivo in capitulos.indices) {
+            Spacer(Modifier.width(8.dp))
+            Text(
+              "· Ahora: ${capitulos[indiceActivo].title.ifEmpty { "Capítulo ${indiceActivo + 1}" }}",
+              color = Realce,
+              fontSize = 13.sp,
+              maxLines = 1,
+              overflow = TextOverflow.Ellipsis,
+            )
+          }
+        }
+        Box(
+          modifier = Modifier
+            .size(32.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color(0x22FFFFFF))
+            .clickable { alCerrar() },
+          contentAlignment = Alignment.Center,
+        ) {
+          Text("✕", color = Color.White, fontSize = 14.sp)
+        }
+      }
+
+      Spacer(Modifier.height(12.dp))
+
+      // Carrusel horizontal de tarjetas con miniaturas 16:9
+      LazyRow(
+        state = listState,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        modifier = Modifier.fillMaxWidth(),
+      ) {
+        itemsIndexed(capitulos) { idx, cap ->
+          val esActivo = idx == indiceActivo
+          val finCapitulo = if (cap.end > cap.start) cap.end else if (idx + 1 < capitulos.size) capitulos[idx + 1].start else duracion
+          val durCap = maxOf(0.0, finCapitulo - cap.start)
+          val progresoEnCap = maxOf(0.0, posicionActual - cap.start)
+          val pct = if (durCap > 0.0) (progresoEnCap / durCap).coerceIn(0.0, 1.0) else 0.0
+
+          Column(
+            modifier = Modifier
+              .width(200.dp)
+              .clip(RoundedCornerShape(14.dp))
+              .resaltarFoco(RoundedCornerShape(14.dp))
+              .clickable { alElegir(cap.start) }
+          ) {
+            // Marco de miniatura 16:9
+            Box(
+              modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f)
+                .clip(RoundedCornerShape(12.dp))
+                .border(
+                  width = if (esActivo) 2.dp else 1.dp,
+                  color = if (esActivo) Realce else Color(0x2AFFFFFF),
+                  shape = RoundedCornerShape(12.dp),
+                )
+            ) {
+              FotoCapituloTrickplay(
+                fileId = fileId,
+                tiempo = cap.start,
+                trickplay = trickplay,
+                modifier = Modifier.fillMaxSize(),
+              )
+
+              if (esActivo) {
+                Box(
+                  modifier = Modifier
+                    .padding(6.dp)
+                    .align(Alignment.TopStart)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Realce)
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                  Text(
+                    "EN REPRODUCCIÓN",
+                    color = SobreRealce,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                  )
+                }
+              }
+
+              // Duración del capítulo
+              if (durCap > 0.0) {
+                Box(
+                  modifier = Modifier
+                    .padding(6.dp)
+                    .align(Alignment.BottomStart)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color(0xCC000000))
+                    .padding(horizontal = 4.dp, vertical = 2.dp)
+                ) {
+                  Text(
+                    tiempo(durCap),
+                    color = TextoSuave,
+                    fontSize = 10.sp,
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                  )
+                }
+              }
+
+              // Tiempo de inicio
+              Box(
+                modifier = Modifier
+                  .padding(6.dp)
+                  .align(Alignment.BottomEnd)
+                  .clip(RoundedCornerShape(4.dp))
+                  .background(Color(0xDD000000))
+                  .padding(horizontal = 5.dp, vertical = 2.dp)
+              ) {
+                Text(
+                  tiempo(cap.start),
+                  color = Color.White,
+                  fontSize = 11.sp,
+                  fontWeight = FontWeight.SemiBold,
+                  fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                )
+              }
+
+              // Barra de progreso interior del capítulo activo
+              if (esActivo) {
+                Box(
+                  modifier = Modifier
+                    .fillMaxWidth()
+                    .height(3.dp)
+                    .align(Alignment.BottomCenter)
+                    .background(Color(0x44FFFFFF))
+                ) {
+                  Box(
+                    modifier = Modifier
+                      .fillMaxWidth(pct.toFloat())
+                      .height(3.dp)
+                      .background(Realce)
+                  )
+                }
+              }
+            }
+
+            Spacer(Modifier.height(6.dp))
+
+            // Rótulo y minutaje
+            Text(
+              cap.title.ifEmpty { "Capítulo ${idx + 1}" },
+              color = if (esActivo) Realce else Color.White,
+              fontSize = 13.sp,
+              fontWeight = FontWeight.Medium,
+              maxLines = 1,
+              overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+              "${tiempo(cap.start)} – ${tiempo(finCapitulo)}",
+              color = TextoTenue,
+              fontSize = 11.sp,
+              fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+            )
+          }
+        }
       }
     }
   }

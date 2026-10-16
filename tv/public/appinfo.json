@@ -1,6 +1,6 @@
 {
   "id": "casa.tvwatch",
-  "version": "1.0.0",
+  "version": "3.64.0",
   "vendor": "MediaWatch",
   "type": "web",
   "main": "index.html",
@@ -11,5 +11,6 @@
   "transparent": false,
   "requiredPermissions": [
     "network"
-  ]
+  ],
+  "requiredACG": []
 }

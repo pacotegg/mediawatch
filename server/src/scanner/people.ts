@@ -21,7 +21,7 @@ async function tmdb<T>(path: string, params: Record<string, string>): Promise<T 
   url.searchParams.set('language', config.tmdbLanguage);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
 
-  const res = await fetch(url, { signal: AbortSignal.timeout(15_000), headers: { accept: 'application/json' } });
+  const res = await fetch(url, { signal: AbortSignal.timeout(6_000), headers: { accept: 'application/json' } });
   if (!res.ok) return null;
   return (await res.json()) as T;
 }
@@ -57,10 +57,28 @@ function esTextoEnIngles(texto: string): boolean {
   return tieneIngles;
 }
 
+const traduccionesEnMarcha = new Set<number>();
+
+function traducirEnSegundoPlano(personId: number, textoIngles: string) {
+  if (traduccionesEnMarcha.has(personId)) return;
+  traduccionesEnMarcha.add(personId);
+  void traducirConGemini(textoIngles)
+    .then((traducida) => {
+      if (traducida) {
+        db.prepare('UPDATE people_details SET biography = ? WHERE person_id = ?').run(traducida, personId);
+      }
+    })
+    .catch(() => undefined)
+    .finally(() => {
+      traduccionesEnMarcha.delete(personId);
+    });
+}
+
 /**
  * Ficha de una persona. Se guarda en la base al traerla, así que solo se pide a
  * TMDb la primera vez que alguien la abre — abrir un reparto entero no dispara
  * diez peticiones cada vez.
+ * La traducción con Gemini se ejecuta en segundo plano para no congelar la pantalla.
  */
 export async function detallePersona(personId: number): Promise<DetallePersona | null> {
   const guardado = db
@@ -68,11 +86,7 @@ export async function detallePersona(personId: number): Promise<DetallePersona |
     .get(personId) as DetallePersona | undefined;
   if (guardado) {
     if (guardado.biography && esTextoEnIngles(guardado.biography)) {
-      const traducida = await traducirConGemini(guardado.biography);
-      if (traducida) {
-        guardado.biography = traducida;
-        db.prepare('UPDATE people_details SET biography = ? WHERE person_id = ?').run(guardado.biography, personId);
-      }
+      traducirEnSegundoPlano(personId, guardado.biography);
     }
     if (guardado.biography !== null || guardado.birthday || !guardado.tmdb_id) return guardado;
   }
@@ -97,13 +111,13 @@ export async function detallePersona(personId: number): Promise<DetallePersona |
   }>(`/person/${encontrado.id}`, {});
   if (!ficha) return null;
 
-  // TMDb deja la biografía vacía en español muchas veces; en ese caso se traduce
-  // de la versión en inglés usando Gemini para mostrarla en español.
   let biografia = ficha.biography || null;
+  let necesitaTraduccion = false;
   if (!biografia) {
     const enIngles = await tmdb<{ biography: string }>(`/person/${encontrado.id}`, { language: 'en-US' });
     if (enIngles?.biography) {
-      biografia = (await traducirConGemini(enIngles.biography)) ?? enIngles.biography;
+      biografia = enIngles.biography;
+      necesitaTraduccion = true;
     }
   }
 
@@ -124,6 +138,10 @@ export async function detallePersona(personId: number): Promise<DetallePersona |
                 deathday=excluded.deathday, birthplace=excluded.birthplace, profile=excluded.profile,
                 fetched_at=excluded.fetched_at`)
     .run(personId, detalle.tmdb_id, detalle.biography, detalle.birthday, detalle.deathday, detalle.birthplace, detalle.profile, detalle.fetched_at);
+
+  if (necesitaTraduccion && biografia) {
+    traducirEnSegundoPlano(personId, biografia);
+  }
 
   return detalle;
 }

@@ -1904,7 +1904,7 @@ body.rend-rapido .lamina img {
 
 /* Reducción fluida del lienzo de vídeo al entrar en créditos con siguiente episodio */
 .lienzo-video.creditos-reducido {
-  transform: translate(380px, -180px) scale(0.56);
+  transform: translate(-380px, -170px) scale(0.56);
   border-radius: 20px;
   overflow: hidden;
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.9);
@@ -1914,14 +1914,14 @@ body.rend-rapido .lamina img {
 /* Tarjeta «Watch Next» en Smart TV */
 .tarjeta-watch-next {
   position: absolute;
-  left: 90px;
-  bottom: 90px;
-  width: 780px;
-  padding: 36px 42px;
+  right: 80px;
+  bottom: 80px;
+  width: 920px;
+  padding: 40px 48px;
   border-radius: 28px;
-  background: rgba(13, 15, 23, 0.95);
+  background: rgba(12, 14, 22, 0.95);
   border: 1px solid rgba(255, 255, 255, 0.16);
-  box-shadow: 0 40px 100px rgba(0, 0, 0, 0.92);
+  box-shadow: 0 40px 100px rgba(0, 0, 0, 0.94);
   z-index: 65;
   display: none;
   animation: aparecerWatchNextTv 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
@@ -1938,20 +1938,20 @@ body.rend-rapido .lamina img {
 
 .watch-next-cuerpo {
   display: flex;
-  gap: 26px;
+  gap: 32px;
   align-items: center;
-  margin-bottom: 24px;
+  margin-bottom: 28px;
 }
 
 .watch-next-miniatura-wrap {
   position: relative;
-  width: 250px;
-  height: 140px;
-  border-radius: 16px;
+  width: 320px;
+  height: 180px;
+  border-radius: 18px;
   overflow: hidden;
   flex-shrink: 0;
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.22);
   background: #000;
 }
 
@@ -1964,13 +1964,13 @@ body.rend-rapido .lamina img {
 
 .watch-next-play-badge {
   position: absolute;
-  right: 10px;
-  bottom: 10px;
-  width: 36px;
-  height: 36px;
+  right: 12px;
+  bottom: 12px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.65);
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(0, 0, 0, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.35);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1983,32 +1983,34 @@ body.rend-rapido .lamina img {
 }
 
 .watch-next-etiqueta {
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: 2px;
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: 2.5px;
   color: var(--acento);
   margin-bottom: 8px;
+  text-transform: uppercase;
 }
 
 .watch-next-titulo {
-  font-size: 34px;
+  font-size: 38px;
   font-weight: 700;
+  line-height: 1.25;
   color: #fff;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .watch-next-sub {
-  font-size: 20px;
+  font-size: 22px;
   color: var(--texto-sec);
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 .watch-next-sinopsis {
-  font-size: 19px;
-  line-height: 1.4;
+  font-size: 20px;
+  line-height: 1.5;
   color: var(--texto-ter);
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -2018,13 +2020,13 @@ body.rend-rapido .lamina img {
 
 .watch-next-botones {
   display: flex;
-  gap: 16px;
+  gap: 20px;
 }
 
 .boton-watch-next {
-  padding: 18px 36px;
-  border-radius: 14px;
-  font-size: 24px;
+  padding: 20px 42px;
+  border-radius: 16px;
+  font-size: 26px;
   font-weight: 700;
   cursor: pointer;
   border: 2px solid transparent;
@@ -2596,6 +2598,51 @@ body.rend-medio .tarjeta.enfocado .lamina {
 
 .ajustes {
   padding: 40px 120px 60px 150px;
+}
+
+.ajustes-cabecera {
+  margin-bottom: 24px;
+}
+
+.ajustes-cabecera .titulo-pantalla {
+  margin-bottom: 20px;
+}
+
+.ajustes-pestanas {
+  display: block;
+  white-space: normal;
+  margin-bottom: 34px;
+}
+
+.pestana-ajustes {
+  display: inline-block;
+  height: 54px;
+  padding: 0 30px;
+  margin: 0 14px 14px 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--texto-sec);
+  font-size: 21px;
+  font-weight: 500;
+  line-height: 54px;
+  cursor: pointer;
+  border: none;
+  transition: background 0.15s, color 0.15s;
+}
+
+.pestana-ajustes.activa {
+  background: var(--acento-suave);
+  color: var(--acento-claro);
+  font-weight: 600;
+}
+
+.pestana-ajustes.enfocado {
+  background: #fff;
+  color: var(--fondo);
+}
+
+.panel-ajustes.oculto {
+  display: none !important;
 }
 
 .grupo {
