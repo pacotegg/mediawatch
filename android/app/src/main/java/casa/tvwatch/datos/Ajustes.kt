@@ -197,6 +197,8 @@ object Ajustes {
   val configurado: Boolean get() = servidor.isNotEmpty() && !token.isNullOrEmpty()
 
   fun olvidarSesion() {
+    // Antes de borrarlo: que el servidor también la dé por cerrada.
+    Api.cerrarSesionEnServidor(token)
     enMemoriaToken = null
     enMemoriaPerfil = ""
     prefs.edit().remove("token").remove("perfil").remove("esAdmin").apply()

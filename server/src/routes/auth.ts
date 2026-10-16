@@ -98,6 +98,13 @@ function olvidarFallos(ip: string) {
   fallos.delete(ip);
 }
 
+// Las direcciones que fallaron y no volvieron nunca salían del mapa solo si alguien las consultaba de nuevo:
+// con muchas direcciones distintas crecía sin límite. Barrido cada cuarto de hora.
+setInterval(() => {
+  const ahora = Date.now();
+  for (const [ip, f] of fallos) if (ahora > f.hasta) fallos.delete(ip);
+}, CASTIGO_MS).unref();
+
 /**
  * Accepts a cookie or a bearer token. Television and mobile clients cannot
  * rely on cookies — they run from their own origin, not the server's — so the
@@ -114,7 +121,9 @@ const CADUCIDAD_DIAS = 180;
 
 export function limpiarSesiones() {
   const borradas = db
-    .prepare(`DELETE FROM sessions WHERE COALESCE(last_seen, created_at) < datetime('now', ?)`)
+    // `strftime` en el mismo formato ISO que las fechas guardadas: `datetime('now')` lleva un espacio donde
+    // ellas llevan «T» y, como texto, nunca borraba lo del propio día del corte (misma trampa que en currentUser).
+    .prepare(`DELETE FROM sessions WHERE COALESCE(last_seen, created_at) < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)`)
     .run(`-${CADUCIDAD_DIAS} days`);
   return borradas.changes;
 }
@@ -439,6 +448,7 @@ export default async function authRoutes(app: FastifyInstance) {
     if (body.name !== undefined) {
       const nuevoNombre = body.name.trim();
       if (!nuevoNombre) return reply.code(400).send({ error: 'El nombre no puede estar vacío' });
+      if (nuevoNombre.length > 40) return reply.code(400).send({ error: 'El nombre es demasiado largo (40 caracteres como máximo)' });
       try {
         db.prepare('UPDATE users SET name = ? WHERE id = ?').run(nuevoNombre, id);
       } catch {
@@ -447,6 +457,10 @@ export default async function authRoutes(app: FastifyInstance) {
     }
 
     if (body.color !== undefined) {
+      // Se pinta tal cual como valor de estilo en los clientes: solo un color hexadecimal.
+      if (typeof body.color !== 'string' || !/^#[0-9a-fA-F]{3,8}$/.test(body.color)) {
+        return reply.code(400).send({ error: 'El color tiene que ser hexadecimal, como #5ac8fa' });
+      }
       db.prepare('UPDATE users SET color = ? WHERE id = ?').run(body.color, id);
     }
 
@@ -482,7 +496,16 @@ export default async function authRoutes(app: FastifyInstance) {
 
     if (body.pin !== undefined) {
       if (yo.id !== id && !yo.is_admin) return reply.code(403).send({ error: 'No puedes cambiar el PIN de otro usuario' });
+      // Por esta puerta solo cambia PIN un administrador (el formulario de Usuarios, para restablecer el de otro).
+      // El resto lo hace por /pin, que exige el PIN actual: sin eso, una sesión abierta en un móvil encima de la
+      // mesa servía para cambiarlo, justo lo que /pin evita.
+      if (!yo.is_admin) return reply.code(403).send({ error: 'Para cambiar tu PIN usa «Cambiar PIN», que pide el actual' });
       const pinStr = body.pin === null || body.pin === '' ? '' : String(body.pin);
+      // Las mismas reglas que /pin desde fuera de casa: ni quitarlo ni poner el primero.
+      if (deFuera(req)) {
+        if (!user.pin) return reply.code(403).send({ error: 'El primer PIN se configura desde la red de casa' });
+        if (pinStr.length === 0) return reply.code(403).send({ error: 'No se puede quitar el PIN desde fuera de casa' });
+      }
       if (pinStr.length > 0 && !/^\d{6,}$/.test(pinStr)) {
         return reply.code(400).send({ error: 'El PIN tiene que ser de seis cifras o más, solo números' });
       }
@@ -671,7 +694,8 @@ export default async function authRoutes(app: FastifyInstance) {
   });
 
   app.post('/api/auth/logout', async (req, reply) => {
-    const token = req.cookies[COOKIE];
+    // Cookie o token de cabecera: la tele y Android van con token, y cerrar sesión no invalidaba nada en el servidor.
+    const token = tokenDe(req);
     if (token) db.prepare('DELETE FROM sessions WHERE token = ?').run(hashToken(token));
     reply.clearCookie(COOKIE, { path: '/' });
     return { ok: true };

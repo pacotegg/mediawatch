@@ -44,6 +44,23 @@ object Api {
   class FalloDeRed(mensaje: String) : Exception(mensaje)
   class SinSesion : Exception("La sesión ya no vale")
 
+  /**
+   * Avisa al servidor de que esta sesión se cierra, para que el token deje de valer allí (antes solo se
+   * borraba en el aparato y seguía valiendo 180 días). Segundo plano y sin esperar: si no hay red o ya no
+   * valía, da igual, el aparato la olvida igualmente. El token se pasa porque quien llama lo borra enseguida.
+   */
+  fun cerrarSesionEnServidor(token: String?) {
+    if (token.isNullOrEmpty() || Ajustes.servidor.isEmpty()) return
+    val base = Servidor.baseCacheada()
+    Thread {
+      try {
+        val r = Request.Builder().url("$base/api/auth/logout").header("Authorization", "Bearer $token")
+          .post("{}".toRequestBody("application/json".toMediaType())).build()
+        httpTexto.newCall(r).execute().use { }
+      } catch (e: Exception) { /* sin red: el aparato la olvida igualmente */ }
+    }.apply { isDaemon = true }.start()
+  }
+
   private fun peticion(ruta: String, cuerpo: String? = null): Request {
     // `Servidor.base()` decide si toca la direccion de casa o la de fuera.
     val b = Request.Builder().url(Servidor.base() + ruta)

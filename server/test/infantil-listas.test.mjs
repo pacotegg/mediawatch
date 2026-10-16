@@ -46,8 +46,14 @@ before(async () => {
   const d = bd();
   d.prepare("INSERT OR IGNORE INTO libraries (id,name,path,kind) VALUES (1,'t','x','movie')").run();
   persona = d.prepare("INSERT INTO people (name) VALUES ('Actor Comun') RETURNING id").get().id;
+  const genero = d.prepare("INSERT INTO genres (name) VALUES ('Animacion') RETURNING id").get().id;
+  // Sagas con caracteres que se codifican en la ruta: la ficha de una con «%» daba 500 por decodificarla dos veces.
+  for (const [titulo, saga] of [['Pelicula con %', '100% Real'], ['Pelicula con barra', 'F/X - Coleccion'], ['Otra con %', '100% Real'], ['Otra con barra', 'F/X - Coleccion']]) {
+    d.prepare("INSERT INTO items (library_id, kind, folder, title, search_title, scanned_at, mpaa, collection) VALUES (1,'movie',?,?,?,'x','ES:TP',?)").run(titulo, titulo, titulo, saga);
+  }
   for (const [titulo, mpaa] of [['Pelicula de adultos', 'ES:18'], ['Pelicula apta', 'ES:TP']]) {
-    const it = d.prepare("INSERT INTO items (library_id, kind, folder, title, search_title, scanned_at, mpaa) VALUES (1,'movie',?,?,?,'x',?) RETURNING id").get(titulo, titulo, titulo, mpaa).id;
+    const it = d.prepare("INSERT INTO items (library_id, kind, folder, title, search_title, scanned_at, mpaa, collection) VALUES (1,'movie',?,?,?,'x',?,'Saga X') RETURNING id").get(titulo, titulo, titulo, mpaa).id;
+    d.prepare('INSERT INTO item_genres (item_id, genre_id) VALUES (?,?)').run(it, genero);
     const f = d.prepare('INSERT INTO media_files (item_id, path, duration, probed) VALUES (?,?,5400,1) RETURNING id').get(it, 'C:/no/existe/' + titulo + '.mkv').id;
     ids[mpaa] = { item: it, file: f };
     d.prepare('INSERT INTO item_people (item_id, person_id, role) VALUES (?,?,?)').run(it, persona, 'actor');
@@ -93,4 +99,31 @@ test('miniaturas, extras y trailer de un titulo para adultos: nada para el perfi
   const extra = (await (await pedir('GET', `/api/items/${a.item}/extras`, { galleta: galletaAdmin })).json()).extras[0];
   assert.equal((await pedir('GET', `/api/extras/${extra.id}/stream`, { galleta: galletaNino })).status, 404);
   assert.equal((await (await pedir('GET', `/api/items/${a.item}/trailer`, { galleta: galletaNino })).json()).trailer, null);
+});
+
+test('ficha de un titulo apto: la saga y los parecidos no cuelan titulos para adultos al perfil infantil', async () => {
+  const apta = ids['ES:TP'].item;
+  const peque = await (await pedir('GET', `/api/items/${apta}`, { galleta: galletaNino })).json();
+  assert.deepEqual(titulos(peque.collectionItems), ['Pelicula apta'], 'saga');
+  assert.deepEqual(titulos(peque.similar), [], 'parecidos');
+  const adulto = await (await pedir('GET', `/api/items/${apta}`, { galleta: galletaAdmin })).json();
+  assert.deepEqual(titulos(adulto.collectionItems), ['Pelicula apta', 'Pelicula de adultos']);
+  assert.deepEqual(titulos(adulto.similar), ['Pelicula de adultos']);
+});
+
+test('sagas cuyo nombre lleva % o /: la ficha de la saga responde (no 500)', async () => {
+  for (const [nombre, esperadas] of [['100% Real', ['Otra con %', 'Pelicula con %']], ['F/X - Coleccion', ['Otra con barra', 'Pelicula con barra']]]) {
+    const r = await pedir('GET', `/api/collections/${encodeURIComponent(nombre)}`, { galleta: galletaAdmin });
+    assert.equal(r.status, 200, nombre);
+    assert.deepEqual(titulos((await r.json()).items), esperadas, nombre);
+  }
+});
+
+test('el papel del arte de una saga se valida: no se puede salir de su carpeta', async () => {
+  const r = await pedir('POST', `/api/collections/${encodeURIComponent('Saga X')}/arte`, {
+    galleta: galletaAdmin, cuerpo: { url: 'http://127.0.0.1:1/x.jpg', papel: '../../../fuera' },
+  });
+  assert.equal(r.status, 400);
+  const r2 = await pedir('POST', `/api/collections/${encodeURIComponent('Saga X')}/arte/subir?papel=${encodeURIComponent('../../fuera')}`, { galleta: galletaAdmin });
+  assert.equal(r2.status, 400);
 });
