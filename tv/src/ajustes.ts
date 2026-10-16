@@ -29,6 +29,8 @@ export type Ajustes = {
   subirSubtitulos: number;
   /** Cómo sale el audio: normal (sin tocar), noche o voces claras. */
   modoAudio: 'normal' | 'night' | 'dialogue';
+  /** Paso directo a barra/receptor eARC de pistas de alta definición (DTS, TrueHD) sin transcodificar a DD+. */
+  passthroughAvanzado: boolean;
   /** Ofrecer el botón de saltar cabecera cuando se haya detectado. */
   saltarCabecera: boolean;
   /** Modo maratón: salta automáticamente cabeceras sin pedir confirmación. */
@@ -75,6 +77,7 @@ const POR_DEFECTO: Ajustes = {
   retardoSubtitulos: 0,
   subirSubtitulos: 0,
   modoAudio: 'normal',
+  passthroughAvanzado: false,
   saltarCabecera: true,
   modoMaraton: true,
   musicaCabecera: true,
@@ -107,6 +110,7 @@ export function cargarAjustes(): Ajustes {
         // `??`: cero es «donde siempre», no «sin valor».
         subirSubtitulos: guardado.subirSubtitulos ?? 0,
         modoAudio: guardado.modoAudio || POR_DEFECTO.modoAudio,
+        passthroughAvanzado: guardado.passthroughAvanzado === true,
         saltarCabecera: guardado.saltarCabecera !== false,
         modoMaraton: guardado.modoMaraton !== false,
         musicaCabecera: guardado.musicaCabecera !== false,

@@ -208,6 +208,12 @@ object Api {
   fun persona(id: Int): FichaDePersona = pedir("/api/people/$id")
   fun fotoDePersona(id: Int, ancho: Int) = "${Servidor.baseCacheada()}/api/people/$id/thumb?w=$ancho"
   fun fotoDeEpisodio(id: Int, ancho: Int) = "${Servidor.baseCacheada()}/api/episodes/$id/thumb?w=$ancho"
+  fun fotoTrickplayHoja(fileId: Int, hoja: Int) = "${Servidor.baseCacheada()}/api/play/$fileId/trickplay/$hoja"
+  fun trickplay(fileId: Int): TrickplayManifest? = try {
+    pedir<TrickplayManifest>("/api/play/$fileId/trickplay?solo=1")
+  } catch (_: Exception) {
+    null
+  }
   fun saga(nombre: String): ContenidoDeSaga = pedir("/api/collections/" + java.net.URLEncoder.encode(nombre, "UTF-8").replace("+", "%20"))
   fun ficha(id: Int): Ficha = pedir("/api/items/$id")
   /** La última versión publicada de la app (la del APK más alto en la web) y sus novedades. */
@@ -826,7 +832,18 @@ data class Video(
 )
 
 @Serializable
-data class Capitulo(val start: Double = 0.0, val title: String = "")
+data class Capitulo(val start: Double = 0.0, val end: Double = 0.0, val title: String = "")
+
+@Serializable
+data class TrickplayManifest(
+  val fileId: Int = 0,
+  val tileWidth: Int = 160,
+  val tileHeight: Int = 90,
+  val columns: Int = 10,
+  val rows: Int = 10,
+  val sheets: Int = 0,
+  val times: List<Double> = emptyList(),
+)
 
 /** Cabecera o créditos detectados; `kind` es «intro» o «credits». */
 @Serializable

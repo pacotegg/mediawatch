@@ -12,6 +12,13 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.64 — 17/10/2026
+
+- Acciones directas por episodio en series: botones compactos para marcar visto/no visto, «En la tele» para enviar a la Smart TV y descarga local.
+- Siguiente episodio estilo Netflix/Plex: tarjeta visual flotante con miniatura 16:9, cuenta atrás y salto instantáneo o descartar y seguir con los créditos.
+- Seguridad en red: la aplicación confía exclusivamente en certificados del sistema operativo para conexiones remotas.
+- Búsqueda de subtítulos: soporte para consultas prolongadas sin cierres prematuros de conexión.
+
 ## 3.63 — 16/10/2026
 
 - Siguiente episodio estilo Netflix/Plex (Android, TV y Web): tarjeta visual flotante con miniatura 16:9 del siguiente episodio, cuenta atrás de 12 segundos y botones para ver ahora o descartar y seguir viendo los créditos.

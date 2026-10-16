@@ -1,7 +1,9 @@
 package casa.tvwatch.ui
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import android.widget.Toast
+import casa.tvwatch.datos.Progreso
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -634,9 +636,22 @@ fun PantallaFicha(
           f,
           e,
           alPulsar = { alReproducir(e.ficheroId!!, e.id, posicionDe(f, e.id)) },
-          // Mantener pulsado un episodio lo manda a la tele.
           alMantener = { mandarALaTele(e.ficheroId!!, e.id, posicionDe(f, e.id)) },
           alPedirDescarga = { fileIdDescargaDialogo = it },
+          alMandarTele = { fid -> mandarALaTele(fid, e.id, posicionDe(f, e.id)) },
+          alCambiarVisto = { nuevo ->
+            ambito.launch {
+              try {
+                withContext(Dispatchers.IO) { Api.marcarVista(itemId, nuevo, e.id) }
+                Cache.olvidarFicha(itemId)
+                val progs = f.progress.filter { it.episodioId != e.id }.toMutableList()
+                if (nuevo) {
+                  progs.add(Progreso(episodioId = e.id, watched = 1, position = e.runtime?.times(60) ?: 0.0, duration = e.runtime?.times(60) ?: 0.0))
+                }
+                ficha = f.copy(progress = progs)
+              } catch (_: Exception) {}
+            }
+          },
         )
       }
     }
@@ -983,12 +998,15 @@ private fun FilaEpisodio(
   e: Episodio,
   alPulsar: () -> Unit,
   alMantener: () -> Unit = {},
-  alPedirDescarga: (Int) -> Unit = {}
+  alPedirDescarga: (Int) -> Unit = {},
+  alMandarTele: (Int) -> Unit = {},
+  alCambiarVisto: (Boolean) -> Unit = {},
 ) {
+  val prog = f.progress.firstOrNull { it.episodioId == e.id }
+  val estaVisto = prog?.watched == 1
   val avance = run {
-    val p = f.progress.firstOrNull { it.episodioId == e.id }
-    val total = p?.duration ?: (e.runtime?.times(60) ?: 0.0)
-    if (p != null && total > 0 && p.watched == 0) (p.position / total).coerceIn(0.0, 1.0).toFloat() else 0f
+    val total = prog?.duration ?: (e.runtime?.times(60) ?: 0.0)
+    if (prog != null && total > 0 && prog.watched == 0) (prog.position / total).coerceIn(0.0, 1.0).toFloat() else 0f
   }
 
   Row(
@@ -1008,7 +1026,19 @@ private fun FilaEpisodio(
       if (e.tieneFoto == 1) {
         Imagen(Api.fotoDeEpisodio(e.id, 300), e.title, Modifier.fillMaxSize())
       }
-      if (avance > 0.01f) {
+      if (estaVisto) {
+        Box(
+          Modifier
+            .align(Alignment.TopEnd)
+            .padding(4.dp)
+            .size(18.dp)
+            .clip(CircleShape)
+            .background(Realce),
+          contentAlignment = Alignment.Center
+        ) {
+          IconoAccion("vistaSi", SobreRealce, tamano = 12.dp)
+        }
+      } else if (avance > 0.01f) {
         Box(
           Modifier
             .align(Alignment.BottomStart)
@@ -1019,16 +1049,63 @@ private fun FilaEpisodio(
       }
     }
     Spacer(Modifier.width(12.dp))
-    Column(Modifier.weight(1f).padding(top = 2.dp)) {
+    Column(Modifier.weight(1f).padding(top = 2.dp, end = 6.dp)) {
       Text("T${e.season}E${e.episode}", color = TextoTenue, fontSize = 11.sp)
       Text(e.title ?: "Episodio ${e.episode}", color = Texto, fontSize = 14.sp, maxLines = 2, lineHeight = 18.sp)
       duracionLegible(e.runtime).takeIf { it.isNotEmpty() }?.let {
         Text(it, color = TextoTenue, fontSize = 11.sp)
       }
     }
-    if (e.ficheroId != null) {
-      Pastilla("⬇") { alPedirDescarga(e.ficheroId) }
+    Row(
+      horizontalArrangement = Arrangement.spacedBy(6.dp),
+      verticalAlignment = Alignment.CenterVertically
+    ) {
+      if (e.ficheroId != null) {
+        BotonEpisodioMini(icono = "tele") { alMandarTele(e.ficheroId) }
+        BotonEpisodioMini(icono = "descargar") { alPedirDescarga(e.ficheroId) }
+      }
+      BotonEpisodioMini(
+        icono = if (estaVisto) "vistaSi" else "vista",
+        activo = estaVisto,
+      ) {
+        alCambiarVisto(!estaVisto)
+      }
     }
+  }
+}
+
+@Composable
+private fun BotonEpisodioMini(
+  icono: String,
+  activo: Boolean = false,
+  alPulsar: () -> Unit
+) {
+  val pulsacion = remember { MutableInteractionSource() }
+  val pulsada by pulsacion.collectIsPressedAsState()
+  val escala by animateFloatAsState(
+    targetValue = if (pulsada) 0.90f else 1f,
+    animationSpec = Movimiento.resorte(),
+    label = "escala boton mini"
+  )
+  val fondo by animateColorAsState(
+    targetValue = if (activo) Realce.copy(alpha = 0.22f) else Color(0x18FFFFFF),
+    animationSpec = Movimiento.aparecer(180),
+    label = "fondo boton mini"
+  )
+  val color = if (activo) Realce else TextoSuave
+  val borde = if (activo) Realce.copy(alpha = 0.5f) else Color(0x1FFFFFFF)
+
+  Box(
+    Modifier
+      .size(36.dp)
+      .scale(escala)
+      .clip(CircleShape)
+      .background(fondo)
+      .border(1.dp, borde, CircleShape)
+      .pulsable(pulsacion, alPulsar),
+    contentAlignment = Alignment.Center
+  ) {
+    IconoAccion(icono, color, tamano = 18.dp)
   }
 }
 

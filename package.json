@@ -17,7 +17,8 @@
     "build": "npm run build --workspace web && npm run build --workspace tv",
     "start": "npm run start --workspace server",
     "test": "npm test --workspace server",
-    "build:tv": "npm run build --workspace tv"
+    "build:tv": "npm run build --workspace tv",
+    "package:webos": "npm run package:webos --workspace tv"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

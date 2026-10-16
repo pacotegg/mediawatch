@@ -1,4 +1,5 @@
 /** Cliente del servidor TvWatch para la televisión. */
+import { ajustes } from './ajustes';
 
 const SERVIDOR_KEY = 'cineteca.tv.servidor';
 const TOKEN_KEY = 'cineteca.tv.token';
@@ -352,14 +353,14 @@ export const api = {
       has_thumb: number;
       detalle: { biography: string | null; birthday: string | null; deathday: string | null; birthplace: string | null; profile: string | null } | null;
       credits: Titulo[];
-    }>('/api/people/' + id),
+    }>('/api/people/' + id, undefined, 20_000),
   marcarVista: (itemId: number, vista: boolean, episodeId?: number | null) =>
     pedir<{ ok: true }>('/api/items/' + itemId + '/watched', { method: 'POST', body: JSON.stringify({ watched: vista, episodeId: episodeId || null }) }),
   favorito: (itemId: number, favorito: boolean) =>
     pedir<{ ok: true }>('/api/items/' + itemId + '/favorite', { method: 'POST', body: JSON.stringify({ favorite: favorito }) }),
   /** Con `perfil`, el servidor marca que pistas puede decodificar esta tele. */
   pistas: (fileId: number) =>
-    pedir<InfoReproduccion>('/api/play/' + fileId + '/info?perfil=' + PERFIL + '&resumen=1'),
+    pedir<InfoReproduccion>('/api/play/' + fileId + '/info?perfil=' + perfilReproduccion() + '&resumen=1'),
   subtituloVtt: async (fileId: number, trackId: string, desde = 0, retardo = 0) => {
     const t = token();
     const url = servidor() + '/api/play/' + fileId + '/subtitle/' + trackId + '.vtt?desde=' + desde + '&retardo=' + retardo + (t ? '&token=' + t : '');
@@ -515,8 +516,14 @@ export function plataformaTV(): 'tizen' | 'webos' | 'web' {
   return 'web';
 }
 
-/** Lo que esta tele decodifica; lo sabe el servidor según la plataforma detectada. */
-const PERFIL = plataformaTV() === 'webos' ? 'lgwebos' : 'samsung2021';
+/** Obtiene el perfil de reproducción según la plataforma y la opción de passthrough avanzado. */
+export function perfilReproduccion(): string {
+  const base = plataformaTV() === 'webos' ? 'lgwebos' : 'samsung2021';
+  if (ajustes().passthroughAvanzado) {
+    return 'lista:aac,ac3,eac3,eac3_ddp_atmos,eac3/atmos,mp3,opus,pcm_s16le,pcm_s24le,flac,dts,dtshd_ma,dts_express,truehd,truehd_atmos';
+  }
+  return base;
+}
 
 /**
  * `raw=1` entrega el fichero original: AVPlay decodifica MKV, HEVC, AC3 y DD+
@@ -533,7 +540,7 @@ export function urlReproduccion(
 ): string {
   const t = token();
   return (
-    servidor() + '/api/play/' + fileId + '/stream?raw=1&perfil=' + PERFIL +
+    servidor() + '/api/play/' + fileId + '/stream?raw=1&perfil=' + perfilReproduccion() +
     (audioId !== undefined ? '&audio=' + audioId : '') +
     // Solo se manda cuando no es «normal»: en normal la pista va intacta y la
     // barra recibe el Atmos tal cual.

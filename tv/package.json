@@ -1,11 +1,12 @@
 {
   "name": "@tvwatch/tv",
-  "version": "0.1.0",
+  "version": "3.64.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build"
+    "build": "vite build",
+    "package:webos": "npx -p @webos-tools/cli ares-package dist -e config.xml -o dist"
   },
   "devDependencies": {
     "typescript": "^5.7.3",
