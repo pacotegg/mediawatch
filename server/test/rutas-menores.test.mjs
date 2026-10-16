@@ -132,3 +132,9 @@ test('sin cuerpo: las rutas contestan 4xx, no 500 (tampoco el inicio de sesion, 
 test('estadisticas con un numero de dias que no es un numero no da 500', async () => {
   assert.equal((await pedir('GET', '/api/estadisticas?dias=x', { galleta: galletaAdmin })).status, 200);
 });
+
+test('un error de la API no se cachea (un 410 se cachea por defecto)', async () => {
+  const res = await pedir('GET', '/api/play/999999/info', { galleta: galletaAdmin });
+  assert.equal(res.status, 404);
+  assert.equal(res.headers.get('cache-control'), 'no-store');
+});

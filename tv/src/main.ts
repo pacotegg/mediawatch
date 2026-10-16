@@ -3782,11 +3782,26 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
    * que es donde la gente ha aprendido el gesto— y se quita en cuanto se pulsa
    * cualquier flecha, para no estorbar a quien no quiere saltar.
    */
+  /*
+   * Solo el 60 % de los episodios tiene el tramo de créditos detectado. En una serie con episodio siguiente, si no lo hay,
+   * los últimos 40 s hacen de créditos para ofrecer igualmente «Siguiente episodio». Es UN objeto, creado una vez: se
+   * compara por referencia y, si cambiase en cada llamada, el botón se reiniciaría cada segundo.
+   */
+  let creditosDeRespaldo: RangoSalto | null = null;
   const revisarTramo = (segundos: number) => {
-    if (!aj.saltarCabecera || !infoServidor || !infoServidor.skip || !infoServidor.skip.length) return;
+    if (!infoServidor) return;
+    const haySiguiente = !!siguienteEpisodio();
+    let rangos: RangoSalto[] = infoServidor.skip || [];
+    if (haySiguiente && total() > 300 && !rangos.some((r) => r.kind === 'credits')) {
+      if (!creditosDeRespaldo) creditosDeRespaldo = { kind: 'credits', start_s: total() - 40, end_s: total(), confidence: 0 };
+      rangos = rangos.concat([creditosDeRespaldo]);
+    }
+    if (!rangos.length) return;
     let dentro: RangoSalto | null = null;
-    for (const r of infoServidor.skip) {
-      if (segundos >= r.start_s && segundos < r.end_s - 1 && !tramosSaltados[r.kind + r.start_s]) dentro = r;
+    for (const r of rangos) {
+      // «Siguiente episodio» no depende del ajuste de saltar cabecera: se ofrece siempre.
+      const ofrecer = aj.saltarCabecera || (r.kind === 'credits' && haySiguiente);
+      if (ofrecer && segundos >= r.start_s && segundos < r.end_s - 1 && !tramosSaltados[r.kind + r.start_s]) dentro = r;
     }
     if (dentro === tramoActivo) return;
     tramoActivo = dentro;
@@ -3801,14 +3816,16 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
       saltarTramo();
       return;
     }
-    botonTramo.textContent = hayEscenaFinal(dentro) ? 'Ver escena final' : NOMBRE_TRAMO[dentro.kind] || 'Saltar';
+    botonTramo.textContent = hayEscenaFinal(dentro)
+      ? 'Ver escena final'
+      : dentro.kind === 'credits' && haySiguiente ? 'Siguiente episodio' : NOMBRE_TRAMO[dentro.kind] || 'Saltar';
     botonTramo.classList.add('visible', 'enfocado');
     enTramo = true;
   };
 
   /** ¿Queda película después de este tramo? Solo tiene sentido en los créditos. */
   const hayEscenaFinal = (tramo: RangoSalto) =>
-    tramo.kind === 'credits' && total() > 0 && total() - tramo.end_s > MINIMO_POSTCREDITOS;
+    tramo.kind === 'credits' && !siguienteEpisodio() && total() > 0 && total() - tramo.end_s > MINIMO_POSTCREDITOS;
 
   const saltarTramo = () => {
     if (!tramoActivo) return;
@@ -3824,7 +3841,8 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
       void api
         .progreso({ itemId: ficha.id, episodeId, position: total(), duration: total(), watched: true })
         .catch(() => undefined);
-      alTerminar();
+      // Con episodio siguiente, el botón dice «Siguiente episodio»: va directo, sin la cuenta atrás de cuando acaba solo.
+      alTerminar(true);
       return;
     }
     llevarA(tramo.end_s);
@@ -4130,12 +4148,17 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
    * Al acabar un episodio, el siguiente solo. Es la petición que más se repite
    * en los foros de Plex y Jellyfin, y con cuenta atrás para poder pararla.
    */
-  const alTerminar = () => {
+  const alTerminar = (directo = false) => {
     // Se acabó: que no siga preguntando por la tira de miniaturas cada medio
     // minuto durante los diez minutos siguientes con la pantalla ya cambiada.
     cerrado = true;
     reproductorActivo = null;
     const sig = siguienteEpisodio();
+    if (directo && sig && sig.file_id) {
+      reproductor.cerrar();
+      pantallaReproductor(ficha, sig.file_id, sig.id, 0, alVolver);
+      return;
+    }
     if (!sig || !sig.file_id) {
       reproductor.cerrar();
       if (alVolver) alVolver();
