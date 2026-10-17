@@ -1430,10 +1430,13 @@ function pantallaBuscar(inicial = '') {
 
   const manejar = (tecla: number) => {
     if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE) {
-      if (consulta) {
-        consulta = consulta.slice(0, -1);
-        buscar();
-        return true;
+      const foco = actual();
+      if (foco && foco.closest('.rejilla, .dialogos-busqueda')) {
+        const primeraTecla = marco.querySelector<HTMLElement>('[data-tecla]');
+        if (primeraTecla) {
+          enfocar(primeraTecla);
+          return true;
+        }
       }
       return atrasHaciaMenu();
     }
@@ -2232,6 +2235,18 @@ async function pantallaFicha(id: number, volverA?: (() => void) | null, focoInic
         const p = ficha.progress.filter((x) => x.episode_id === epId)[0];
         abrir(fileId, epId, p && !p.watched ? p.position : 0);
         return true;
+      }
+      if (!esSerie && fichero) {
+        abrir(fichero.id, null, reanudar);
+        return true;
+      }
+      if (esSerie && ficha.nextUp) {
+        const ep = (ficha.episodes || []).find((e) => e.id === ficha.nextUp!.id);
+        if (ep && ep.file_id) {
+          const p = ficha.progress.filter((x) => x.episode_id === ep.id)[0];
+          abrir(ep.file_id, ep.id, p && !p.watched ? p.position : 0);
+          return true;
+        }
       }
     }
     if (tecla === TECLA.INFO) {
@@ -3440,6 +3455,7 @@ function menuSeleccionarArte(ficha: Ficha, alTerminar: () => void) {
  * que acompanya a la pelicula, no la pelicula.
  */
 function verExtra(ficha: Ficha, extra: Extra, alSalir: () => void) {
+  const teclasAntes = manejadorActual();
   alPulsar(null);
   // `viendo-extra` esconde la ficha: el vídeo va por debajo de la página y,
   // a diferencia del reproductor, aquí la ficha sigue montada para volver a
@@ -3469,6 +3485,7 @@ function verExtra(ficha: Ficha, extra: Extra, alSalir: () => void) {
     try { reproductor.cerrar(); } catch (e) { /* ya estaba cerrado */ }
     if (capa.parentElement) capa.parentElement.removeChild(capa);
     document.body.classList.remove('viendo', 'viendo-extra');
+    alPulsar(teclasAntes);
     alSalir();
   };
 
