@@ -730,10 +730,11 @@ private fun Reproduciendo(
     encadenando = true
     cuentaAtras = null
     val donde = desfase + reproductor.currentPosition / 1000.0
+    val yaVisto = duracionConocida > 0 && donde >= duracionConocida * 0.88
     reproductor.pause()
     ambito.launch {
       try {
-        withContext(Dispatchers.IO) { Api.guardarProgreso(itemId, episodioId, donde, duracionConocida, audio = pistaAudio?.toString(), subtitulo = subtituloPuesto()) }
+        withContext(Dispatchers.IO) { Api.guardarProgreso(itemId, episodioId, donde, duracionConocida, vista = yaVisto, audio = pistaAudio?.toString(), subtitulo = subtituloPuesto()) }
       } catch (e: Exception) { /* se cambia igual */ }
       alSiguiente(fichero, destino.id)
     }
