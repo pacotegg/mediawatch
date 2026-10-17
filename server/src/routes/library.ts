@@ -7,6 +7,7 @@ import { extname, join, resolve, sep } from 'node:path';
 import { ficheroDelBuzon } from '../media/buzon.ts';
 import { descargar, formatoDeImagen, imagenesDeSaga, urlDeArteValida } from '../scanner/tmdb.ts';
 import { descargarTema, rutaTema, tieneTema } from '../scanner/themes.ts';
+import { tieneFuncionLicencia } from '../media/licencia.ts';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { db, normalize } from '../db.ts';
 import { thumbnail } from '../media/images.ts';
@@ -228,8 +229,9 @@ export default async function libraryRoutes(app: FastifyInstance) {
       .get(id, ...cr.params) as any;
     if (!item) return reply.code(404).send({ error: 'No encontrado' });
 
-    item.has_theme = tieneTema(id, item.folder as string | undefined) ? 1 : 0;
-    if (!item.has_theme && (item.tvdb_id || item.tmdb_id)) {
+    const autorizaTemas = tieneFuncionLicencia('themes');
+    item.has_theme = autorizaTemas && tieneTema(id, item.folder as string | undefined) ? 1 : 0;
+    if (autorizaTemas && !item.has_theme && (item.tvdb_id || item.tmdb_id)) {
       void descargarTema(id, item.tvdb_id, item.tmdb_id, item.kind, item.folder as string | undefined).catch(() => {});
     }
 
@@ -727,7 +729,15 @@ export default async function libraryRoutes(app: FastifyInstance) {
     return { items, people };
   });
 
-  app.get('/api/search/dialogue', async (req) => {
+  app.get('/api/search/dialogue', async (req, reply) => {
+    if (!tieneFuncionLicencia('dialogue_search')) {
+      return reply.code(403).send({
+        error: 'La búsqueda por diálogo requiere la licencia Coleccionista Pro',
+        pro_feature: 'dialogue_search',
+        hits: [],
+        stats: dialogueStats(),
+      });
+    }
     const { q } = req.query as { q?: string };
     const expression = ftsQuery(q ?? '');
     if (!expression) return { hits: [], stats: dialogueStats() };
@@ -1052,6 +1062,12 @@ export default async function libraryRoutes(app: FastifyInstance) {
 
   /** Música de cabecera (theme.mp3) del ítem o serie; responde 404 si no existe. */
   app.get('/api/items/:id/theme', async (req, reply) => {
+    if (!tieneFuncionLicencia('themes')) {
+      return reply.code(403).send({
+        error: 'La música de cabecera requiere la licencia Coleccionista Pro',
+        pro_feature: 'themes',
+      });
+    }
     const id = Number((req.params as { id: string }).id);
     const row = db.prepare('SELECT folder, kind, tvdb_id, tmdb_id FROM items WHERE id = ?').get(id) as
       | { folder: string; kind: string; tvdb_id: number | null; tmdb_id: number | null }

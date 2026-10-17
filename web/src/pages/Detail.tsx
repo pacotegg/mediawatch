@@ -319,6 +319,8 @@ export default function Detail() {
    */
   const { data: donde } = useQuery({ queryKey: ['donde-ver', itemId], queryFn: () => api.dondeVer(itemId), staleTime: 3600_000 });
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: api.me, retry: false });
+  const { data: licencia } = useQuery({ queryKey: ['licencia'], queryFn: api.licencia });
+  const permite3D = Boolean(licencia?.valid && (licencia?.tier === 'pro' || licencia?.features?.includes('3d_cases')));
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -899,7 +901,7 @@ export default function Detail() {
             </div>
           </motion.div>
 
-          {(prefs.interface.case3D ?? true) && item.has_poster ? (
+          {permite3D && (prefs.interface.case3D ?? true) && item.has_poster ? (
             <div className="hidden lg:block shrink-0 pt-2 pr-4">
               <Estuche3D
                 posterUrl={img.poster(itemId, 500, item.arte_actualizado)}
@@ -919,7 +921,7 @@ export default function Detail() {
             </div>
           ) : null}
 
-          {(prefs.interface.case3D ?? true) && item.has_poster ? (
+          {permite3D && (prefs.interface.case3D ?? true) && item.has_poster ? (
             <div className="mt-8 flex justify-center lg:hidden">
               <Estuche3D
                 posterUrl={img.poster(itemId, 500, item.arte_actualizado)}
