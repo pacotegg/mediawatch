@@ -558,6 +558,8 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
     [fileId, subtitle],
   );
 
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
   const showControls = useCallback(() => {
     setControls(true);
     window.clearTimeout(hideTimer.current);
@@ -565,6 +567,82 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
       if (playingRef.current || !videoRef.current?.paused) setControls(false);
     }, HIDE_AFTER_MS);
   }, []);
+
+  const hideControls = useCallback(() => {
+    setControls(false);
+    window.clearTimeout(hideTimer.current);
+    setMenu(null);
+  }, []);
+
+  const toggleFullscreen = useCallback(() => {
+    const container = containerRef.current as any;
+    const video = videoRef.current as any;
+    const doc = document as any;
+
+    const isFs = Boolean(
+      doc.fullscreenElement ||
+      doc.webkitFullscreenElement ||
+      doc.mozFullScreenElement ||
+      doc.msFullscreenElement ||
+      video?.webkitDisplayingFullscreen
+    );
+
+    if (isFs) {
+      if (doc.exitFullscreen) {
+        doc.exitFullscreen().catch(() => undefined);
+      } else if (doc.webkitExitFullscreen) {
+        doc.webkitExitFullscreen();
+      } else if (video?.webkitExitFullscreen) {
+        video.webkitExitFullscreen();
+      }
+    } else {
+      if (container?.requestFullscreen) {
+        container.requestFullscreen().catch(() => {
+          video?.webkitEnterFullscreen?.();
+        });
+      } else if (container?.webkitRequestFullscreen) {
+        container.webkitRequestFullscreen();
+      } else if (video?.webkitEnterFullscreen) {
+        // Fallback para iOS Safari (iPhone)
+        video.webkitEnterFullscreen();
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    const checkFs = () => {
+      const doc = document as any;
+      const video = videoRef.current as any;
+      const isFs = Boolean(
+        doc.fullscreenElement ||
+        doc.webkitFullscreenElement ||
+        doc.mozFullScreenElement ||
+        doc.msFullscreenElement ||
+        video?.webkitDisplayingFullscreen
+      );
+      setIsFullscreen(isFs);
+    };
+
+    const doc = document;
+    doc.addEventListener('fullscreenchange', checkFs);
+    doc.addEventListener('webkitfullscreenchange', checkFs);
+
+    const video = videoRef.current;
+    if (video) {
+      video.addEventListener('webkitbeginfullscreen', checkFs);
+      video.addEventListener('webkitendfullscreen', checkFs);
+    }
+
+    return () => {
+      doc.removeEventListener('fullscreenchange', checkFs);
+      doc.removeEventListener('webkitfullscreenchange', checkFs);
+      if (video) {
+        video.removeEventListener('webkitbeginfullscreen', checkFs);
+        video.removeEventListener('webkitendfullscreen', checkFs);
+      }
+    };
+  }, []);
+
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -589,8 +667,7 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
           setVolume((v) => Math.max(0, v - 0.1));
           break;
         case 'f':
-          if (document.fullscreenElement) document.exitFullscreen();
-          else containerRef.current?.requestFullscreen();
+          toggleFullscreen();
           break;
         case 'm':
           setMuted((m) => !m);
@@ -613,7 +690,7 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
         case 'Escape':
           if (menu !== null) {
             setMenu(null);
-          } else if (mpv || !document.fullscreenElement) {
+          } else if (mpv || !isFullscreen) {
             salir();
           }
           break;
@@ -621,7 +698,7 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [navigate, seek, showControls, togglePlay, virtual, prefs.playback.seekStep, prefs.playback.seekStepLarge, changeDelay, subDelayMs, subtitle, mpv, hayPip, togglePip, menu, info?.chapters]);
+  }, [navigate, seek, showControls, togglePlay, virtual, prefs.playback.seekStep, prefs.playback.seekStepLarge, changeDelay, subDelayMs, subtitle, mpv, hayPip, togglePip, menu, info?.chapters, toggleFullscreen, isFullscreen]);
 
   useEffect(() => {
     if (mpv) {
@@ -907,13 +984,41 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
     seek(((e.clientX - rect.left) / rect.width) * duration);
   };
 
+  const handlePlayerTap = useCallback(
+    (e?: React.MouseEvent | React.TouchEvent) => {
+      if (enModoWatchNext) {
+        setWatchNextCancelado(true);
+        return;
+      }
+      if (menu !== null) {
+        setMenu(null);
+        return;
+      }
+      const isTouch =
+        'ontouchstart' in window ||
+        navigator.maxTouchPoints > 0 ||
+        (e as any)?.nativeEvent?.pointerType === 'touch';
+
+      if (!controls) {
+        showControls();
+      } else {
+        if (isTouch) {
+          hideControls();
+        } else {
+          togglePlay();
+        }
+      }
+    },
+    [enModoWatchNext, menu, controls, showControls, hideControls, togglePlay],
+  );
+
   return (
     <div
       ref={containerRef}
       onMouseMove={showControls}
-      onDoubleClick={() => (document.fullscreenElement ? document.exitFullscreen() : containerRef.current?.requestFullscreen())}
+      onDoubleClick={toggleFullscreen}
       data-reproductor
-      className={`fixed inset-0 z-100 ${conMpv ? 'bg-transparent' : 'bg-black'} ${controls ? '' : 'cursor-none'}`}
+      className={`fixed inset-0 z-100 ${conMpv ? 'bg-transparent' : 'bg-black'} ${controls ? '' : 'md:cursor-none'}`}
     >
       <style>{subtitleCss(prefs.subtitles)}</style>
       {/* La ventana del escritorio es transparente: el vídeo lo pinta mpv por detrás y esto va encima. */}
@@ -929,26 +1034,23 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
       )}
       {!conMpv && (
       <div
-        className={`relative h-full w-full transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+        className={`relative h-full w-full transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer ${
           enModoWatchNext
-            ? 'cursor-pointer origin-top-right scale-[0.48] translate-x-[-2vw] translate-y-[4vh] rounded-2xl shadow-2xl ring-2 ring-white/20 overflow-hidden z-20'
+            ? 'origin-top-right scale-[0.48] translate-x-[-2vw] translate-y-[4vh] rounded-2xl shadow-2xl ring-2 ring-white/20 overflow-hidden z-20'
             : ''
         }`}
-        onClick={() => {
-          if (enModoWatchNext) setWatchNextCancelado(true);
+        onClick={(e) => {
+          handlePlayerTap(e);
         }}
       >
         <video
           ref={videoRef}
           autoPlay
           playsInline
+          className="h-full w-full object-contain cursor-pointer"
           onClick={(e) => {
-            if (enModoWatchNext) {
-              e.stopPropagation();
-              setWatchNextCancelado(true);
-            } else {
-              togglePlay();
-            }
+            e.stopPropagation();
+            handlePlayerTap(e);
           }}
           onPlay={() => setPlaying(true)}
           onPause={() => setPlaying(false)}
@@ -974,7 +1076,6 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
               salir();
             }
           }}
-          className="h-full w-full object-contain"
         />
         {enModoWatchNext && (
           <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
@@ -1099,6 +1200,11 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
             exit={{ opacity: 0 }}
             transition={{ duration: 0.25 }}
             className="absolute inset-0 flex flex-col justify-between bg-linear-to-b from-black/75 via-transparent to-black/85"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) {
+                handlePlayerTap(e);
+              }
+            }}
           >
             <div className="flex items-start gap-4 p-5 pt-[max(1.25rem,env(safe-area-inset-top))] pl-[max(1.25rem,env(safe-area-inset-left))] pr-[max(1.25rem,env(safe-area-inset-right))]">
               <button onClick={salir} className="glass grid h-10 w-10 shrink-0 place-items-center rounded-full transition-transform hover:scale-110">
@@ -1119,6 +1225,15 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
                 )}
               </div>
             </div>
+
+            {/* Zona central interactiva (tocar para ocultar controles en iOS/móvil o pausar/reanudar en PC) */}
+            <div
+              className="flex-1 cursor-pointer select-none"
+              onClick={(e) => {
+                e.stopPropagation();
+                handlePlayerTap(e);
+              }}
+            />
 
             <div className="pb-[max(1.25rem,env(safe-area-inset-bottom))] pl-[max(1.25rem,env(safe-area-inset-left))] pr-[max(1.25rem,env(safe-area-inset-right))]">
               <AnimatePresence>
@@ -1433,10 +1548,14 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
                   </button>
                 )}
                 <button
-                  onClick={() => (document.fullscreenElement ? document.exitFullscreen() : containerRef.current?.requestFullscreen())}
+                  onClick={toggleFullscreen}
+                  title={isFullscreen ? 'Salir de pantalla completa (F)' : 'Pantalla completa (F)'}
                   className="text-mist-200 transition-transform hover:scale-110 hover:text-white"
                 >
-                  <Icon path="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" size={19} />
+                  <Icon
+                    path={isFullscreen ? 'M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5' : 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5'}
+                    size={19}
+                  />
                 </button>
               </div>
             </div>
