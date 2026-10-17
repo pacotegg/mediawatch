@@ -117,7 +117,26 @@ export default function Search() {
 
       <EnviarALaTele term={term} />
 
-      {dialogue && <DialogueResults hits={dialogue.hits} count={dialogue.stats.frases} />}
+      {data?.items && data.items.length > 0 && (
+        <div className="mb-10">
+          <h2 className="mb-4 text-[15px] font-semibold text-mist-300">Títulos ({data.items.length})</h2>
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(132px,1fr))] gap-x-4 gap-y-7 sm:grid-cols-[repeat(auto-fill,minmax(158px,1fr))]">
+            {data.items.map((item, i) => (
+              <div key={item.id} className="cull">
+                <PosterCard item={item} index={i} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {isFetching && !data?.items?.length && (
+        <div className="mb-10 grid grid-cols-[repeat(auto-fill,minmax(132px,1fr))] gap-x-4 gap-y-7 sm:grid-cols-[repeat(auto-fill,minmax(158px,1fr))]">
+          {Array.from({ length: 12 }).map((_, i) => (
+            <div key={i} className="skeleton aspect-2/3 rounded-[var(--radius-card)]" />
+          ))}
+        </div>
+      )}
 
       {data?.people && data.people.length > 0 && (
         <div className="mb-10">
@@ -140,16 +159,13 @@ export default function Search() {
         </div>
       )}
 
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(132px,1fr))] gap-x-4 gap-y-7 sm:grid-cols-[repeat(auto-fill,minmax(158px,1fr))]">
-        {data?.items.map((item, i) => (
-          <div key={item.id} className="cull">
-            <PosterCard item={item} index={i} />
-          </div>
-        ))}
-        {isFetching && Array.from({ length: 12 }).map((_, i) => <div key={i} className="skeleton aspect-2/3 rounded-[var(--radius-card)]" />)}
-      </div>
+      {dialogue && dialogue.hits && dialogue.hits.length > 0 && (
+        <div className="mt-8 border-t border-white/8 pt-8">
+          <DialogueResults hits={dialogue.hits} count={dialogue.stats.frases} />
+        </div>
+      )}
 
-      {term.length >= 2 && !isFetching && data?.items.length === 0 && data.people.length === 0 && (
+      {term.length >= 2 && !isFetching && data?.items.length === 0 && data.people.length === 0 && (!dialogue || dialogue.hits.length === 0) && (
         <p className="mt-16 text-center text-mist-500">Nada por aquí. Prueba con otro título.</p>
       )}
     </div>

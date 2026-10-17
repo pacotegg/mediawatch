@@ -1350,7 +1350,9 @@ function pantallaBuscar(inicial = '') {
       '<p class="desde-el-movil">O escríbelo en el móvil: abre Media Watch, busca y pulsa «Enviar a la tele».</p>' +
       '</div>' +
       (resultados.length
-        ? '<div class="rejilla" data-bloque>' + resultados.map(tarjeta).join('') + '</div>'
+        ? '<div class="seccion-busqueda-titulos" data-bloque>' +
+          (dialogos.length ? '<h3 class="cabecera-seccion" style="padding: 16px 8px 8px; font-size: 22px; color: var(--texto-sec);">Películas y series (' + resultados.length + ')</h3>' : '') +
+          '<div class="rejilla">' + resultados.map(tarjeta).join('') + '</div></div>'
         : consulta.length >= 2 && !dialogos.length
           ? '<div class="vacio">Sin resultados para «' + esc(consulta) + '»</div>'
           : '') +

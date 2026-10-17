@@ -714,13 +714,61 @@ export default async function libraryRoutes(app: FastifyInstance) {
     const user = currentUser(req);
     const cr = clausulaRating(user);
     const crAnd = cr.sql ? `AND ${cr.sql}` : '';
+    const palabras = limpio.split(/\s+/).filter(Boolean);
     const term = `%${limpio}%`;
     const crudo = `%${q.toLowerCase().trim()}%`;
-    const items = db
+
+    const tokenClauses = palabras.map(() =>
+      `(i.search_title LIKE ? OR LOWER(COALESCE(i.original_title, '')) LIKE ? OR LOWER(COALESCE(i.collection, '')) LIKE ?)`
+    );
+    const tokenParams: string[] = [];
+    for (const p of palabras) {
+      const tp = `%${p}%`;
+      tokenParams.push(tp, tp, tp);
+    }
+
+    let items = db
       .prepare(`SELECT ${ITEM_FIELDS} FROM items i JOIN libraries l ON l.id = i.library_id
-                WHERE (i.search_title LIKE ? OR LOWER(i.original_title) LIKE ? OR LOWER(i.original_title) LIKE ?) ${crAnd}
-                ORDER BY (i.search_title LIKE ?) DESC, i.rating DESC NULLS LAST LIMIT 40`)
-      .all(term, term, crudo, ...cr.params, `${limpio}%`);
+                WHERE (${tokenClauses.join(' AND ')}) ${crAnd}
+                ORDER BY (i.search_title LIKE ?) DESC, (i.search_title LIKE ?) DESC, i.rating DESC NULLS LAST LIMIT 40`)
+      .all(...tokenParams, ...cr.params, `${limpio}%`, term) as any[];
+
+    // Si no hay coincidencias exactas por tokens y hay al menos 3 letras, tolerancia a erratas (fuzzy)
+    if (items.length === 0 && limpio.length >= 3) {
+      const crItemAnd = cr.sql ? `WHERE ${cr.sql}` : '';
+      const todos = db.prepare(`SELECT ${ITEM_FIELDS}, i.search_title, i.original_title, i.collection FROM items i JOIN libraries l ON l.id = i.library_id ${crItemAnd}`).all(...cr.params) as any[];
+      const lev = (a: string, b: string): number => {
+        if (a === b) return 0;
+        if (!a.length) return b.length;
+        if (!b.length) return a.length;
+        const d: number[][] = [];
+        for (let i = 0; i <= b.length; i++) d[i] = [i];
+        for (let j = 0; j <= a.length; j++) d[0][j] = j;
+        for (let i = 1; i <= b.length; i++) {
+          for (let j = 1; j <= a.length; j++) {
+            d[i][j] = b.charAt(i - 1) === a.charAt(j - 1)
+              ? d[i - 1][j - 1]
+              : Math.min(d[i - 1][j - 1] + 1, d[i][j - 1] + 1, d[i - 1][j] + 1);
+          }
+        }
+        return d[b.length][a.length];
+      };
+
+      items = todos.filter((it) => {
+        const textoBuscar = `${it.search_title || ''} ${it.original_title ? normalize(it.original_title) : ''} ${it.collection ? normalize(it.collection) : ''}`;
+        const palabrasTitulo = textoBuscar.split(/\s+/).filter(Boolean);
+        return palabras.every((pq) => {
+          if (textoBuscar.includes(pq)) return true;
+          const maxDist = pq.length >= 6 ? 2 : 1;
+          return palabrasTitulo.some((pt: string) => {
+            if (pq.length >= 3 && pt.startsWith(pq)) return true;
+            if (Math.abs(pt.length - pq.length) > maxDist) return false;
+            return lev(pq, pt) <= maxDist;
+          });
+        });
+      }).sort((a, b) => (b.rating || 0) - (a.rating || 0)).slice(0, 40);
+    }
+
     const people = db
       .prepare(`SELECT p.id, p.name, p.thumb IS NOT NULL AS has_thumb, COUNT(ip.item_id) AS count
                 FROM people p JOIN item_people ip ON ip.person_id = p.id
