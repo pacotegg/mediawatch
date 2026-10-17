@@ -8,6 +8,18 @@ export function esTituloGenerico(titulo: string): boolean {
   return /^(chapter|cap[ií]tulo|part|parte|escena|scene)\s*\d+$/i.test(t) || /^\d+$/i.test(t);
 }
 
+export function decodificarHtml(str: string): string {
+  if (!str) return '';
+  return str
+    .replace(/&#x27;/g, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code, 10)));
+}
+
 /** Comprueba si una lista de capítulos contiene únicamente nombres genéricos. */
 export function sonCapitulosGenericos(capitulos: Capitulo[]): boolean {
   if (!capitulos || capitulos.length === 0) return true;
@@ -25,11 +37,17 @@ export function tiempoASegundos(str: string): number {
     return h * 3600 + m * 60 + s;
   }
   if (partes.length === 2) {
-    // Si viene en formato HH:MM.SS o MM:SS
     const p0 = parseFloat(partes[0]) || 0;
-    const p1 = parseFloat(partes[1]) || 0;
-    if (p0 > 59) return p0 * 60 + p1;
-    return p0 * 60 + p1;
+    // Si viene en formato HH:MM.SS (horas:minutos.segundos de la web de ChapterDB)
+    if (partes[1].includes('.')) {
+      const sub = partes[1].split('.');
+      const m = parseFloat(sub[0]) || 0;
+      const s = parseFloat(sub[1]) || 0;
+      return p0 * 3600 + m * 60 + s;
+    }
+    // Si viene en formato MM:SS
+    const s = parseFloat(partes[1]) || 0;
+    return p0 * 60 + s;
   }
   return parseFloat(str) || 0;
 }
@@ -78,7 +96,7 @@ export async function buscarEnChapterDb(titulo: string, duracionSec?: number): P
       const dSec = tiempoASegundos(dStr);
       resultados.push({
         id: idMatch[1],
-        title: titleMatch[1].trim(),
+        title: decodificarHtml(titleMatch[1].trim()),
         type: typeMatch ? typeMatch[1].trim() : '',
         durationStr: dStr,
         durationSec: dSec,
@@ -138,7 +156,7 @@ export async function descargarCapitulosChapterDb(chapterSetId: string, duracion
     const mName = trimmed.match(/^CHAPTER(\d+)NAME=(.*)$/i);
     if (mName) {
       const idx = parseInt(mName[1], 10);
-      nombres.set(idx, mName[2].trim());
+      nombres.set(idx, decodificarHtml(mName[2].trim()));
     }
   }
 
@@ -223,5 +241,57 @@ export function guardarCapitulosBd(itemId: number, capitulos: Capitulo[], source
   } catch (err) {
     db.exec('ROLLBACK');
     throw err;
+  }
+}
+
+const enCursoEnriquecer = new Set<number>();
+
+/**
+ * Enriquecimiento transparente en segundo plano: al reproducir una película que carece
+ * de capítulos o cuyos nombres son genéricos, consulta ChapterDB y guarda el esquema en BD
+ * sin bloquear ni demorar el inicio del vídeo.
+ */
+export async function autoEnriquecerPeliculaEnSegundoPlano(
+  itemId: number,
+  titulo: string,
+  duracion: number,
+  capitulosLocales: Capitulo[]
+): Promise<void> {
+  if (enCursoEnriquecer.has(itemId)) return;
+  enCursoEnriquecer.add(itemId);
+  try {
+    const ya = obtenerCapitulosBd(itemId);
+    if (ya.length > 0) return;
+
+    const row = db.prepare('SELECT original_title FROM items WHERE id = ?').get(itemId) as
+      | { original_title: string | null }
+      | undefined;
+    const original = row?.original_title;
+
+    let resultados = await buscarEnChapterDb(original || titulo, duracion);
+    if (!resultados.some((r) => r.hasNames) && original && titulo !== original) {
+      resultados = await buscarEnChapterDb(titulo, duracion);
+    }
+
+    const conNombre = resultados.filter((r) => r.hasNames);
+    let candidato = conNombre.find((r) => r.durationSec > 0 && Math.abs(r.durationSec - duracion) <= 15);
+    if (!candidato && conNombre.length > 0) {
+      candidato = conNombre[0];
+    }
+    if (!candidato) return;
+
+    const capsRemotos = await descargarCapitulosChapterDb(candidato.id, duracion);
+    if (!capsRemotos.length) return;
+
+    const capsFinales = capitulosLocales.length > 0
+      ? fusionarNombresConTiemposLocales(capitulosLocales, capsRemotos)
+      : capsRemotos;
+
+    guardarCapitulosBd(itemId, capsFinales, `chapterdb:${candidato.id}`);
+    console.log(`[chapterdb] Enriquecida película ${itemId} ("${titulo}") con ${capsFinales.length} capítulos de ChapterDB`);
+  } catch {
+    // Silencioso para no interferir con la reproducción
+  } finally {
+    enCursoEnriquecer.delete(itemId);
   }
 }
