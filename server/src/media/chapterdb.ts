@@ -20,6 +20,53 @@ export function decodificarHtml(str: string): string {
     .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code, 10)));
 }
 
+/** Comprueba si el título de un resultado en ChapterDB se corresponde con la película buscada. */
+export function coincideTitulo(busqueda: string, candidato: string): boolean {
+  if (!busqueda || !candidato) return false;
+
+  const limpiarMetadata = (s: string) =>
+    (s || '')
+      .replace(/\([^)]*\)/g, ' ')
+      .replace(/\[[^\]]*\]/g, ' ')
+      .replace(/[_.-]+/g, ' ')
+      .replace(/\b(chapters?|ogm|bluray|1080p|720p|vts\s*\d+\s*\d*|t\d+|chapter information|fps|disc\s*\d+|accurate times)\b/gi, ' ')
+      .trim();
+
+  const norm = (s: string) =>
+    limpiarMetadata(s)
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/^(the|el|la|los|las|un|una|a|an)\s+/i, '')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+
+  const b = norm(busqueda);
+  const c = norm(candidato);
+  if (!b || !c) return false;
+  if (b === c) return true;
+
+  const bTok = b.split(' ').filter(Boolean);
+  const cTok = c.split(' ').filter(Boolean);
+
+  // Comprobar que números y numerales romanos coinciden exactamente (evita Deadpool 1 vs Deadpool 2, Saw II vs Saw III)
+  const numRegex = /^(\d+|i|ii|iii|iv|v|vi|vii|viii|ix|x)$/i;
+  const bNums = bTok.filter((t) => numRegex.test(t));
+  const cNums = cTok.filter((t) => numRegex.test(t));
+  if (bNums.join(' ') !== cNums.join(' ')) return false;
+
+  // Si la búsqueda es de una sola palabra, el candidato debe coincidir (evita "Wish" vs "Wishmaster", "Men" vs "Men in Black")
+  if (bTok.length === 1) {
+    return c === b || (cTok.length === 1 && cTok[0] === b);
+  }
+
+  // Todos los tokens de la búsqueda deben estar en el candidato
+  const todosEnC = bTok.every((tok) => cTok.includes(tok));
+  if (todosEnC && Math.abs(bTok.length - cTok.length) <= 1) return true;
+
+  return false;
+}
+
 /** Comprueba si una lista de capítulos contiene únicamente nombres genéricos. */
 export function sonCapitulosGenericos(capitulos: Capitulo[]): boolean {
   if (!capitulos || capitulos.length === 0) return true;
@@ -273,7 +320,9 @@ export async function autoEnriquecerPeliculaEnSegundoPlano(
       resultados = await buscarEnChapterDb(titulo, duracion);
     }
 
-    const conNombre = resultados.filter((r) => r.hasNames);
+    const conNombre = resultados.filter(
+      (r) => r.hasNames && (coincideTitulo(original || titulo, r.title) || coincideTitulo(titulo, r.title))
+    );
     let candidato = conNombre.find((r) => r.durationSec > 0 && Math.abs(r.durationSec - duracion) <= 15);
     if (!candidato && conNombre.length > 0) {
       candidato = conNombre[0];
