@@ -663,6 +663,10 @@ export function manejadorActual(): Manejador | null {
 }
 
 export function iniciarNavegacion() {
+  let temporizadorEnterLargo: number | null = null;
+  let enterLargoDisparado = false;
+  let elementoPulsado: HTMLElement | null = null;
+
   document.addEventListener('keydown', (e) => {
     let tecla = e.keyCode;
     // En televisores LG webOS, la tecla Atrás del Magic Remote envía keyCode 461.
@@ -684,11 +688,23 @@ export function iniciarNavegacion() {
       if (alFallar) alFallar((err as Error).message || String(err));
     }
     if (atendida) {
+      if (temporizadorEnterLargo) {
+        window.clearTimeout(temporizadorEnterLargo);
+        temporizadorEnterLargo = null;
+        enterLargoDisparado = false;
+      }
       e.preventDefault();
       return;
     }
 
     if (tecla === TECLA.IZQUIERDA || tecla === TECLA.DERECHA || tecla === TECLA.ARRIBA || tecla === TECLA.ABAJO) {
+      if (temporizadorEnterLargo) {
+        window.clearTimeout(temporizadorEnterLargo);
+        temporizadorEnterLargo = null;
+        enterLargoDisparado = false;
+        if (elementoPulsado) elementoPulsado.classList.remove('pulsando');
+        elementoPulsado = null;
+      }
       const destino = siguiente(tecla);
       if (destino) enfocar(destino);
       e.preventDefault();
@@ -698,7 +714,50 @@ export function iniciarNavegacion() {
     if (tecla === TECLA.ENTRAR) {
       const el = actual();
       if (el) {
+        if (el.hasAttribute('data-longpress')) {
+          if (!e.repeat && !temporizadorEnterLargo) {
+            enterLargoDisparado = false;
+            elementoPulsado = el;
+            el.classList.add('pulsando');
+            temporizadorEnterLargo = window.setTimeout(() => {
+              enterLargoDisparado = true;
+              temporizadorEnterLargo = null;
+              el.classList.remove('pulsando');
+              el.dispatchEvent(new CustomEvent('abrir-detalle', { bubbles: true }));
+            }, 450);
+          }
+          e.preventDefault();
+          return;
+        }
         el.click();
+        e.preventDefault();
+      }
+    }
+
+    if (tecla === TECLA.INFO) {
+      const el = actual();
+      if (el && el.hasAttribute('data-longpress')) {
+        el.dispatchEvent(new CustomEvent('abrir-detalle', { bubbles: true }));
+        e.preventDefault();
+        return;
+      }
+    }
+  });
+
+  document.addEventListener('keyup', (e) => {
+    let tecla = e.keyCode;
+    if (tecla === TECLA.ENTRAR) {
+      if (temporizadorEnterLargo) {
+        window.clearTimeout(temporizadorEnterLargo);
+        temporizadorEnterLargo = null;
+      }
+      if (elementoPulsado) {
+        elementoPulsado.classList.remove('pulsando');
+        if (!enterLargoDisparado) {
+          elementoPulsado.click();
+        }
+        elementoPulsado = null;
+        enterLargoDisparado = false;
         e.preventDefault();
       }
     }
