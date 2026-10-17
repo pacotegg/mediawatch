@@ -21,7 +21,7 @@ import { detectarPeliculas, jobPeliculas, pararPeliculas, resumenPeliculas, skip
 import { currentUser, deFuera, requireUser, sesionDe } from './auth.ts';
 import type { ServerResponse } from 'node:http';
 import { estadoLimite, MENSAJE_LIMITE } from '../media/limite-diario.ts';
-import { fusionarNombresConTiemposLocales, obtenerCapitulosBd, sonCapitulosGenericos } from '../media/chapterdb.ts';
+import { autoEnriquecerPeliculaEnSegundoPlano, fusionarNombresConTiemposLocales, obtenerCapitulosBd, sonCapitulosGenericos } from '../media/chapterdb.ts';
 
 function caps(req: FastifyRequest): ClientCaps {
   const q = req.query as Record<string, string | undefined>;
@@ -422,6 +422,10 @@ export default async function playRoutes(app: FastifyInstance) {
     const capitulosFinales = capitulosBd.length > 0 && (info.chapters.length === 0 || sonCapitulosGenericos(info.chapters))
       ? (info.chapters.length > 0 ? fusionarNombresConTiemposLocales(info.chapters, capitulosBd) : capitulosBd)
       : info.chapters;
+
+    if (!row.episode_id && row?.item_id && capitulosBd.length === 0 && (info.chapters.length === 0 || sonCapitulosGenericos(info.chapters))) {
+      void autoEnriquecerPeliculaEnSegundoPlano(row.item_id, row.title, info.duration, info.chapters);
+    }
 
     return {
       fileId,

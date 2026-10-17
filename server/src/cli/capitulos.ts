@@ -63,7 +63,7 @@ async function comandoEstado() {
     const p = peliculas[i];
     process.stdout.write(`\rRevisando metadatos: ${i + 1}/${peliculas.length}...`);
     try {
-      const info = await mediaInfo(p.path);
+      const info = await mediaInfo(p.file_id);
       if (!info.chapters || info.chapters.length === 0) {
         sinCapitulos++;
       } else if (sonCapitulosGenericos(info.chapters)) {
@@ -134,7 +134,7 @@ async function comandoEnriquecer(limite: number, soloGenericos: boolean) {
 
     let info;
     try {
-      info = await mediaInfo(p.path);
+      info = await mediaInfo(p.file_id);
     } catch {
       continue;
     }
@@ -153,13 +153,17 @@ async function comandoEnriquecer(limite: number, soloGenericos: boolean) {
       resultados = await buscarEnChapterDb(p.title, duracion);
     }
 
-    const candidato = resultados.find((r) => r.hasNames && (!duracion || Math.abs(r.durationSec - duracion) <= 10));
+    const candidatosConNombre = resultados.filter((r) => r.hasNames);
+    let candidato = candidatosConNombre.find((r) => r.durationSec > 0 && Math.abs(r.durationSec - duracion) <= 15);
+    if (!candidato && candidatosConNombre.length > 0) {
+      candidato = candidatosConNombre[0];
+    }
     if (!candidato) {
-      console.log(`  - Sin coincidencia exacta en ChapterDB (duración local: ${duracion.toFixed(0)}s).`);
+      console.log(`  - Sin coincidencia en ChapterDB (duración local: ${duracion.toFixed(0)}s).`);
       continue;
     }
 
-    console.log(`  + Encontrado: [${candidato.id}] "${candidato.title}" (${candidato.durationStr}, diff ${Math.abs(candidato.durationSec - duracion).toFixed(1)}s)`);
+    console.log(`  + Encontrado: [${candidato.id}] "${candidato.title}" (${candidato.durationStr}, puntos ${candidato.score})`);
     const capsRemotos = await descargarCapitulosChapterDb(candidato.id, duracion);
     if (!capsRemotos.length) continue;
 
