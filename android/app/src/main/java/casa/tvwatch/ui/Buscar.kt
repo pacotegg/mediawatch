@@ -182,6 +182,19 @@ fun PantallaBuscar(
       Modifier.fillMaxSize(),
       contentPadding = PaddingValues(top = 10.dp, bottom = 28.dp),
     ) {
+      if (titulos.isNotEmpty()) {
+        item { Encabezado("Títulos") }
+        item {
+          LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+          ) {
+            items(titulos, key = { it.id }) { t -> Cartel(t, alPulsar = alAbrirFicha) }
+          }
+          Spacer(Modifier.height(20.dp))
+        }
+      }
+
       if (personas.isNotEmpty()) {
         item {
           Encabezado("Personas")
@@ -208,19 +221,6 @@ fun PantallaBuscar(
             }
           }
           Spacer(Modifier.height(18.dp))
-        }
-      }
-
-      if (titulos.isNotEmpty()) {
-        item { Encabezado("Títulos") }
-        item {
-          LazyRow(
-            contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-          ) {
-            items(titulos, key = { it.id }) { t -> Cartel(t, alPulsar = alAbrirFicha) }
-          }
-          Spacer(Modifier.height(20.dp))
         }
       }
 
