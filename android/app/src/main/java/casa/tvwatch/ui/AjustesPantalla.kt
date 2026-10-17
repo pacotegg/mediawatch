@@ -71,6 +71,11 @@ fun PantallaAjustes(
 
   // Diálogo selector genérico
   var dialogoOpciones by remember { mutableStateOf<DialogoConfig?>(null) }
+  var mostrarHistorial by remember { mutableStateOf(false) }
+
+  if (mostrarHistorial) {
+    DialogoHistorialCompleto(alCerrar = { mostrarHistorial = false })
+  }
 
   if (dialogoOpciones != null) {
     val d = dialogoOpciones!!
@@ -386,6 +391,12 @@ fun PantallaAjustes(
       Spacer(Modifier.height(10.dp))
 
       FilaBoton(
+        titulo = "Historial de versiones",
+        detalle = "Todas las novedades y cambios de la app",
+        alPulsar = { mostrarHistorial = true },
+      )
+
+      FilaBoton(
         titulo = "Cambiar de perfil o servidor",
         detalle = "Cerrar sesión actual",
         destacado = true,
@@ -398,7 +409,10 @@ fun PantallaAjustes(
           "Media Watch v$version",
           color = TextoTenue,
           fontSize = 12.sp,
-          modifier = Modifier.padding(top = 4.dp),
+          modifier = Modifier
+            .clip(RoundedCornerShape(4.dp))
+            .clickable { mostrarHistorial = true }
+            .padding(top = 4.dp, bottom = 4.dp, end = 8.dp),
         )
       }
     }

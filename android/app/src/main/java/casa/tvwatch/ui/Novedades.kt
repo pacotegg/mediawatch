@@ -1,8 +1,11 @@
 package casa.tvwatch.ui
 
 import android.content.Context
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -16,10 +19,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 /*
  * Ventana de novedades: la primera vez que se abre una versión nueva (también
@@ -83,6 +89,88 @@ private fun leerUltimasNovedades(contexto: Context, maxVersiones: Int = 3): List
   } catch (e: Exception) {
     emptyList()
   }
+
+fun leerHistorialCompleto(contexto: Context): List<SeccionNovedades> =
+  try {
+    val changelog = contexto.assets.open("CHANGELOG.md").bufferedReader().use { it.readText() }
+    ultimasSecciones(changelog, Int.MAX_VALUE).filter { sec ->
+      sec.version.firstOrNull()?.isDigit() == true
+    }
+  } catch (_: Exception) {
+    emptyList()
+  }
+
+@Composable
+fun DialogoHistorialCompleto(alCerrar: () -> Unit) {
+  val contexto = LocalContext.current
+  val secciones = remember { leerHistorialCompleto(contexto) }
+
+  AlertDialog(
+    onDismissRequest = alCerrar,
+    containerColor = FondoTarjeta,
+    title = {
+      Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
+        Text("Historial de versiones", color = Texto, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        if (secciones.isNotEmpty()) {
+          Text("${secciones.size} versiones", color = TextoTenue, fontSize = 12.sp)
+        }
+      }
+    },
+    text = {
+      Column(
+        Modifier
+          .fillMaxWidth()
+          .verticalScroll(rememberScrollState()),
+      ) {
+        if (secciones.isEmpty()) {
+          Text("No se pudo cargar el historial.", color = TextoTenue, fontSize = 14.sp)
+        } else {
+          secciones.forEachIndexed { index, sec ->
+            if (index > 0) Spacer(Modifier.height(16.dp))
+            Text(
+              text = "Versión ${sec.titulo}",
+              style = MaterialTheme.typography.titleMedium,
+              color = Realce,
+              fontWeight = FontWeight.Bold,
+              fontSize = 15.sp,
+              modifier = Modifier.padding(bottom = 6.dp),
+            )
+            sec.viñetas.forEach { viñeta ->
+              Row(
+                Modifier
+                  .fillMaxWidth()
+                  .padding(vertical = 2.dp),
+                verticalAlignment = Alignment.Top,
+              ) {
+                Text(
+                  "• ",
+                  color = Realce,
+                  fontSize = 14.sp,
+                  fontWeight = FontWeight.Bold,
+                )
+                Text(
+                  viñeta,
+                  color = Texto,
+                  fontSize = 14.sp,
+                  lineHeight = 20.sp,
+                )
+              }
+            }
+          }
+        }
+      }
+    },
+    confirmButton = {
+      TextButton(onClick = alCerrar) {
+        Text("Cerrar", color = Realce, fontWeight = FontWeight.SemiBold)
+      }
+    },
+  )
+}
 
 @Composable
 fun NovedadesDialogo() {
