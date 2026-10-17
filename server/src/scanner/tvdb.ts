@@ -100,3 +100,16 @@ export async function buscarPersonaTvdb(nombre: string, imdbId: string): Promise
   const foto = buena.image_url && !/\/missing\//.test(buena.image_url) ? buena.image_url : null;
   return { id: Number(buena.tvdb_id), foto };
 }
+
+/** Biografía de una persona en TheTVDB (en español o en inglés). */
+export async function biografiaPersonaTvdb(tvdbId: number): Promise<{ biografia: string; idioma: string } | null> {
+  const r = await tvdb<{ biographies?: { biography: string; language: string }[] }>(`/people/${tvdbId}/extended`);
+  const bios = r?.biographies?.filter((b) => b.biography && b.biography.trim().length > 20) || [];
+  if (bios.length === 0) return null;
+  const spa = bios.find((b) => b.language === 'spa');
+  if (spa) return { biografia: spa.biography.trim(), idioma: 'es' };
+  const eng = bios.find((b) => b.language === 'eng');
+  if (eng) return { biografia: eng.biography.trim(), idioma: 'en' };
+  return { biografia: bios[0].biography.trim(), idioma: bios[0].language };
+}
+

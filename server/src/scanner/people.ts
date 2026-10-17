@@ -26,7 +26,7 @@ async function tmdb<T>(path: string, params: Record<string, string>): Promise<T 
   return (await res.json()) as T;
 }
 
-async function traducirConGemini(texto: string): Promise<string | null> {
+export async function traducirConGemini(texto: string): Promise<string | null> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || !texto.trim()) return null;
   try {
@@ -36,19 +36,25 @@ async function traducirConGemini(texto: string): Promise<string | null> {
       // La clave por cabecera y no en la URL: las URL acaban en registros de proxys y de errores.
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: `Traduce al español de España de forma natural y profesional la siguiente biografía. NO uses formato Markdown, negritas ni asteriscos (*) para los títulos ni nombres. Devuelve únicamente el texto traducido limpio:\n\n${texto}` }] }],
+        contents: [{ parts: [{ text: `Traduce al español de España de forma natural y profesional la siguiente biografía de cine/televisión. Devuelve ÚNICAMENTE el texto traducido limpio, sin encabezados, sin comillas envolventes y sin formato Markdown (sin asteriscos ni negritas):\n\n${texto}` }] }],
       }),
     });
     if (!res.ok) return null;
     const data = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
     const raw = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || null;
-    return raw ? raw.replace(/\*+([^*]+)\*+/g, '$1').trim() : null;
+    if (!raw) return null;
+    return raw
+      .replace(/^«\s*|\s*»$/g, '')
+      .replace(/^"\s*|\s*"$/g, '')
+      .replace(/\*+([^*]+)\*+/g, '$1')
+      .replace(/^(Aquí está la traducción|Traducción al español|La traducción es):\s*/i, '')
+      .trim();
   } catch {
     return null;
   }
 }
 
-function esTextoEnIngles(texto: string): boolean {
+export function esTextoEnIngles(texto: string): boolean {
   if (!texto || texto.trim().length < 15) return false;
   const tieneEspanol = /[áéíóúñ¿¡]/.test(texto) ||
     /\b(nació|nacer|película|películas|conocido|conocida|hijo|hija|estadounidense|español|española|británico|británica|fue|estudió|comenzó)\b/i.test(texto);

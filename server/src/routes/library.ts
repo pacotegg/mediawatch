@@ -895,17 +895,32 @@ export default async function libraryRoutes(app: FastifyInstance) {
      * dejó 107 ficheros sin duración tras un reescaneo.
      */
     const duracion = duration && duration > 0 ? duration : null;
+    let esVisto: number;
+    if (watched !== undefined) {
+      esVisto = watched ? 1 : 0;
+    } else {
+      const enCreditos = episodeId
+        ? Boolean(db.prepare("SELECT 1 FROM skip_ranges WHERE episode_id = ? AND kind = 'credits' AND ? >= (start_s - 5)").get(episodeId, position))
+        : false;
+      const supera90 = Boolean(duracion && position > duracion * 0.90);
+      if (enCreditos || supera90) {
+        esVisto = 1;
+      } else {
+        const filaActual = db.prepare('SELECT watched FROM progress WHERE user_id = ? AND item_id = ? AND episode_id IS ?').get(user.id, itemId, episodeId ?? null) as { watched?: number } | undefined;
+        esVisto = filaActual && filaActual.watched === 1 ? 1 : 0;
+      }
+    }
     guardarProgreso(
       user.id,
       itemId,
       episodeId ?? null,
       position,
       duracion,
-      watched ? 1 : duracion && position > duracion * 0.95 ? 1 : 0,
+      esVisto,
       audio !== undefined ? (audio !== null ? String(audio) : null) : undefined,
       subtitle !== undefined ? (subtitle !== null ? String(subtitle) : 'off') : undefined,
     );
-    avanzar({ userId: user.id, itemId, episodeId: episodeId ?? null, position, duracion: duration ?? null, vista: Boolean(watched), sesion: sesionDe(req) });
+    avanzar({ userId: user.id, itemId, episodeId: episodeId ?? null, position, duracion: duration ?? null, vista: Boolean(esVisto), sesion: sesionDe(req) });
     return { ok: true };
   });
 
