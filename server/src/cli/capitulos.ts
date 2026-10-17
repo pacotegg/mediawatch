@@ -256,7 +256,7 @@ async function comandoPurgar() {
   }
 }
 
-async function comandoMkvpropedit(itemId: number, confirmar: boolean) {
+async function comandoMkvpropedit(itemId: number, confirmar: boolean, silencioso = false) {
   const peli = db
     .prepare(
       `SELECT items.title, media_files.path
@@ -267,19 +267,21 @@ async function comandoMkvpropedit(itemId: number, confirmar: boolean) {
     .get(itemId) as { title: string; path: string } | undefined;
 
   if (!peli) {
-    console.error(`Película no encontrada: item_id = ${itemId}`);
+    if (!silencioso) console.error(`Película no encontrada: item_id = ${itemId}`);
     return;
   }
 
   const caps = obtenerCapitulosBd(itemId);
   if (!caps.length) {
-    console.error(`No hay capítulos guardados en BD para item_id = ${itemId}. Usa primero buscar o enriquecer.`);
+    if (!silencioso) console.error(`No hay capítulos guardados en BD para item_id = ${itemId}. Usa primero buscar o enriquecer.`);
     return;
   }
 
-  console.log(`Película: "${peli.title}"`);
-  console.log(`Ruta: ${peli.path}`);
-  console.log(`Capítulos a escribir: ${caps.length}`);
+  if (!silencioso) {
+    console.log(`Película: "${peli.title}"`);
+    console.log(`Ruta: ${peli.path}`);
+    console.log(`Capítulos a escribir: ${caps.length}`);
+  }
 
   if (!confirmar) {
     console.log('\n[AVISO] Para escribir en el fichero MKV real en E: debes pasar el argumento --confirmar');
@@ -302,22 +304,28 @@ async function comandoMkvpropedit(itemId: number, confirmar: boolean) {
   const tempFile = join(tmpdir(), `chapters_${itemId}_${Date.now()}.txt`);
   writeFileSync(tempFile, oggContent, 'utf8');
 
-  console.log(`Ejecutando mkvpropedit sobre ${peli.path}...`);
+  if (!silencioso) console.log(`Ejecutando mkvpropedit sobre ${peli.path}...`);
   const mkvpropedit = 'C:\\Program Files\\MKVToolNix\\mkvpropedit.exe';
 
   await new Promise<void>((resolve, reject) => {
     const proc = spawn(mkvpropedit, [peli.path, '--chapters', tempFile]);
-    proc.stdout.on('data', (d) => process.stdout.write(d));
-    proc.stderr.on('data', (d) => process.stderr.write(d));
+    let errOutput = '';
+    if (!silencioso) {
+      proc.stdout.on('data', (d) => process.stdout.write(d));
+    }
+    proc.stderr.on('data', (d) => {
+      errOutput += d.toString();
+      if (!silencioso) process.stderr.write(d);
+    });
     proc.on('close', (code) => {
       try {
         unlinkSync(tempFile);
       } catch {}
       if (code === 0) {
-        console.log(`\n✓ Capítulos incrustados correctamente en ${peli.path}`);
+        if (!silencioso) console.log(`\n✓ Capítulos incrustados correctamente en ${peli.path}`);
         resolve();
       } else {
-        reject(new Error(`mkvpropedit falló con código ${code}`));
+        reject(new Error(`mkvpropedit falló con código ${code}: ${errOutput}`));
       }
     });
   });
@@ -351,17 +359,17 @@ async function comandoIncrustarTodos(confirmar: boolean) {
 
   for (let i = 0; i < pelis.length; i++) {
     const p = pelis[i];
-    console.log(`[${i + 1}/${pelis.length}] ${p.title}...`);
+    process.stdout.write(`\rIncrustando capítulos [${i + 1}/${pelis.length}]: "${p.title.slice(0, 40)}" (éxitos: ${exitos})...`);
     try {
-      await comandoMkvpropedit(p.item_id, true);
+      await comandoMkvpropedit(p.item_id, true, true);
       exitos++;
     } catch (e: any) {
-      console.error(`Error en ${p.title}: ${e.message}`);
+      console.error(`\nError en ${p.title}: ${e.message}`);
       fallos++;
     }
   }
 
-  console.log(`\nFinalizado: ${exitos} películas actualizadas con mkvpropedit, ${fallos} fallos.`);
+  console.log(`\n\nFinalizado: ${exitos} películas actualizadas con mkvpropedit, ${fallos} fallos.\n`);
 }
 
 const args = process.argv.slice(2);
