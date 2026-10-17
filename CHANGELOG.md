@@ -12,6 +12,11 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.66 — 17/10/2026
+
+- Historial de versiones: acceso al registro completo de cambios y novedades de la aplicación desde Ajustes.
+- Buscador mejorado: películas y series se muestran siempre en primer lugar, personas a continuación y frases al pie, con tolerancia a búsquedas inexactas y erratas.
+
 ## 3.65 — 17/10/2026
 
 - Marcado de episodios vistos: al encadenar automáticamente con el siguiente episodio, se preserva el estado de visto si el metraje superaba el 88 % de la duración.
