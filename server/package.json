@@ -13,7 +13,8 @@
     "temas": "node src/cli/completar-temas.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "node --test \"test/**/*.test.mjs\"",
-    "resumenes": "node src/cli/resumenes.ts"
+    "resumenes": "node src/cli/resumenes.ts",
+    "capitulos": "node src/cli/capitulos.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",

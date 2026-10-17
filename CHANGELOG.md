@@ -12,6 +12,12 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.67 — 17/10/2026
+
+- Marcas de capítulos en la barra de reproducción: división visual de alta visibilidad para identificar cada escena en la línea de tiempo.
+- Enriquecimiento automático de capítulos para películas: soporte para esquemas con nombres reales de escenas desde ChapterDB.
+- Acceso directo a capítulos en Smart TV: pulsar abajo desde los controles del reproductor abre directamente el selector de capítulos con miniaturas.
+
 ## 3.66 — 17/10/2026
 
 - Historial de versiones: acceso al registro completo de cambios y novedades de la aplicación desde Ajustes.

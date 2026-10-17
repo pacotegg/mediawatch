@@ -1875,8 +1875,10 @@ body.rend-rapido .lamina img {
   top: 0;
   width: 3px;
   height: 9px;
-  margin-left: -1px;
-  background: rgba(255, 255, 255, 0.55);
+  margin-left: -1.5px;
+  background: #000;
+  z-index: 2;
+  pointer-events: none;
 }
 
 /*
