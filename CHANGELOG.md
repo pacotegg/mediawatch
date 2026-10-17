@@ -12,6 +12,11 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.65 — 17/10/2026
+
+- Marcado de episodios vistos: al encadenar automáticamente con el siguiente episodio, se preserva el estado de visto si el metraje superaba el 88 % de la duración.
+- Pantalla completa y controles táctiles en web móvil: soporte de pantalla completa en iOS Safari (WebKit) y alternancia de controles con toque en pantalla sin pausar involuntariamente el vídeo.
+
 ## 3.64 — 17/10/2026
 
 - Acciones directas por episodio en series: botones compactos para marcar visto/no visto, «En la tele» para enviar a la Smart TV y descarga local.
