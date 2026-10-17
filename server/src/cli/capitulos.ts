@@ -12,6 +12,8 @@ import { db } from '../db.ts';
 import { mediaInfo, type Capitulo } from '../media/probe.ts';
 import {
   buscarEnChapterDb,
+  coincideTitulo,
+  decodificarHtml,
   descargarCapitulosChapterDb,
   esTituloGenerico,
   fusionarNombresConTiemposLocales,
@@ -153,13 +155,18 @@ async function comandoEnriquecer(limite: number, soloGenericos: boolean) {
       resultados = await buscarEnChapterDb(p.title, duracion);
     }
 
-    const candidatosConNombre = resultados.filter((r) => r.hasNames);
-    let candidato = candidatosConNombre.find((r) => r.durationSec > 0 && Math.abs(r.durationSec - duracion) <= 15);
-    if (!candidato && candidatosConNombre.length > 0) {
-      candidato = candidatosConNombre[0];
+    const candidatosConNombre = resultados.filter(
+      (r) => r.hasNames && (coincideTitulo(p.original_title || p.title, r.title) || coincideTitulo(p.title, r.title))
+    );
+    let candidato: (typeof candidatosConNombre)[0] | undefined;
+    if (noTiene) {
+      candidato = candidatosConNombre.find((r) => r.durationSec > 0 && Math.abs(r.durationSec - duracion) <= 120);
+    } else {
+      candidato = candidatosConNombre.find((r) => r.durationSec > 0 && Math.abs(r.durationSec - duracion) <= 15)
+        || candidatosConNombre[0];
     }
     if (!candidato) {
-      console.log(`  - Sin coincidencia en ChapterDB (duración local: ${duracion.toFixed(0)}s).`);
+      console.log(`  - Sin coincidencia válida en ChapterDB (duración local: ${duracion.toFixed(0)}s).`);
       continue;
     }
 
@@ -177,6 +184,76 @@ async function comandoEnriquecer(limite: number, soloGenericos: boolean) {
   }
 
   console.log(`\nFinalizado: ${guardados} películas enriquecidas en BD.`);
+}
+
+async function comandoPurgar() {
+  const pelis = db
+    .prepare(
+      `SELECT DISTINCT items.id, items.title, items.original_title, ic.source
+       FROM items
+       JOIN item_chapters ic ON ic.item_id = items.id`
+    )
+    .all() as { id: number; title: string; original_title: string | null; source: string }[];
+
+  console.log(`\nAuditoría y purga de capítulos enriquecidos (${pelis.length} títulos en BD)...`);
+
+  const idMap = new Map<string, string | null>();
+  for (const p of pelis) {
+    const m = p.source.match(/chapterdb:(\d+)/);
+    if (m) idMap.set(m[1], null);
+  }
+
+  const uniqueIds = Array.from(idMap.keys());
+  let idx = 0;
+  const batchSize = 25;
+  while (idx < uniqueIds.length) {
+    const batch = uniqueIds.slice(idx, idx + batchSize);
+    await Promise.all(
+      batch.map(async (id) => {
+        try {
+          const res = await fetch(`https://chapterdb.plex.tv/browse/${id}`, {
+            headers: { 'User-Agent': 'Mozilla/5.0' },
+            signal: AbortSignal.timeout(6000),
+          });
+          const text = await res.text();
+          const m = text.match(/<title>ChaptersDb\.org - (.*?) Chapters<\/title>/i);
+          if (m) idMap.set(id, decodificarHtml(m[1].trim()));
+        } catch {
+          idMap.set(id, null);
+        }
+      })
+    );
+    idx += batchSize;
+    process.stdout.write(`\rVerificando fuentes remotas: ${Math.min(idx, uniqueIds.length)}/${uniqueIds.length}...`);
+  }
+
+  let purgados = 0;
+  let confirmados = 0;
+  const borrados: { id: number; title: string; remote: string }[] = [];
+
+  for (const p of pelis) {
+    const m = p.source.match(/chapterdb:(\d+)/);
+    if (!m) continue;
+    const remote = idMap.get(m[1]);
+    if (!remote) continue;
+
+    const ok = coincideTitulo(p.original_title || p.title, remote) || coincideTitulo(p.title, remote);
+    if (!ok) {
+      db.prepare('DELETE FROM item_chapters WHERE item_id = ?').run(p.id);
+      purgados++;
+      borrados.push({ id: p.id, title: p.title, remote });
+    } else {
+      confirmados++;
+    }
+  }
+
+  console.log(`\n\nAuditoría completada:`);
+  console.log(`  ✓ Válidos y confirmados: ${confirmados}`);
+  console.log(`  ✗ Falsos positivos purgados de BD: ${purgados}`);
+  if (borrados.length > 0) {
+    console.log(`\nTítulos purgados (${borrados.length}):`);
+    borrados.forEach((b, i) => console.log(`  ${i + 1}. [${b.id}] "${b.title}" no coincide con "${b.remote}"`));
+  }
 }
 
 async function comandoMkvpropedit(itemId: number, confirmar: boolean) {
@@ -301,6 +378,8 @@ if (modo === 'estado') {
   const limite = limiteStr ? parseInt(limiteStr, 10) : args.includes('--todos') ? 0 : 20;
   const soloGenericos = args.includes('--solo-genericos');
   comandoEnriquecer(limite, soloGenericos).catch(console.error);
+} else if (modo === 'purgar') {
+  comandoPurgar().catch(console.error);
 } else if (modo === 'mkvpropedit') {
   const id = parseInt(args[1] || '0', 10);
   const confirmar = args.includes('--confirmar');
@@ -309,5 +388,5 @@ if (modo === 'estado') {
   const confirmar = args.includes('--confirmar');
   comandoIncrustarTodos(confirmar).catch(console.error);
 } else {
-  console.log('Comandos disponibles: estado, buscar <título>, enriquecer [--limite=N|--todos], incrustar-todos --confirmar, mkvpropedit <itemId> --confirmar');
+  console.log('Comandos disponibles: estado, buscar <título>, enriquecer [--limite=N|--todos], purgar, incrustar-todos --confirmar, mkvpropedit <itemId> --confirmar');
 }
