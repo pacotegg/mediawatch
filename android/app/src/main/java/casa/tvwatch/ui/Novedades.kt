@@ -238,6 +238,44 @@ internal fun esMasNueva(remota: String, local: String): Boolean {
 }
 
 @Composable
+fun DialogoActualizacion(
+  versionNueva: casa.tvwatch.datos.VersionApp,
+  versionLocal: String,
+  alCerrar: () -> Unit,
+  alDescartar: (() -> Unit)? = null,
+) {
+  val contexto = LocalContext.current
+  val remota = versionNueva.version ?: return
+  AlertDialog(
+    onDismissRequest = alCerrar,
+    title = { Text("Hay una versión nueva: $remota") },
+    text = {
+      Column(Modifier.verticalScroll(rememberScrollState())) {
+        Text("Tienes la $versionLocal.", Modifier.padding(bottom = 8.dp))
+        versionNueva.novedades.forEach { Text("• $it", Modifier.padding(vertical = 4.dp)) }
+      }
+    },
+    confirmButton = {
+      TextButton(onClick = {
+        alCerrar()
+        val url = casa.tvwatch.datos.Servidor.baseCacheada().trimEnd('/') + "/instalar.html"
+        try {
+          contexto.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+        } catch (_: Exception) {
+          android.widget.Toast.makeText(contexto, "Abre $url en el navegador", android.widget.Toast.LENGTH_LONG).show()
+        }
+      }) { Text("Instalar") }
+    },
+    dismissButton = {
+      TextButton(onClick = {
+        alDescartar?.invoke()
+        alCerrar()
+      }) { Text(if (alDescartar != null) "Más tarde" else "Cerrar") }
+    },
+  )
+}
+
+@Composable
 fun AvisoDeVersionNueva() {
   val contexto = LocalContext.current
   val prefs = remember { contexto.getSharedPreferences("tvwatch", Context.MODE_PRIVATE) }
@@ -251,33 +289,13 @@ fun AvisoDeVersionNueva() {
   }
 
   val v = nueva ?: return
-  val remota = v.version ?: return
-  AlertDialog(
-    // Tocar fuera no cuenta como «Más tarde»: vuelve a salir la próxima vez.
-    onDismissRequest = { nueva = null },
-    title = { Text("Hay una versión nueva: $remota") },
-    text = {
-      Column(Modifier.verticalScroll(rememberScrollState())) {
-        Text("Tienes la $local.", Modifier.padding(bottom = 8.dp))
-        v.novedades.forEach { Text("• $it", Modifier.padding(vertical = 4.dp)) }
-      }
-    },
-    confirmButton = {
-      TextButton(onClick = {
-        nueva = null
-        val url = casa.tvwatch.datos.Servidor.baseCacheada().trimEnd('/') + "/instalar.html"
-        try {
-          contexto.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)))
-        } catch (_: Exception) {
-          android.widget.Toast.makeText(contexto, "Abre $url en el navegador", android.widget.Toast.LENGTH_LONG).show()
-        }
-      }) { Text("Instalar") }
-    },
-    dismissButton = {
-      TextButton(onClick = {
-        prefs.edit().putString(CLAVE_AVISO_DESCARTADO, remota).apply()
-        nueva = null
-      }) { Text("Más tarde") }
+  DialogoActualizacion(
+    versionNueva = v,
+    versionLocal = local,
+    alCerrar = { nueva = null },
+    alDescartar = {
+      val remota = v.version ?: return@DialogoActualizacion
+      prefs.edit().putString(CLAVE_AVISO_DESCARTADO, remota).apply()
     },
   )
 }
