@@ -21,6 +21,7 @@ import { detectarPeliculas, jobPeliculas, pararPeliculas, resumenPeliculas, skip
 import { currentUser, deFuera, requireUser, sesionDe } from './auth.ts';
 import type { ServerResponse } from 'node:http';
 import { estadoLimite, MENSAJE_LIMITE } from '../media/limite-diario.ts';
+import { fusionarNombresConTiemposLocales, obtenerCapitulosBd, sonCapitulosGenericos } from '../media/chapterdb.ts';
 
 function caps(req: FastifyRequest): ClientCaps {
   const q = req.query as Record<string, string | undefined>;
@@ -417,6 +418,11 @@ export default async function playRoutes(app: FastifyInstance) {
           .get(user.id, row.parent_id) as { audio_track: string | null; subtitle_track: string | null } | undefined)
       : null;
 
+    const capitulosBd = row?.item_id ? obtenerCapitulosBd(row.item_id) : [];
+    const capitulosFinales = capitulosBd.length > 0 && (info.chapters.length === 0 || sonCapitulosGenericos(info.chapters))
+      ? (info.chapters.length > 0 ? fusionarNombresConTiemposLocales(info.chapters, capitulosBd) : capitulosBd)
+      : info.chapters;
+
     return {
       fileId,
       savedAudio: guardado?.audio_track ?? deLaSerie?.audio_track ?? null,
@@ -424,7 +430,7 @@ export default async function playRoutes(app: FastifyInstance) {
       title: row.title,
       duration: info.duration,
       container: info.container,
-      chapters: info.chapters,
+      chapters: capitulosFinales,
       // Cabecera y creditos del episodio, si se han detectado. Van aqui para que
       // el cliente no tenga que hacer una segunda peticion al empezar a ver.
       // Si el episodio no tiene creditos en la base de datos, se prueban los capitulos del contenedor.
@@ -434,12 +440,12 @@ export default async function playRoutes(app: FastifyInstance) {
         ? (() => {
             const rangos = skipRangesFor(row.episode_id, (req.query as { resumen?: string }).resumen === '1');
             if (!rangos.some((r) => r.kind === 'credits')) {
-              const porCapitulos = creditosDeEpisodio(info.chapters, info.duration);
+              const porCapitulos = creditosDeEpisodio(capitulosFinales, info.duration);
               return porCapitulos.length ? rangos.concat(porCapitulos) : rangos;
             }
             return rangos;
           })()
-        : skipDePelicula(row.item_id ?? 0, info.chapters, info.duration),
+        : skipDePelicula(row.item_id ?? 0, capitulosFinales, info.duration),
       size: statFichero.size,
       bitrate: info.duration > 0 ? Math.round((statFichero.size * 8) / info.duration) : 0,
       video: info.video,

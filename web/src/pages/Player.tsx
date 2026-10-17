@@ -1295,8 +1295,22 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
                 {hover && trickplay && trickplay.times.length > 0 && (
                   <ScrubPreview trickplay={trickplay} fileId={fileId} time={hover.time} x={hover.x} />
                 )}
-                <div className="h-2 sm:h-1.5 overflow-hidden rounded-full bg-white/25 transition-[height] duration-200 group-hover/bar:h-2.5">
+                <div className="relative h-2 sm:h-1.5 overflow-hidden rounded-full bg-white/25 transition-[height] duration-200 group-hover/bar:h-2.5">
                   <div className="h-full w-full origin-left rounded-full bg-accent" style={{ transform: `scaleX(${progressPct / 100})` }} />
+                  {duration > 0 && info?.chapters && info.chapters.length > 1 && (
+                    <div className="pointer-events-none absolute inset-0">
+                      {info.chapters.map((c, i) => {
+                        if (c.start <= 0 || c.start >= duration) return null;
+                        return (
+                          <div
+                            key={i}
+                            className="absolute top-0 bottom-0 w-[3px] -translate-x-1/2 bg-ink-950 z-10"
+                            style={{ left: `${(c.start / duration) * 100}%` }}
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
                 {/* Translating a full-width wrapper keeps the handle on the compositor:
                     a percentage transform resolves against the track's own width. */}

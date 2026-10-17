@@ -1099,6 +1099,7 @@ private fun Reproduciendo(
         esEpisodio = episodioId != null,
         alAnterior = if (anterior != null) ({ tocar(); irAEpisodio(anterior) }) else null,
         alSiguienteEpisodio = if (siguiente != null) ({ tocar(); irAEpisodio(siguiente) }) else null,
+        capitulos = info?.chapters ?: emptyList(),
       )
     }
 
@@ -1517,6 +1518,7 @@ private fun Controles(
   esEpisodio: Boolean,
   alAnterior: (() -> Unit)?,
   alSiguienteEpisodio: (() -> Unit)?,
+  capitulos: List<Capitulo> = emptyList(),
 ) {
   Box(Modifier.fillMaxSize()) {
     // Un velo suave arriba y abajo para que se lean los textos sobre cualquier fotograma.
@@ -1618,6 +1620,23 @@ private fun Controles(
           track = {
             Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x55FFFFFF))) {
               Box(Modifier.fillMaxWidth(fraccion).height(4.dp).background(Realce))
+              if (duracion > 0 && capitulos.size > 1) {
+                Canvas(Modifier.fillMaxSize()) {
+                  val ancho = size.width
+                  val alto = size.height
+                  for (cap in capitulos) {
+                    if (cap.start > 0 && cap.start < duracion) {
+                      val x = (cap.start / duracion).toFloat() * ancho
+                      drawLine(
+                        color = Color.Black,
+                        start = Offset(x, 0f),
+                        end = Offset(x, alto),
+                        strokeWidth = 2.5.dp.toPx(),
+                      )
+                    }
+                  }
+                }
+              }
             }
           },
         )

@@ -3627,7 +3627,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
 
   const aj = ajustes();
   const fichero = ficha.files.filter((f) => f.id === fileId)[0];
-  const duracionFichero = (fichero && fichero.duration) || 0;
+  let duracionFichero = (fichero && fichero.duration) || 0;
   const ep = episodeId !== null && ficha.episodes ? ficha.episodes.filter((e) => e.id === episodeId)[0] : undefined;
   const cabeceraEp = ep ? 'T' + ep.season + 'E' + ep.episode + (ep.title ? ' · ' + ep.title : '') : '';
 
@@ -3824,7 +3824,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
 
   /** Rayitas en la barra donde empieza cada capítulo, como en un disco. */
   const pintarCapitulos = () => {
-    const t = total();
+    const t = total() || duracionFichero;
     if (!infoServidor || !infoServidor.chapters || infoServidor.chapters.length < 2 || !t) return;
     barraCaja.querySelectorAll('u').forEach((u) => u.parentElement && u.parentElement.removeChild(u));
     let html = '';
@@ -4957,17 +4957,11 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
         return true;
       }
       if (tecla === TECLA.ARRIBA) {
-        if (i > 0) {
-          i = Math.max(0, i - 4);
-          pintarFoco();
-        }
+        cerrar();
+        mostrar();
         return true;
       }
       if (tecla === TECLA.ABAJO) {
-        if (i < caps.length - 1) {
-          i = Math.min(caps.length - 1, i + 4);
-          pintarFoco();
-        }
         return true;
       }
       if (tecla === TECLA.ENTRAR) {
@@ -5087,6 +5081,14 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
         mostrar();
         return true;
       }
+      if (tecla === TECLA.ABAJO) {
+        if (infoServidor && infoServidor.chapters && infoServidor.chapters.length >= 2) {
+          menuCapitulos();
+          return true;
+        }
+        mostrar();
+        return true;
+      }
       if (tecla === TECLA.ENTRAR) { accionar(botones[iBoton].getAttribute('data-accion')); return true; }
       mostrar();
       return true;
@@ -5126,6 +5128,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     .pistas(fileId)
     .then((info) => {
       infoServidor = info;
+      if (info.duration && !duracionFichero) duracionFichero = info.duration;
       if (seleccion.fileId === fileId) {
         audioOrdinal = seleccion.audio;
         subOrdinal = seleccion.subtitulo;

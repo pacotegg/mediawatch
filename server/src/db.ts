@@ -406,6 +406,18 @@ CREATE TABLE IF NOT EXISTS descargas (
   titulo   TEXT NOT NULL,
   creado   TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS item_chapters (
+  item_id    INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+  idx        INTEGER NOT NULL,
+  start_s    REAL NOT NULL,
+  end_s      REAL NOT NULL,
+  title      TEXT NOT NULL,
+  source     TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (item_id, idx)
+);
+CREATE INDEX IF NOT EXISTS idx_item_chapters_item ON item_chapters(item_id);
 `);
 
 /*
