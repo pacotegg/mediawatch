@@ -34,10 +34,16 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.widget.Toast
+import androidx.compose.runtime.rememberCoroutineScope
+import casa.tvwatch.datos.Api
 import casa.tvwatch.datos.Ajustes
 import casa.tvwatch.datos.Calidad
 import casa.tvwatch.datos.Registro
 import casa.tvwatch.datos.Servidor
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun PantallaAjustes(
@@ -72,9 +78,20 @@ fun PantallaAjustes(
   // Diálogo selector genérico
   var dialogoOpciones by remember { mutableStateOf<DialogoConfig?>(null) }
   var mostrarHistorial by remember { mutableStateOf(false) }
+  var actualizacionDisponible by remember { mutableStateOf<casa.tvwatch.datos.VersionApp?>(null) }
+  var comprobandoActualizacion by remember { mutableStateOf(false) }
+  val coroutineScope = rememberCoroutineScope()
 
   if (mostrarHistorial) {
     DialogoHistorialCompleto(alCerrar = { mostrarHistorial = false })
+  }
+
+  actualizacionDisponible?.let { v ->
+    DialogoActualizacion(
+      versionNueva = v,
+      versionLocal = version,
+      alCerrar = { actualizacionDisponible = null },
+    )
   }
 
   if (dialogoOpciones != null) {
@@ -389,6 +406,26 @@ fun PantallaAjustes(
       }
 
       Spacer(Modifier.height(10.dp))
+
+      FilaBoton(
+        titulo = "Buscar actualizaciones",
+        detalle = if (comprobandoActualizacion) "Comprobando servidor…" else "Comprobar si hay una versión nueva de la app",
+        alPulsar = {
+          if (comprobandoActualizacion) return@FilaBoton
+          comprobandoActualizacion = true
+          coroutineScope.launch {
+            val v = withContext(Dispatchers.IO) { Api.versionApp() }
+            comprobandoActualizacion = false
+            if (v == null || v.version.isNullOrEmpty()) {
+              Toast.makeText(contexto, "No se pudo comprobar la versión en el servidor", Toast.LENGTH_SHORT).show()
+            } else if (esMasNueva(v.version, version)) {
+              actualizacionDisponible = v
+            } else {
+              Toast.makeText(contexto, "Ya tienes la última versión (v$version)", Toast.LENGTH_SHORT).show()
+            }
+          }
+        },
+      )
 
       FilaBoton(
         titulo = "Historial de versiones",
