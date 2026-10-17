@@ -2,7 +2,7 @@ import { sign, verify } from 'node:crypto';
 import { config } from '../config.ts';
 
 export const CLAVE_PUBLICA_OFICIAL = `-----BEGIN PUBLIC KEY-----
-MCowBQYDK2VwAyEAZvhsp2sc61Cg56W1/gFa0HP8zJfx/VotOvB2X2+UFto=
+MCowBQYDK2VwAyEAJBEukfOIIof3vdE7fh6sBUYXLkDsTHS1nkz3+K153BY=
 -----END PUBLIC KEY-----`.trim();
 
 export type LicenciaPayload = {

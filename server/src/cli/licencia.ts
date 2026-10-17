@@ -6,12 +6,25 @@
  *   node src/cli/licencia.ts emitir --email usuario@dominio.com [--dias 365]
  *   node src/cli/licencia.ts verificar "<bloque-de-licencia>"
  */
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { DATA_DIR } from '../config.ts';
 import { emitirLicencia, parsearYVerificarLicencia } from '../media/licencia.ts';
 
-// Clave privada de firma oficial (nunca se comparte con clientes, solo para emision)
-const CLAVE_PRIVADA_EMISOR = `-----BEGIN PRIVATE KEY-----
-MC4CAQAwBQYDK2VwBCIEIAj1uJxo08QeHVvs9x9ptPZPjePbi2uAgIq+iSOQw/Hk
------END PRIVATE KEY-----`.trim();
+function obtenerClavePrivadaEmisor(): string {
+  if (process.env.MEDIAWATCH_LICENSE_PRIVATE_KEY) {
+    return process.env.MEDIAWATCH_LICENSE_PRIVATE_KEY.trim();
+  }
+  const rutaFichero = process.env.MEDIAWATCH_LICENSE_KEY_FILE || join(DATA_DIR, 'license-private.pem');
+  if (existsSync(rutaFichero)) {
+    return readFileSync(rutaFichero, 'utf8').trim();
+  }
+  throw new Error(
+    `No se encontró la clave privada de emisión Ed25519.\n` +
+    `Configura la variable de entorno MEDIAWATCH_LICENSE_PRIVATE_KEY o coloca el fichero en:\n` +
+    `  ${rutaFichero}`
+  );
+}
 
 const args = process.argv.slice(2);
 const comando = args[0];
@@ -32,12 +45,20 @@ if (comando === 'emitir') {
   const dias = diasStr ? Number(diasStr) : 0;
   const expiresAt = dias > 0 ? Date.now() + dias * 24 * 3600 * 1000 : 0;
 
+  let privateKeyPem: string;
+  try {
+    privateKeyPem = obtenerClavePrivadaEmisor();
+  } catch (err) {
+    console.error((err as Error).message);
+    process.exit(1);
+  }
+
   const licencia = emitirLicencia({
     issuedTo: email,
     tier: 'pro',
     expiresAt,
     features: ['3d_cases', 'dialogue_search', 'themes', 'offline_downloads'],
-    privateKeyPem: CLAVE_PRIVADA_EMISOR,
+    privateKeyPem,
   });
 
   console.log('\n--- LICENCIA GENERADA CON ÉXITO ---');
