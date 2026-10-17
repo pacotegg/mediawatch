@@ -496,6 +496,11 @@ export function siguiente(direccion: number): HTMLElement | null {
   const desde = indice.filter((n) => n.el === foco)[0];
   if (!desde) return indice.length ? indice[0].el : null;
 
+  const capaModal = foco.closest('.capa') as HTMLElement | null;
+  if (capaModal) {
+    return mejorEn(desde, direccion, undefined, capaModal);
+  }
+
   /*
    * El abecedario del borde derecho es otra zona, como el menu: esta fijo y el
    * lienzo se mueve, asi que sus coordenadas no se pueden comparar. Se entra
@@ -692,6 +697,10 @@ export function iniciarNavegacion() {
         window.clearTimeout(temporizadorEnterLargo);
         temporizadorEnterLargo = null;
         enterLargoDisparado = false;
+      }
+      if (elementoPulsado) {
+        elementoPulsado.classList.remove('pulsando');
+        elementoPulsado = null;
       }
       e.preventDefault();
       return;
