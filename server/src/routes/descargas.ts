@@ -12,6 +12,7 @@ import type { FastifyInstance } from 'fastify';
 import { requireUser } from './auth.ts';
 import { parsearRango } from '../media/rango.ts';
 import { borrar, listar, nombreFichero, pedir, una, PERFILES, type Perfil, type Codec } from '../media/descargas.ts';
+import { tieneFuncionLicencia } from '../media/licencia.ts';
 
 export default async function descargaRoutes(app: FastifyInstance) {
   app.get('/api/descargas', async (req) => {
@@ -21,6 +22,12 @@ export default async function descargaRoutes(app: FastifyInstance) {
 
   app.post('/api/descargas', async (req, reply) => {
     const user = requireUser(req);
+    if (!tieneFuncionLicencia('offline_downloads')) {
+      return reply.code(403).send({
+        error: 'Las descargas para ver sin conexión requieren la licencia Coleccionista Pro',
+        pro_feature: 'offline_downloads',
+      });
+    }
     const { fileId, perfil, codec } = req.body as { fileId?: number; perfil?: Perfil; codec?: Codec };
     if (!fileId) return reply.code(400).send({ error: 'Falta el fichero' });
     if (perfil !== 'baja' && perfil !== 'movil' && perfil !== 'tablet' && perfil !== 'fhd' && perfil !== 'original') {

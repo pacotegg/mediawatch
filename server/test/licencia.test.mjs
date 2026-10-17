@@ -7,9 +7,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, sign } from 'node:crypto';
-import { emitirLicencia, parsearYVerificarLicencia } from '../src/media/licencia.ts';
+import { CLAVE_PUBLICA_OFICIAL, emitirLicencia, parsearYVerificarLicencia, tieneFuncionLicencia } from '../src/media/licencia.ts';
 
 test('sistema de licencias Ed25519', async () => {
+  // Comprobar que la clave publica oficial esta presente y bien formada
+  assert.ok(CLAVE_PUBLICA_OFICIAL.includes('-----BEGIN PUBLIC KEY-----'));
+  assert.ok(CLAVE_PUBLICA_OFICIAL.includes('-----END PUBLIC KEY-----'));
+
   // Generar par de prueba temporal
   const { publicKey, privateKey } = generateKeyPairSync('ed25519');
   const pubPem = publicKey.export({ type: 'spki', format: 'pem' }).toString();
@@ -57,4 +61,12 @@ test('sistema de licencias Ed25519', async () => {
   const verif4 = parsearYVerificarLicencia('MWPRO-1234-FAKE-KEY', pubPem);
   assert.equal(verif4.valid, false);
   assert.ok(verif4.error);
+
+  // 5. Verificacion de tieneFuncionLicencia en entorno de desarrollo/pruebas
+  assert.equal(tieneFuncionLicencia('themes'), true);
+  assert.equal(tieneFuncionLicencia('dialogue_search'), true);
+  assert.equal(tieneFuncionLicencia('3d_cases'), true);
+  assert.equal(tieneFuncionLicencia('offline_downloads'), true);
+  assert.equal(tieneFuncionLicencia('funcion_inexistente'), true); // Tier Pro autoriza todas
 });
+
