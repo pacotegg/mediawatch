@@ -1426,6 +1426,12 @@ body.rend-rapido .lamina img {
   color: var(--fondo);
 }
 
+.episodio.pulsando {
+  transform: scale(0.97) !important;
+  box-shadow: 0 0 0 3px #60a5fa, 0 8px 24px rgba(96, 165, 250, 0.35) !important;
+  transition: transform 0.1s ease, box-shadow 0.1s ease !important;
+}
+
 .episodio .num {
   display: inline-block;
   width: 130px;
@@ -3482,6 +3488,131 @@ body.viendo-extra .marco * {
 .episodio.vista .ep-imagen img {
   opacity: 0.45;
 }
+
+.ep-duracion {
+  position: absolute;
+  right: 8px;
+  bottom: 10px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.72);
+  color: var(--texto-sec);
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.episodio.enfocado .ep-duracion {
+  color: #fff;
+}
+
+.ep-visto {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(34, 197, 94, 0.9);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 26px;
+  text-align: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+.pista-ayuda-episodios {
+  margin: 10px 0 4px 0;
+  font-size: 17px;
+  color: var(--texto-ter);
+}
+
+/* Modal con detalle del episodio y sinopsis */
+.panel-detalle-ep {
+  width: 920px;
+  max-width: 90%;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.detalle-ep-cabecera {
+  display: flex;
+  margin-bottom: 16px;
+}
+
+.detalle-ep-foto-wrap {
+  width: 280px;
+  height: 158px;
+  flex-shrink: 0;
+  margin-right: 20px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--superficie);
+}
+
+.detalle-ep-foto {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.detalle-ep-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.detalle-ep-sub {
+  font-size: 18px;
+  color: var(--acento-claro);
+  margin-bottom: 6px;
+}
+
+.detalle-ep-titulo {
+  font-size: 26px;
+  font-weight: 700;
+  color: #fff;
+  margin: 0 0 10px 0;
+  line-height: 1.25;
+}
+
+.detalle-ep-estado {
+  display: inline-block;
+  font-size: 16px;
+  color: var(--texto-sec);
+  padding: 4px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.detalle-ep-estado.visto {
+  background: rgba(34, 197, 94, 0.2);
+  color: #4ade80;
+}
+
+.detalle-ep-sinopsis {
+  font-size: 19px;
+  line-height: 1.5;
+  color: var(--texto-sec);
+  margin-bottom: 24px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.detalle-ep-sinopsis.vacia {
+  font-style: italic;
+  color: var(--texto-ter);
+}
+
+.detalle-ep-botones {
+  display: flex;
+  flex-direction: column;
+}
+
+.detalle-ep-botones .linea {
+  margin-bottom: 10px;
+}
+
 
 .dialogos-busqueda {
   margin-top: 36px;

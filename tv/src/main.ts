@@ -1898,30 +1898,131 @@ async function pantallaFicha(id: number, volverA?: (() => void) | null, focoInic
   });
 
   if (esSerie && ficha.episodes) {
+    const panelDetalleEpisodio = (ep: NonNullable<Ficha['episodes']>[number], elEp: HTMLElement) => {
+      const teclasAntes = manejadorActual();
+      const focoAntes = actual();
+      const p = ficha.progress.filter((x) => x.episode_id === ep.id)[0];
+      const pos = p ? p.position : 0;
+      const esVisto = Boolean(p && p.watched);
+      const totalSeg = (p && p.duration) || ep.duration || 0;
+      const durMin = totalSeg > 0 ? Math.round(totalSeg / 60) + ' min' : '';
+      const tieneProgreso = pos > 10 && !esVisto;
+
+      const capa = document.createElement('div');
+      capa.className = 'capa';
+
+      const urlFoto = ep.has_thumb ? imagen.episodio(ep.id, 480) : '';
+
+      capa.innerHTML =
+        '<div class="panel panel-detalle-ep">' +
+        '<div class="detalle-ep-cabecera">' +
+        (urlFoto ? '<div class="detalle-ep-foto-wrap"><img src="' + esc(urlFoto) + '" alt="" class="detalle-ep-foto" /></div>' : '') +
+        '<div class="detalle-ep-info">' +
+        '<div class="detalle-ep-sub">Temporada ' + ep.season + ' · Episodio ' + ep.episode + (durMin ? ' · ' + durMin : '') + '</div>' +
+        '<h3 class="detalle-ep-titulo">' + esc(ep.title || 'Episodio ' + ep.episode) + '</h3>' +
+        '<div class="detalle-ep-estado' + (esVisto ? ' visto' : '') + '">' + (esVisto ? '✓ Marcado como visto' : tieneProgreso ? 'En reproducción (' + reloj(Math.round(pos)) + ')' : 'Pendiente de ver') + '</div>' +
+        '</div>' +
+        '</div>' +
+        (ep.plot ? '<div class="detalle-ep-sinopsis">' + esc(ep.plot) + '</div>' : '<div class="detalle-ep-sinopsis vacia">Sin sinopsis disponible para este episodio.</div>') +
+        '<div class="detalle-ep-botones">' +
+        '<button class="linea enfocado" data-nav data-ep-play>' + (tieneProgreso ? 'Reanudar desde ' + reloj(Math.round(pos)) : 'Reproducir') + '</button>' +
+        (tieneProgreso || esVisto ? '<button class="linea" data-nav data-ep-inicio>Reproducir desde el inicio</button>' : '') +
+        '<button class="linea" data-nav data-ep-toggle>' + (esVisto ? 'Marcar como no visto' : 'Marcar como visto') + '</button>' +
+        '<button class="linea" data-nav data-ep-cerrar>Cerrar</button>' +
+        '</div>' +
+        '</div>';
+
+      marco.appendChild(capa);
+      indexar();
+
+      const cerrar = () => {
+        if (capa.parentElement) capa.parentElement.removeChild(capa);
+        indexar();
+        alPulsar(teclasAntes);
+        if (focoAntes) enfocar(focoAntes);
+      };
+
+      const btnPlay = capa.querySelector<HTMLElement>('[data-ep-play]');
+      const btnInicio = capa.querySelector<HTMLElement>('[data-ep-inicio]');
+      const btnToggle = capa.querySelector<HTMLElement>('[data-ep-toggle]');
+      const btnCerrar = capa.querySelector<HTMLElement>('[data-ep-cerrar]');
+
+      if (btnPlay) {
+        btnPlay.addEventListener('click', () => {
+          cerrar();
+          if (ep.file_id) abrir(ep.file_id, ep.id, tieneProgreso ? pos : 0);
+        });
+      }
+      if (btnInicio) {
+        btnInicio.addEventListener('click', () => {
+          cerrar();
+          if (ep.file_id) abrir(ep.file_id, ep.id, 0);
+        });
+      }
+      if (btnToggle) {
+        btnToggle.addEventListener('click', () => {
+          const nuevoVisto = !esVisto;
+          void api.marcarVista(ficha.id, nuevoVisto, ep.id).then(() => {
+            let prog = ficha.progress.filter((x) => x.episode_id === ep.id)[0];
+            if (prog) {
+              prog.watched = nuevoVisto ? 1 : 0;
+              if (!nuevoVisto) prog.position = 0;
+            } else {
+              ficha.progress.push({ episode_id: ep.id, position: 0, duration: ep.duration, watched: nuevoVisto ? 1 : 0 });
+            }
+            if (nuevoVisto) {
+              elEp.classList.add('vista');
+              if (!elEp.querySelector('.ep-visto')) {
+                const imgWrap = elEp.querySelector('.ep-imagen');
+                if (imgWrap) imgWrap.insertAdjacentHTML('beforeend', '<span class="ep-visto" title="Visto">✓</span>');
+              }
+              const pBar = elEp.querySelector('.progreso');
+              if (pBar && pBar.parentElement) pBar.parentElement.removeChild(pBar);
+            } else {
+              elEp.classList.remove('vista');
+              const check = elEp.querySelector('.ep-visto');
+              if (check && check.parentElement) check.parentElement.removeChild(check);
+            }
+            aviso(nuevoVisto ? 'Episodio marcado como visto' : 'Episodio marcado como pendiente');
+            cerrar();
+          }).catch((err) => {
+            aviso('Error al actualizar: ' + ((err as Error).message || 'desconocido'));
+          });
+        });
+      }
+      if (btnCerrar) btnCerrar.addEventListener('click', cerrar);
+
+      enfocar(btnPlay || btnCerrar);
+      alPulsar((tecla) => {
+        if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE) {
+          cerrar();
+          return true;
+        }
+        return false;
+      });
+    };
+
     const pintarEpisodios = (temporada: number) => {
       const caja = marco.querySelector<HTMLElement>('[data-lista-episodios]');
       if (!caja) return;
       const deLaTemporada = ficha.episodes!.filter((e) => e.season === temporada && e.file_id);
 
-      // Dentro de una pista propia: la lista se desplaza por dentro, con la
-      // pantalla quieta, ver `ajustarListaEpisodios` en nav.ts.
-      /*
-       * Cajas con miniatura y titulo, como Plex, y no lineas a todo el ancho: una
-       * lista de 24 lineas es casi todo hueco, y en una rejilla de cajas 16:9 caben
-       * unos 20 episodios a la vez y se reconocen de un vistazo. Un 12 % de los
-       * episodios no tiene miniatura -Dr. Slump, La Pantera Rosa-: ahi sale el
-       * hueco con el numero.
-       */
-      caja.innerHTML = '<div class="pista-episodios">' + deLaTemporada
+      caja.innerHTML =
+        '<div class="pista-ayuda-episodios">OK: opciones y sinopsis · ▶: reproducir directo</div>' +
+        '<div class="pista-episodios">' + deLaTemporada
         .map((e) => {
           const p = ficha.progress.filter((x) => x.episode_id === e.id)[0];
           const total = (p && p.duration) || e.duration || 0;
           const pct = p && !p.watched && total ? Math.min(100, (p.position / total) * 100) : 0;
+          const durMin = total > 0 ? Math.round(total / 60) + ' min' : '';
+          const esVisto = p && p.watched;
           return (
-            '<div class="episodio' + (p && p.watched ? ' vista' : '') + '" data-nav data-file="' + e.file_id + '" data-ep="' + e.id + '">' +
+            '<div class="episodio' + (esVisto ? ' vista' : '') + '" data-nav data-file="' + e.file_id + '" data-ep="' + e.id + '">' +
             '<div class="ep-imagen">' +
             (e.has_thumb ? '<img data-src="' + imagen.episodio(e.id, 320) + '" alt="">' : '') +
             '<span class="ep-num">E' + e.episode + '</span>' +
+            (durMin ? '<span class="ep-duracion">' + esc(durMin) + '</span>' : '') +
+            (esVisto ? '<span class="ep-visto" title="Visto">✓</span>' : '') +
             (pct > 1 ? '<div class="progreso"><i style="width:' + pct.toFixed(0) + '%"></i></div>' : '') +
             '</div>' +
             '<div class="ep-titulo">' + esc(e.title || 'Episodio ' + e.episode) + '</div>' +
@@ -1932,10 +2033,16 @@ async function pantallaFicha(id: number, volverA?: (() => void) | null, focoInic
       observarImagenes();
 
       caja.querySelectorAll<HTMLElement>('.episodio').forEach((el) => {
+        const epId = Number(el.getAttribute('data-ep'));
+        const fileId = Number(el.getAttribute('data-file'));
+        const epObj = ficha.episodes?.find((x) => x.id === epId);
+
+        el.addEventListener('abrir-detalle', () => {
+          if (epObj) panelDetalleEpisodio(epObj, el);
+        });
+
         el.addEventListener('click', () => {
-          const epId = Number(el.getAttribute('data-ep'));
-          const p = ficha.progress.filter((x) => x.episode_id === epId)[0];
-          abrir(Number(el.getAttribute('data-file')), epId, p && !p.watched ? p.position : 0);
+          if (epObj) panelDetalleEpisodio(epObj, el);
         });
       });
 
@@ -2117,6 +2224,23 @@ async function pantallaFicha(id: number, volverA?: (() => void) | null, focoInic
       marco.querySelector<HTMLElement>('.ficha [data-nav]'),
   );
   alPulsar((tecla) => {
+    if (tecla === TECLA.REPRODUCIR || tecla === TECLA.PLAY_PAUSA) {
+      const foco = actual();
+      if (foco && foco.classList.contains('episodio')) {
+        const epId = Number(foco.getAttribute('data-ep'));
+        const fileId = Number(foco.getAttribute('data-file'));
+        const p = ficha.progress.filter((x) => x.episode_id === epId)[0];
+        abrir(fileId, epId, p && !p.watched ? p.position : 0);
+        return true;
+      }
+    }
+    if (tecla === TECLA.INFO) {
+      const foco = actual();
+      if (foco && foco.classList.contains('episodio')) {
+        foco.dispatchEvent(new CustomEvent('abrir-detalle'));
+        return true;
+      }
+    }
     if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE) {
       // A la pantalla de la que se vino, con su sitio; solo si no hay de dónde,
       // a la portada.
@@ -3570,6 +3694,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
   let modoAudio = aj.modoAudio;
   let retardoSubs = aj.retardoSubtitulos;
   let cerrado = false;
+  let marcadoVisto = false;
   let tira: Tira | null = null;
   /** Cortes del flujo que se han intentado recuperar, y cuándo fue el último. */
   let reintentos = 0;
@@ -3936,9 +4061,6 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     // Créditos sin nada detrás: saltarlos es terminar, no ir a los últimos
     // segundos de rótulos para que el vídeo acabe solo dos segundos después.
     if (tramo.kind === 'credits' && !hayEscenaFinal(tramo)) {
-      void api
-        .progreso({ itemId: ficha.id, episodeId, position: total(), duration: total(), watched: true })
-        .catch(() => undefined);
       // Con episodio siguiente, el botón dice «Siguiente episodio»: va directo, sin la cuenta atrás de cuando acaba solo.
       alTerminar(true);
       return;
@@ -4084,9 +4206,6 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
       cargando.style.display = esperando ? 'block' : 'none';
     },
     onFin: () => {
-      void api
-        .progreso({ itemId: ficha.id, episodeId, position: duracionFichero, duration: duracionFichero, watched: true })
-        .catch(() => undefined);
       alTerminar();
     },
     onError: (mensaje) => {
@@ -4221,7 +4340,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     window.clearTimeout(temporizadorSalto);
     window.clearTimeout(temporizadorSub);
     const t = reproductor.tiempo();
-    if (t > 5) {
+    if (!marcadoVisto && t > 5) {
       const trSub = subOrdinal >= 0 ? infoServidor?.subtitles.filter((s) => s.source === 'embedded')[subOrdinal] : subOrdinal <= -10 ? infoServidor?.subtitles.filter((s) => s.source === 'external')[-(subOrdinal + 10)] : null;
       void api.progreso({
         itemId: ficha.id, episodeId, position: t, duration: total() || undefined,
@@ -4251,6 +4370,16 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     // minuto durante los diez minutos siguientes con la pantalla ya cambiada.
     cerrado = true;
     reproductorActivo = null;
+    marcadoVisto = true;
+    const durTerminar = total() || duracionFichero;
+    if (episodeId !== null) {
+      const p = ficha.progress.filter((x) => x.episode_id === episodeId)[0];
+      if (p) { p.watched = 1; p.position = durTerminar; }
+      else ficha.progress.push({ episode_id: episodeId, position: durTerminar, duration: durTerminar, watched: 1 });
+      void api
+        .progreso({ itemId: ficha.id, episodeId, position: durTerminar, duration: durTerminar, watched: true })
+        .catch(() => undefined);
+    }
     const sig = siguienteEpisodio();
     if (directo && sig && sig.file_id) {
       reproductor.cerrar();
@@ -4842,7 +4971,9 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     else if (accion === 'subs') menuSubtitulos();
     else if (accion === 'capitulos') menuCapitulos();
     else if (accion === 'info') alternarInfo();
-    else if (accion === 'siguiente') alTerminar();
+    else if (accion === 'siguiente') {
+      alTerminar(true);
+    }
   };
 
   /** Cualquier flecha aparta el botón de saltar: quien navega no quiere saltar. */
