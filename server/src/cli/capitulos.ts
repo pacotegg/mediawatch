@@ -127,7 +127,7 @@ async function comandoEnriquecer(limite: number, soloGenericos: boolean) {
   let guardados = 0;
 
   for (const p of peliculas) {
-    if (procesados >= limite) break;
+    if (limite > 0 && procesados >= limite) break;
 
     const yaTiene = obtenerCapitulosBd(p.item_id);
     if (yaTiene.length > 0) continue;
@@ -246,6 +246,47 @@ async function comandoMkvpropedit(itemId: number, confirmar: boolean) {
   });
 }
 
+async function comandoIncrustarTodos(confirmar: boolean) {
+  const pelis = db
+    .prepare(
+      `SELECT DISTINCT items.id as item_id, items.title, media_files.path
+       FROM items
+       JOIN media_files ON media_files.item_id = items.id
+       JOIN item_chapters ON item_chapters.item_id = items.id
+       WHERE items.kind = 'movie' AND media_files.path LIKE '%.mkv'`
+    )
+    .all() as { item_id: number; title: string; path: string }[];
+
+  console.log(`\n=== INCRUSTAR CAPÍTULOS CON MKVPROPEDIT (${pelis.length} películas) ===\n`);
+  if (!pelis.length) {
+    console.log('No hay películas con capítulos enriquecidos en BD para incrustar.');
+    return;
+  }
+
+  if (!confirmar) {
+    console.log(`Se han encontrado ${pelis.length} películas en MKV con capítulos listos en BD.`);
+    console.log('[AVISO DE SEGURIDAD] Modificar ficheros en E: requiere confirmación explícita (--confirmar).');
+    return;
+  }
+
+  let exitos = 0;
+  let fallos = 0;
+
+  for (let i = 0; i < pelis.length; i++) {
+    const p = pelis[i];
+    console.log(`[${i + 1}/${pelis.length}] ${p.title}...`);
+    try {
+      await comandoMkvpropedit(p.item_id, true);
+      exitos++;
+    } catch (e: any) {
+      console.error(`Error en ${p.title}: ${e.message}`);
+      fallos++;
+    }
+  }
+
+  console.log(`\nFinalizado: ${exitos} películas actualizadas con mkvpropedit, ${fallos} fallos.`);
+}
+
 const args = process.argv.slice(2);
 const modo = args[0] || 'estado';
 
@@ -256,13 +297,17 @@ if (modo === 'estado') {
   const guardar = args.includes('--guardar');
   comandoBuscar(q, guardar).catch(console.error);
 } else if (modo === 'enriquecer') {
-  const limite = parseInt(args.find((a) => a.startsWith('--limite='))?.split('=')[1] || '20', 10);
+  const limiteStr = args.find((a) => a.startsWith('--limite='))?.split('=')[1];
+  const limite = limiteStr ? parseInt(limiteStr, 10) : args.includes('--todos') ? 0 : 20;
   const soloGenericos = args.includes('--solo-genericos');
   comandoEnriquecer(limite, soloGenericos).catch(console.error);
 } else if (modo === 'mkvpropedit') {
   const id = parseInt(args[1] || '0', 10);
   const confirmar = args.includes('--confirmar');
   comandoMkvpropedit(id, confirmar).catch(console.error);
+} else if (modo === 'incrustar-todos') {
+  const confirmar = args.includes('--confirmar');
+  comandoIncrustarTodos(confirmar).catch(console.error);
 } else {
-  console.log('Comandos disponibles: estado, buscar <título>, enriquecer [--limite=N], mkvpropedit <itemId> --confirmar');
+  console.log('Comandos disponibles: estado, buscar <título>, enriquecer [--limite=N|--todos], incrustar-todos --confirmar, mkvpropedit <itemId> --confirmar');
 }
