@@ -909,9 +909,20 @@ export default async function libraryRoutes(app: FastifyInstance) {
     if (watched !== undefined) {
       esVisto = watched ? 1 : 0;
     } else {
-      const enCreditos = episodeId
-        ? Boolean(db.prepare("SELECT 1 FROM skip_ranges WHERE episode_id = ? AND kind = 'credits' AND ? >= (start_s - 5)").get(episodeId, position))
-        : false;
+      let enCreditos = false;
+      if (episodeId) {
+        enCreditos = Boolean(db.prepare("SELECT 1 FROM skip_ranges WHERE episode_id = ? AND kind = 'credits' AND ? >= (start_s - 5)").get(episodeId, position));
+      } else {
+        const filaCreditos = db.prepare('SELECT rangos FROM pelicula_creditos WHERE item_id = ?').get(itemId) as { rangos: string } | undefined;
+        if (filaCreditos?.rangos) {
+          try {
+            const rangos = JSON.parse(filaCreditos.rangos) as { start_s: number; end_s: number }[];
+            enCreditos = rangos.some((r) => position >= (r.start_s - 5));
+          } catch {
+            enCreditos = false;
+          }
+        }
+      }
       const supera90 = Boolean(duracion && position > duracion * 0.90);
       if (enCreditos || supera90) {
         esVisto = 1;

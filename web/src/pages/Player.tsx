@@ -1173,8 +1173,29 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 12 }}
-            transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-            onClick={() => (siguienteEnCreditos || siguienteEnCola ? irAlSiguiente() : activeSkip && seek(activeSkip.end_s + 0.4))}
+            onClick={() => {
+              if (siguienteEnCreditos || siguienteEnCola) {
+                irAlSiguiente();
+              } else if (activeSkip) {
+                if (activeSkip.kind === 'credits' && !escenaFinal) {
+                  marcadoVistoRef.current = true;
+                  if (itemId) {
+                    api.saveProgress({
+                      itemId,
+                      episodeId,
+                      position: duration,
+                      duration,
+                      watched: true,
+                      audio: audioTrackRef.current,
+                      subtitle: subtitleRef.current ?? 'off',
+                    }).catch(() => undefined);
+                  }
+                  salir();
+                } else {
+                  seek(activeSkip.end_s + 0.4);
+                }
+              }
+            }}
             className="glass-strong absolute right-8 bottom-28 z-20 rounded-full px-5 py-2.5 text-[13px] font-semibold transition-transform hover:scale-105 active:scale-95"
           >
             {siguienteEnCreditos || siguienteEnCola

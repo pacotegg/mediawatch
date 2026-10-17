@@ -4270,6 +4270,10 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     tSalto.textContent = '';
     esconderPrevia();
     llevarA(objetivo);
+    if (!enBotones && tramoActivo && objetivo >= tramoActivo.start_s && objetivo < tramoActivo.end_s - 1) {
+      enTramo = true;
+      botonTramo.classList.add('visible', 'enfocado');
+    }
   };
 
   /**
@@ -4378,6 +4382,13 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
       else ficha.progress.push({ episode_id: episodeId, position: durTerminar, duration: durTerminar, watched: 1 });
       void api
         .progreso({ itemId: ficha.id, episodeId, position: durTerminar, duration: durTerminar, watched: true })
+        .catch(() => undefined);
+    } else {
+      const p = ficha.progress.filter((x) => !x.episode_id)[0];
+      if (p) { p.watched = 1; p.position = durTerminar; }
+      else ficha.progress.push({ episode_id: null, position: durTerminar, duration: durTerminar, watched: 1 });
+      void api
+        .progreso({ itemId: ficha.id, position: durTerminar, duration: durTerminar, watched: true })
         .catch(() => undefined);
     }
     const sig = siguienteEpisodio();
@@ -5047,8 +5058,24 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     if (enBotones) {
       if (tecla === TECLA.DERECHA) { iBoton = Math.min(botones.length - 1, iBoton + 1); pintarFocoBotones(); mostrar(); return true; }
       if (tecla === TECLA.IZQUIERDA) { iBoton = Math.max(0, iBoton - 1); pintarFocoBotones(); mostrar(); return true; }
-      if (tecla === TECLA.ARRIBA) { enBotones = false; pintarFocoBotones(); mostrar(); return true; }
+      if (tecla === TECLA.ARRIBA) {
+        enBotones = false;
+        pintarFocoBotones();
+        if (tramoActivo && botonTramo.classList.contains('visible')) {
+          enTramo = true;
+          botonTramo.classList.add('enfocado');
+        }
+        mostrar();
+        return true;
+      }
       if (tecla === TECLA.ENTRAR) { accionar(botones[iBoton].getAttribute('data-accion')); return true; }
+      mostrar();
+      return true;
+    }
+
+    if (tecla === TECLA.ARRIBA && tramoActivo && botonTramo.classList.contains('visible')) {
+      enTramo = true;
+      botonTramo.classList.add('enfocado');
       mostrar();
       return true;
     }
