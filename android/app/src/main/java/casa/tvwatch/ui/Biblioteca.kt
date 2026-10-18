@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -51,6 +52,41 @@ private val ORDENES = listOf(
   "random" to "Al azar",
 )
 
+private val DECADAS = listOf(
+  null to "Todas las décadas",
+  "2020" to "Años 2020",
+  "2010" to "Años 2010",
+  "2000" to "Años 2000",
+  "1990" to "Años 90",
+  "1980" to "Años 80",
+  "1970" to "Años 70",
+  "<1970" to "Clásicos (<1970)",
+)
+
+private val CALIDADES = listOf(
+  null to "Cualquier calidad",
+  "4k" to "4K Ultra HD",
+  "1080p" to "1080p Full HD",
+  "720p" to "720p HD",
+  "sd" to "SD",
+)
+
+private val DURACIONES = listOf(
+  null to "Cualquier duración",
+  "short" to "Corta (< 90 min)",
+  "medium" to "Media (90 – 120 min)",
+  "long" to "Larga (> 120 min)",
+)
+
+private data class FiltrosBiblioteca(
+  val orden: String,
+  val genero: String?,
+  val sinVer: Boolean,
+  val decada: String?,
+  val calidad: String?,
+  val duracion: String?,
+)
+
 /**
  * Una biblioteca entera, en rejilla, con orden y filtros arriba.
  *
@@ -77,11 +113,20 @@ fun PantallaBiblioteca(
   var orden by remember(libraryId) { mutableStateOf("title") }
   var genero by remember(libraryId) { mutableStateOf<String?>(null) }
   var sinVer by remember(libraryId) { mutableStateOf(false) }
+  var decada by remember(libraryId) { mutableStateOf<String?>(null) }
+  var calidad by remember(libraryId) { mutableStateOf<String?>(null) }
+  var duracion by remember(libraryId) { mutableStateOf<String?>(null) }
+
   var generos by remember(libraryId) { mutableStateOf<List<Genero>>(emptyList()) }
   var eligiendoGenero by remember { mutableStateOf(false) }
+  var eligiendoDecada by remember { mutableStateOf(false) }
+  var eligiendoCalidad by remember { mutableStateOf(false) }
+  var eligiendoDuracion by remember { mutableStateOf(false) }
 
   // La combinación de filtros: cambia, y la rejilla empieza de cero.
-  val filtro = Triple(orden, genero, sinVer)
+  val filtro = remember(orden, genero, sinVer, decada, calidad, duracion) {
+    FiltrosBiblioteca(orden, genero, sinVer, decada, calidad, duracion)
+  }
   val items = remember(libraryId, filtro) { mutableStateListOf<Titulo>() }
   var total by remember(libraryId, filtro) { mutableStateOf(-1) }
   var cargando by remember(libraryId, filtro) { mutableStateOf(false) }
@@ -93,7 +138,19 @@ fun PantallaBiblioteca(
     if (total >= 0 && items.size >= total) return
     cargando = true
     try {
-      val p = withContext(Dispatchers.IO) { Api.titulos(libraryId, items.size, PAGINA, orden, genero, sinVer) }
+      val p = withContext(Dispatchers.IO) {
+        Api.titulos(
+          libraryId = libraryId,
+          offset = items.size,
+          limite = PAGINA,
+          orden = orden,
+          genero = genero,
+          sinVer = sinVer,
+          decada = decada,
+          calidad = calidad,
+          duracion = duracion,
+        )
+      }
       total = p.total
       items.addAll(p.items)
       fallo = ""
@@ -128,6 +185,8 @@ fun PantallaBiblioteca(
     snapshotFlow { cercaDelFinal }.collect { cerca -> if (cerca && items.isNotEmpty()) traerMas() }
   }
 
+  val hayFiltrosActivos = genero != null || sinVer || decada != null || calidad != null || duracion != null
+
   Column(Modifier.fillMaxSize().background(Fondo)) {
     LazyRow(
       contentPadding = PaddingValues(horizontal = Aire.borde, vertical = 8.dp),
@@ -140,10 +199,33 @@ fun PantallaBiblioteca(
       if (generos.isNotEmpty()) {
         item { Pastilla(genero ?: "Género ▾", activa = genero != null) { eligiendoGenero = true } }
       }
+      item {
+        val etiquetaDecada = DECADAS.firstOrNull { it.first == decada }?.second ?: "Década ▾"
+        Pastilla(if (decada != null) etiquetaDecada else "Década ▾", activa = decada != null) { eligiendoDecada = true }
+      }
+      item {
+        val etiquetaCalidad = CALIDADES.firstOrNull { it.first == calidad }?.second ?: "Calidad ▾"
+        Pastilla(if (calidad != null) etiquetaCalidad else "Calidad ▾", activa = calidad != null) { eligiendoCalidad = true }
+      }
+      item {
+        val etiquetaDuracion = DURACIONES.firstOrNull { it.first == duracion }?.second ?: "Duración ▾"
+        Pastilla(if (duracion != null) etiquetaDuracion else "Duración ▾", activa = duracion != null) { eligiendoDuracion = true }
+      }
+      if (hayFiltrosActivos) {
+        item {
+          Pastilla("Limpiar ✕", activa = false) {
+            genero = null
+            sinVer = false
+            decada = null
+            calidad = null
+            duracion = null
+          }
+        }
+      }
     }
     if (total >= 0) {
       Text(
-        "$total títulos" + (if (genero != null || sinVer) " con este filtro" else ""),
+        "$total títulos" + (if (hayFiltrosActivos) " con este filtro" else ""),
         color = TextoTenue,
         style = MaterialTheme.typography.labelSmall,
         modifier = Modifier.padding(horizontal = Aire.borde, vertical = 2.dp),
@@ -171,6 +253,59 @@ fun PantallaBiblioteca(
 
   if (eligiendoGenero) {
     ElegirGenero(generos, genero, alElegir = { genero = it; eligiendoGenero = false }, alCerrar = { eligiendoGenero = false })
+  }
+  if (eligiendoDecada) {
+    ElegirOpcionFiltro("Filtrar por año / década", DECADAS, decada, alElegir = { decada = it; eligiendoDecada = false }, alCerrar = { eligiendoDecada = false })
+  }
+  if (eligiendoCalidad) {
+    ElegirOpcionFiltro("Filtrar por calidad", CALIDADES, calidad, alElegir = { calidad = it; eligiendoCalidad = false }, alCerrar = { eligiendoCalidad = false })
+  }
+  if (eligiendoDuracion) {
+    ElegirOpcionFiltro("Filtrar por duración", DURACIONES, duracion, alElegir = { duracion = it; eligiendoDuracion = false }, alCerrar = { eligiendoDuracion = false })
+  }
+}
+
+/** La lista de opciones de un filtro genérico en modal. */
+@Composable
+private fun ElegirOpcionFiltro(
+  titulo: String,
+  opciones: List<Pair<String?, String>>,
+  actual: String?,
+  alElegir: (String?) -> Unit,
+  alCerrar: () -> Unit,
+) {
+  Box(
+    Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0xB3000000)).clickable(onClick = alCerrar),
+    contentAlignment = Alignment.Center,
+  ) {
+    LazyColumn(
+      Modifier
+        .fillMaxWidth(0.85f)
+        .heightIn(max = 520.dp)
+        .clip(RoundedCornerShape(Esquinas.panel))
+        .background(FondoAlto)
+        .padding(vertical = 12.dp),
+    ) {
+      item {
+        Text(
+          titulo,
+          color = TextoTenue,
+          style = MaterialTheme.typography.labelLarge,
+          modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+        )
+      }
+      items(opciones, key = { it.first ?: "todos" }) { (clave, nombreOpcion) ->
+        Text(
+          nombreOpcion,
+          color = if (actual == clave) Realce else Texto,
+          style = MaterialTheme.typography.bodyLarge,
+          modifier = Modifier
+            .fillMaxWidth()
+            .clickable { alElegir(clave) }
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        )
+      }
+    }
   }
 }
 

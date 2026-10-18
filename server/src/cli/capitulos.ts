@@ -21,6 +21,10 @@ import {
   obtenerCapitulosBd,
   sonCapitulosGenericos,
 } from '../media/chapterdb.ts';
+import {
+  buscarEnChapterEditor,
+  descargarCapitulosChapterEditor,
+} from '../media/chaptereditor.ts';
 import { spawn } from 'node:child_process';
 import { writeFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
@@ -121,6 +125,41 @@ async function comandoBuscar(query: string, guardar: boolean) {
   }
 }
 
+async function comandoBuscarCE(query: string, guardar: boolean) {
+  console.log(`Buscando en Chapter-Database (chapterEditor) para: "${query}"...`);
+  const resultados = await buscarEnChapterEditor(query);
+  if (!resultados.length) {
+    console.log('No se encontraron resultados en Chapter-Database.');
+    return;
+  }
+
+  console.log(`\nEncontrados ${resultados.length} resultados:\n`);
+  for (const r of resultados.slice(0, 15)) {
+    console.log(`  [MID ${r.mid}] ${r.title} - Duración: ${r.durationStr} (${r.durationSec.toFixed(0)}s) - Capítulos: ${r.chaptersCount} [${r.lang}]`);
+  }
+
+  const mejor = resultados[0];
+  if (mejor) {
+    console.log(`\nDescargando capítulos del mejor resultado ([MID ${mejor.mid}] ${mejor.title})...`);
+    const caps = await descargarCapitulosChapterEditor(mejor.mid, mejor.durationSec);
+    console.log(`Descargados ${caps.length} capítulos:`);
+    caps.slice(0, 10).forEach((c, idx) => console.log(`  ${idx + 1}. [${c.start.toFixed(1)}s] ${c.title}`));
+    if (caps.length > 10) console.log(`  ... y ${caps.length - 10} más.`);
+
+    if (guardar) {
+      const peli = db
+        .prepare('SELECT id FROM items WHERE kind = ? AND (title LIKE ? OR original_title LIKE ?) LIMIT 1')
+        .get('movie', `%${query}%`, `%${query}%`) as { id: number } | undefined;
+      if (peli) {
+        guardarCapitulosBd(peli.id, caps, `chaptereditor:${mejor.mid}`);
+        console.log(`✓ Guardados ${caps.length} capítulos en BD para item_id = ${peli.id} ("${query}").`);
+      } else {
+        console.log('No se encontró película en la base local para asociar.');
+      }
+    }
+  }
+}
+
 async function comandoEnriquecer(limite: number, soloGenericos: boolean) {
   const peliculas = listarPeliculas();
   console.log(`Iniciando enriquecimiento (límite: ${limite}, solo genéricos: ${soloGenericos})...\n`);
@@ -166,7 +205,33 @@ async function comandoEnriquecer(limite: number, soloGenericos: boolean) {
         || candidatosConNombre[0];
     }
     if (!candidato) {
-      console.log(`  - Sin coincidencia válida en ChapterDB (duración local: ${duracion.toFixed(0)}s).`);
+      // Intentar en Chapter-Database (Doom9 / hubblec4)
+      let ceResultados = await buscarEnChapterEditor(p.original_title || p.title, duracion);
+      if (!ceResultados.length && p.original_title && p.title !== p.original_title) {
+        ceResultados = await buscarEnChapterEditor(p.title, duracion);
+      }
+      const ceCandidatos = ceResultados.filter(
+        (r) => (coincideTitulo(p.original_title || p.title, r.title) || coincideTitulo(p.title, r.title)) && r.chaptersCount > 0
+      );
+      const ceMatch = ceCandidatos.find(
+        (r) => r.durationSec > 0 && Math.abs(r.durationSec - duracion) <= (noTiene ? 120 : 15)
+      ) || (noTiene ? undefined : ceCandidatos[0]);
+
+      if (ceMatch) {
+        console.log(`  + Encontrado en Chapter-Database: [MID ${ceMatch.mid}] "${ceMatch.title}" (${ceMatch.durationStr}, ${ceMatch.chaptersCount} caps)`);
+        const capsRemotos = await descargarCapitulosChapterEditor(ceMatch.mid, duracion);
+        if (capsRemotos.length > 0 && !sonCapitulosGenericos(capsRemotos)) {
+          const capsFinales = info.chapters && info.chapters.length > 0
+            ? fusionarNombresConTiemposLocales(info.chapters, capsRemotos)
+            : capsRemotos;
+          guardarCapitulosBd(p.item_id, capsFinales, `chaptereditor:${ceMatch.mid}`);
+          guardados++;
+          console.log(`  ✓ Guardados ${capsFinales.length} capítulos en BD desde Chapter-Database.`);
+          continue;
+        }
+      }
+
+      console.log(`  - Sin coincidencia válida en ChapterDB ni Chapter-Database (duración local: ${duracion.toFixed(0)}s).`);
       continue;
     }
 
@@ -184,6 +249,71 @@ async function comandoEnriquecer(limite: number, soloGenericos: boolean) {
   }
 
   console.log(`\nFinalizado: ${guardados} películas enriquecidas en BD.`);
+}
+
+async function comandoEnriquecerCE(limite: number, soloGenericos: boolean) {
+  const peliculas = listarPeliculas();
+  console.log(`Iniciando enriquecimiento con Chapter-Database (hubblec4) (límite: ${limite}, solo genéricos: ${soloGenericos})...\n`);
+
+  let procesados = 0;
+  let guardados = 0;
+
+  for (const p of peliculas) {
+    if (limite > 0 && procesados >= limite) break;
+
+    const yaTiene = obtenerCapitulosBd(p.item_id);
+    if (yaTiene.length > 0) continue;
+
+    let info;
+    try {
+      info = await mediaInfo(p.file_id);
+    } catch {
+      continue;
+    }
+
+    const tieneGenericos = info.chapters && info.chapters.length > 0 && sonCapitulosGenericos(info.chapters);
+    const noTiene = !info.chapters || info.chapters.length === 0;
+
+    if (!tieneGenericos && (!noTiene || soloGenericos)) continue;
+
+    procesados++;
+    console.log(`[${procesados}/${limite || 'todos'}] Buscando en Chapter-Database para "${p.title}" (${p.original_title || ''})...`);
+
+    const duracion = info.duration || p.duration || 0;
+    let ceResultados = await buscarEnChapterEditor(p.original_title || p.title, duracion);
+    if (!ceResultados.length && p.original_title && p.title !== p.original_title) {
+      ceResultados = await buscarEnChapterEditor(p.title, duracion);
+    }
+
+    const ceCandidatos = ceResultados.filter(
+      (r) => (coincideTitulo(p.original_title || p.title, r.title) || coincideTitulo(p.title, r.title)) && r.chaptersCount > 0
+    );
+    const ceMatch = ceCandidatos.find(
+      (r) => r.durationSec > 0 && Math.abs(r.durationSec - duracion) <= (noTiene ? 120 : 15)
+    ) || (noTiene ? undefined : ceCandidatos[0]);
+
+    if (!ceMatch) {
+      console.log(`  - Sin coincidencia válida en Chapter-Database (duración local: ${duracion.toFixed(0)}s).`);
+      continue;
+    }
+
+    console.log(`  + Encontrado: [MID ${ceMatch.mid}] "${ceMatch.title}" (${ceMatch.durationStr}, ${ceMatch.chaptersCount} caps)`);
+    const capsRemotos = await descargarCapitulosChapterEditor(ceMatch.mid, duracion);
+    if (!capsRemotos.length || sonCapitulosGenericos(capsRemotos)) {
+      console.log(`  - Capítulos vacíos o sin nombres reales.`);
+      continue;
+    }
+
+    const capsFinales = info.chapters && info.chapters.length > 0
+      ? fusionarNombresConTiemposLocales(info.chapters, capsRemotos)
+      : capsRemotos;
+
+    guardarCapitulosBd(p.item_id, capsFinales, `chaptereditor:${ceMatch.mid}`);
+    guardados++;
+    console.log(`  ✓ Guardados ${capsFinales.length} capítulos en BD.`);
+  }
+
+  console.log(`\nFinalizado: ${guardados} películas enriquecidas en BD desde Chapter-Database.`);
 }
 
 async function comandoPurgar() {
@@ -381,11 +511,20 @@ if (modo === 'estado') {
   const q = args[1] || 'Gladiator';
   const guardar = args.includes('--guardar');
   comandoBuscar(q, guardar).catch(console.error);
+} else if (modo === 'buscar-ce') {
+  const q = args[1] || 'Gladiator';
+  const guardar = args.includes('--guardar');
+  comandoBuscarCE(q, guardar).catch(console.error);
 } else if (modo === 'enriquecer') {
   const limiteStr = args.find((a) => a.startsWith('--limite='))?.split('=')[1];
   const limite = limiteStr ? parseInt(limiteStr, 10) : args.includes('--todos') ? 0 : 20;
   const soloGenericos = args.includes('--solo-genericos');
   comandoEnriquecer(limite, soloGenericos).catch(console.error);
+} else if (modo === 'enriquecer-ce') {
+  const limiteStr = args.find((a) => a.startsWith('--limite='))?.split('=')[1];
+  const limite = limiteStr ? parseInt(limiteStr, 10) : args.includes('--todos') ? 0 : 20;
+  const soloGenericos = args.includes('--solo-genericos');
+  comandoEnriquecerCE(limite, soloGenericos).catch(console.error);
 } else if (modo === 'purgar') {
   comandoPurgar().catch(console.error);
 } else if (modo === 'mkvpropedit') {
@@ -396,5 +535,7 @@ if (modo === 'estado') {
   const confirmar = args.includes('--confirmar');
   comandoIncrustarTodos(confirmar).catch(console.error);
 } else {
-  console.log('Comandos disponibles: estado, buscar <título>, enriquecer [--limite=N|--todos], purgar, incrustar-todos --confirmar, mkvpropedit <itemId> --confirmar');
+  console.log(
+    'Comandos disponibles: estado, buscar <título>, buscar-ce <título>, enriquecer [--limite=N|--todos], enriquecer-ce [--limite=N|--todos], purgar, incrustar-todos --confirmar, mkvpropedit <itemId> --confirmar'
+  );
 }

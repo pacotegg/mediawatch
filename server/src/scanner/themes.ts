@@ -9,9 +9,13 @@ const THEMES_DIR = join(DATA_DIR, 'themes');
 mkdirSync(THEMES_DIR, { recursive: true });
 
 export function rutaTema(itemId: number, folder?: string | null): string | null {
+  const dataM4a = join(THEMES_DIR, `${itemId}.m4a`);
+  if (existsSync(dataM4a)) return dataM4a;
   const dataPath = join(THEMES_DIR, `${itemId}.mp3`);
   if (existsSync(dataPath)) return dataPath;
   if (folder) {
+    const folderM4a = join(folder, 'theme.m4a');
+    if (existsSync(folderM4a)) return folderM4a;
     const folderPath = join(folder, 'theme.mp3');
     if (existsSync(folderPath)) return folderPath;
   }

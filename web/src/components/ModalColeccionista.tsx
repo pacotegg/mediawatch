@@ -54,7 +54,7 @@ export default function ModalColeccionista({ item, es4k = false, onClose }: Moda
       .join(', ');
 
   const direccion = nombresDe(/director/i, 2);
-  const reparto = nombresDe(/actor|actress/i, 5) || (item.cast || []).slice(0, 5).map((p) => p.name).join(', ');
+  const reparto = nombresDe(/actor|actress/i, 6) || (item.cast || []).slice(0, 6).map((p) => p.name).join(', ');
   const generos = (item.genres || []).slice(0, 3).join(', ');
 
   const mejorFichero = (item.files || [])
@@ -208,6 +208,12 @@ export default function ModalColeccionista({ item, es4k = false, onClose }: Moda
                     {item.title}
                   </h3>
 
+                  {item.tagline && (
+                    <p className="mb-2 text-xs italic text-mist-100 border-l-2 border-[#e2b755] pl-2 line-clamp-2">
+                      «{item.tagline}»
+                    </p>
+                  )}
+
                   {/* Ficha artística */}
                   <div className="space-y-1.5 text-xs text-mist-300">
                     {direccion && (
@@ -228,14 +234,13 @@ export default function ModalColeccionista({ item, es4k = false, onClose }: Moda
                         {generos}
                       </p>
                     )}
+                    {item.studio && (
+                      <p className="line-clamp-1">
+                        <strong className="text-white/80 font-semibold mr-1.5">Estudio:</strong>
+                        {item.studio}
+                      </p>
+                    )}
                   </div>
-
-                  {/* Sinopsis */}
-                  {item.plot && (
-                    <p className="mt-3 text-[11px] sm:text-[12px] leading-relaxed text-mist-400 line-clamp-4 italic border-l-2 border-accent/60 pl-2.5">
-                      {item.plot}
-                    </p>
-                  )}
                 </div>
 
                 {/* Ficha técnica al pie del libreto */}

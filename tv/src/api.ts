@@ -122,6 +122,9 @@ export type Titulo = {
   position?: number;
   progressDuration?: number;
   watched?: number;
+  studio?: string | null;
+  tagline?: string | null;
+  mpaa?: string | null;
   /** Solo lo trae el héroe de la portada, que muestra una sinopsis breve. */
   plot?: string | null;
 };
@@ -200,7 +203,7 @@ export type InfoReproduccion = {
   chapters: Capitulo[];
   /** Cabecera y créditos del episodio, si se han detectado. */
   skip: RangoSalto[];
-  video: { codec: string; width: number; height: number; hdr?: string; profile?: string; fps: number } | null;
+  video: { codec: string; width: number; height: number; hdr?: string; profile?: string; fps: number; dar?: string; sar?: string } | null;
   plan: { mode: 'direct' | 'remux' | 'transcode'; reasons?: string[] };
   savedAudio?: string | null;
   savedSubtitle?: string | null;
@@ -231,6 +234,17 @@ type Saga = {
   imagen_propia?: number;
 };
 
+export type FiltrosRejilla = {
+  sort?: string;
+  genre?: string;
+  decade?: string;
+  quality?: string;
+  runtime?: string;
+  studio?: string;
+  person?: number;
+  unwatched?: boolean;
+};
+
 export const api = {
   yo: () => pedir<{ id: number; name: string; is_admin: number; kid_ratings?: string[] | null }>('/api/me'),
   bibliotecas: () => pedir<{ id: number; name: string; kind: string; count: number }[]>('/api/libraries'),
@@ -238,8 +252,29 @@ export const api = {
   /** Donde empieza cada letra en la lista ordenada por titulo de una biblioteca. */
   letras: (biblioteca: number) =>
     pedir<{ total: number; letras: { letra: string; offset: number }[] }>('/api/items/letras?library=' + biblioteca),
-  titulos: (biblioteca: number, offset: number, limite: number) =>
-    pedir<{ total: number; items: Titulo[] }>(`/api/items?library=${biblioteca}&limit=${limite}&offset=${offset}&sort=title`),
+  generos: (biblioteca?: number) =>
+    pedir<{ id: number; name: string; count: number }[]>(biblioteca ? '/api/genres?library=' + biblioteca : '/api/genres'),
+  estudios: (biblioteca?: number) =>
+    pedir<{ name: string; count: number }[]>(biblioteca ? '/api/studios?library=' + biblioteca : '/api/studios'),
+  actores: (biblioteca?: number) =>
+    pedir<{ id: number; name: string; count: number; thumb?: string | null }[]>(
+      biblioteca ? '/api/actors?library=' + biblioteca : '/api/actors',
+    ),
+  titulos: (biblioteca: number, offset: number, limite: number, filtros?: FiltrosRejilla) => {
+    let ruta = `/api/items?library=${biblioteca}&limit=${limite}&offset=${offset}`;
+    const sort = (filtros && filtros.sort) || 'title';
+    ruta += '&sort=' + encodeURIComponent(sort);
+    if (filtros) {
+      if (filtros.genre) ruta += '&genre=' + encodeURIComponent(filtros.genre);
+      if (filtros.decade) ruta += '&decade=' + encodeURIComponent(filtros.decade);
+      if (filtros.quality) ruta += '&quality=' + encodeURIComponent(filtros.quality);
+      if (filtros.runtime) ruta += '&runtime=' + encodeURIComponent(filtros.runtime);
+      if (filtros.studio) ruta += '&studio=' + encodeURIComponent(filtros.studio);
+      if (filtros.person) ruta += '&person=' + encodeURIComponent(String(filtros.person));
+      if (filtros.unwatched) ruta += '&unwatched=1';
+    }
+    return pedir<{ total: number; items: Titulo[] }>(ruta);
+  },
   ficha: (id: number) => pedir<Ficha>('/api/items/' + id),
   buscar: (q: string) => pedir<{ items: Titulo[] }>('/api/search?q=' + encodeURIComponent(q)),
   buscarDialogo: (q: string) =>
@@ -460,6 +495,7 @@ export const imagen = {
    */
   plataforma: (ruta: string, w: number) => conToken(servidor() + '/api/plataformas/caratula/w' + w + ruta),
   disco: (id: number, w: number) => conToken(servidor() + '/api/items/' + id + '/discart?w=' + w),
+  estudio: (id: number, w: number) => conToken(servidor() + '/api/items/' + id + '/studio-logo?w=' + w),
   tema: (id: number) => conToken(servidor() + '/api/items/' + id + '/theme'),
   persona: (id: number, w: number) => conToken(servidor() + '/api/people/' + id + '/thumb?w=' + w),
   tira: (fileId: number, hoja: number) => conToken(servidor() + '/api/play/' + fileId + '/trickplay/' + hoja),

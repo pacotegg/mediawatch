@@ -18,11 +18,12 @@ import {
   type Titulo,
   type DialogoHit,
   type CandidatoSubtitulo,
+  type FiltrosRejilla,
 } from './api.ts';
 import { ajustes, cargarAjustes, guardarAjustes, ordenar, type Rendimiento } from './ajustes.ts';
 import { t, tr } from './i18n.ts';
 import { actual, ajustarListaEpisodios, ajustarVentanaRejilla, alEnfocar, alPulsar, anadirPorArriba, situarFila, avisarDeFallos, enfocables, enfocar, indexar, indexarAdemas, iniciarNavegacion, manejadorActual, TECLA } from './nav.ts';
-import { Reproductor } from './player.ts';
+import { Reproductor, calcularRectDisplay } from './player.ts';
 import { abrirApp, cargarAppsInstaladas, idDeApp } from './plataformas.ts';
 
 const marco = document.getElementById('app') as HTMLElement;
@@ -80,7 +81,7 @@ const ICONOS: Record<string, string> = {
 };
 
 /* La misma que `version` de public/config.xml: al subirla, subir las dos. */
-const VERSION_APP = '3.64.0';
+const VERSION_APP = '3.66.0';
 
 function versionTizen(): string {
   try {
@@ -381,7 +382,7 @@ function tarjeta(t: Titulo): string {
   const duracion = t.progressDuration || (t.runtime ? t.runtime * 60 : 0);
   const pct = t.position && duracion ? Math.min(100, (t.position / duracion) * 100) : 0;
   return (
-    '<div class="tarjeta" data-nav data-id="' + t.id + '">' +
+    '<div class="tarjeta" data-nav data-id="' + t.id + '" data-title="' + esc(t.title) + '" data-year="' + (t.year || '') + '">' +
     '<div class="lamina">' +
     (t.has_poster
       ? '<img data-src="' + imagen.poster(t.id, 320) + '" alt="">'
@@ -410,7 +411,7 @@ function conectarTarjetas() {
       // Para volver aquí mismo desde la ficha.
       if (idActual === 'portada') focoPortada = el.getAttribute('data-id');
       if (idActual === 'buscar') focoBuscar = el.getAttribute('data-id');
-      void pantallaFicha(Number(el.getAttribute('data-id')));
+      void pantallaFicha(Number(el.getAttribute('data-id')), null, undefined, el);
     });
   });
 }
@@ -747,6 +748,8 @@ function pantallaRejilla(
   subtitulo: string,
   items: Titulo[],
   mas?: MasTitulos,
+  barraHtml?: string,
+  alMontarBarra?: (el: HTMLElement) => void,
 ) {
   const letras = mas && mas.letras && mas.letras.length > 1 ? mas.letras : [];
   const conLetras = letras.length > 0;
@@ -755,14 +758,19 @@ function pantallaRejilla(
    * espacio vertical restante. «Seguir viendo» solo queda en la portada.
    */
   const cuerpo =
-    '<div class="cabecera compacta" data-bloque><h1>' + esc(titulo) + '</h1><p data-subtitulo>' + esc(subtitulo) + '</p></div>' +
+    '<div class="cabecera compacta" data-bloque><h1 class="cat-titulo">' + esc(titulo) + '</h1><span class="cat-sep">—</span><p data-subtitulo>' + esc(subtitulo) + '</p></div>' +
+    (barraHtml || '') +
     (items.length
       ? '<div class="rejilla-ventana" data-ventana><div class="rejilla' + (conLetras ? ' con-alfabeto' : '') + '" data-bloque>' +
         items.map(tarjeta).join('') + '</div></div>'
-      : '<div class="vacio">Aquí no hay nada todavía.</div>');
+      : '<div class="vacio">No hay títulos que coincidan con estos filtros.</div>');
 
   pintar(activa, cuerpo);
   conectarTarjetas();
+  if (alMontarBarra) {
+    const barra = marco.querySelector<HTMLElement>('.barra-filtros');
+    if (barra) alMontarBarra(barra);
+  }
 
   const ventanaRejilla = marco.querySelector<HTMLElement>('[data-ventana]');
   if (ventanaRejilla) {
@@ -777,10 +785,11 @@ function pantallaRejilla(
   const subtituloEl = marco.querySelector<HTMLElement>('[data-subtitulo]');
   if (subtituloEl) {
     alEnfocar((el) => {
-      const nombre = el.classList.contains('tarjeta') ? el.querySelector('.nombre') : null;
-      if (!nombre) { subtituloEl.textContent = subtitulo; return; }
-      const anyo = el.querySelector('.anyo');
-      subtituloEl.textContent = (nombre.textContent || '') + (anyo && anyo.textContent ? ' (' + anyo.textContent + ')' : '');
+      const t = el.classList.contains('tarjeta') ? el : null;
+      if (!t) { subtituloEl.textContent = subtitulo; return; }
+      const tit = t.getAttribute('data-title') || t.querySelector('.nombre')?.textContent || '';
+      const anyo = t.getAttribute('data-year') || t.querySelector('.anyo')?.textContent || '';
+      subtituloEl.innerHTML = esc(tit) + (anyo ? ' <span class="sub-anyo">(' + esc(anyo) + ')</span>' : '');
     });
   }
 
@@ -809,7 +818,10 @@ function pantallaRejilla(
   // Si ya se había estado aquí, se vuelve a la misma tarjeta.
   const guardado = posiciones[activa];
   const volverA = guardado ? marco.querySelector<HTMLElement>('.rejilla .tarjeta[data-id="' + guardado.foco + '"]') : null;
-  enfocar(volverA || marco.querySelector<HTMLElement>('.rejilla [data-nav]') || marco.querySelector<HTMLElement>('.opcion.activa'));
+  const enBarra = actual() && actual()!.closest('.barra-filtros');
+  if (!enBarra) {
+    enfocar(volverA || marco.querySelector<HTMLElement>('.rejilla [data-nav]') || marco.querySelector<HTMLElement>('.barra-filtros [data-nav]') || marco.querySelector<HTMLElement>('.opcion.activa'));
+  }
 
   /*
    * Carga por paginas.
@@ -980,26 +992,303 @@ function pantallaRejilla(
   });
 }
 
-async function pantallaBiblioteca(id: number, nombre: string) {
+type EstadoFiltrosBiblioteca = {
+  sort: string;
+  genre: string;
+  decade: string;
+  quality: string;
+  runtime: string;
+  studio: string;
+  person: number;
+  personName: string;
+  unwatched: boolean;
+};
+
+const FILTROS_DEFECTO: EstadoFiltrosBiblioteca = {
+  sort: 'title',
+  genre: '',
+  decade: '',
+  quality: '',
+  runtime: '',
+  studio: '',
+  person: 0,
+  personName: '',
+  unwatched: false,
+};
+
+const filtrosPorLib: Record<number, EstadoFiltrosBiblioteca> = {};
+function getFiltrosLib(id: number): EstadoFiltrosBiblioteca {
+  if (!filtrosPorLib[id]) filtrosPorLib[id] = Object.assign({}, FILTROS_DEFECTO);
+  return filtrosPorLib[id];
+}
+
+const ETIQUETAS_SORT: Record<string, string> = {
+  title: 'Título (A-Z)',
+  title_desc: 'Título (Z-A)',
+  year_desc: 'Año (recientes)',
+  year_asc: 'Año (antiguos)',
+  rating_desc: 'Mejor valoradas',
+  rating_asc: 'Menor valoración',
+  added_desc: 'Añadidas recientemente',
+  added_asc: 'Añadidas antiguamente',
+  runtime_desc: 'Duración (más largas)',
+  runtime_asc: 'Duración (más cortas)',
+  random: 'Aleatorio',
+};
+
+const ETIQUETAS_DECADA: Record<string, string> = {
+  '': 'Todos',
+  '2020': '2020s',
+  '2010': '2010s',
+  '2000': '2000s',
+  '1990': '1990s',
+  '1980': '1980s',
+  '1970': '1970s',
+  '<1970': '<1970 (Clásicos)',
+};
+
+const ETIQUETAS_CALIDAD: Record<string, string> = {
+  '': 'Todas',
+  '4k': '4K UHD',
+  '1080p': '1080p FHD',
+  '720p': '720p HD',
+  'sd': 'SD (<720p)',
+};
+
+const ETIQUETAS_DURACION: Record<string, string> = {
+  '': 'Todas',
+  'short': '< 90 min',
+  'medium': '90–120 min',
+  'long': '> 120 min',
+};
+
+function hayFiltrosActivos(f: EstadoFiltrosBiblioteca): boolean {
+  return (
+    f.sort !== 'title' ||
+    !!f.genre ||
+    !!f.decade ||
+    !!f.quality ||
+    !!f.runtime ||
+    !!f.studio ||
+    f.person > 0 ||
+    f.unwatched
+  );
+}
+
+function abrirDialogoFiltro(
+  titulo: string,
+  opciones: { clave: string | number; etiqueta: string; count?: number }[],
+  seleccionada: string | number,
+  alElegir: (clave: string | number, etiqueta: string) => void,
+) {
+  const anterior = actual();
+  const teclasAntes = manejadorActual();
+
+  const capa = document.createElement('div');
+  capa.className = 'capa';
+  capa.innerHTML =
+    '<div class="panel panel-filtro"><h3>' + esc(titulo) + '</h3>' +
+    opciones
+      .map(
+        (o) =>
+          '<button class="linea' + (String(o.clave) === String(seleccionada) ? ' elegida' : '') + '" data-nav data-clave="' + esc(String(o.clave)) + '">' +
+          esc(o.etiqueta) +
+          (o.count !== undefined ? '<span class="recuento-opcion">' + o.count + '</span>' : '') +
+          '</button>',
+      )
+      .join('') +
+    '</div>';
+  marco.appendChild(capa);
+  indexar();
+
+  const cerrar = () => {
+    if (capa.parentElement) capa.parentElement.removeChild(capa);
+    indexar();
+    enfocar(anterior);
+    alPulsar(teclasAntes);
+  };
+
+  const elegidaEl = capa.querySelector<HTMLElement>('.linea.elegida');
+  enfocar(elegidaEl || capa.querySelector<HTMLElement>('.linea[data-nav]'));
+
+  capa.querySelectorAll<HTMLElement>('.linea[data-nav]').forEach((el) => {
+    el.addEventListener('click', () => {
+      const c = el.getAttribute('data-clave') ?? '';
+      const texto = (el.childNodes[0]?.textContent || '').trim();
+      cerrar();
+      alElegir(c, texto);
+    });
+  });
+
+  alPulsar((tecla) => {
+    if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE) {
+      cerrar();
+      return true;
+    }
+    return false;
+  });
+}
+
+async function pantallaBiblioteca(id: number, nombre: string, enfocarFiltro?: string) {
   entrarEn('lib-' + id, () => void pantallaBiblioteca(id, nombre));
   pintar('lib-' + id, '<div class="vacio">Cargando…</div>');
   try {
-    // Se piden de golpe todos los que estaban cargados la última vez: volver a
-    // la biblioteca debe dejarte donde estabas, no al principio.
+    const f = getFiltrosLib(id);
+    const activos = hayFiltrosActivos(f);
     const guardado = posiciones['lib-' + id];
     const base = guardado && guardado.base ? guardado.base : 0;
     const cuantos = Math.min(MAXIMO_RESTAURADO, Math.max(PAGINA, guardado ? guardado.cargados - base : 0));
-    // Carga paralela: títulos y abecedario se piden a la vez
+    // Carga paralela: títulos y abecedario
+    const conAbecedario = f.sort === 'title' && !activos;
     const [datos, letras] = await Promise.all([
-      api.titulos(id, base, cuantos),
-      api.letras(id).then((r) => r.letras).catch(() => [] as Letra[]),
+      api.titulos(id, base, cuantos, f),
+      conAbecedario ? api.letras(id).then((r) => r.letras).catch(() => [] as Letra[]) : Promise.resolve([] as Letra[]),
     ]);
-    pantallaRejilla('lib-' + id, nombre, datos.total + ' títulos', datos.items, {
-      total: datos.total,
-      traer: (offset) => api.titulos(id, offset, PAGINA).then((d) => d.items),
-      base,
-      letras,
-    });
+
+    const barraHtml =
+      '<div class="barra-filtros" data-bloque>' +
+      '<button class="chip-filtro' + (f.sort !== 'title' ? ' activo' : '') + '" data-nav data-filtro="sort">' +
+        '<span class="chip-k">⇅</span> <span class="chip-v">' + esc(ETIQUETAS_SORT[f.sort] || f.sort) + '</span>' +
+      '</button>' +
+      '<button class="chip-filtro' + (f.genre ? ' activo' : '') + '" data-nav data-filtro="genre">' +
+        '<span class="chip-k">Género:</span> <span class="chip-v">' + esc(f.genre || 'Todos') + '</span>' +
+      '</button>' +
+      '<button class="chip-filtro' + (f.decade ? ' activo' : '') + '" data-nav data-filtro="decade">' +
+        '<span class="chip-k">Año:</span> <span class="chip-v">' + esc(ETIQUETAS_DECADA[f.decade] || f.decade || 'Todos') + '</span>' +
+      '</button>' +
+      '<button class="chip-filtro' + (f.quality ? ' activo' : '') + '" data-nav data-filtro="quality">' +
+        '<span class="chip-k">Calidad:</span> <span class="chip-v">' + esc(ETIQUETAS_CALIDAD[f.quality] || 'Todas') + '</span>' +
+      '</button>' +
+      '<button class="chip-filtro' + (f.runtime ? ' activo' : '') + '" data-nav data-filtro="runtime">' +
+        '<span class="chip-k">Duración:</span> <span class="chip-v">' + esc(ETIQUETAS_DURACION[f.runtime] || 'Todas') + '</span>' +
+      '</button>' +
+      '<button class="chip-filtro' + (f.studio ? ' activo' : '') + '" data-nav data-filtro="studio">' +
+        '<span class="chip-k">Estudio:</span> <span class="chip-v">' + esc(f.studio || 'Todos') + '</span>' +
+      '</button>' +
+      '<button class="chip-filtro' + (f.person ? ' activo' : '') + '" data-nav data-filtro="person">' +
+        '<span class="chip-k">Actor:</span> <span class="chip-v">' + esc(f.personName || 'Todos') + '</span>' +
+      '</button>' +
+      '<button class="chip-filtro' + (f.unwatched ? ' activo' : '') + '" data-nav data-filtro="unwatched">' +
+        '<span class="chip-k">Vistos:</span> <span class="chip-v">' + (f.unwatched ? 'Solo no vistos' : 'Todos') + '</span>' +
+      '</button>' +
+      (activos ? '<button class="chip-filtro chip-limpiar" data-nav data-filtro="limpiar">✕ Limpiar</button>' : '') +
+      '</div>';
+
+    pantallaRejilla(
+      'lib-' + id,
+      nombre,
+      datos.total + ' títulos' + (activos ? ' (filtrados)' : ''),
+      datos.items,
+      {
+        total: datos.total,
+        traer: (offset) => api.titulos(id, offset, PAGINA, f).then((d) => d.items),
+        base,
+        letras,
+      },
+      barraHtml,
+      (barra) => {
+        const reanudar = (nuevoFoco: string) => {
+          delete posiciones['lib-' + id];
+          void pantallaBiblioteca(id, nombre, nuevoFoco);
+        };
+
+        barra.querySelectorAll<HTMLElement>('.chip-filtro[data-nav]').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            const tipo = btn.getAttribute('data-filtro');
+            if (tipo === 'limpiar') {
+              filtrosPorLib[id] = Object.assign({}, FILTROS_DEFECTO);
+              reanudar('sort');
+              return;
+            }
+            if (tipo === 'sort') {
+              const ops = Object.entries(ETIQUETAS_SORT).map(([clave, etiqueta]) => ({ clave, etiqueta }));
+              abrirDialogoFiltro('Ordenar por', ops, f.sort, (clave) => {
+                f.sort = String(clave);
+                reanudar('sort');
+              });
+              return;
+            }
+            if (tipo === 'genre') {
+              let generos: { id: number; name: string; count: number }[] = [];
+              try { generos = await api.generos(id); } catch {}
+              const ops = [{ clave: '', etiqueta: 'Todos los géneros' }].concat(
+                generos.map((g) => ({ clave: g.name, etiqueta: g.name, count: g.count })),
+              );
+              abrirDialogoFiltro('Filtrar por género', ops, f.genre, (clave) => {
+                f.genre = String(clave);
+                reanudar('genre');
+              });
+              return;
+            }
+            if (tipo === 'decade') {
+              const ops = Object.entries(ETIQUETAS_DECADA).map(([clave, etiqueta]) => ({ clave, etiqueta }));
+              abrirDialogoFiltro('Filtrar por año / década', ops, f.decade, (clave) => {
+                f.decade = String(clave);
+                reanudar('decade');
+              });
+              return;
+            }
+            if (tipo === 'quality') {
+              const ops = Object.entries(ETIQUETAS_CALIDAD).map(([clave, etiqueta]) => ({ clave, etiqueta }));
+              abrirDialogoFiltro('Filtrar por calidad', ops, f.quality, (clave) => {
+                f.quality = String(clave);
+                reanudar('quality');
+              });
+              return;
+            }
+            if (tipo === 'runtime') {
+              const ops = Object.entries(ETIQUETAS_DURACION).map(([clave, etiqueta]) => ({ clave, etiqueta }));
+              abrirDialogoFiltro('Filtrar por duración', ops, f.runtime, (clave) => {
+                f.runtime = String(clave);
+                reanudar('runtime');
+              });
+              return;
+            }
+            if (tipo === 'studio') {
+              let estudios: { name: string; count: number }[] = [];
+              try { estudios = await api.estudios(id); } catch {}
+              const ops = [{ clave: '', etiqueta: 'Todos los estudios' }].concat(
+                estudios.map((e) => ({ clave: e.name, etiqueta: e.name, count: e.count })),
+              );
+              abrirDialogoFiltro('Filtrar por estudio', ops, f.studio, (clave) => {
+                f.studio = String(clave);
+                reanudar('studio');
+              });
+              return;
+            }
+            if (tipo === 'person') {
+              let actores: { id: number; name: string; count: number }[] = [];
+              try { actores = await api.actores(id); } catch {}
+              const ops = [{ clave: 0, etiqueta: 'Todos los actores' }].concat(
+                actores.map((a) => ({ clave: a.id, etiqueta: a.name, count: a.count })),
+              );
+              abrirDialogoFiltro('Filtrar por actor principal', ops, f.person, (clave, texto) => {
+                f.person = Number(clave);
+                f.personName = Number(clave) ? texto : '';
+                reanudar('person');
+              });
+              return;
+            }
+            if (tipo === 'unwatched') {
+              const ops = [
+                { clave: 'todos', etiqueta: 'Todos los títulos' },
+                { clave: 'no-vistos', etiqueta: 'Solo no vistos' },
+              ];
+              abrirDialogoFiltro('Estado de reproducción', ops, f.unwatched ? 'no-vistos' : 'todos', (clave) => {
+                f.unwatched = clave === 'no-vistos';
+                reanudar('unwatched');
+              });
+              return;
+            }
+          });
+        });
+
+        if (enfocarFiltro) {
+          const btnFoco = barra.querySelector<HTMLElement>('[data-filtro="' + enfocarFiltro + '"]');
+          if (btnFoco) enfocar(btnFoco);
+        }
+      },
+    );
   } catch (e) {
     pintar('lib-' + id, '<div class="vacio">No se pudo cargar la biblioteca.' +
       '<div class="acciones" data-bloque><button class="boton" data-nav data-reintentar>Reintentar</button>' +
@@ -1495,14 +1784,26 @@ function notasHtml(ficha: Ficha): string {
   );
 }
 
-async function pantallaFicha(id: number, volverA?: (() => void) | null, focoInicialId?: number) {
+async function pantallaFicha(id: number, volverA?: (() => void) | null, focoInicialId?: number, elOrigen?: HTMLElement | null) {
   entrarEn('ficha-' + id, () => void pantallaFicha(id, volverA, focoInicialId));
   const vengoDe = volverA || volverDesde;
-  pintar('inicio', '<div class="vacio">Cargando…</div>');
+  if (elOrigen) {
+    elOrigen.classList.add('tarjeta-abriendo');
+    const cont = elOrigen.closest('.contenido') || elOrigen.closest('.rejilla') || elOrigen.closest('.carrusel');
+    if (cont) cont.classList.add('transicion-saliendo');
+  } else {
+    pintar('inicio', '<div class="vacio">Cargando…</div>');
+  }
 
   let ficha: Ficha;
   try {
-    ficha = await api.ficha(id);
+    const pFicha = api.ficha(id);
+    if (elOrigen) {
+      const [f] = await Promise.all([pFicha, new Promise((res) => window.setTimeout(res, 220))]);
+      ficha = f;
+    } else {
+      ficha = await pFicha;
+    }
     if (ficha.has_theme) {
       reproducirTemaMusical(ficha.id);
     } else {
@@ -1533,7 +1834,7 @@ async function pantallaFicha(id: number, volverA?: (() => void) | null, focoInic
   const esSerie = ficha.kind === 'show';
   const fichero = ficha.files.filter((f) => !f.episode_id)[0];
   const progreso = ficha.progress.filter((p) => p.episode_id === null)[0];
-  const reanudar = ajustes().reanudar && progreso && !progreso.watched ? progreso.position : 0;
+  const reanudar = ajustes().reanudar && progreso && !progreso.watched && progreso.position >= 45 ? progreso.position : 0;
   /*
    * Fichero cuyas pistas se enseñan en la ficha: la película, o en una serie el
    * episodio que toca (o el primero). Lo que se elige en una serie vale, por idioma,
@@ -1544,6 +1845,20 @@ async function pantallaFicha(id: number, volverA?: (() => void) | null, focoInic
       ((ficha.episodes || []).filter((e) => e.file_id).sort((a, b) => a.season - b.season || a.episode - b.episode)[0] || { file_id: null }).file_id
     : (fichero ? fichero.id : null);
 
+function formatoAspecto(ancho?: number | null, alto?: number | null): string {
+  if (!ancho || !alto || alto === 0) return '';
+  const r = ancho / alto;
+  if (r >= 2.30 && r <= 2.45) return '2.39:1';
+  if (r >= 2.15 && r < 2.30) return '2.20:1';
+  if (r >= 1.95 && r < 2.15) return '2.00:1';
+  if (r >= 1.80 && r < 1.95) return '1.85:1';
+  if (r >= 1.70 && r < 1.80) return '16:9';
+  if (r >= 1.55 && r < 1.70) return '16:10';
+  if (r >= 1.45 && r < 1.55) return '1.50:1';
+  if (r >= 1.30 && r < 1.45) return '4:3';
+  return r.toFixed(2) + ':1';
+}
+
   const etiquetas: string[] = [];
   if (fichero) {
     const alto = fichero.height || 0;
@@ -1553,6 +1868,8 @@ async function pantallaFicha(id: number, volverA?: (() => void) | null, focoInic
     else if (ancho >= 1200 || alto >= 700) etiquetas.push('720p');
     if (fichero.video_codec) etiquetas.push(fichero.video_codec.toUpperCase());
     if (fichero.hdr) etiquetas.push(fichero.hdr);
+    const formato = formatoAspecto(ancho, alto);
+    if (formato) etiquetas.push(formato);
 
     // El audio importa tanto como la resolución: saber si hay 5.1 o si la pista
     // está en tu idioma es lo que decide si vas a poder verla esta noche.
@@ -1625,7 +1942,7 @@ async function pantallaFicha(id: number, volverA?: (() => void) | null, focoInic
   let cuerpo =
     '<div class="ficha-fondo">' + (ficha.has_fanart ? '<img src="' + imagen.fondo(ficha.id, 1920) + '" alt="">' : '') + '</div>' +
     '<div class="ficha-velo"></div>' +
-    '<div class="ficha" data-bloque>' +
+    '<div class="ficha' + (elOrigen ? ' animar-entrada' : '') + '" data-bloque>' +
     '<div class="ficha-cuerpo">' +
 
     (ficha.has_logo
@@ -1674,6 +1991,11 @@ async function pantallaFicha(id: number, volverA?: (() => void) | null, focoInic
         '<div class="estuche-haz-luz-tv"></div>' +
         '</div>' +
         '<div class="estuche-hint-tv">Edición física · Enter</div>' +
+        '</div>'
+      : '') +
+    (ficha.studio
+      ? '<div class="estudio-logo-tv-wrap' + (ajustes().estuche3D && ficha.has_poster ? '' : ' sin-estuche') + '">' +
+        '<img class="logo-estudio-3d" src="' + imagen.estudio(ficha.id, 360) + '" alt="' + esc(ficha.studio) + '" onerror="this.parentElement.style.display=\'none\'">' +
         '</div>'
       : '') +
     '</div>';
@@ -1911,7 +2233,7 @@ async function pantallaFicha(id: number, volverA?: (() => void) | null, focoInic
       const esVisto = Boolean(p && p.watched);
       const totalSeg = (p && p.duration) || ep.duration || 0;
       const durMin = totalSeg > 0 ? Math.round(totalSeg / 60) + ' min' : '';
-      const tieneProgreso = pos > 10 && !esVisto;
+      const tieneProgreso = pos >= 45 && !esVisto;
 
       const capa = document.createElement('div');
       capa.className = 'capa';
@@ -2246,7 +2568,7 @@ async function pantallaFicha(id: number, volverA?: (() => void) | null, focoInic
         const ep = (ficha.episodes || []).find((e) => e.id === ficha.nextUp!.id);
         if (ep && ep.file_id) {
           const p = ficha.progress.filter((x) => x.episode_id === ep.id)[0];
-          abrir(ep.file_id, ep.id, p && !p.watched ? p.position : 0);
+          abrir(ep.file_id, ep.id, p && !p.watched && p.position >= 45 ? p.position : 0);
           return true;
         }
       }
@@ -2648,11 +2970,11 @@ async function pantallaPersona(id: number, volverA?: number | (() => void) | nul
 
   // La foto de TMDb suele ser más reciente que la que quedó guardada al
   // scrapear la película, que es de la que se queja todo el mundo en Plex.
-  const foto = d && d.profile ? d.profile : persona.has_thumb ? imagen.persona(id, 300) : '';
+  const foto = d && d.profile ? d.profile : persona.has_thumb ? imagen.persona(id, 600) : '';
 
   const cuerpo =
     '<div class="persona-ficha" data-bloque>' +
-    '<div class="persona-foto">' + (foto ? '<img src="' + esc(foto) + '" alt="">' : '') + '</div>' +
+    '<div class="persona-foto' + (foto ? ' con-foto" data-nav role="button" tabindex="0' : '') + '">' + (foto ? '<img src="' + esc(foto) + '" alt="">' : '') + '</div>' +
     '<div class="persona-datos">' +
     '<h1>' + esc(persona.name) + '</h1>' +
     (datos ? '<p class="persona-vida">' + esc(datos) + '</p>' : '') +
@@ -2664,11 +2986,19 @@ async function pantallaPersona(id: number, volverA?: number | (() => void) | nul
   pintar('inicio', cuerpo);
   conectarTarjetas();
 
+  const bioTexto = d && d.biography ? d.biography.replace(/\*+([^*]+)\*+/g, '$1') : '';
+  const abrirBio = () => {
+    dialogoBio(persona.name, 'Biografía', bioTexto, foto);
+  };
+
   const elBio = marco.querySelector<HTMLElement>('.persona-bio');
-  if (elBio && d && d.biography) {
-    elBio.addEventListener('click', () => {
-      dialogoResena(persona.name, 'Biografía', d.biography!.replace(/\*+([^*]+)\*+/g, '$1'));
-    });
+  if (elBio) {
+    elBio.addEventListener('click', abrirBio);
+  }
+
+  const elFoto = marco.querySelector<HTMLElement>('.persona-foto.con-foto');
+  if (elFoto) {
+    elFoto.addEventListener('click', abrirBio);
   }
 
   const focoInicial = marco.querySelector<HTMLElement>('.rejilla [data-nav]') || marco.querySelector<HTMLElement>('.persona-bio');
@@ -2787,6 +3117,48 @@ const NOMBRE_FUENTE: Record<string, string> = {
   tmdb: 'TMDb',
 };
 
+/** Modal inmersivo para leer la biografía de un actor con su foto grande fija al lado. */
+function dialogoBio(autor: string, fuente: string, contenido: string, fotoUrl?: string) {
+  const teclasAntes = manejadorActual();
+  const focoAntes = actual();
+
+  const capa = document.createElement('div');
+  capa.className = 'capa';
+  capa.innerHTML =
+    '<div class="panel panel-bio' + (fotoUrl ? ' con-foto' : '') + '">' +
+    (fotoUrl
+      ? '<div class="bio-modal-foto-wrap"><img src="' + esc(fotoUrl) + '" class="bio-modal-foto" alt="" /></div>'
+      : '') +
+    '<div class="bio-modal-info">' +
+    '<h3>' + esc(autor) + (fuente ? '<span class="nota-linea">' + esc(fuente) + '</span>' : '') + '</h3>' +
+    '<div class="bio-modal-scroll">' +
+    (contenido ? '<div class="resena-modal-cuerpo">' + esc(contenido) + '</div>' : '<p class="vacio-modal">Sin biografía disponible</p>') +
+    '</div>' +
+    '<p class="pista-ayuda">Enter o Volver para cerrar</p>' +
+    '</div>' +
+    '</div>';
+  marco.appendChild(capa);
+
+  const scrollEl = (capa.querySelector<HTMLElement>('.bio-modal-scroll') || capa.querySelector<HTMLElement>('.panel'))!;
+  scrollEl.scrollTop = 0;
+
+  const cerrar = () => {
+    if (capa.parentElement) capa.parentElement.removeChild(capa);
+    alPulsar(teclasAntes);
+    if (focoAntes) enfocar(focoAntes);
+  };
+
+  alPulsar((tecla) => {
+    if (tecla === TECLA.ABAJO) { scrollEl.scrollTop += 90; return true; }
+    if (tecla === TECLA.ARRIBA) { scrollEl.scrollTop -= 90; return true; }
+    if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE || tecla === TECLA.ENTRAR) {
+      cerrar();
+      return true;
+    }
+    return true;
+  });
+}
+
 /** Modal para leer una reseña completa con el mando. */
 function dialogoResena(autor: string, fuente: string, contenido: string) {
   const teclasAntes = manejadorActual();
@@ -2860,8 +3232,9 @@ function dialogoEdicionColeccionista(ficha: Ficha, elOrigen?: HTMLElement | null
   const nombresDe = (rol: string, tope: number) =>
     (ficha.cast || []).filter((p) => p.role === rol).slice(0, tope).map((p) => p.name).join(', ');
   const direccion = nombresDe('director', 2);
-  const reparto = nombresDe('actor', 4);
+  const reparto = nombresDe('actor', 6);
   const generos = (ficha.genres || []).slice(0, 3).join(', ');
+  const estudio = ficha.studio || '';
   const fichaVideo = ficha.files.filter((f) => f.id !== undefined && f.height).sort((a, b) => (b.height || 0) - (a.height || 0))[0];
   const textoVideo = fichaVideo
     ? (fichaVideo.width || '?') + '×' + fichaVideo.height + (fichaVideo.video_codec ? ' ' + fichaVideo.video_codec.toUpperCase() : '') + (fichaVideo.hdr ? ' · ' + fichaVideo.hdr : '')
@@ -2894,8 +3267,9 @@ function dialogoEdicionColeccionista(ficha: Ficha, elOrigen?: HTMLElement | null
     '<div class="cara cara-interior">' +
     '<div class="libreto-cabecera"><span>TVWATCH ARCHIVE</span><span>' + (ficha.year ? esc(String(ficha.year)) : '') + '</span></div>' +
     '<div class="libreto-titulo">' + esc(ficha.title) + '</div>' +
+    (ficha.tagline ? '<div class="libreto-eslogan">«' + esc(ficha.tagline) + '»</div>' : '') +
     fila('Dirección', direccion) + fila('Reparto', reparto) + fila('Género', generos) +
-    (ficha.plot ? '<div class="libreto-sinopsis">' + esc(ficha.plot) + '</div>' : '') +
+    fila('Estudio', estudio) +
     '<div class="libreto-tecnica">' + fila('Vídeo', textoVideo) + fila('Audio', textoAudio) +
     fila('Duración', ficha.runtime ? Math.floor(ficha.runtime / 60) + ' h ' + Math.round(ficha.runtime % 60) + ' min' : '') + '</div>' +
     '</div>' +
@@ -3617,6 +3991,95 @@ const NOMBRE_TRAMO: Record<string, string> = { intro: 'Saltar cabecera', credits
 /** Metraje que tiene que quedar tras los créditos para llamarlo escena final. */
 const MINIMO_POSTCREDITOS = 20;
 
+function generarAvisoEdad(ficha: Ficha): { badge: string; motivos: string[] } {
+  const m = (ficha.mpaa || '').toUpperCase();
+  const es = ajustes().idiomaInterfaz === 'es';
+  let badge = '12';
+  let cat = '12';
+
+  if (m.indexOf('18') >= 0 || m.indexOf('NC-17') >= 0 || m.indexOf('TV-MA') >= 0 || m.indexOf('R ') >= 0 || m.endsWith(' R') || m.indexOf('ADULTO') >= 0) {
+    cat = '18';
+    badge = es ? '18' : (m.indexOf('TV-MA') >= 0 ? 'TV-MA' : m.indexOf('NC-17') >= 0 ? 'NC-17' : '18+');
+  } else if (m.indexOf('16') >= 0 || m.indexOf('TV-14') >= 0) {
+    cat = '16';
+    badge = es ? '16' : (m.indexOf('TV-14') >= 0 ? 'TV-14' : '16+');
+  } else if (m.indexOf('12') >= 0 || m.indexOf('13') >= 0 || m.indexOf('PG-13') >= 0) {
+    cat = '12';
+    badge = es ? '12' : (m.indexOf('PG-13') >= 0 ? 'PG-13' : '12+');
+  } else if (m.indexOf('7') >= 0 || m.indexOf('PG') >= 0 || m.indexOf('TV-PG') >= 0 || m.indexOf('TV-Y7') >= 0) {
+    cat = '7';
+    badge = es ? '7' : (m.indexOf('TV-PG') >= 0 ? 'TV-PG' : 'PG');
+  } else if (m.indexOf('TP') >= 0 || m.indexOf('APTA') >= 0 || m.indexOf(':A') >= 0 || m.startsWith('G') || m.indexOf('TV-G') >= 0 || m.indexOf('TV-Y') >= 0) {
+    cat = 'TP';
+    badge = es ? 'TP' : (m.indexOf('TV-G') >= 0 ? 'TV-G' : 'G');
+  } else {
+    const g = (ficha.genres || []).map((x) => x.toLowerCase());
+    if (g.some((x) => x.indexOf('terror') >= 0 || x.indexOf('crimen') >= 0)) {
+      cat = '16';
+      badge = es ? '16' : '16+';
+    } else {
+      cat = '12';
+      badge = es ? '12' : '12+';
+    }
+  }
+
+  const generos = (ficha.genres || []).map((x) => x.toLowerCase());
+  const motivos: string[] = [];
+
+  if (cat === '18') {
+    if (generos.some((g) => g.indexOf('terror') >= 0 || g.indexOf('misterio') >= 0)) {
+      motivos.push(es ? 'Terror y escenas perturbadoras' : 'Horror and intense fear');
+    }
+    if (generos.some((g) => g.indexOf('acci') >= 0 || g.indexOf('bélic') >= 0 || g.indexOf('belic') >= 0)) {
+      motivos.push(es ? 'Violencia gráfica y explícita' : 'Graphic violence');
+    } else {
+      motivos.push(es ? 'Violencia y tensión intensa' : 'Intense violence and gore');
+    }
+    motivos.push(es ? 'Lenguaje inapropiado fuerte' : 'Strong language');
+    if (motivos.length < 3) motivos.push(es ? 'Temas sugerentes para adultos' : 'Mature thematic content');
+  } else if (cat === '16') {
+    if (generos.some((g) => g.indexOf('terror') >= 0)) {
+      motivos.push(es ? 'Terror y suspense psicológico' : 'Horror and psychological suspense');
+    } else if (generos.some((g) => g.indexOf('acci') >= 0 || g.indexOf('crimen') >= 0)) {
+      motivos.push(es ? 'Violencia y acción continuada' : 'Action violence');
+    } else {
+      motivos.push(es ? 'Violencia moderada' : 'Moderate violence');
+    }
+    motivos.push(es ? 'Lenguaje soez' : 'Coarse language');
+    if (motivos.length < 3) motivos.push(es ? 'Situaciones de conflicto y tensión' : 'Suggestive material');
+  } else if (cat === '12') {
+    if (generos.some((g) => g.indexOf('acci') >= 0 || g.indexOf('aventur') >= 0)) {
+      motivos.push(es ? 'Violencia fantástica y acción' : 'Action and fantasy violence');
+    } else {
+      motivos.push(es ? 'Tensión dramática moderada' : 'Moderate thematic elements');
+    }
+    motivos.push(es ? 'Lenguaje moderado' : 'Mild coarse language');
+  } else if (cat === '7') {
+    motivos.push(es ? 'Violencia fantástica leve' : 'Mild fantasy action');
+    motivos.push(es ? 'Situaciones de leve inquietud' : 'Mild peril and mischief');
+  } else {
+    motivos.push(es ? 'Apto para todos los públicos' : 'General audiences');
+    motivos.push(es ? 'Entretenimiento para toda la familia' : 'Family friendly entertainment');
+  }
+  return { badge, motivos: motivos.slice(0, 3) };
+}
+
+function mostrarAvisoEdad(ficha: Ficha, cont: HTMLElement) {
+  const { badge, motivos } = generarAvisoEdad(ficha);
+  const div = document.createElement('div');
+  div.className = 'aviso-edad-reproductor';
+  div.innerHTML =
+    '<div class="aviso-edad-icono">' + esc(badge) + '</div>' +
+    '<div class="aviso-edad-separador"></div>' +
+    '<div class="aviso-edad-textos">' +
+    motivos.map((m) => '<span class="aviso-edad-motivo">' + esc(m) + '</span>').join('') +
+    '</div>';
+  cont.appendChild(div);
+  window.setTimeout(() => {
+    if (div.parentElement) div.parentElement.removeChild(div);
+  }, 5500);
+}
+
 function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | null, desde: number, alVolver?: (() => void) | null) {
   pararTemaMusical();
   window.clearInterval(temporizadorHeroe);
@@ -3675,6 +4138,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
   const previaHora = marco.querySelector<HTMLElement>('[data-previa-hora]')!;
   const botonTramo = marco.querySelector<HTMLElement>('[data-tramo]')!;
   let botones: HTMLElement[] = [];
+  let avisoEdadMostrado = false;
 
   capaSubs.className = 'subtitulos-tv sub-' + aj.tamanoSubtitulos + (aj.fondoSubtitulos === 'caja' ? ' con-caja' : '');
   // La altura elegida en Ajustes. El CSS la suma a las dos alturas que tiene el
@@ -3912,6 +4376,10 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     lienzo.innerHTML = '';
     cargando.style.display = 'block';
     capaSubs.innerHTML = '';
+    const v = infoServidor ? infoServidor.video : null;
+    const rect = v
+      ? calcularRectDisplay(v.width, v.height, v.dar, v.sar)
+      : (fichero && fichero.width && fichero.height ? calcularRectDisplay(fichero.width, fichero.height) : undefined);
     reproductor.abrir(
       urlReproduccion(fileId, porTuberia() ? audioId : undefined, desfase, modoAudio, convertir),
       lienzo,
@@ -3925,6 +4393,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
             : -1,
       },
       desfase,
+      rect,
     );
     window.setTimeout(() => {
       refrescarPlay();
@@ -4042,12 +4511,6 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
       botonTramo.classList.remove('visible', 'enfocado');
       enTramo = false;
       cerrarWatchNext();
-      return;
-    }
-    // En maratón se salta solo la cabecera y también el resumen («Anteriormente en…»).
-    if (aj.modoMaraton && (dentro.kind === 'intro' || dentro.kind === 'recap')) {
-      tramoActivo = dentro;
-      saltarTramo();
       return;
     }
 
@@ -4187,6 +4650,10 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
         alPulsar(manejarTeclas);
       }
       if (destinoSalto === null) pintarTiempos(segundos);
+      if (!avisoEdadMostrado && segundos >= 0) {
+        avisoEdadMostrado = true;
+        mostrarAvisoEdad(ficha, marco.querySelector<HTMLElement>('.reproductor') || marco);
+      }
       if (cuesExternos.length > 0) {
         const seg = segundos + (retardoSubs / 1000);
         const activa = cuesExternos.find((c) => seg >= c.start && seg <= c.end);
@@ -4851,6 +5318,11 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     let actualN = 0;
     for (let n = 0; n < caps.length; n++) if (ahora >= caps[n].start) actualN = n;
 
+    // Ocultar controles OSD (barra, botones, disco) para despejar completamente la pantalla
+    osd.classList.remove('visible');
+    enBotones = false;
+    pintarFocoBotones();
+
     const capa = document.createElement('div');
     capa.className = 'capa capa-capitulos';
 
@@ -4902,8 +5374,17 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     capa.innerHTML =
       '<div class="panel-capitulos">' +
       '<div class="cabecera-capitulos">' +
+      '<div class="tit-seccion-cap">' +
       '<h3>Capítulos</h3>' +
-      '<span class="sub-cabecera-capitulos">' + caps.length + ' capítulos</span>' +
+      '<span class="sub-cabecera-capitulos">' + esc(ficha.title) + ' · ' + caps.length + ' escenas</span>' +
+      '</div>' +
+      '<div class="ayuda-capitulos">' +
+      '<span>◄ ▶ Seleccionar</span>' +
+      '<span>Enter Ir a escena</span>' +
+      '<span>Play Pausa</span>' +
+      '<span>▲ Controles</span>' +
+      '<span>Volver Salir</span>' +
+      '</div>' +
       '</div>' +
       '<div class="carrusel-capitulos">' +
       tarjetasHtml +
@@ -4929,14 +5410,21 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
 
     pintarFoco();
 
-    const cerrar = () => {
+    const cerrar = (mostrarOsd = false) => {
       if (capa.parentElement) capa.parentElement.removeChild(capa);
+      if (mostrarOsd) {
+        mostrar();
+      } else {
+        osd.classList.remove('visible');
+        enBotones = false;
+        pintarFocoBotones();
+      }
       alPulsar(manejarTeclas);
     };
 
     tarjetas.forEach((el, idx) => {
       el.addEventListener('click', () => {
-        cerrar();
+        cerrar(false);
         llevarA(caps[idx].start);
       });
     });
@@ -4957,20 +5445,24 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
         return true;
       }
       if (tecla === TECLA.ARRIBA) {
-        cerrar();
-        mostrar();
+        cerrar(true);
         return true;
       }
       if (tecla === TECLA.ABAJO) {
         return true;
       }
+      if (tecla === TECLA.REPRODUCIR || tecla === TECLA.PAUSA || tecla === TECLA.PLAY_PAUSA) {
+        reproductor.alternarPausa();
+        refrescarPlay();
+        return true;
+      }
       if (tecla === TECLA.ENTRAR) {
-        cerrar();
+        cerrar(false);
         llevarA(caps[i].start);
         return true;
       }
       if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE || tecla === 461) {
-        cerrar();
+        cerrar(false);
         return true;
       }
       return true;
@@ -5239,7 +5731,7 @@ function pantallaAjustes(pestanaInicial?: string) {
   if (pestanaInicial && pestanas.some((p) => p.id === pestanaInicial)) {
     pestanaActivaId = pestanaInicial;
   } else if (focoAjustesDespues) {
-    if (['reanudar', 'saltoCorto', 'saltoLargo', 'horaDeFin', 'modoMaraton', 'saltarCabecera'].indexOf(focoAjustesDespues) >= 0) {
+    if (['reanudar', 'saltoCorto', 'saltoLargo', 'horaDeFin', 'saltarCabecera'].indexOf(focoAjustesDespues) >= 0) {
       pestanaActivaId = 'reproduccion';
     } else if (['modoAudio', 'passthroughAvanzado', 'tamanoSubtitulos', 'fondoSubtitulos'].indexOf(focoAjustesDespues) >= 0) {
       pestanaActivaId = 'audio-subs';
@@ -5269,8 +5761,7 @@ function pantallaAjustes(pestanaInicial?: string) {
       elecciones('reanudar', [{ valor: 'si', texto: tr('Reanudar donde lo dejé', 'Resume where I left off') }, { valor: 'no', texto: tr('Empezar de cero', 'Start over') }], a.reanudar ? 'si' : 'no') +
       elecciones('saltoCorto', [10, 15, 30].map(function (n: number) { return { valor: n, texto: tr('Atrás ', 'Back ') + n + ' s' }; }), a.saltoCorto) +
       elecciones('saltoLargo', [30, 60, 120].map(function (n: number) { return { valor: n, texto: tr('Adelante ', 'Forward ') + n + ' s' }; }), a.saltoLargo) +
-      elecciones('horaDeFin', [{ valor: 'si', texto: tr('Mostrar «termina a las…»', 'Show «ends at…»') }, { valor: 'no', texto: tr('Solo lo que queda', 'Time left only') }], a.horaDeFin ? 'si' : 'no') +
-      siNo('modoMaraton', a.modoMaraton, 'Modo maratón (salta la cabecera al encadenar)', 'Binge mode (skips intros when chaining)'),
+      elecciones('horaDeFin', [{ valor: 'si', texto: tr('Mostrar «termina a las…»', 'Show «ends at…»') }, { valor: 'no', texto: tr('Solo lo que queda', 'Time left only') }], a.horaDeFin ? 'si' : 'no'),
     ) +
     grupo(tr('Saltar cabecera y créditos', 'Skip intro and credits'), tr('Muestra el botón para saltar la cabecera de las series y los créditos finales.', 'Shows the button to skip series intros and end credits.'),
       elecciones('saltarCabecera', [{ valor: 'si', texto: tr('Ofrecer saltar', 'Offer to skip') }, { valor: 'no', texto: tr('No ofrecer', "Don't offer") }], a.saltarCabecera ? 'si' : 'no'),
@@ -5434,7 +5925,6 @@ function pantallaAjustes(pestanaInicial?: string) {
       else if (campo === 'modoAudio') guardarAjustes({ modoAudio: valor as 'normal' | 'night' | 'dialogue' });
       else if (campo === 'passthroughAvanzado') guardarAjustes({ passthroughAvanzado: valor === 'si' });
       else if (campo === 'saltarCabecera') guardarAjustes({ saltarCabecera: valor === 'si' });
-      else if (campo === 'modoMaraton') guardarAjustes({ modoMaraton: valor === 'si' });
       else if (campo === 'musicaCabecera') guardarAjustes({ musicaCabecera: valor === 'si' });
       else if (campo === 'estuche3D') guardarAjustes({ estuche3D: valor === 'si' });
       else if (campo === 'horaDeFin') guardarAjustes({ horaDeFin: valor === 'si' });

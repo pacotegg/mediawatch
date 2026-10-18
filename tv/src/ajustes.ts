@@ -33,8 +33,6 @@ export type Ajustes = {
   passthroughAvanzado: boolean;
   /** Ofrecer el botón de saltar cabecera cuando se haya detectado. */
   saltarCabecera: boolean;
-  /** Modo maratón: salta automáticamente cabeceras sin pedir confirmación. */
-  modoMaraton: boolean;
   /** Música de cabecera en la ficha del título. */
   musicaCabecera: boolean;
   /** Estuche coleccionista 3D con disco extraíble. */
@@ -79,7 +77,6 @@ const POR_DEFECTO: Ajustes = {
   modoAudio: 'normal',
   passthroughAvanzado: false,
   saltarCabecera: true,
-  modoMaraton: true,
   musicaCabecera: true,
   estuche3D: false,
   horaDeFin: true,
@@ -112,7 +109,6 @@ export function cargarAjustes(): Ajustes {
         modoAudio: guardado.modoAudio || POR_DEFECTO.modoAudio,
         passthroughAvanzado: guardado.passthroughAvanzado === true,
         saltarCabecera: guardado.saltarCabecera !== false,
-        modoMaraton: guardado.modoMaraton !== false,
         musicaCabecera: guardado.musicaCabecera !== false,
         estuche3D: guardado.estuche3D === true,
         horaDeFin: guardado.horaDeFin !== false,

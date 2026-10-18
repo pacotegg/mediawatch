@@ -12,6 +12,17 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.69 — 18/10/2026
+
+- Logos de estudio en alta resolución: presencia del logotipo oficial de la productora optimizado bajo la carátula y en el libreto interior.
+- Edición coleccionista 3D: libreto interior con eslogan oficial de la obra, ficha ampliada a 6 actores y estudio de producción.
+- Transición fluida y aviso de edad: sincronización de metadatos de clasificación por edades y motivos de calificación.
+
+## 3.68 — 18/10/2026
+
+- Eliminación de saltos forzados de cabecera: las cabeceras se ofrecen ahora siempre de forma opcional mediante el botón interactivo sin saltos automáticos no deseados.
+- Arreglo de arranques y reanudación: umbral mínimo de 45 segundos para reanudar el progreso, evitando cortes prematuros al iniciar reproducción.
+
 ## 3.67 — 17/10/2026
 
 - Marcas de capítulos en la barra de reproducción: división visual de alta visibilidad para identificar cada escena en la línea de tiempo.

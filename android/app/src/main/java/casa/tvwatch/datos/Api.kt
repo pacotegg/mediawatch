@@ -198,9 +198,17 @@ object Api {
     orden: String = "title",
     genero: String? = null,
     sinVer: Boolean = false,
+    decada: String? = null,
+    calidad: String? = null,
+    duracion: String? = null,
+    estudio: String? = null,
   ): Pagina = pedir(
     "/api/items?library=$libraryId&offset=$offset&limit=$limite&sort=$orden" +
       (if (genero != null) "&genre=" + java.net.URLEncoder.encode(genero, "UTF-8") else "") +
+      (if (decada != null) "&decade=" + java.net.URLEncoder.encode(decada, "UTF-8") else "") +
+      (if (calidad != null) "&quality=" + java.net.URLEncoder.encode(calidad, "UTF-8") else "") +
+      (if (duracion != null) "&runtime=" + java.net.URLEncoder.encode(duracion, "UTF-8") else "") +
+      (if (estudio != null) "&studio=" + java.net.URLEncoder.encode(estudio, "UTF-8") else "") +
       (if (sinVer) "&unwatched=1" else ""),
   )
   fun generos(libraryId: Int): List<Genero> = pedir("/api/genres?library=$libraryId")
@@ -311,6 +319,7 @@ object Api {
    * sondear ahi colgaria la pantalla.
    */
   fun imagen(id: Int, tipo: String, ancho: Int) = "${Servidor.baseCacheada()}/api/items/$id/$tipo?w=$ancho"
+  fun logoEstudio(id: Int, ancho: Int = 360) = "${Servidor.baseCacheada()}/api/items/$id/studio-logo?w=$ancho"
 
   /* ------------------------------------------------------- reproducción */
 
@@ -768,6 +777,7 @@ data class Ficha(
   /** Sintonía o música oficial local de cabecera. */
   @SerialName("has_theme") val tieneTema: Int = 0,
   val collection: String? = null,
+  val studio: String? = null,
   @SerialName("collectionItems") val coleccionItems: List<Titulo> = emptyList(),
   @SerialName("similar") val similares: List<Titulo> = emptyList(),
 )

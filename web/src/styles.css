@@ -274,3 +274,18 @@ video::-webkit-media-controls {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
+
+/* Logotipo oficial de estudio con relieve 3D */
+.logo-estudio-3d {
+  filter: brightness(0) invert(1)
+          drop-shadow(0 1px 0 rgba(255, 255, 255, 0.45))
+          drop-shadow(0 -1px 0 rgba(0, 0, 0, 0.7))
+          drop-shadow(0 3px 6px rgba(0, 0, 0, 0.85));
+  opacity: 0.85;
+  transition: opacity 0.2s, transform 0.2s;
+}
+.logo-estudio-3d:hover {
+  opacity: 1;
+  transform: scale(1.04);
+}
+

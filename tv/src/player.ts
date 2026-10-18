@@ -91,6 +91,40 @@ type Callbacks = {
   onSubtitulo?: (texto: string, milisegundos: number) => void;
 };
 
+export type RectDisplay = { x: number; y: number; w: number; h: number };
+
+export function calcularRectDisplay(
+  ancho = 1920,
+  alto = 1080,
+  dar?: string,
+  sar?: string,
+): RectDisplay {
+  var ratio = ancho > 0 && alto > 0 ? ancho / alto : 16 / 9;
+  if (dar && dar.indexOf(':') > 0) {
+    var partesD = dar.split(':');
+    var dw = parseFloat(partesD[0]);
+    var dh = parseFloat(partesD[1]);
+    if (dw > 0 && dh > 0) ratio = dw / dh;
+  } else if (sar && sar.indexOf(':') > 0) {
+    var partesS = sar.split(':');
+    var sw = parseFloat(partesS[0]);
+    var sh = parseFloat(partesS[1]);
+    if (sw > 0 && sh > 0 && ancho > 0 && alto > 0) ratio = (ancho / alto) * (sw / sh);
+  }
+  if (Math.abs(ratio - 16 / 9) < 0.02) {
+    return { x: 0, y: 0, w: 1920, h: 1080 };
+  }
+  if (ratio > 16 / 9) {
+    var h = Math.round(1920 / ratio);
+    var y = Math.round((1080 - h) / 2);
+    return { x: 0, y: Math.max(0, y), w: 1920, h: Math.min(1080, h) };
+  } else {
+    var w = Math.round(1080 * ratio);
+    var x = Math.round((1920 - w) / 2);
+    return { x: Math.max(0, x), y: 0, w: Math.min(1920, w), h: 1080 };
+  }
+}
+
 export class Reproductor {
   private nativo: AVPlay | null;
   private video: HTMLVideoElement | null = null;
@@ -230,6 +264,7 @@ export class Reproductor {
     pistas?: { audio: number; subtitulo: number },
     /** El flujo ya empieza cortado en este segundo: no hay que buscar. */
     desfaseDelFlujo = 0,
+    rectDisplay?: RectDisplay,
   ) {
     this.duracionConocida = duracionSegundos;
     this.desfase = desfaseDelFlujo;
@@ -239,6 +274,7 @@ export class Reproductor {
 
     if (this.nativo) {
       const p = this.nativo;
+      const rect = rectDisplay || { x: 0, y: 0, w: 1920, h: 1080 };
       /*
        * `open` revienta si el aparato no ha vuelto a IDLE —pasa si el `close`
        * anterior falló, o si se vuelve a dar a reproducir mientras el anterior
@@ -248,8 +284,12 @@ export class Reproductor {
        */
       try {
         p.open(url);
-        p.setDisplayRect(0, 0, 1920, 1080);
-        p.setDisplayMethod('PLAYER_DISPLAY_MODE_LETTER_BOX');
+        p.setDisplayRect(rect.x, rect.y, rect.w, rect.h);
+        try {
+          p.setDisplayMethod('PLAYER_DISPLAY_MODE_FULL_SCREEN');
+        } catch {
+          p.setDisplayMethod('PLAYER_DISPLAY_MODE_LETTER_BOX');
+        }
         if (p.setSilentSubtitle) {
           try { p.setSilentSubtitle(true); } catch {}
         }
@@ -282,6 +322,9 @@ export class Reproductor {
           // deja el aparato clavado: ver la nota 1 de la cabecera.
           try {
             p.play();
+            try {
+              p.setDisplayRect(rect.x, rect.y, rect.w, rect.h);
+            } catch {}
           } catch (e) {
             this.fallo = 'play: ' + motivo(e);
             try { this.nativo?.stop(); this.nativo?.close(); } catch {}

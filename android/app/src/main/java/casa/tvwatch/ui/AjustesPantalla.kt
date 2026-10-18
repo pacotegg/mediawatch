@@ -70,7 +70,6 @@ fun PantallaAjustes(
   var modoAudio by remember { mutableStateOf(Ajustes.modoAudio) }
   var idiomaAudio by remember { mutableStateOf(if (Ajustes.idiomaAudioPreferido == "spa") "spa" else "orig") }
   var informesTecnicos by remember { mutableStateOf(Ajustes.informesTecnicos) }
-  var modoMaraton by remember { mutableStateOf(Ajustes.modoMaraton) }
   var musicaCabecera by remember { mutableStateOf(Ajustes.musicaCabecera) }
   var estuche3D by remember { mutableStateOf(Ajustes.estuche3D) }
   var idiomaInterfaz by remember { mutableStateOf(Ajustes.idiomaInterfaz) }
@@ -218,16 +217,6 @@ fun PantallaAjustes(
         alCambiar = {
           castCincoUno = it
           Ajustes.castCincoUno = it
-        },
-      )
-
-      FilaInterruptor(
-        titulo = "Modo maratón (saltar intro)",
-        subtitulo = "Salta la cabecera automáticamente al encadenar episodios de series.",
-        activo = modoMaraton,
-        alCambiar = {
-          modoMaraton = it
-          Ajustes.modoMaraton = it
         },
       )
     }

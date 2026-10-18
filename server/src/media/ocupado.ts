@@ -14,18 +14,39 @@
  * el cliente va guardando mientras ve algo.
  */
 
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { DATA_DIR } from '../config.ts';
+
 /** Cuánto se considera «todavía viendo» desde la última señal. */
 const MARGEN_MS = 5 * 60_000;
 
+const ARCHIVO_ACTIVIDAD = join(DATA_DIR, 'actividad.timestamp');
 let ultimaSenal = 0;
+let ultimoEscrito = 0;
 
 /** La llaman la ruta de vídeo y la de progreso. */
 export function marcarActividad() {
   ultimaSenal = Date.now();
+  if (ultimaSenal - ultimoEscrito > 5000) {
+    ultimoEscrito = ultimaSenal;
+    try {
+      writeFileSync(ARCHIVO_ACTIVIDAD, String(ultimaSenal), 'utf-8');
+    } catch {}
+  }
 }
 
 export function hayAlguienViendo(): boolean {
-  return Date.now() - ultimaSenal < MARGEN_MS;
+  let senal = ultimaSenal;
+  try {
+    if (existsSync(ARCHIVO_ACTIVIDAD)) {
+      const fsSenal = parseInt(readFileSync(ARCHIVO_ACTIVIDAD, 'utf-8'), 10);
+      if (Number.isFinite(fsSenal) && fsSenal > senal) {
+        senal = fsSenal;
+      }
+    }
+  } catch {}
+  return Date.now() - senal < MARGEN_MS;
 }
 
 /**

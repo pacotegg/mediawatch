@@ -166,11 +166,6 @@ object Ajustes {
     get() = prefs.getBoolean("musicaCabecera", true)
     set(v) = prefs.edit().putBoolean("musicaCabecera", v).apply()
 
-  /** Modo maratón: salta automáticamente intro al encadenar episodios. */
-  var modoMaraton: Boolean
-    get() = prefs.getBoolean("modoMaraton", true)
-    set(v) = prefs.edit().putBoolean("modoMaraton", v).apply()
-
   /** Estuche 3D interactivo con discart extraíble. */
   var estuche3D: Boolean
     get() = prefs.getBoolean("estuche3D", false)

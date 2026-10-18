@@ -29,6 +29,67 @@ function Icon({ path, size = 22 }: { path: string; size?: number }) {
   );
 }
 
+function generarAvisoEdadWeb(mpaa?: string | null, genres?: string[]): { badge: string; motivos: string[] } {
+  const m = (mpaa || '').toUpperCase();
+  let badge = '12';
+  let cat = '12';
+
+  if (m.includes('18') || m.includes('NC-17') || m.includes('TV-MA') || m.includes('R ') || m.endsWith(' R') || m.includes('ADULTO')) {
+    cat = '18';
+    badge = '18';
+  } else if (m.includes('16') || m.includes('TV-14')) {
+    cat = '16';
+    badge = '16';
+  } else if (m.includes('12') || m.includes('13') || m.includes('PG-13')) {
+    cat = '12';
+    badge = '12';
+  } else if (m.includes('7') || m.includes('PG') || m.includes('TV-PG') || m.includes('TV-Y7')) {
+    cat = '7';
+    badge = '7';
+  } else if (m.includes('TP') || m.includes('APTA') || m.includes(':A') || m.startsWith('G') || m.includes('TV-G') || m.includes('TV-Y')) {
+    cat = 'TP';
+    badge = 'TP';
+  } else {
+    const g = (genres || []).map((x) => x.toLowerCase());
+    if (g.some((x) => x.includes('terror') || x.includes('crimen'))) {
+      cat = '16';
+      badge = '16';
+    } else {
+      cat = '12';
+      badge = '12';
+    }
+  }
+
+  const generos = (genres || []).map((x) => x.toLowerCase());
+  const motivos: string[] = [];
+
+  if (cat === '18') {
+    if (generos.some((g) => g.includes('terror') || g.includes('misterio'))) motivos.push('Terror y escenas perturbadoras');
+    if (generos.some((g) => g.includes('acci') || g.includes('bélic') || g.includes('belic'))) motivos.push('Violencia gráfica y explícita');
+    else motivos.push('Violencia y tensión intensa');
+    motivos.push('Lenguaje inapropiado fuerte');
+    if (motivos.length < 3) motivos.push('Temas sugerentes para adultos');
+  } else if (cat === '16') {
+    if (generos.some((g) => g.includes('terror'))) motivos.push('Terror y suspense psicológico');
+    else if (generos.some((g) => g.includes('acci') || g.includes('crimen'))) motivos.push('Violencia y acción continuada');
+    else motivos.push('Violencia moderada');
+    motivos.push('Lenguaje soez');
+    if (motivos.length < 3) motivos.push('Situaciones de conflicto y tensión');
+  } else if (cat === '12') {
+    if (generos.some((g) => g.includes('acci') || g.includes('aventur'))) motivos.push('Violencia fantástica y acción');
+    else motivos.push('Tensión dramática moderada');
+    motivos.push('Lenguaje moderado');
+  } else if (cat === '7') {
+    motivos.push('Violencia fantástica leve');
+    motivos.push('Situaciones de leve inquietud');
+  } else {
+    motivos.push('Apto para todos los públicos');
+    motivos.push('Entretenimiento para toda la familia');
+  }
+
+  return { badge, motivos: motivos.slice(0, 3) };
+}
+
 /** Nearest tile to a time, over an unevenly spaced strip (tiles follow keyframes). */
 function nearestTile(times: number[], target: number): number {
   let low = 0;
@@ -327,6 +388,9 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
   // La ficha entera solo para saber si hay disco; es la misma consulta que la ficha, así que suele estar en caché.
   const { data: ficha } = useQuery({ queryKey: ['item', itemId], queryFn: () => api.item(itemId), enabled: Boolean(itemId) });
 
+  const [mostrarAvisoEdad, setMostrarAvisoEdad] = useState(false);
+  const avisoEdadLanzadoRef = useRef(false);
+
   const { data: skip } = useQuery({
     queryKey: ['skip', episodeId],
     queryFn: () => api.skipRanges(episodeId!),
@@ -372,6 +436,15 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
     const date = new Date(Date.now() + remainingSecs * 1000);
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   })();
+
+  useEffect(() => {
+    if (ficha && !avisoEdadLanzadoRef.current && virtual >= 0 && !buffering) {
+      avisoEdadLanzadoRef.current = true;
+      setMostrarAvisoEdad(true);
+      const timer = window.setTimeout(() => setMostrarAvisoEdad(false), 5200);
+      return () => window.clearTimeout(timer);
+    }
+  }, [ficha, virtual, buffering]);
 
   // Arrancar con la pista guardada, la marcada por defecto o la primera; restaurar subtítulos si se eligieron.
   useEffect(() => {
@@ -1209,6 +1282,37 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
         {buffering && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="pointer-events-none absolute inset-0 grid place-items-center">
             <div className="h-12 w-12 animate-spin rounded-full border-2 border-white/20 border-t-white/90" />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {mostrarAvisoEdad && ficha && (
+          <motion.div
+            initial={{ opacity: 0, y: -10, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -6, scale: 0.98 }}
+            transition={{ duration: 0.45 }}
+            className="fixed top-6 left-6 z-40 pointer-events-none flex items-center gap-3.5 rounded-xl bg-ink-950/80 px-4 py-2.5 backdrop-blur-md border border-white/20 shadow-2xl"
+          >
+            {(() => {
+              const { badge, motivos } = generarAvisoEdadWeb(ficha.mpaa, ficha.genres);
+              return (
+                <>
+                  <div className="flex h-10 min-w-10 items-center justify-center rounded-lg border-2 border-white/90 bg-white/10 px-2 font-black text-white text-lg">
+                    {badge}
+                  </div>
+                  <div className="h-8 w-0.5 rounded-full bg-white/30" />
+                  <div className="flex flex-col gap-0.5">
+                    {motivos.map((m) => (
+                      <span key={m} className="text-[11px] font-bold uppercase tracking-wider text-mist-100">
+                        {m}
+                      </span>
+                    ))}
+                  </div>
+                </>
+              );
+            })()}
           </motion.div>
         )}
       </AnimatePresence>

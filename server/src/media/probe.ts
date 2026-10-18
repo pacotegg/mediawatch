@@ -12,6 +12,8 @@ export type ProbeStream = {
   codec_name?: string;
   width?: number;
   height?: number;
+  sample_aspect_ratio?: string;
+  display_aspect_ratio?: string;
   channels?: number;
   tags?: Record<string, string>;
   disposition?: Record<string, number>;
@@ -30,7 +32,7 @@ export type MediaInfo = {
   container: string;
   /** Marcas del contenedor; la mayoria de MKV de la biblioteca las traen. */
   chapters: Capitulo[];
-  video: { codec: string; width: number; height: number; hdr?: string; profile?: string; fps: number } | null;
+  video: { codec: string; width: number; height: number; hdr?: string; profile?: string; fps: number; dar?: string; sar?: string } | null;
   audio: { index: number; streamIndex: number; codec: string; language?: string; channels?: number; title?: string; default: boolean; profile?: string; atmos: boolean }[];
   subs: { index: number; streamIndex: number; codec: string; language?: string; title?: string; forced: boolean; textual: boolean }[];
 };
@@ -173,6 +175,8 @@ export async function probeFile(path: string): Promise<MediaInfo> {
           hdr: hdrOf(v),
           profile: v.profile,
           fps: fotogramasPorSegundo(v),
+          dar: v.display_aspect_ratio,
+          sar: v.sample_aspect_ratio,
         }
       : null,
     audio,

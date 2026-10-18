@@ -62,6 +62,22 @@ export function resolutionLabel(width?: number | null, height?: number | null): 
   return 'SD';
 }
 
+export function aspectRatioLabel(width?: number | null, height?: number | null): string | null {
+  const w = width ?? 0;
+  const h = height ?? 0;
+  if (!w || !h) return null;
+  const r = w / h;
+  if (r >= 2.30 && r <= 2.45) return '2.39:1';
+  if (r >= 2.15 && r < 2.30) return '2.20:1';
+  if (r >= 1.95 && r < 2.15) return '2.00:1';
+  if (r >= 1.80 && r < 1.95) return '1.85:1';
+  if (r >= 1.70 && r < 1.80) return '16:9';
+  if (r >= 1.55 && r < 1.70) return '16:10';
+  if (r >= 1.45 && r < 1.55) return '1.50:1';
+  if (r >= 1.30 && r < 1.45) return '4:3';
+  return `${r.toFixed(2)}:1`;
+}
+
 export const codecLabel = (codec?: string | null) => {
   if (!codec) return null;
   const map: Record<string, string> = { hevc: 'HEVC', h264: 'H.264', av1: 'AV1', xvid: 'XviD', divx: 'DivX', mpeg4: 'MPEG-4', vc1: 'VC-1' };

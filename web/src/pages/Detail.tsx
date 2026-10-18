@@ -11,7 +11,7 @@ import Extras from '../components/Extras.tsx';
 import Trailer from '../components/Trailer.tsx';
 import Row from '../components/Row.tsx';
 import { api, img, type Episode, type ItemDetail, type PerfilDescarga, type CodecDescarga } from '../lib/api.ts';
-import { audioLabel, certification, clock, codecLabel, fileSize, languageName, resolutionLabel, runtime } from '../lib/format.ts';
+import { aspectRatioLabel, audioLabel, certification, clock, codecLabel, fileSize, languageName, resolutionLabel, runtime } from '../lib/format.ts';
 import { usePreferences } from '../lib/preferences.tsx';
 import { tintFrom } from '../lib/tint.ts';
 import Estuche3D from '../components/Estuche3D.tsx';
@@ -478,6 +478,7 @@ export default function Detail() {
 
   const badges = [
     resolutionLabel(movieFile?.width, movieFile?.height),
+    aspectRatioLabel(movieFile?.width, movieFile?.height),
     codecLabel(movieFile?.video_codec),
     movieFile?.hdr,
     ...(movieFile?.audio.slice(0, 2).map((a) => audioLabel(a.codec, a.channels)) ?? []),
@@ -910,6 +911,16 @@ export default function Detail() {
                 es4k={es4kItem}
                 onAbrirColeccionista={() => setMostrarColeccionista(true)}
               />
+              {item.studio && (
+                <div className="mt-7 flex justify-center">
+                  <img
+                    src={img.studio(itemId)}
+                    alt={item.studio}
+                    className="logo-estudio-3d max-h-16 max-w-[240px] object-contain"
+                    onError={(e) => { (e.currentTarget.parentElement as HTMLElement).style.display = 'none'; }}
+                  />
+                </div>
+              )}
             </div>
           ) : item.has_poster ? (
             <div className="hidden lg:block shrink-0 pt-2 pr-4">
@@ -918,11 +929,21 @@ export default function Detail() {
                 alt={item.title}
                 className="h-[324px] w-[220px] rounded-xl object-cover shadow-2xl ring-1 ring-white/10"
               />
+              {item.studio && (
+                <div className="mt-7 flex justify-center">
+                  <img
+                    src={img.studio(itemId)}
+                    alt={item.studio}
+                    className="logo-estudio-3d max-h-16 max-w-[240px] object-contain"
+                    onError={(e) => { (e.currentTarget.parentElement as HTMLElement).style.display = 'none'; }}
+                  />
+                </div>
+              )}
             </div>
           ) : null}
 
           {permite3D && (prefs.interface.case3D ?? true) && item.has_poster ? (
-            <div className="mt-8 flex justify-center lg:hidden">
+            <div className="mt-8 flex flex-col items-center justify-center lg:hidden">
               <Estuche3D
                 posterUrl={img.poster(itemId, 500, item.arte_actualizado)}
                 discartUrl={item.has_discart === 1 ? img.discart(itemId, 600, item.arte_actualizado) : null}
@@ -930,14 +951,34 @@ export default function Detail() {
                 es4k={es4kItem}
                 onAbrirColeccionista={() => setMostrarColeccionista(true)}
               />
+              {item.studio && (
+                <div className="mt-6 flex justify-center">
+                  <img
+                    src={img.studio(itemId)}
+                    alt={item.studio}
+                    className="logo-estudio-3d max-h-12 max-w-[190px] object-contain"
+                    onError={(e) => { (e.currentTarget.parentElement as HTMLElement).style.display = 'none'; }}
+                  />
+                </div>
+              )}
             </div>
           ) : item.has_poster ? (
-            <div className="mt-8 flex justify-center lg:hidden">
+            <div className="mt-8 flex flex-col items-center justify-center lg:hidden">
               <img
                 src={img.poster(itemId, 500, item.arte_actualizado)}
                 alt={item.title}
                 className="h-[300px] w-[200px] rounded-xl object-cover shadow-2xl ring-1 ring-white/10"
               />
+              {item.studio && (
+                <div className="mt-6 flex justify-center">
+                  <img
+                    src={img.studio(itemId)}
+                    alt={item.studio}
+                    className="logo-estudio-3d max-h-12 max-w-[190px] object-contain"
+                    onError={(e) => { (e.currentTarget.parentElement as HTMLElement).style.display = 'none'; }}
+                  />
+                </div>
+              )}
             </div>
           ) : null}
         </div>

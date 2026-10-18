@@ -609,13 +609,7 @@ private fun Reproduciendo(
         ("credits" + (duracionViva - 40)) !in tramosSaltados
       ) RangoSalto("credits", duracionViva - 40, duracionViva) else null
       val dentro = deLosDetectados ?: respaldoDeCreditos
-      if (dentro != null && Ajustes.modoMaraton && (dentro.kind == "intro" || dentro.kind == "recap")) {
-        tramosSaltados.add(dentro.kind + dentro.desde)
-        reproductor.seekTo(((dentro.hasta - desfase) * 1000).toLong().coerceAtLeast(0L))
-        tramoALaVista = null
-      } else {
-        tramoALaVista = dentro
-      }
+      tramoALaVista = dentro
     }
   }
 

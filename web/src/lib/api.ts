@@ -319,6 +319,8 @@ export const api = {
   home: () => request<{ hero: ItemSummary[]; rows: { key: string; title: string; kind: string; items: ItemSummary[] }[] }>('/api/home'),
   libraries: () => request<{ id: number; name: string; kind: string; count: number }[]>('/api/libraries'),
   genres: (library?: number) => request<{ id: number; name: string; count: number }[]>(`/api/genres${library ? `?library=${library}` : ''}`),
+  studios: (library?: number) => request<{ name: string; count: number }[]>(`/api/studios${library ? `?library=${library}` : ''}`),
+  actors: (library?: number) => request<{ id: number; name: string; thumb: string | null; count: number }[]>(`/api/actors${library ? `?library=${library}` : ''}`),
   items: (params: Record<string, string | number | undefined>) => {
     const qs = new URLSearchParams(
       Object.entries(params).filter(([, v]) => v !== undefined && v !== '') as [string, string][],
@@ -837,6 +839,7 @@ export const img = {
   discart: (id: number, w = 600, stamp?: string | null) => `/api/items/${id}/discart?w=${w}${v(stamp)}`,
   episode: (id: number, w = 420) => `/api/episodes/${id}/thumb?w=${w}`,
   person: (id: number, w = 160) => `/api/people/${id}/thumb?w=${w}`,
+  studio: (id: number, w = 360) => `/api/items/${id}/studio-logo?w=${w}`,
 };
 
 function supports(type: string): boolean {

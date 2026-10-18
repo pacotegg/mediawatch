@@ -436,13 +436,29 @@ fun PantallaFicha(
 
           if (mostrarEstuche) {
             Spacer(Modifier.width(10.dp))
-            Estuche3DAndroid(
-              itemId = f.id,
-              tieneDisco = f.tieneDisco == 1,
-              es4k = es4k,
-              alAbrirColeccionista = { mostrarColeccionista = true },
-              modifier = Modifier.padding(top = 2.dp),
-            )
+            Column(
+              horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+              Estuche3DAndroid(
+                itemId = f.id,
+                tieneDisco = f.tieneDisco == 1,
+                es4k = es4k,
+                alAbrirColeccionista = { mostrarColeccionista = true },
+                modifier = Modifier.padding(top = 2.dp),
+              )
+              if (!f.studio.isNullOrBlank()) {
+                Spacer(Modifier.height(14.dp))
+                Imagen(
+                  url = Api.logoEstudio(f.id, 360),
+                  descripcion = f.studio,
+                  modifier = Modifier
+                    .width(180.dp)
+                    .height(44.dp),
+                  escala = ContentScale.Fit,
+                  alineacion = Alignment.Center,
+                )
+              }
+            }
           }
         }
 
@@ -1137,9 +1153,26 @@ private fun etiquetasTecnicas(f: Ficha): List<String> {
     ancho >= 1900 || alto >= 800 -> out += "1080p"
     ancho >= 1200 || alto >= 700 -> out += "720p"
   }
+  ratioPantalla(ancho, alto)?.let { out += it }
   fichero.codec?.let { out += it.uppercase() }
   fichero.hdr?.let { out += it }
   return out
+}
+
+private fun ratioPantalla(ancho: Int, alto: Int): String? {
+  if (ancho <= 0 || alto <= 0) return null
+  val r = ancho.toFloat() / alto.toFloat()
+  return when {
+    r in 2.30f..2.45f -> "2.39:1"
+    r in 2.15f..2.29f -> "2.20:1"
+    r in 1.95f..2.14f -> "2.00:1"
+    r in 1.80f..1.94f -> "1.85:1"
+    r in 1.70f..1.79f -> "16:9"
+    r in 1.55f..1.69f -> "16:10"
+    r in 1.45f..1.54f -> "1.50:1"
+    r in 1.30f..1.44f -> "4:3"
+    else -> "%.2f:1".format(java.util.Locale.US, r)
+  }
 }
 
 @Composable
@@ -1503,7 +1536,7 @@ private fun ModalColeccionistaAndroid(
   val resolucionTexto = if (es4k) "4K ULTRA HD" else "BLU-RAY 1080P"
   val hdrTexto = ficha.files.firstOrNull()?.hdr?.takeIf { it.isNotBlank() }
   val directores = remember(ficha) { ficha.cast.filter { it.role.contains("Direct", ignoreCase = true) }.joinToString(", ") { it.name } }
-  val actores = remember(ficha) { ficha.cast.filter { !it.role.contains("Direct", ignoreCase = true) }.take(3).joinToString(", ") { it.name } }
+  val actores = remember(ficha) { ficha.cast.filter { !it.role.contains("Direct", ignoreCase = true) }.take(6).joinToString(", ") { it.name } }
   val generos = remember(ficha) { ficha.genres.take(3).joinToString(", ") }
   val fichero = ficha.files.firstOrNull { it.episodioId == null } ?: ficha.files.firstOrNull()
   val codecVideo = remember(fichero) { fichero?.codec?.uppercase() ?: if (es4k) "HEVC" else "H.264" }
@@ -1784,14 +1817,13 @@ private fun ModalColeccionistaAndroid(
                       )
                     }
 
-                    ficha.plot?.takeIf { it.isNotBlank() }?.let { plot ->
-                      Spacer(Modifier.height(4.dp))
+                    ficha.studio?.takeIf { it.isNotBlank() }?.let { est ->
+                      Spacer(Modifier.height(3.dp))
                       Text(
-                        plot,
-                        color = Color(0xFFE2E8F0),
-                        fontSize = 8.5.sp,
-                        lineHeight = 11.5.sp,
-                        maxLines = if (esApaisado) 4 else 3,
+                        "Estudio: $est",
+                        color = Color(0xFF94A3B8),
+                        fontSize = 8.sp,
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                       )
                     }

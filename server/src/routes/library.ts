@@ -1,7 +1,7 @@
 import { config, DATA_DIR } from '../config.ts';
 import { avanzar } from '../media/historial.ts';
 import { createHash } from 'node:crypto';
-import { createReadStream, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createReadStream, existsSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { stat as statAsync } from 'node:fs/promises';
 import { extname, join, resolve, sep } from 'node:path';
 import { ficheroDelBuzon } from '../media/buzon.ts';
@@ -55,9 +55,15 @@ async function serveArt(reply: FastifyReply, source: string | null, width: numbe
 
 const SORTS: Record<string, string> = {
   title: 'COALESCE(i.sort_title, i.title) COLLATE NOCASE ASC',
+  title_desc: 'COALESCE(i.sort_title, i.title) COLLATE NOCASE DESC',
   added: 'i.added_at DESC',
+  added_asc: 'i.added_at ASC',
   year: 'i.year DESC, i.title ASC',
+  year_asc: 'i.year ASC, i.title ASC',
   rating: 'i.rating DESC NULLS LAST',
+  rating_asc: 'i.rating ASC NULLS LAST',
+  runtime: 'i.runtime DESC NULLS LAST',
+  runtime_asc: 'i.runtime ASC NULLS LAST',
   random: 'RANDOM()',
 };
 
@@ -156,6 +162,35 @@ export default async function libraryRoutes(app: FastifyInstance) {
       .all(library ?? null, library ?? null);
   });
 
+  app.get('/api/studios', async (req) => {
+    const { library } = req.query as { library?: string };
+    const libId = library ? Number(library) : null;
+    const rows = db
+      .prepare(`SELECT studio FROM items WHERE studio IS NOT NULL AND studio != '' ${libId ? 'AND library_id = ?' : ''}`)
+      .all(...(libId ? [libId] : [])) as { studio: string }[];
+    const counts: Record<string, number> = {};
+    for (const r of rows) {
+      const parts = r.studio.split(/[,/]/).map((s) => s.trim()).filter((s) => s.length > 1);
+      for (const p of parts) counts[p] = (counts[p] || 0) + 1;
+    }
+    return Object.entries(counts)
+      .filter(([_, c]) => c >= 2)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 50)
+      .map(([name, count]) => ({ name, count }));
+  });
+
+  app.get('/api/actors', async (req) => {
+    const { library } = req.query as { library?: string };
+    const libId = library ? Number(library) : null;
+    return db
+      .prepare(`SELECT p.id, p.name, p.thumb, COUNT(*) AS count
+                FROM item_people ip JOIN people p ON p.id = ip.person_id JOIN items i ON i.id = ip.item_id
+                WHERE (? IS NULL OR i.library_id = ?)
+                GROUP BY p.id HAVING count >= 2 ORDER BY count DESC, p.name ASC LIMIT 50`)
+      .all(libId, libId);
+  });
+
   app.get('/api/items', async (req) => {
     const q = req.query as Record<string, string | undefined>;
     const user = currentUser(req);
@@ -170,10 +205,24 @@ export default async function libraryRoutes(app: FastifyInstance) {
     if (q.kind) { where.push('i.kind = ?'); params.push(q.kind); }
     if (q.genre) { where.push('EXISTS (SELECT 1 FROM item_genres ig JOIN genres g ON g.id = ig.genre_id WHERE ig.item_id = i.id AND g.name = ?)'); params.push(q.genre); }
     if (q.year) { where.push('i.year = ?'); params.push(Number(q.year)); }
+    if (q.studio) { where.push('i.studio LIKE ?'); params.push(`%${q.studio}%`); }
+    if (q.person) { where.push('EXISTS (SELECT 1 FROM item_people ip WHERE ip.item_id = i.id AND ip.person_id = ?)'); params.push(Number(q.person)); }
+    if (q.runtime === 'short') where.push('i.runtime > 0 AND i.runtime < 90');
+    else if (q.runtime === 'medium') where.push('i.runtime >= 90 AND i.runtime <= 120');
+    else if (q.runtime === 'long') where.push('i.runtime > 120');
+    if (q.quality === '4k') where.push('EXISTS (SELECT 1 FROM media_files mf WHERE mf.item_id = i.id AND (mf.width >= 3500 OR mf.height >= 1600))');
+    else if (q.quality === '1080p') where.push('EXISTS (SELECT 1 FROM media_files mf WHERE mf.item_id = i.id AND ((mf.width >= 1900 AND mf.width < 3500) OR (mf.height >= 800 AND mf.height < 1600)))');
+    else if (q.quality === '720p') where.push('EXISTS (SELECT 1 FROM media_files mf WHERE mf.item_id = i.id AND ((mf.width >= 1200 AND mf.width < 1900) OR (mf.height >= 700 AND mf.height < 800)))');
+    else if (q.quality === 'sd') where.push('EXISTS (SELECT 1 FROM media_files mf WHERE mf.item_id = i.id AND mf.width < 1200 AND mf.height < 700)');
     // Mismo motivo que en `/api/search`: la columna está sin tildes, el texto
     // que llega no tiene por qué estarlo.
     if (q.q) { where.push('(i.search_title LIKE ? OR i.original_title LIKE ?)'); params.push(`%${normalize(q.q)}%`, `%${q.q}%`); }
-    if (q.decade) { const d = Number(q.decade); where.push('i.year BETWEEN ? AND ?'); params.push(d, d + 9); }
+    if (q.decade === '<1970' || q.decade === 'clasicos') {
+      where.push('i.year > 0 AND i.year < 1970');
+    } else if (q.decade) {
+      const d = Number(q.decade);
+      if (Number.isFinite(d)) { where.push('i.year BETWEEN ? AND ?'); params.push(d, d + 9); }
+    }
     // Solo lo que este perfil no ha terminado: el filtro que más se echa de
     // menos en una biblioteca de mil y pico títulos.
     if (q.unwatched === '1' && user) {
@@ -865,6 +914,8 @@ export default async function libraryRoutes(app: FastifyInstance) {
   app.get('/api/people/:id/thumb', async (req, reply) => {
     const id = Number((req.params as { id: string }).id);
     const width = Number((req.query as { w?: string }).w ?? 160);
+    const localWebp = join(DATA_DIR, 'artwork', 'personas', `${id}.webp`);
+    if (existsSync(localWebp)) return serveArt(reply, localWebp, width);
     const localArt = join(DATA_DIR, 'artwork', 'personas', `${id}.jpg`);
     if (existsSync(localArt)) return serveArt(reply, localArt, width);
     const row = db.prepare('SELECT p.thumb, pd.profile FROM people p LEFT JOIN people_details pd ON pd.person_id = p.id WHERE p.id = ?').get(id) as { thumb: string | null; profile: string | null } | undefined;
@@ -878,6 +929,127 @@ export default async function libraryRoutes(app: FastifyInstance) {
       }
     }
     return serveArt(reply, row?.thumb ?? null, width);
+  });
+
+  const STUDIO_ALIASES: Record<string, string[]> = {
+    warner: ['warner', 'wb'],
+    universal: ['universal'],
+    paramount: ['paramount'],
+    fox: ['fox', 'century fox', 'twentieth century', 'searchlight'],
+    columbia: ['columbia', 'sony pictures'],
+    tristar: ['tristar', 'tri-star'],
+    disney: ['disney', 'walt disney'],
+    marvel: ['marvel'],
+    pixar: ['pixar'],
+    dreamworks: ['dreamworks'],
+    mgm: ['mgm', 'metro-goldwyn', 'united artists'],
+    lionsgate: ['lionsgate', 'summit'],
+    lucasfilm: ['lucasfilm'],
+    hbo: ['hbo'],
+    netflix: ['netflix'],
+    newline: ['new line', 'newline'],
+    miramax: ['miramax'],
+    touchstone: ['touchstone'],
+    studiocanal: ['studiocanal', 'studio canal'],
+    canalplus: ['canal+'],
+    a24: ['a24'],
+    orion: ['orion'],
+    focus: ['focus features'],
+    blumhouse: ['blumhouse'],
+    bbc: ['bbc'],
+    eon: ['eon productions'],
+    carolco: ['carolco'],
+    illumination: ['illumination'],
+    nickelodeon: ['nickelodeon'],
+    movistar: ['movistar'],
+  };
+
+  async function resolverLogoEstudio(nombreEstudio: string): Promise<string | null> {
+    const dir = join(DATA_DIR, 'artwork', 'studios');
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+
+    const lower = nombreEstudio.toLowerCase();
+    for (const [slug, patrones] of Object.entries(STUDIO_ALIASES)) {
+      if (patrones.some((p) => lower.includes(p))) {
+        const webp = join(dir, `${slug}.webp`);
+        if (existsSync(webp)) return webp;
+        const png = join(dir, `${slug}.png`);
+        if (existsSync(png)) return png;
+      }
+    }
+
+    const partes = nombreEstudio.split(/[,/]/).map((p) => p.trim()).filter(Boolean);
+    for (const parte of partes) {
+      const slug = parte.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+      if (!slug) continue;
+      const webp = join(dir, `${slug}.webp`);
+      if (existsSync(webp)) return webp;
+      const png = join(dir, `${slug}.png`);
+      if (existsSync(png)) return png;
+
+      const missing = join(dir, `${slug}.missing`);
+      if (existsSync(missing)) continue;
+
+      const apiKey = config.tmdbApiKey;
+      if (apiKey) {
+        try {
+          const r = await fetch(
+            `https://api.themoviedb.org/3/search/company?query=${encodeURIComponent(parte)}&api_key=${apiKey}`,
+            { signal: AbortSignal.timeout(4000) },
+          );
+          if (r.ok) {
+            const data = (await r.json()) as { results?: Array<{ logo_path?: string | null }> };
+            const logoPath = data.results?.find((x) => x.logo_path)?.logo_path;
+            if (logoPath) {
+              const destPng = join(dir, `${slug}.png`);
+              await descargar(`https://image.tmdb.org/t/p/w500${logoPath}`, destPng);
+              try {
+                const { spawn } = await import('node:child_process');
+                await new Promise((res) => {
+                  const p = spawn('ffmpeg', ['-y', '-v', 'error', '-i', destPng, '-c:v', 'libwebp', '-lossless', '1', webp], {
+                    stdio: ['ignore', 'ignore', 'ignore'],
+                    timeout: 6000,
+                  });
+                  p.on('close', (c) => {
+                    if (c === 0 && existsSync(webp)) {
+                      try { unlinkSync(destPng); } catch {}
+                    }
+                    res(true);
+                  });
+                  p.on('error', () => res(false));
+                });
+                if (existsSync(webp)) return webp;
+              } catch {}
+              return destPng;
+            }
+          }
+        } catch {}
+      }
+      try {
+        writeFileSync(missing, '');
+      } catch {}
+    }
+
+    return null;
+  }
+
+  app.get('/api/items/:id/studio-logo', async (req, reply) => {
+    const id = Number((req.params as { id: string }).id);
+    const width = (req.query as { w?: string }).w ? Number((req.query as { w: string }).w) : undefined;
+    if (!itemPermitido(id, currentUser(req))) return reply.code(404).send({ error: 'Sin imagen' });
+    const row = db.prepare('SELECT studio FROM items WHERE id = ?').get(id) as { studio: string | null } | undefined;
+    if (!row?.studio) return reply.code(404).send({ error: 'Sin estudio' });
+    const logo = await resolverLogoEstudio(row.studio);
+    if (!logo) return reply.code(404).send({ error: 'Sin logo para este estudio' });
+    return serveArt(reply, logo, width);
+  });
+
+  app.get('/api/studios/:nombre/logo', async (req, reply) => {
+    const nombre = (req.params as { nombre: string }).nombre;
+    const width = (req.query as { w?: string }).w ? Number((req.query as { w: string }).w) : undefined;
+    const logo = await resolverLogoEstudio(nombre);
+    if (!logo) return reply.code(404).send({ error: 'Sin logo para este estudio' });
+    return serveArt(reply, logo, width);
   });
 
   /*
@@ -1145,8 +1317,10 @@ export default async function libraryRoutes(app: FastifyInstance) {
     } catch {
       return reply.code(404).send({ error: 'No se pudo leer' });
     }
+    const ext = extname(themePath).toLowerCase();
+    const mimeAudio = ext === '.m4a' || ext === '.mp4' ? 'audio/mp4' : ext === '.aac' ? 'audio/aac' : 'audio/mpeg';
     reply
-      .header('Content-Type', 'audio/mpeg')
+      .header('Content-Type', mimeAudio)
       .header('Accept-Ranges', 'bytes')
       .header('Cache-Control', 'public, max-age=86400');
     const rango = parsearRango(req.headers.range, stat.size);
