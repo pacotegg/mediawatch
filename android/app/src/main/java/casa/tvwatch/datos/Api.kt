@@ -290,6 +290,13 @@ object Api {
   fun buscarDialogos(q: String): ResultadosDialogo =
     pedir("/api/search/dialogue?q=" + java.net.URLEncoder.encode(q, "UTF-8"))
 
+  /** Reinicio del servidor con aviso (solo administradores). `modo`: «ya» o «cuando-libre». */
+  fun reinicioEstado(): EstadoReinicio = pedir("/api/mantenimiento/reinicio")
+  fun reinicioPedir(modo: String): EstadoReinicio =
+    json.decodeFromString(texto("/api/mantenimiento/reinicio", "{\"modo\":\"$modo\"}"))
+  fun reinicioCancelar(): EstadoReinicio =
+    json.decodeFromString(texto("/api/mantenimiento/reinicio/cancelar", "{}"))
+
   /** Avisos del administrador para este aparato: un mensaje, o «para». */
   fun avisos(): Avisos = pedir("/api/mando")
 
@@ -320,6 +327,11 @@ object Api {
    */
   fun imagen(id: Int, tipo: String, ancho: Int) = "${Servidor.baseCacheada()}/api/items/$id/$tipo?w=$ancho"
   // claro=1: la versión que se lee sobre fondo oscuro (el servidor aclara los logos negros; uno viejo lo ignora).
+  /** Los estudios de un título con logo y la proporción de cada uno (ancho / alto). */
+  fun logosDeEstudios(id: Int): ListaLogos = pedir("/api/items/$id/studio-logos")
+  /** El logo de un estudio por nombre, aclarado o dorado por el servidor; `v` sube con cada cambio de estilo (caché de 30 días). */
+  fun logoDeEstudio(nombre: String, ancho: Int = 400) =
+    "${Servidor.baseCacheada()}/api/studios/${java.net.URLEncoder.encode(nombre, "UTF-8").replace("+", "%20")}/logo?claro=1&v=4&w=$ancho"
   fun logoEstudio(id: Int, ancho: Int = 360) = "${Servidor.baseCacheada()}/api/items/$id/studio-logo?w=$ancho&claro=1"
 
   /* ------------------------------------------------------- reproducción */
@@ -925,6 +937,22 @@ data class Dialogo(
 
 @Serializable
 data class EstadisticasDialogo(val frases: Long = 0)
+
+@Serializable
+data class LogoEstudio(val nombre: String, val aspecto: Double = 1.0)
+
+@Serializable
+data class ListaLogos(val logos: List<LogoEstudio> = emptyList())
+
+@Serializable
+data class EstadoReinicio(
+  val pendiente: Boolean = false,
+  val modo: String? = null,
+  val mensaje: String? = null,
+  val desde: Long? = null,
+  val salePara: Long? = null,
+  val viendo: Int = 0,
+)
 
 @Serializable
 data class Avisos(val mensaje: String? = null, val parar: Boolean = false)

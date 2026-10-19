@@ -407,6 +407,8 @@ fun PantallaAjustes(
 
       Spacer(Modifier.height(10.dp))
 
+      if (Ajustes.esAdmin) FilasReinicioServidor()
+
       FilaBoton(
         titulo = "Buscar actualizaciones",
         detalle = if (comprobandoActualizacion) "Comprobando servidor…" else "Comprobar si hay una versión nueva de la app",
@@ -544,7 +546,7 @@ private fun FilaInterruptor(
 }
 
 @Composable
-private fun FilaBoton(
+internal fun FilaBoton(
   titulo: String,
   detalle: String? = null,
   destacado: Boolean = false,

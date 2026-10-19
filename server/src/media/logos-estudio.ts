@@ -7,7 +7,8 @@
  * pasa a blanco, un azul marino a azul claro, y el dibujo se conserva); si ya es claro o tiene color, se sirve tal cual.
  */
 import { execFile } from 'node:child_process';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { config, DATA_DIR } from '../config.ts';
@@ -97,4 +98,37 @@ export async function versionClara(ruta: string): Promise<string> {
     // Sin ffmpeg o con un fichero raro: mejor el original que nada (no se recuerda, se reintenta la próxima vez).
     return ruta;
   }
+}
+
+const aspectos = new Map<string, number>();
+
+/** Ancho / alto del logo, para que los clientes sin el logo a mano (Android) decidan el sitio. Se mide una vez. */
+export async function aspectoDe(ruta: string): Promise<number> {
+  const hecho = aspectos.get(ruta);
+  if (hecho !== undefined) return hecho;
+  let a = 0;
+  try {
+    const { stdout } = await ejecutar(config.ffprobe, ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', ruta],
+      { timeout: 15_000, windowsHide: true });
+    const [w, h] = String(stdout).trim().split(',').map(Number);
+    if (w > 0 && h > 0) a = Math.round((w / h) * 1000) / 1000;
+  } catch { /* sin medida: el cliente usa un cuadrado */ }
+  if (a > 0) aspectos.set(ruta, a);
+  return a || 1;
+}
+
+const huellas = new Map<string, string>();
+
+/**
+ * Huella del CONTENIDO de un logo. Dos estudios distintos pueden dar dos ficheros con la misma imagen (en «Collateral»,
+ * «Parkes» y «MacDonald Productions» son una sola productora, «Parkes/MacDonald Productions», partida por la barra): quitar
+ * repetidos por nombre de fichero no los veía y salía el logo dos veces (visto el 19/10/2026).
+ */
+export function huellaDe(ruta: string): string {
+  const h = huellas.get(ruta);
+  if (h) return h;
+  let v = ruta;
+  try { v = createHash('md5').update(readFileSync(ruta)).digest('hex'); } catch { /* sin fichero: se queda la ruta */ }
+  huellas.set(ruta, v);
+  return v;
 }

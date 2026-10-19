@@ -451,15 +451,7 @@ fun PantallaFicha(
               )
               if (!f.studio.isNullOrBlank()) {
                 Spacer(Modifier.height(14.dp))
-                Imagen(
-                  url = Api.logoEstudio(f.id, 360),
-                  descripcion = f.studio,
-                  modifier = Modifier
-                    .width(180.dp)
-                    .height(44.dp),
-                  escala = ContentScale.Fit,
-                  alineacion = Alignment.Center,
-                )
+                LogosDeEstudios(f.id)
               }
             }
           }

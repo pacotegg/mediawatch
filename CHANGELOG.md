@@ -12,6 +12,11 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.74 — 19/10/2026
+
+- Administradores: nuevo botón «Reiniciar el servidor con aviso» en Ajustes. Avisa a todos los aparatos («Mantenimiento en curso, volvemos en un minuto») y lo reinicia, ahora o cuando nadie esté viendo nada, sin tener que estar delante del ordenador. Se puede cancelar.
+- Ficha: salen los logos de todos los estudios, de dos en dos y con «Producida por», no solo el primero.
+
 ## 3.73 — 19/10/2026
 
 - Logo del estudio en la ficha: los que son negros (EON, United Artists, Columbia…) ya no se pierden sobre el fondo oscuro; los de color se ven con su color. Además, los logos tienen ahora más resolución.

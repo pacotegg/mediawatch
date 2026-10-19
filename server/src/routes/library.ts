@@ -23,7 +23,7 @@ import { paginaTrailer, trailerDe } from '../media/trailers.ts';
 import { toString as qrComoSvg } from 'qrcode';
 import { parsearRango } from '../media/rango.ts';
 import { etiquetasTecnicas } from '../media/etiquetas.ts';
-import { versionClara } from '../media/logos-estudio.ts';
+import { aspectoDe, huellaDe, versionClara } from '../media/logos-estudio.ts';
 
 const MIME: Record<string, string> = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp' };
 
@@ -987,8 +987,10 @@ export default async function libraryRoutes(app: FastifyInstance) {
     const res: { nombre: string; ruta: string }[] = [];
     for (const parte of partesDeEstudio(nombreEstudio)) {
       const ruta = await logoDeUnEstudio(parte);
-      if (!ruta || vistos.has(ruta)) continue;
-      vistos.add(ruta);
+      if (!ruta) continue;
+      const huella = huellaDe(ruta);
+      if (vistos.has(huella)) continue;
+      vistos.add(huella);
       res.push({ nombre: parte, ruta });
     }
     return res;
@@ -1083,7 +1085,9 @@ export default async function libraryRoutes(app: FastifyInstance) {
     if (!itemPermitido(id, currentUser(req))) return reply.code(404).send({ error: 'No encontrado' });
     const row = db.prepare('SELECT studio FROM items WHERE id = ?').get(id) as { studio: string | null } | undefined;
     if (!row?.studio) return { estudios: [] };
-    return { estudios: (await logosDeEstudios(row.studio)).map((l) => l.nombre) };
+    const ls = await logosDeEstudios(row.studio);
+    // `estudios` lo usan la tele y la web; `logos` (con la proporción de cada uno) lo usa Android.
+    return { estudios: ls.map((l) => l.nombre), logos: await Promise.all(ls.map(async (l) => ({ nombre: l.nombre, aspecto: await aspectoDe(l.ruta) }))) };
   });
 
   // `claro=1`: la versión que se lee sobre fondo oscuro (ver media/logos-estudio.ts).
