@@ -12,6 +12,12 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.70 — 19/10/2026
+
+- Edición coleccionista 3D (móvil y Google TV): el disco ya no se ve girar con la caja cerrada. Se queda quieto mientras la tapa lo cubre y se asienta cuando la tapa pasa de la mitad.
+- Edición coleccionista 3D: la tapa se abre más despacio y con un pequeño rebote al final, y la inclinación con el dedo o el mando es más suave.
+- Edición coleccionista 3D: abierta ya no está quieta. La caja flota y el disco gira despacio bajo un reflejo fijo.
+
 ## 3.69 — 18/10/2026
 
 - Logos de estudio en alta resolución: presencia del logotipo oficial de la productora optimizado bajo la carátula y en el libreto interior.
