@@ -863,11 +863,11 @@ body.rend-rapido .lamina img {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 280px;
+  width: 100%;
 }
 
 .fila-logos-estudio .logo-estudio-3d + .logo-estudio-3d {
-  margin-left: 16px;
+  margin-left: 28px;
 }
 
 .logo-estudio-3d.listo {

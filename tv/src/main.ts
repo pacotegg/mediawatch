@@ -1903,22 +1903,29 @@ async function pintarLogosEstudio(id: number, caja: HTMLElement) {
     const imgs = Array.prototype.slice.call(caja.querySelectorAll('img')) as HTMLImageElement[];
     if (!imgs.length) { caja.style.display = 'none'; return; }
     const solo = imgs.length === 1;
-    const area = solo ? AREA_LOGO : 5200;
-    const maxW = solo ? 280 : 128, maxH = solo ? 95 : 68;
-    // Muy alargados (4:1 o más, p. ej. el texto de DreamWorks Pictures, 11:1): fila propia y todo el ancho. Emparejados
-    // salían a 11 px de alto.
+    // Con 3 o más, la caja se ensancha hacia la izquierda, donde no hay nada (medido el 19/10/2026 sobre fichas reales:
+    // el botón más a la derecha de las acciones acaba en x=1165 y esta caja empieza en x=1375). Con 280 px de ancho, 5 o
+    // 6 estudios salían apretados y a 17-24 px de alto.
+    // Muy alargados (4:1 o más, p. ej. el texto de DreamWorks Pictures, 11:1): fila propia y casi todo el ancho. Con uno
+    // de esos, aunque sean dos estudios, la caja también se ensancha (a 280 px salía a 18 px de alto).
     const ancho = (img: HTMLImageElement) => (img.naturalWidth / img.naturalHeight || 1) >= 4;
+    const anchoCaja = imgs.length >= 3 || (!solo && imgs.some(ancho)) ? 440 : 280;
+    caja.style.width = anchoCaja + 'px';
+    const huecoCol = 28;
+    const colW = (anchoCaja - huecoCol) / 2;
+    const area = solo ? AREA_LOGO : imgs.length >= 3 ? 7400 : 6200;
+    const maxW = solo ? 280 : colW, maxH = solo ? 95 : 80;
     const tam = imgs.map((img) => {
       const r = img.naturalWidth / img.naturalHeight || 1;
       const largo = !solo && ancho(img);
-      const mW = largo ? 280 : maxW;
-      let w = Math.sqrt((largo ? 7000 : area) * r);
+      const mW = largo ? anchoCaja * 0.92 : maxW;
+      let w = Math.sqrt((largo ? 9500 : area) * r);
       let h = w / r;
       if (w > mW) { w = mW; h = w / r; }
       if (h > maxH) { h = maxH; w = h * r; }
       return { w: w, h: h };
     });
-    const hueco = 14;
+    const hueco = 22;
     const filas: number[][] = [];
     let suelto = -1;
     imgs.forEach((img, i) => {
@@ -1931,7 +1938,7 @@ async function pintarLogosEstudio(id: number, caja: HTMLElement) {
     const altoFila = filas.map((f) => Math.max.apply(null, f.map((i) => tam[i].h)));
     const alto = altoFila.reduce((s, h) => s + h, 0) + hueco * (filas.length - 1);
     const sitio = FONDO_LOGOS - caja.offsetTop - rotulo.offsetHeight - 12;
-    const k = alto > sitio ? Math.max(0.3, (sitio - hueco * (filas.length - 1)) / (alto - hueco * (filas.length - 1))) : 1;
+    const k = alto > sitio ? Math.max(0.45, (sitio - hueco * (filas.length - 1)) / (alto - hueco * (filas.length - 1))) : 1;
     filas.forEach((f, n) => {
       const fila = document.createElement('div');
       fila.className = 'fila-logos-estudio';
@@ -2356,8 +2363,9 @@ function formatoAspecto(ancho?: number | null, alto?: number | null): string {
     if (!hueco || !ficheroPistasId) return;
     const propia = seleccion.fileId === ficheroPistasId;
     const deLaSerie = esSerie && seleccionSerie && seleccionSerie.itemId === ficha.id ? resolverSerie(info, seleccionSerie) : null;
-    const iAudio = propia ? seleccion.audio : deLaSerie ? deLaSerie.audio : pistaInicial(info.audio);
-    const iSub = propia ? seleccion.subtitulo : deLaSerie ? deLaSerie.subtitulo : -1;
+    const guardadas = pistasGuardadas(info);
+    const iAudio = propia ? seleccion.audio : guardadas.audio !== null ? guardadas.audio : deLaSerie ? deLaSerie.audio : pistaInicial(info.audio);
+    const iSub = propia ? seleccion.subtitulo : guardadas.subtitulo !== null ? guardadas.subtitulo : deLaSerie ? deLaSerie.subtitulo : -1;
     const chip = (texto: string, elegida: boolean) =>
       '<span class="etiqueta-tec' + (elegida ? ' elegida' : '') + '">' + (elegida ? '\u25b6 ' : '') + esc(texto) + '</span>';
     let html = '';
@@ -2890,6 +2898,32 @@ function esEtiquetaDePista(t: string): boolean {
   return t.indexOf('Subs:') === 0 || /^(Dolby|DTS|AAC|FLAC|MP3|Opus|PCM|TRUEHD|EAC3|AC3)/i.test(t);
 }
 
+/**
+ * Lo que este perfil dejó elegido en este fichero (audio y subtítulos), como ordinales de la lista de pistas, o null si
+ * no hay nada guardado. Una sola función para la ficha, el menú y el reproductor: la ficha la ignoraba y enseñaba
+ * «Español» y «Desactivados» aunque estuviera guardado el inglés con subtítulos (visto el 19/10/2026; el servidor sí lo
+ * guardaba, por perfil, en `progress.audio_track` y `subtitle_track`).
+ */
+function pistasGuardadas(info: InfoReproduccion): { audio: number | null; subtitulo: number | null } {
+  let audio: number | null = null;
+  let subtitulo: number | null = null;
+  if (info.savedAudio != null) {
+    const idx = info.audio.findIndex((a) => String(a.id) === String(info.savedAudio));
+    if (idx >= 0) audio = idx;
+  }
+  if (info.savedSubtitle === 'off') {
+    subtitulo = -1;
+  } else if (info.savedSubtitle) {
+    const subsInc = info.subtitles.filter((x) => x.source === 'embedded');
+    const subsExt = info.subtitles.filter((x) => x.source === 'external');
+    const iInc = subsInc.findIndex((x) => x.id === info.savedSubtitle);
+    const iExt = subsExt.findIndex((x) => x.id === info.savedSubtitle);
+    if (iInc >= 0) subtitulo = iInc;
+    else if (iExt >= 0) subtitulo = -(10 + iExt);
+  }
+  return { audio: audio, subtitulo: subtitulo };
+}
+
 async function menuPistas(fileId: number, tipo: 'audio' | 'subs', alCambiar?: (info: InfoReproduccion) => void, serieId?: number) {
   let info: InfoReproduccion;
   try {
@@ -2905,24 +2939,13 @@ async function menuPistas(fileId: number, tipo: 'audio' | 'subs', alCambiar?: (i
     seleccion.fileId = fileId;
     seleccion.audio = 0;
     seleccion.subtitulo = -1;
-    if (info.savedAudio != null) {
-      const idx = info.audio.findIndex((a) => String(a.id) === String(info.savedAudio));
-      if (idx >= 0) {
-        seleccion.audio = idx;
-        seleccion.audioId = info.audio[idx].id;
-        seleccion.convertir = info.audio[idx].compatible === false;
-      }
+    const guardadas = pistasGuardadas(info);
+    if (guardadas.audio !== null) {
+      seleccion.audio = guardadas.audio;
+      seleccion.audioId = info.audio[guardadas.audio].id;
+      seleccion.convertir = info.audio[guardadas.audio].compatible === false;
     }
-    if (info.savedSubtitle === 'off') {
-      seleccion.subtitulo = -1;
-    } else if (info.savedSubtitle) {
-      const subsInc = info.subtitles.filter((s) => s.source === 'embedded');
-      const subsExt = info.subtitles.filter((s) => s.source === 'external');
-      const iInc = subsInc.findIndex((s) => s.id === info.savedSubtitle);
-      const iExt = subsExt.findIndex((s) => s.id === info.savedSubtitle);
-      if (iInc >= 0) seleccion.subtitulo = iInc;
-      else if (iExt >= 0) seleccion.subtitulo = -(10 + iExt);
-    }
+    if (guardadas.subtitulo !== null) seleccion.subtitulo = guardadas.subtitulo;
     // En una serie, si no había pista guardada para este episodio, partir de lo ya elegido para ella (por idioma)
     if (serieId !== undefined && seleccionSerie && seleccionSerie.itemId === serieId && info.savedAudio == null) {
       const r = resolverSerie(info, seleccionSerie);
@@ -5819,20 +5842,9 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
       } else {
         audioOrdinal = pistaInicial(info.audio);
         subOrdinal = -1;
-        if (info.savedAudio != null) {
-          const idx = info.audio.findIndex((a) => String(a.id) === String(info.savedAudio));
-          if (idx >= 0) audioOrdinal = idx;
-        }
-        if (info.savedSubtitle === 'off') {
-          subOrdinal = -1;
-        } else if (info.savedSubtitle) {
-          const subInc = info.subtitles.filter((s) => s.source === 'embedded');
-          const subExt = info.subtitles.filter((s) => s.source === 'external');
-          const iInc = subInc.findIndex((s) => s.id === info.savedSubtitle);
-          const iExt = subExt.findIndex((s) => s.id === info.savedSubtitle);
-          if (iInc >= 0) subOrdinal = iInc;
-          else if (iExt >= 0) subOrdinal = -(10 + iExt);
-        }
+        const guardadas = pistasGuardadas(info);
+        if (guardadas.audio !== null) audioOrdinal = guardadas.audio;
+        if (guardadas.subtitulo !== null) subOrdinal = guardadas.subtitulo;
         const deLaSerie = seleccionSerie && seleccionSerie.itemId === ficha.id ? resolverSerie(info, seleccionSerie) : null;
         if (deLaSerie && info.savedAudio == null) {
           audioOrdinal = deLaSerie.audio;
