@@ -1858,7 +1858,8 @@ function despegarCartel(elOrigen: HTMLElement): { aterrizar: () => void; cancela
  * (260 x 75) un logo casi cuadrado como el león de MGM salía a 116 x 75, la mitad que uno alargado. Cada uno espera a
  * tener su tamaño antes de verse, para no dar saltos. Los que no cargan se quitan.
  */
-const AREA_LOGO = 12000;
+// Se pidió más pequeños (19/10/2026): 12.000 -> 9.500 (un 11 % menos de lado); con más de tres, un 20 % menos aún.
+const AREA_LOGO = 9500;
 /*
  * Hasta dónde pueden bajar: la fila de Reparto empieza hacia los 912 px. Medido el 19/10/2026 sobre 1.973 títulos: 611
  * tienen un logo, 561 dos, 299 tres y 227 de cuatro a ocho; a tamaño normal caben tres. Con más, se encogen TODOS por igual
@@ -1885,7 +1886,8 @@ async function pintarLogosEstudio(id: number, caja: HTMLElement) {
     });
     const alto = tam.reduce((s, t) => s + t.h, 0) + hueco * (imgs.length - 1);
     const sitio = FONDO_LOGOS - caja.offsetTop;
-    const k = alto > sitio ? Math.max(0.3, (sitio - hueco * (imgs.length - 1)) / (alto - hueco * (imgs.length - 1))) : 1;
+    const cabe = alto > sitio ? Math.max(0.3, (sitio - hueco * (imgs.length - 1)) / (alto - hueco * (imgs.length - 1))) : 1;
+    const k = imgs.length > 3 ? Math.min(cabe, 0.8) : cabe;
     imgs.forEach((img, i) => {
       img.style.width = Math.round(tam[i].w * k) + 'px';
       img.style.height = Math.round(tam[i].h * k) + 'px';
