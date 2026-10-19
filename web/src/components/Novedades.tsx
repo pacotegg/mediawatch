@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, img } from '../lib/api.ts';
 
@@ -35,7 +36,7 @@ export default function Novedades({ sinPortada = false }: { sinPortada?: boolean
       <div className="flex gap-3 overflow-x-auto pb-1">
         {data.items.map((i) => (
           <Link key={i.id} to={`/titulo/${i.id}`} className="w-[92px] shrink-0" title={i.title}>
-            <img src={img.poster(i.id, 200)} alt="" loading="lazy" className="aspect-[2/3] w-full rounded-lg bg-white/5 object-cover" />
+            <CartelNovedad id={i.id} titulo={i.title} />
             <div className="mt-1 truncate text-[11.5px] text-mist-300">{i.title}</div>
           </Link>
         ))}
@@ -43,4 +44,20 @@ export default function Novedades({ sinPortada = false }: { sinPortada?: boolean
       </div>
     </section>
   );
+}
+
+/*
+ * Sin cartel, el título en una tarjeta (como PosterCard). La lista no trae `has_poster`, así que se decide al fallar la
+ * carga: el 19/10/2026 un probador vio la ventana llena de imágenes rotas con 30 monólogos que no tienen cartel (404).
+ */
+function CartelNovedad({ id, titulo }: { id: number; titulo: string }) {
+  const [roto, setRoto] = useState(false);
+  if (roto) {
+    return (
+      <div className="flex aspect-[2/3] w-full items-center justify-center rounded-lg bg-white/5 p-2 text-center text-[11px] leading-tight text-mist-500">
+        {titulo}
+      </div>
+    );
+  }
+  return <img src={img.poster(id, 200)} alt="" loading="lazy" onError={() => setRoto(true)} className="aspect-[2/3] w-full rounded-lg bg-white/5 object-cover" />;
 }
