@@ -319,6 +319,8 @@ export const api = {
   home: () => request<{ hero: ItemSummary[]; rows: { key: string; title: string; kind: string; items: ItemSummary[] }[] }>('/api/home'),
   libraries: () => request<{ id: number; name: string; kind: string; count: number }[]>('/api/libraries'),
   genres: (library?: number) => request<{ id: number; name: string; count: number }[]>(`/api/genres${library ? `?library=${library}` : ''}`),
+  /** Los estudios de un título con logo, sin repetir y en su orden. */
+  studioLogos: (id: number) => request<{ estudios: string[] }>(`/api/items/${id}/studio-logos`),
   studios: (library?: number) => request<{ name: string; count: number }[]>(`/api/studios${library ? `?library=${library}` : ''}`),
   actors: (library?: number) => request<{ id: number; name: string; thumb: string | null; count: number }[]>(`/api/actors${library ? `?library=${library}` : ''}`),
   items: (params: Record<string, string | number | undefined>) => {
@@ -840,6 +842,8 @@ export const img = {
   episode: (id: number, w = 420) => `/api/episodes/${id}/thumb?w=${w}`,
   person: (id: number, w = 160) => `/api/people/${id}/thumb?w=${w}`,
   studio: (id: number, w = 360) => `/api/items/${id}/studio-logo?w=${w}`,
+  /** El logo de un estudio por nombre, ya aclarado o dorado por el servidor. `v` sube con cada cambio de estilo (caché de 30 días). */
+  estudio: (nombre: string, w = 400) => `/api/studios/${encodeURIComponent(nombre)}/logo?claro=1&v=4&w=${w}`,
 };
 
 function supports(type: string): boolean {

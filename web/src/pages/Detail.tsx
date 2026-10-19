@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import LogosEstudio from '../components/LogosEstudio.tsx';
 import { motion } from 'motion/react';
 import { AnimatePresence } from 'motion/react';
 import { CandidateRow } from '../components/MetadataReview.tsx';
@@ -911,16 +912,7 @@ export default function Detail() {
                 es4k={es4kItem}
                 onAbrirColeccionista={() => setMostrarColeccionista(true)}
               />
-              {item.studio && (
-                <div className="mt-7 flex justify-center">
-                  <img
-                    src={img.studio(itemId)}
-                    alt={item.studio}
-                    className="logo-estudio-3d max-h-16 max-w-[240px] object-contain"
-                    onError={(e) => { (e.currentTarget.parentElement as HTMLElement).style.display = 'none'; }}
-                  />
-                </div>
-              )}
+              {item.studio && <LogosEstudio itemId={itemId} />}
             </div>
           ) : item.has_poster ? (
             <div className="hidden lg:block shrink-0 pt-2 pr-4">
@@ -929,16 +921,7 @@ export default function Detail() {
                 alt={item.title}
                 className="h-[324px] w-[220px] rounded-xl object-cover shadow-2xl ring-1 ring-white/10"
               />
-              {item.studio && (
-                <div className="mt-7 flex justify-center">
-                  <img
-                    src={img.studio(itemId)}
-                    alt={item.studio}
-                    className="logo-estudio-3d max-h-16 max-w-[240px] object-contain"
-                    onError={(e) => { (e.currentTarget.parentElement as HTMLElement).style.display = 'none'; }}
-                  />
-                </div>
-              )}
+              {item.studio && <LogosEstudio itemId={itemId} />}
             </div>
           ) : null}
 
@@ -951,16 +934,7 @@ export default function Detail() {
                 es4k={es4kItem}
                 onAbrirColeccionista={() => setMostrarColeccionista(true)}
               />
-              {item.studio && (
-                <div className="mt-6 flex justify-center">
-                  <img
-                    src={img.studio(itemId)}
-                    alt={item.studio}
-                    className="logo-estudio-3d max-h-12 max-w-[190px] object-contain"
-                    onError={(e) => { (e.currentTarget.parentElement as HTMLElement).style.display = 'none'; }}
-                  />
-                </div>
-              )}
+              {item.studio && <LogosEstudio itemId={itemId} compacto />}
             </div>
           ) : item.has_poster ? (
             <div className="mt-8 flex flex-col items-center justify-center lg:hidden">
@@ -969,16 +943,7 @@ export default function Detail() {
                 alt={item.title}
                 className="h-[300px] w-[200px] rounded-xl object-cover shadow-2xl ring-1 ring-white/10"
               />
-              {item.studio && (
-                <div className="mt-6 flex justify-center">
-                  <img
-                    src={img.studio(itemId)}
-                    alt={item.studio}
-                    className="logo-estudio-3d max-h-12 max-w-[190px] object-contain"
-                    onError={(e) => { (e.currentTarget.parentElement as HTMLElement).style.display = 'none'; }}
-                  />
-                </div>
-              )}
+              {item.studio && <LogosEstudio itemId={itemId} compacto />}
             </div>
           ) : null}
         </div>

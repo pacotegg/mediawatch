@@ -277,11 +277,13 @@ video::-webkit-media-controls {
 
 /* Logotipo oficial de estudio con relieve 3D */
 .logo-estudio-3d {
-  filter: brightness(0) invert(1)
-          drop-shadow(0 1px 0 rgba(255, 255, 255, 0.45))
-          drop-shadow(0 -1px 0 rgba(0, 0, 0, 0.7))
-          drop-shadow(0 3px 6px rgba(0, 0, 0, 0.85));
-  opacity: 0.85;
+  /* Sin el viejo `brightness(0) invert(1)`: el servidor ya da cada logo aclarado o dorado. Relieve como en la tele. */
+  filter: drop-shadow(0 -1px 0 rgba(255, 255, 255, 0.35))
+          drop-shadow(0 1px 0 #9aa0aa)
+          drop-shadow(0 1px 0 #6e747e)
+          drop-shadow(0 1px 0 #474c55)
+          drop-shadow(0 5px 8px rgba(0, 0, 0, 0.85));
+  opacity: 0.92;
   transition: opacity 0.2s, transform 0.2s;
 }
 .logo-estudio-3d:hover {

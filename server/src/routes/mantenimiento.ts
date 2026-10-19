@@ -1,3 +1,4 @@
+import { execFile } from 'node:child_process';
 import { readdirSync, statfsSync, statSync } from 'node:fs';
 import { access } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -9,6 +10,9 @@ import { limpiarCache as limpiarCacheImagenes } from '../media/images.ts';
 import { limpiarHuerfanas as limpiarTrickplayHuerfano } from '../media/trickplay.ts';
 import { requireUser } from './auth.ts';
 import { avisosSmart, avisosWindows } from '../media/salud-discos.ts';
+import { enviarMensaje } from '../media/avisos.ts';
+import { hayAlguienViendo } from '../media/ocupado.ts';
+import { crearReinicio, type ModoReinicio } from '../media/reinicio.ts';
 
 /*
  * Tamaño total y número de ficheros de una carpeta, sin bajar a subcarpetas
@@ -164,5 +168,63 @@ export default async function mantenimientoRoutes(app: FastifyInstance) {
 
     const ruta = await backupBaseDeDatosEnWorker();
     return { ruta };
+  });
+
+  /*
+   * Reinicio con aviso (pedido desde la app del móvil, 19/10/2026): ver media/reinicio.ts. Solo administradores, y solo si
+   * hay vigilante que lo levante después; si no, salir dejaría el servidor parado y sin forma de arrancarlo desde el móvil.
+   */
+  const reinicio = crearReinicio({
+    ahora: () => Date.now(),
+    alguienViendo: () => {
+      if (hayAlguienViendo()) return true;
+      const desde = new Date(Date.now() - 120_000).toISOString();
+      return ((db.prepare('SELECT COUNT(*) AS n FROM playbacks WHERE updated_at >= ? AND finished = 0').get(desde) as { n: number }).n) > 0;
+    },
+    sesiones: () => {
+      const desde = new Date(Date.now() - 24 * 3600_000).toISOString();
+      return (db.prepare('SELECT substr(token, 1, 8) AS s FROM sessions WHERE COALESCE(last_seen, created_at) >= ?').all(desde) as { s: string }[]).map((r) => r.s);
+    },
+    enviarMensaje,
+    salir: () => {
+      app.log.warn('reinicio con aviso: saliendo; lo levanta el vigilante');
+      // Cerrar sin esperar a nadie más de 3 s: un streaming abierto no debe impedir la salida.
+      const forzar = setTimeout(() => process.exit(0), 3000);
+      void app.close().finally(() => { clearTimeout(forzar); process.exit(0); });
+    },
+  });
+  setInterval(() => { try { reinicio.tic(); } catch (e) { app.log.error(e); } }, 5000).unref();
+
+  /** ¿Hay un `vigilar-servidor.ps1` vivo? Se pregunta a Windows; sin respuesta en 8 s, se da por no. */
+  function hayVigilante(): Promise<boolean> {
+    if (process.platform !== 'win32') return Promise.resolve(false);
+    return new Promise((resolve) => {
+      const p = execFile('powershell.exe',
+        ['-NoProfile', '-Command', "@(Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'vigilar-servidor' }).Count"],
+        { timeout: 8000, windowsHide: true }, (err, out) => resolve(!err && Number(String(out).trim()) > 0));
+      p.on('error', () => resolve(false));
+    });
+  }
+
+  app.get('/api/mantenimiento/reinicio', async (req, reply) => {
+    if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'Solo un administrador' });
+    const desde = new Date(Date.now() - 120_000).toISOString();
+    const viendo = (db.prepare('SELECT COUNT(*) AS n FROM playbacks WHERE updated_at >= ? AND finished = 0').get(desde) as { n: number }).n;
+    return { ...reinicio.estado(), viendo };
+  });
+
+  app.post('/api/mantenimiento/reinicio', async (req, reply) => {
+    if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'Solo un administrador' });
+    const cuerpo = (req.body ?? {}) as { modo?: string; mensaje?: string };
+    if (cuerpo.modo !== 'ya' && cuerpo.modo !== 'cuando-libre') return reply.code(400).send({ error: 'modo debe ser «ya» o «cuando-libre»' });
+    if (!reinicio.estado().pendiente && !(await hayVigilante())) {
+      return reply.code(409).send({ error: 'No hay vigilante (vigilar-servidor.ps1) vivo: el servidor no volvería a arrancar solo.' });
+    }
+    return reinicio.pedir(cuerpo.modo as ModoReinicio, cuerpo.mensaje);
+  });
+
+  app.post('/api/mantenimiento/reinicio/cancelar', async (req, reply) => {
+    if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'Solo un administrador' });
+    return reinicio.cancelar();
   });
 }
