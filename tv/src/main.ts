@@ -1909,17 +1909,19 @@ async function pintarLogosEstudio(id: number, caja: HTMLElement) {
     // Muy alargados (4:1 o más, p. ej. el texto de DreamWorks Pictures, 11:1): fila propia y casi todo el ancho. Con uno
     // de esos, aunque sean dos estudios, la caja también se ensancha (a 280 px salía a 18 px de alto).
     const ancho = (img: HTMLImageElement) => (img.naturalWidth / img.naturalHeight || 1) >= 4;
-    const anchoCaja = imgs.length >= 3 || (!solo && imgs.some(ancho)) ? 440 : 280;
+    // Más grandes (pedido el 19/10/2026: con dos estudios salían pequeños junto al cartel): dos, 360 px; tres o más o uno
+    // alargado, 480 (el logo más a la izquierda empieza en x=1335 y el botón de acciones más a la derecha acaba en x=984).
+    const anchoCaja = imgs.length >= 3 || (!solo && imgs.some(ancho)) ? 480 : imgs.length === 2 ? 360 : 280;
     caja.style.width = anchoCaja + 'px';
     const huecoCol = 28;
     const colW = (anchoCaja - huecoCol) / 2;
-    const area = solo ? AREA_LOGO : imgs.length >= 3 ? 7400 : 6200;
-    const maxW = solo ? 280 : colW, maxH = solo ? 95 : 80;
+    const area = solo ? AREA_LOGO : 9200;
+    const maxW = solo ? 280 : colW, maxH = solo ? 95 : 92;
     const tam = imgs.map((img) => {
       const r = img.naturalWidth / img.naturalHeight || 1;
       const largo = !solo && ancho(img);
       const mW = largo ? anchoCaja * 0.92 : maxW;
-      let w = Math.sqrt((largo ? 9500 : area) * r);
+      let w = Math.sqrt((largo ? 11500 : area) * r);
       let h = w / r;
       if (w > mW) { w = mW; h = w / r; }
       if (h > maxH) { h = maxH; w = h * r; }
@@ -1937,8 +1939,12 @@ async function pintarLogosEstudio(id: number, caja: HTMLElement) {
     if (suelto >= 0) filas.push([suelto]);
     const altoFila = filas.map((f) => Math.max.apply(null, f.map((i) => tam[i].h)));
     const alto = altoFila.reduce((s, h) => s + h, 0) + hueco * (filas.length - 1);
-    const sitio = FONDO_LOGOS - caja.offsetTop - rotulo.offsetHeight - 12;
-    const k = alto > sitio ? Math.max(0.45, (sitio - hueco * (filas.length - 1)) / (alto - hueco * (filas.length - 1))) : 1;
+    // El hueco hasta el Reparto cambia de ficha en ficha (medido el 19/10/2026: empieza entre y=733 y y=857 según las líneas
+    // de sinopsis y de etiquetas); con un límite fijo, los logos tapaban la fila del reparto en varias.
+    const reparto = marco.querySelector<HTMLElement>('.reparto');
+    const limite = reparto ? reparto.getBoundingClientRect().top - 14 : FONDO_LOGOS;
+    const sitio = limite - caja.getBoundingClientRect().top - rotulo.offsetHeight - 12;
+    const k = alto > sitio ? Math.max(0.4, (sitio - hueco * (filas.length - 1)) / (alto - hueco * (filas.length - 1))) : 1;
     filas.forEach((f, n) => {
       const fila = document.createElement('div');
       fila.className = 'fila-logos-estudio';
