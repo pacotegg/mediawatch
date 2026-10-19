@@ -277,6 +277,8 @@ private fun Reproduciendo(
    */
   var encaje by remember { mutableStateOf(Encaje.guardado()) }
   var tramoALaVista by remember { mutableStateOf<RangoSalto?>(null) }
+  // Salto que pide el modo maratón; lo hace irA() (definida más abajo), que sabe saltar también en la tubería.
+  var saltoMaraton by remember(fileId) { mutableStateOf<Double?>(null) }
   var controlesVisibles by remember { mutableStateOf(true) }
   /** Cada toque en los controles vuelve a contar los 5 s antes de esconderlos. */
   var ultimoToque by remember { mutableStateOf(0L) }
@@ -586,14 +588,20 @@ private fun Reproduciendo(
   LaunchedEffect(fileId, porTuberia) {
     while (true) {
       delay(5_000)
-      val enSegundos = desfase + reproductor.currentPosition / 1000.0
+      // En vivo, no `desfase`/`duracionConocida`: se fijaron al lanzar el efecto y un salto por la tubería cambia el
+      // desfase sin relanzarlo (medido: guardaba 20 s con el episodio en el 150).
+      val desfaseVivo = if (porTuberia) desdeDeLaTuberia else 0.0
+      val enSegundos = desfaseVivo + reproductor.currentPosition / 1000.0
       if (reproductor.isPlaying && enSegundos > 5) {
         // Cada quince segundos, no cada uno: es lo que basta para no perder el
         // sitio y no llena la base de escrituras.
         if (((enSegundos.toInt()) % 15) < 6) {
           try {
+            // ExoPlayer solo se puede leer desde el hilo principal: dentro de Dispatchers.IO lanzaba IllegalStateException,
+            // el catch se la tragaba y el progreso NUNCA llegaba al servidor (desde el 11/10, c013f0d).
+            val sub = subtituloPuesto()
             withContext(Dispatchers.IO) {
-              Api.guardarProgreso(itemId, episodioId, enSegundos, duracionConocida, audio = pistaAudio?.toString(), subtitulo = subtituloPuesto())
+              Api.guardarProgreso(itemId, episodioId, enSegundos, info?.duration ?: duracionConocida, audio = pistaAudio?.toString(), subtitulo = sub)
             }
           } catch (e: Exception) { /* ya se reintentará al siguiente */ }
         }
@@ -617,7 +625,9 @@ private fun Reproduciendo(
       if (dentro != null && encadenado && Ajustes.modoMaraton && (dentro.kind == "intro" || dentro.kind == "recap")) {
         // Modo maratón: solo en un episodio encadenado (ver Ajustes.modoMaraton).
         tramosSaltados.add(dentro.kind + dentro.desde)
-        reproductor.seekTo(((dentro.hasta - desfase) * 1000).toLong().coerceAtLeast(0L))
+        // Con seekTo no saltaba nada si el episodio iba por la tubería (flujo convertido, no se puede buscar en él):
+        // medido en el emulador, seguía en el segundo 18 de una cabecera de 0 a 128 s.
+        saltoMaraton = dentro.hasta
         tramoALaVista = null
       } else {
         tramoALaVista = dentro
@@ -635,8 +645,9 @@ private fun Reproduciendo(
     if (enSegundos > 5) {
       ambito.launch {
         try {
+          val sub = subtituloPuesto()
           withContext(Dispatchers.IO) {
-            Api.guardarProgreso(itemId, episodioId, enSegundos, total, audio = pistaAudio?.toString(), subtitulo = subtituloPuesto())
+            Api.guardarProgreso(itemId, episodioId, enSegundos, total, audio = pistaAudio?.toString(), subtitulo = sub)
           }
         } catch (e: Exception) { /* da igual: se sale igualmente */ }
         alSalirActual()
@@ -715,7 +726,8 @@ private fun Reproduciendo(
     reproductor.pause()
     ambito.launch {
       try {
-        withContext(Dispatchers.IO) { Api.guardarProgreso(itemId, episodioId, duracionConocida, duracionConocida, vista = true, audio = pistaAudio?.toString(), subtitulo = subtituloPuesto()) }
+        val sub = subtituloPuesto()
+        withContext(Dispatchers.IO) { Api.guardarProgreso(itemId, episodioId, duracionConocida, duracionConocida, vista = true, audio = pistaAudio?.toString(), subtitulo = sub) }
       } catch (e: Exception) { /* se pasa igual */ }
       alSiguiente(fichero, sig.id, true)
     }
@@ -740,7 +752,8 @@ private fun Reproduciendo(
     reproductor.pause()
     ambito.launch {
       try {
-        withContext(Dispatchers.IO) { Api.guardarProgreso(itemId, episodioId, donde, duracionConocida, vista = yaVisto, audio = pistaAudio?.toString(), subtitulo = subtituloPuesto()) }
+        val sub = subtituloPuesto()
+        withContext(Dispatchers.IO) { Api.guardarProgreso(itemId, episodioId, donde, duracionConocida, vista = yaVisto, audio = pistaAudio?.toString(), subtitulo = sub) }
       } catch (e: Exception) { /* se cambia igual */ }
       alSiguiente(fichero, destino.id, false)
     }
@@ -798,6 +811,12 @@ private fun Reproduciendo(
     }
     porTuberia = true
     saltoPendiente = segundos
+  }
+
+  LaunchedEffect(saltoMaraton) {
+    val destino = saltoMaraton ?: return@LaunchedEffect
+    saltoMaraton = null
+    irA(destino)
   }
 
   /** Doble toque: 10 s atrás o adelante desde la posición que se ve, sin pasar de los extremos. */
@@ -974,8 +993,12 @@ private fun Reproduciendo(
    *
    * El desfase se lee aquí dentro y no fuera: si se captura al arrancar, un
    * cambio a tubería lo deja con el valor viejo y la barra miente.
+   *
+   * Con clave `fileId`: con `Unit` el bucle era el del primer episodio y seguía leyendo SU `desdeDeLaTuberia`
+   * (los estados son `remember(fileId)`): al encadenar, el reloj del siguiente sumaba el punto donde se había
+   * retomado el anterior (medido: 24:30 en un episodio de 24:08).
    */
-  LaunchedEffect(Unit) {
+  LaunchedEffect(fileId) {
     while (true) {
       if (arrastre == null) {
         posicionUi = (if (porTuberia) desdeDeLaTuberia else 0.0) + reproductor.currentPosition / 1000.0
