@@ -1786,21 +1786,30 @@ function notasHtml(ficha: Ficha): string {
 
 /*
  * Transición del cartel a la ficha: el cartel se viene hacia delante. Se copia a una capa fija encima de todo (fuera de
- * `marco`, que se repinta), se eleva mientras el resto se apaga y, cuando la ficha ya está pintada, crece OPACO hasta tapar
- * la pantalla entera (la ficha, oculta hasta entonces) y sigue de largo mientras se desvanece: lo que queda es la ficha.
- * Antes crecía solo al doble y ya transparente, y la ficha se veía a través: no parecía que viniera hacia delante.
- * Dos fases con su propia curva en vez de una: así el desvanecido empieza seguro con la pantalla ya tapada, sea cual sea el
- * tamaño de la tarjeta. Solo `transform` y `opacity`. La miniatura de la tarjeta es pequeña y ampliada se vería borrosa: se
- * pide el cartel grande al despegar y se cambia en cuanto está decodificado.
+ * `marco`, que se repinta) y, debajo de él, una capa del color del fondo tapa la página mientras la ficha se pinta. Al
+ * aterrizar, el cartel crece OPACO hasta tapar la pantalla y sigue de largo mientras se desvanece; la capa de fondo
+ * desaparece justo cuando el cartel ya cubre todo, así que lo que queda es la ficha.
+ *
+ * Se atragantaba (19/10/2026) por tres cosas, quitadas aquí:
+ *   - la fase 2 la arrancaba un setTimeout: si el hilo estaba ocupado con la ficha nueva, llegaba tarde y daba un tirón.
+ *     Ahora todo es una sola animación (Web Animations, compositor) con dos tramos;
+ *   - ocultar y mostrar `marco` con opacity repintaba la página entera a mitad del movimiento: ahora es una capa propia;
+ *   - el cartel grande se cambiaba en pleno vuelo (decodificar a mitad): ahora solo si ya está decodificado al empezar.
+ * Y arranca dos fotogramas después de pintar la ficha, para no coincidir con ese repintado.
  */
 function despegarCartel(elOrigen: HTMLElement): { aterrizar: () => void; cancelar: () => void; vuela: boolean } {
   const lamina = elOrigen.querySelector<HTMLElement>('.lamina') || elOrigen;
   const img = lamina.querySelector<HTMLImageElement>('img');
   const cont = elOrigen.closest('.contenido');
-  if (cont) cont.classList.add('transicion-saliendo');
-  if (!img || !img.src) return { aterrizar: () => {}, cancelar: () => cont && cont.classList.remove('transicion-saliendo'), vuela: false };
+  if (!img || !img.src) {
+    if (cont) cont.classList.add('transicion-saliendo');
+    return { aterrizar: () => {}, cancelar: () => cont && cont.classList.remove('transicion-saliendo'), vuela: false };
+  }
 
   const r = lamina.getBoundingClientRect();
+  const fondo = document.createElement('div');
+  fondo.className = 'vuelo-fondo';
+  document.body.appendChild(fondo);
   const vuelo = document.createElement('div');
   vuelo.className = 'vuelo-cartel';
   vuelo.style.left = r.left + 'px';
@@ -1810,23 +1819,23 @@ function despegarCartel(elOrigen: HTMLElement): { aterrizar: () => void; cancela
   vuelo.innerHTML = '<img src="' + img.src + '" alt="">';
   document.body.appendChild(vuelo);
   lamina.style.visibility = 'hidden';
-  // Dos fotogramas: el primero pinta la copia en su sitio; el segundo arranca la transición desde ahí.
-  requestAnimationFrame(() => requestAnimationFrame(() => vuelo.classList.add('elevado')));
+  // Dos fotogramas: el primero pinta la copia en su sitio; el segundo arranca la elevación y el fundido a fondo.
+  requestAnimationFrame(() => requestAnimationFrame(() => { vuelo.classList.add('elevado'); fondo.classList.add('visible'); }));
 
+  let grandeLista = false;
+  const grande = new Image();
   const idCartel = Number(elOrigen.getAttribute('data-id'));
   if (idCartel) {
-    const grande = new Image();
     grande.src = imagen.poster(idCartel, 800);
-    const cambiar = () => { const i = vuelo.querySelector('img'); if (i && vuelo.parentElement) i.src = grande.src; };
-    if (typeof grande.decode === 'function') grande.decode().then(cambiar, () => {});
-    else grande.onload = cambiar;
+    if (typeof grande.decode === 'function') grande.decode().then(() => { grandeLista = true; }, () => {});
+    else grande.onload = () => { grandeLista = true; };
   }
 
-  const temporizadores: number[] = [];
+  let seguridad = 0;
   const quitar = () => {
-    temporizadores.forEach((t) => window.clearTimeout(t));
-    marco.style.opacity = '';
+    window.clearTimeout(seguridad);
     if (vuelo.parentElement) vuelo.parentElement.removeChild(vuelo);
+    if (fondo.parentElement) fondo.parentElement.removeChild(fondo);
   };
   const a = (escala: number) => {
     // Centro del cartel al centro de la pantalla (1920 x 1080); el origen de la transformación es la esquina.
@@ -1838,17 +1847,26 @@ function despegarCartel(elOrigen: HTMLElement): { aterrizar: () => void; cancela
     vuela: true,
     cancelar: quitar,
     aterrizar: () => {
-      // La ficha ya está pintada: oculta hasta que el cartel la tape. Pase lo que pase, `quitar` la devuelve.
-      marco.style.opacity = '0';
-      const cubre = Math.max(1920 / r.width, 1080 / r.height) * 1.02;
-      vuelo.classList.add('viniendo');
-      vuelo.style.transform = a(cubre);
-      temporizadores.push(window.setTimeout(() => {
-        marco.style.opacity = '';
-        vuelo.classList.add('pasando');
-        vuelo.style.transform = a(cubre * 1.6);
-      }, 450));
-      temporizadores.push(window.setTimeout(quitar, 760));
+      // Fuera de los fotogramas: si el navegador no los da (app en segundo plano), la ficha no puede quedarse tapada.
+      seguridad = window.setTimeout(quitar, 2000);
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (!vuelo.parentElement) return;
+        const i = vuelo.querySelector('img');
+        if (grandeLista && i) i.src = grande.src;
+        const cubre = Math.max(1920 / r.width, 1080 / r.height) * 1.02;
+        const desde = getComputedStyle(vuelo).transform;
+        vuelo.classList.add('viniendo');
+        // 0,45 s hasta tapar la pantalla (acelerando, opaco) y 0,25 s pasando de largo y desvaneciéndose (frenando).
+        const anim = vuelo.animate([
+          { transform: desde === 'none' ? a(1) : desde, opacity: 1, easing: 'cubic-bezier(0.45, 0, 0.9, 0.6)' },
+          { transform: a(cubre), opacity: 1, offset: 0.643, easing: 'cubic-bezier(0.2, 0.6, 0.4, 1)' },
+          { transform: a(cubre * 1.6), opacity: 0 },
+        ], { duration: 700, fill: 'forwards' });
+        fondo.animate([
+          { opacity: 1 }, { opacity: 1, offset: 0.643 }, { opacity: 0, offset: 0.65 }, { opacity: 0 },
+        ], { duration: 700, fill: 'forwards' });
+        anim.onfinish = quitar;
+      }));
     },
   };
 }
@@ -1872,27 +1890,44 @@ async function pintarLogosEstudio(id: number, caja: HTMLElement) {
   if (!caja.isConnected) return;
   if (!estudios.length) { caja.style.display = 'none'; return; }
   let pendientes = estudios.length;
+  /*
+   * Uno solo, grande como siempre. Varios, de dos en dos: el segundo al lado del primero, el tercero y el cuarto debajo
+   * (pedido el 19/10/2026), todos con la misma área. Si las filas no caben hasta el reparto, se encogen todos por igual.
+   */
   const colocar = () => {
     const imgs = Array.prototype.slice.call(caja.querySelectorAll('img')) as HTMLImageElement[];
     if (!imgs.length) { caja.style.display = 'none'; return; }
-    const hueco = imgs.length > 3 ? 12 : 18;
+    const solo = imgs.length === 1;
+    const area = solo ? AREA_LOGO : 5200;
+    const maxW = solo ? 280 : 128, maxH = solo ? 95 : 68;
     const tam = imgs.map((img) => {
       const r = img.naturalWidth / img.naturalHeight || 1;
-      let w = Math.sqrt(AREA_LOGO * r);
+      let w = Math.sqrt(area * r);
       let h = w / r;
-      if (w > 280) { w = 280; h = w / r; }
-      if (h > 95) { h = 95; w = h * r; }
+      if (w > maxW) { w = maxW; h = w / r; }
+      if (h > maxH) { h = maxH; w = h * r; }
       return { w: w, h: h };
     });
-    const alto = tam.reduce((s, t) => s + t.h, 0) + hueco * (imgs.length - 1);
+    const hueco = 14;
+    const filas: number[][] = [];
+    for (let i = 0; i < imgs.length; i += 2) filas.push(i + 1 < imgs.length ? [i, i + 1] : [i]);
+    const altoFila = filas.map((f) => Math.max.apply(null, f.map((i) => tam[i].h)));
+    const alto = altoFila.reduce((s, h) => s + h, 0) + hueco * (filas.length - 1);
     const sitio = FONDO_LOGOS - caja.offsetTop;
-    const cabe = alto > sitio ? Math.max(0.3, (sitio - hueco * (imgs.length - 1)) / (alto - hueco * (imgs.length - 1))) : 1;
-    const k = imgs.length > 3 ? Math.min(cabe, 0.8) : cabe;
-    imgs.forEach((img, i) => {
-      img.style.width = Math.round(tam[i].w * k) + 'px';
-      img.style.height = Math.round(tam[i].h * k) + 'px';
-      img.style.marginTop = i ? hueco + 'px' : '0';
-      img.classList.add('listo');
+    const k = alto > sitio ? Math.max(0.3, (sitio - hueco * (filas.length - 1)) / (alto - hueco * (filas.length - 1))) : 1;
+    filas.forEach((f, n) => {
+      const fila = document.createElement('div');
+      fila.className = 'fila-logos-estudio';
+      fila.style.height = Math.round(altoFila[n] * k) + 'px';
+      if (n) fila.style.marginTop = hueco + 'px';
+      f.forEach((i) => {
+        const img = imgs[i];
+        img.style.width = Math.round(tam[i].w * k) + 'px';
+        img.style.height = Math.round(tam[i].h * k) + 'px';
+        fila.appendChild(img);
+        img.classList.add('listo');
+      });
+      caja.appendChild(fila);
     });
   };
   const hecho = () => { if (--pendientes === 0 && caja.isConnected) colocar(); };

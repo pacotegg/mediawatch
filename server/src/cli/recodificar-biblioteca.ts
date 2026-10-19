@@ -25,7 +25,7 @@
  *   node src/cli/recodificar-biblioteca.ts --aplicar --tanda-gb 150   lote real, por tandas de 150 GB
  */
 import { execFile } from 'node:child_process';
-import { appendFileSync, copyFileSync, existsSync, readFileSync, renameSync, statSync, unlinkSync } from 'node:fs';
+import { appendFileSync, copyFileSync, existsSync, readFileSync, renameSync, statSync, unlinkSync, utimesSync } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { config, DATA_DIR } from '../config.ts';
@@ -147,8 +147,12 @@ async function procesar(f: Fila) {
   const temporal = destino + '.new';
   copyFileSync(salida, temporal);
   if (statSync(temporal).size !== tamNuevo) { unlinkSync(temporal); throw new Error('la copia a E: no cuadra en tamaño'); }
+  // La fecha del fichero es la «fecha de alta» para el escáner cuando el NFO no la trae: el nuevo hereda la del original,
+  // o cada recodificado saldría en «Añadido recientemente» (le pasó a los monólogos del lote de Gemini, 18/10).
+  const mtimeOrig = statSync(f.path).mtime;
   const retirado = retirarOriginal(f.path);
   try { renameSync(temporal, destino); } catch (e) { renameSync(retirado, f.path); throw e; }
+  utimesSync(destino, new Date(), mtimeOrig);
   unlinkSync(salida);
   db.prepare('UPDATE media_files SET path = ?, size = ?, probed = 0 WHERE id = ?').run(destino, tamNuevo, f.id);
   await mediaInfo(f.id).catch(() => null);

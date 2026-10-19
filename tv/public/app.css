@@ -846,6 +846,18 @@ body.rend-rapido .lamina img {
   transition: opacity 0.3s ease;
 }
 
+/* Dos logos por fila, centrados; sin `gap` (Chrome 76): el hueco es margen. */
+.fila-logos-estudio {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 280px;
+}
+
+.fila-logos-estudio .logo-estudio-3d + .logo-estudio-3d {
+  margin-left: 16px;
+}
+
 .logo-estudio-3d.listo {
   opacity: 0.92;
 }
@@ -4520,20 +4532,30 @@ body.viendo-extra .marco * {
   transform: translate(-4%, -4%) scale(1.08);
 }
 
-/*
- * Fase 1 (0,45 s): se viene hacia delante, opaco, acelerando, hasta tapar la pantalla. Sin sombra: escalada nueve veces
- * sería lo más caro del fotograma y ya no se ve el borde.
- * Fase 2 (0,25 s): sigue de largo frenando y se desvanece; debajo ya está la ficha. Las curvas casan la velocidad en el
- * cambio de fase (pendiente final 4 de la primera, inicial 3 de la segunda sobre un tramo 0,6 / 1,02 del primero).
- */
+/* Al aterrizar el movimiento lo lleva la animación de main.ts; aquí solo se quita la sombra, que escalada nueve veces sería
+ * lo más caro del fotograma (y ya no se ve el borde). */
 .vuelo-cartel.viniendo {
   box-shadow: none;
-  transition: transform 0.45s cubic-bezier(0.45, 0, 0.9, 0.6);
+  transition: none;
 }
 
-.vuelo-cartel.pasando {
+/* Tapa la página mientras la ficha se pinta debajo; desaparece cuando el cartel ya cubre la pantalla. */
+.vuelo-fondo {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 1920px;
+  height: 1080px;
+  z-index: 499;
+  background: var(--fondo);
   opacity: 0;
-  transition: transform 0.25s cubic-bezier(0.2, 0.6, 0.4, 1), opacity 0.25s ease-out;
+  transition: opacity 0.22s ease;
+  will-change: opacity;
+  pointer-events: none;
+}
+
+.vuelo-fondo.visible {
+  opacity: 1;
 }
 
 .ficha.animar-entrada {
