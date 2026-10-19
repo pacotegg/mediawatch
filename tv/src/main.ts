@@ -4463,6 +4463,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     window.clearInterval(temporizadorWatchNext);
     temporizadorWatchNext = 0;
     lienzo.classList.remove('creditos-reducido');
+    reproductor.encuadrar(null);
     tarjetaWatchNext.classList.remove('visible');
     tarjetaWatchNext.innerHTML = '';
   };
@@ -4481,6 +4482,8 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     cuentaAtrasWatchNext = 12;
     watchNextFocoPrimario = true;
     lienzo.classList.add('creditos-reducido');
+    // El mismo rectángulo que deja `.creditos-reducido` (app.css): 1920x1080 a escala 0,56 y desplazado (-380, -170).
+    reproductor.encuadrar({ x: 42, y: 68, w: 1075, h: 605 });
     tarjetaWatchNext.classList.add('visible');
     const tieneFoto = Boolean(sig.has_thumb);
     const urlFoto = tieneFoto ? imagen.episodio(sig.id, 480) : '';

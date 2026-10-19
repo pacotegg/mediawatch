@@ -275,6 +275,7 @@ export class Reproductor {
     if (this.nativo) {
       const p = this.nativo;
       const rect = rectDisplay || { x: 0, y: 0, w: 1920, h: 1080 };
+      this.rectAbierto = rect;
       /*
        * `open` revienta si el aparato no ha vuelto a IDLE —pasa si el `close`
        * anterior falló, o si se vuelve a dar a reproducir mientras el anterior
@@ -494,6 +495,23 @@ export class Reproductor {
       this.fallo = 'salto relativo: ' + motivo(e);
       return false;
     }
+  }
+
+  private rectAbierto: RectDisplay = { x: 0, y: 0, w: 1920, h: 1080 };
+
+  /**
+   * Recoloca el vídeo de AVPlay. Va en un plano aparte, por detrás de la página: un `transform` de CSS sobre el lienzo
+   * no lo mueve (la tarjeta «Siguiente episodio» encogía un hueco vacío y el vídeo seguía a pantalla completa). Con un
+   * rectángulo de pantalla, encaja dentro de él el encuadre de apertura (con sus bandas negras); con null, vuelve a ese
+   * encuadre. En el `<video>` del navegador no hace nada: ahí el CSS ya basta.
+   */
+  encuadrar(dentro: RectDisplay | null) {
+    if (!this.nativo) return;
+    const r = this.rectAbierto;
+    const d = dentro
+      ? { x: dentro.x + (r.x * dentro.w) / 1920, y: dentro.y + (r.y * dentro.h) / 1080, w: (r.w * dentro.w) / 1920, h: (r.h * dentro.h) / 1080 }
+      : r;
+    try { this.nativo.setDisplayRect(Math.round(d.x), Math.round(d.y), Math.round(d.w), Math.round(d.h)); } catch (_) { /* cerrado */ }
   }
 
   cerrar() {
