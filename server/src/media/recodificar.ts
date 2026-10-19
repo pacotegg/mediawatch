@@ -37,6 +37,45 @@ export function pistasQueFaltan(original: Pick<MediaInfo, 'audio' | 'subs'>, nue
 }
 
 /**
+ * Motivo para NO sustituir el original por la salida, o null si se puede: duración del contenedor y de la pista de
+ * vídeo (vOrig/vNuevo; NaN si no se pudo leer), HEVC, misma resolución, paridad pista a pista y ahorro >= 15 %.
+ */
+export function verificarRecodificado(orig: Pick<MediaInfo, 'duration' | 'video' | 'audio' | 'subs'>, nuevo: Pick<MediaInfo, 'duration' | 'video' | 'audio' | 'subs'>,
+  tamOrig: number, tamNuevo: number, vOrig: number, vNuevo: number): string | null {
+  const dif = Math.abs(orig.duration - nuevo.duration);
+  if (dif > Math.max(3, orig.duration * 0.01)) return `duración ${orig.duration.toFixed(1)} -> ${nuevo.duration.toFixed(1)} s`;
+  // La del contenedor la marca la pista más larga (el audio): Casino Royale tiene el vídeo 7 min más corto y no se nota.
+  // Si la del original no se puede leer, se compara contra la del contenedor; la de la salida tiene que leerse sí o sí.
+  const vRef = Number.isFinite(vOrig) ? vOrig : orig.duration;
+  if (!Number.isFinite(vNuevo) || Math.abs(vRef - vNuevo) > Math.max(3, vRef * 0.01)) {
+    return `duración del vídeo ${vRef.toFixed(1)} -> ${Number.isFinite(vNuevo) ? vNuevo.toFixed(1) : '?'} s`;
+  }
+  if (!nuevo.video || nuevo.video.codec !== 'hevc') return 'la salida no es HEVC';
+  if (orig.video && (orig.video.width !== nuevo.video.width || orig.video.height !== nuevo.video.height)) {
+    return `resolución ${orig.video.width}x${orig.video.height} -> ${nuevo.video.width}x${nuevo.video.height}`;
+  }
+  // Paridad pista por pista, no por idioma: encode.ps1 descarta a propósito pistas «redundantes» del mismo idioma
+  // (dedup), y eso también es perder una pista. Cada audio del original necesita uno propio en la salida, del mismo
+  // idioma y con al menos sus canales (de más a menos canales, cada uno se queda el más justo que le sirva).
+  const norm = (l?: string) => (l || 'und').toLowerCase();
+  const libres = [...nuevo.audio];
+  for (const p of [...orig.audio].sort((x, y) => (y.channels ?? 0) - (x.channels ?? 0))) {
+    const vale = libres.filter((q) => norm(q.language) === norm(p.language) && (q.channels ?? 0) >= (p.channels ?? 0))
+      .sort((x, y) => (x.channels ?? 0) - (y.channels ?? 0))[0];
+    if (!vale) return `pista de audio perdida: ${norm(p.language)} ${p.channels ?? '?'} canales (${orig.audio.length} -> ${nuevo.audio.length} pistas)`;
+    libres.splice(libres.indexOf(vale), 1);
+  }
+  const subsLibres = [...nuevo.subs];
+  for (const s of orig.subs) {
+    const i = subsLibres.findIndex((q) => norm(q.language) === norm(s.language) && q.forced === s.forced);
+    if (i < 0) return `subtítulo perdido: ${norm(s.language)}${s.forced ? ' forzado' : ''} (${orig.subs.length} -> ${nuevo.subs.length})`;
+    subsLibres.splice(i, 1);
+  }
+  if (tamNuevo > tamOrig * 0.85) return `ahorra menos del 15 % (${(tamOrig / 1e6).toFixed(0)} -> ${(tamNuevo / 1e6).toFixed(0)} MB)`;
+  return null;
+}
+
+/**
  * Aparta el original a `<unidad>\_retirados\<AAAA-MM-DD>\<ruta relativa>`. Es un renombrado en la misma unidad
  * (instantáneo, sin copiar) y se deshace moviéndolo de vuelta. Devuelve dónde ha quedado.
  */

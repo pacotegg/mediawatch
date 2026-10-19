@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { argumentosHevc, pistasQueFaltan, retirarOriginal } from '../src/media/recodificar.ts';
+import { argumentosHevc, pistasQueFaltan, retirarOriginal, verificarRecodificado } from '../src/media/recodificar.ts';
 import { probeFile } from '../src/media/probe.ts';
 
 // En los ejecutores del CI no hay ffmpeg: sin él no se puede fabricar el vídeo de prueba.
@@ -72,4 +72,28 @@ test('retirarOriginal aparta el fichero sin borrarlo, conservando su ruta relati
   } finally {
     rmSync(raiz, { recursive: true, force: true });
   }
+});
+
+/**
+ * La verificación del lote (19/10/2026) comparaba idiomas, no pistas, y la duración del contenedor, no la del vídeo:
+ * encode.ps1 descarta a propósito pistas «redundantes» del mismo idioma y en Casino Royale el vídeo dura 7 min menos
+ * que el audio sin que el contenedor lo diga. Las dos cosas tienen que rechazarse.
+ */
+test('verificarRecodificado exige paridad pista a pista y la duración del vídeo', () => {
+  const a = (language, channels) => ({ language, channels });
+  const base = (audio, subs = []) => ({ duration: 6000, video: { codec: 'h264', width: 1920, height: 1080 }, audio, subs });
+  const orig = base([a('eng', 6), a('eng', 6), a('spa', 2)], [{ language: 'spa', forced: true }, { language: 'spa', forced: false }]);
+  const igual = { ...orig, video: { codec: 'hevc', width: 1920, height: 1080 } };
+  assert.equal(verificarRecodificado(orig, igual, 1000, 500, 6000, 6000), null);
+  // Dedup del pipeline: dos ingleses 5.1 -> uno. Por idiomas «está todo»; por pistas, falta una.
+  assert.match(verificarRecodificado(orig, { ...igual, audio: [a('eng', 6), a('spa', 2)] }, 1000, 500, 6000, 6000), /pista de audio perdida: eng 6/);
+  // Bajar canales también es perder.
+  assert.match(verificarRecodificado(orig, { ...igual, audio: [a('eng', 6), a('eng', 2), a('spa', 2)] }, 1000, 500, 6000, 6000), /perdida/);
+  // El forzado cuenta aparte del completo.
+  assert.match(verificarRecodificado(orig, { ...igual, subs: [{ language: 'spa', forced: false }, { language: 'spa', forced: false }] }, 1000, 500, 6000, 6000), /subtítulo perdido: spa forzado/);
+  // Vídeo cortado con el audio entero: el contenedor dice 6000 en los dos.
+  assert.match(verificarRecodificado(orig, igual, 1000, 500, 6000, 5570), /duración del vídeo/);
+  assert.match(verificarRecodificado(orig, igual, 1000, 500, 6000, NaN), /duración del vídeo/);
+  // Con más canales en la salida, vale.
+  assert.equal(verificarRecodificado(base([a('spa', 2)]), { ...base([a('spa', 6)]), video: igual.video }, 1000, 500, 6000, 6000), null);
 });

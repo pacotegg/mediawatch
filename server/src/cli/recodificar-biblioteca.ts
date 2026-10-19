@@ -24,13 +24,15 @@
  *   node src/cli/recodificar-biblioteca.ts --limite 3                 prueba: codifica y verifica, no toca E:
  *   node src/cli/recodificar-biblioteca.ts --aplicar --tanda-gb 150   lote real, por tandas de 150 GB
  */
+import { execFile } from 'node:child_process';
 import { appendFileSync, copyFileSync, existsSync, readFileSync, renameSync, statSync, unlinkSync } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';
-import { DATA_DIR } from '../config.ts';
+import { promisify } from 'node:util';
+import { config, DATA_DIR } from '../config.ts';
 import { db } from '../db.ts';
 import { hayAlguienViendo } from '../media/ocupado.ts';
 import { mediaInfo, probeFile, type MediaInfo } from '../media/probe.ts';
-import { retirarOriginal } from '../media/recodificar.ts';
+import { retirarOriginal, verificarRecodificado } from '../media/recodificar.ts';
 
 const args = process.argv.slice(2);
 const aplicar = args.includes('--aplicar');
@@ -82,20 +84,18 @@ function idiomas(info: MediaInfo) {
   return { audio: new Set(info.audio.map((a) => norm(a.language))), subs: new Set(info.subs.map((s) => norm(s.language))) };
 }
 
-function verificar(orig: MediaInfo, nuevo: MediaInfo, tamOrig: number, tamNuevo: number): string | null {
-  const dif = Math.abs(orig.duration - nuevo.duration);
-  if (dif > Math.max(3, orig.duration * 0.01)) return `duración ${orig.duration.toFixed(1)} -> ${nuevo.duration.toFixed(1)} s`;
-  if (!nuevo.video || nuevo.video.codec !== 'hevc') return 'la salida no es HEVC';
-  if (orig.video && (orig.video.width !== nuevo.video.width || orig.video.height !== nuevo.video.height)) {
-    return `resolución ${orig.video.width}x${orig.video.height} -> ${nuevo.video.width}x${nuevo.video.height}`;
-  }
-  const a = idiomas(orig), b = idiomas(nuevo);
-  const faltaAudio = [...a.audio].filter((l) => !b.audio.has(l));
-  const faltaSubs = [...a.subs].filter((l) => !b.subs.has(l));
-  if (faltaAudio.length) return `falta audio: ${faltaAudio.join(',')}`;
-  if (faltaSubs.length) return `faltan subtítulos: ${faltaSubs.join(',')}`;
-  if (tamNuevo > tamOrig * 0.85) return `ahorra menos del 15 % (${(tamOrig / 1e6).toFixed(0)} -> ${(tamNuevo / 1e6).toFixed(0)} MB)`;
-  return null;
+/*
+ * Duración de la pista de VÍDEO, no la del contenedor: esa la marca la pista más larga, que suele ser el audio. Casino
+ * Royale (encode del 17/09) tiene el vídeo 7 min más corto que el audio y el contenedor dice la duración entera.
+ * MKV la guarda en la etiqueta DURATION de la pista; MP4, en `duration`. NaN si no hay forma de saberla.
+ */
+async function duracionVideo(ruta: string): Promise<number> {
+  const { stdout } = await promisify(execFile)(config.ffprobe, ['-v', 'error', '-select_streams', 'V:0', '-show_entries', 'stream=duration:stream_tags=DURATION',
+    '-of', 'json', ruta], { timeout: 60_000, windowsHide: true });
+  const s = (JSON.parse(stdout).streams ?? [])[0] ?? {};
+  const m = /^(\d+):(\d{2}):(\d{2}(?:\.\d+)?)$/.exec(String(s.tags?.DURATION ?? '').trim());
+  if (m) return Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+  return Number(s.duration ?? NaN);
 }
 
 /*
@@ -122,6 +122,7 @@ async function procesar(f: Fila) {
   while (hayAlguienViendo()) { console.log('  alguien está viendo algo: espero 2 min'); await espera(120_000); }
   const ext = extname(f.path);
   const orig = await probeFile(f.path);
+  const vOrig = await duracionVideo(f.path);
   const puesto = Date.now();
   copyFileSync(f.path, join(COLA, `mw${f.id}${ext}`));
   console.log(`  en cola: mw${f.id}${ext}`);
@@ -131,8 +132,9 @@ async function procesar(f: Fila) {
   try { unlinkSync(join(EN_CURSO, `mw${f.id}${ext}`)); } catch { /* ya no estaba */ }
   const nuevo = await probeFile(salida);
   const tamNuevo = statSync(salida).size;
-  const fallo = verificar(orig, nuevo, f.size, tamNuevo);
-  const resumen = `${(f.size / 1e6).toFixed(0)} -> ${(tamNuevo / 1e6).toFixed(0)} MB; audio ${[...idiomas(orig).audio]} -> ${[...idiomas(nuevo).audio]}; subs ${[...idiomas(orig).subs]} -> ${[...idiomas(nuevo).subs]}`;
+  const vNuevo = await duracionVideo(salida);
+  const fallo = verificarRecodificado(orig, nuevo, f.size, tamNuevo, vOrig, vNuevo);
+  const resumen = `${(f.size / 1e6).toFixed(0)} -> ${(tamNuevo / 1e6).toFixed(0)} MB; vídeo ${vOrig.toFixed(0)} -> ${vNuevo.toFixed(0)} s; audio ${[...idiomas(orig).audio]} -> ${[...idiomas(nuevo).audio]}; subs ${[...idiomas(orig).subs]} -> ${[...idiomas(nuevo).subs]}`;
   if (fallo) {
     anotar({ ruta: f.path, id: f.id, resultado: 'rechazado', motivo: fallo, resumen });
     unlinkSync(salida);
