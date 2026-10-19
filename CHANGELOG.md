@@ -12,6 +12,10 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.72 — 19/10/2026
+
+- La 3.71 se cerraba al abrir cualquier ficha (Android rechazaba el código del reproductor tal como salía compilado). Corregido: trae todo lo de la 3.71 (el progreso vuelve a guardarse, modo maratón y reloj al encadenar episodios).
+
 ## 3.71 — 19/10/2026
 
 - Reproductor: la app vuelve a guardar por dónde vas. Desde el 11/10 el progreso no llegaba al servidor (ni el «Continuar viendo», ni el «visto» al acabar un episodio); ahora se guarda cada 15 s, al salir y al pasar al siguiente.

@@ -1217,85 +1217,20 @@ private fun Reproduciendo(
       val sig = siguiente
       if (encadena && sig != null) {
         sig.let { ep ->
-          Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-              .align(Alignment.BottomEnd)
-              .padding(end = 24.dp, bottom = 96.dp)
-              .clip(RoundedCornerShape(18.dp))
-              .background(Color(0xF012141D))
-              .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(18.dp))
-              .then(if (tramoEnfocado) Modifier.border(3.dp, Realce, RoundedCornerShape(18.dp)) else Modifier)
-              .padding(12.dp)
-          ) {
-            if (ep.tieneFoto == 1) {
-              Box(
-                modifier = Modifier
-                  .size(width = 114.dp, height = 64.dp)
-                  .clip(RoundedCornerShape(10.dp))
-                  .background(Color.Black)
-              ) {
-                Imagen(Api.fotoDeEpisodio(ep.id, 320), ep.title, Modifier.fillMaxSize())
-              }
-              Spacer(Modifier.width(12.dp))
-            }
-            Column(modifier = Modifier.widthIn(max = 240.dp)) {
-              Text(
-                "SIGUIENTE EPISODIO",
-                color = Realce,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.sp
-              )
-              Text(
-                ep.title ?: "Episodio ${ep.episode}",
-                color = Color.White,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-              )
-              Text(
-                "Temporada ${ep.season} · Episodio ${ep.episode}",
-                color = TextoSuave,
-                fontSize = 11.sp
-              )
-              Spacer(Modifier.height(8.dp))
-              Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Box(
-                  contentAlignment = Alignment.Center,
-                  modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Realce)
-                    .clickable {
-                      tramosSaltados += tramo.kind + tramo.desde
-                      tramoALaVista = null
-                      pasarAlSiguiente()
-                    }
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
-                ) {
-                  Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = SobreRealce, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Ver ahora", color = SobreRealce, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                  }
-                }
-                Box(
-                  contentAlignment = Alignment.Center,
-                  modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0x22FFFFFF))
-                    .clickable {
-                      tramosSaltados += tramo.kind + tramo.desde
-                      tramoALaVista = null
-                    }
-                    .padding(horizontal = 10.dp, vertical = 6.dp)
-                ) {
-                  Text("Créditos", color = Color.White, fontSize = 11.sp)
-                }
-              }
-            }
-          }
+          TarjetaSiguienteEpisodio(
+            ep,
+            tramoEnfocado,
+            Modifier.align(Alignment.BottomEnd),
+            alVerAhora = {
+              tramosSaltados += tramo.kind + tramo.desde
+              tramoALaVista = null
+              pasarAlSiguiente()
+            },
+            alVerCreditos = {
+              tramosSaltados += tramo.kind + tramo.desde
+              tramoALaVista = null
+            },
+          )
         }
       } else {
         Text(
@@ -3065,6 +3000,97 @@ private fun BandejaCapitulos(
               fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
             )
           }
+        }
+      }
+    }
+  }
+}
+
+/*
+ * La tarjeta «Siguiente episodio» de los créditos, aparte de `Reproduciendo`. Dentro, la función pasaba de cierto tamaño
+ * y D8 (modo publicación, AGP 8.7.3) generaba `move-object v75, v14` con v14 = la constante 12: Android rechazaba la
+ * clase entera (VerifyError) y la 3.71 se cerraba al abrir CUALQUIER ficha. La de depuración no lo hace (guarda las
+ * variables y reparte los registros de otra forma): por eso no salió en el emulador. Medido el 19/10/2026 con dexdump.
+ */
+@Composable
+private fun TarjetaSiguienteEpisodio(
+  ep: Episodio,
+  enfocado: Boolean,
+  modifier: Modifier,
+  alVerAhora: () -> Unit,
+  alVerCreditos: () -> Unit,
+) {
+  Row(
+    verticalAlignment = Alignment.CenterVertically,
+    modifier = modifier
+      .padding(end = 24.dp, bottom = 96.dp)
+      .clip(RoundedCornerShape(18.dp))
+      .background(Color(0xF012141D))
+      .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(18.dp))
+      .then(if (enfocado) Modifier.border(3.dp, Realce, RoundedCornerShape(18.dp)) else Modifier)
+      .padding(12.dp)
+  ) {
+    if (ep.tieneFoto == 1) {
+      Box(
+        modifier = Modifier
+          .size(width = 114.dp, height = 64.dp)
+          .clip(RoundedCornerShape(10.dp))
+          .background(Color.Black)
+      ) {
+        Imagen(Api.fotoDeEpisodio(ep.id, 320), ep.title, Modifier.fillMaxSize())
+      }
+      Spacer(Modifier.width(12.dp))
+    }
+    Column(modifier = Modifier.widthIn(max = 240.dp)) {
+      Text(
+        "SIGUIENTE EPISODIO",
+        color = Realce,
+        fontSize = 10.sp,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 1.sp
+      )
+      Text(
+        ep.title ?: "Episodio ${ep.episode}",
+        color = Color.White,
+        fontSize = 14.sp,
+        fontWeight = FontWeight.Bold,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis
+      )
+      Text(
+        "Temporada ${ep.season} · Episodio ${ep.episode}",
+        color = TextoSuave,
+        fontSize = 11.sp
+      )
+      Spacer(Modifier.height(8.dp))
+      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Box(
+          contentAlignment = Alignment.Center,
+          modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(Realce)
+            .clickable {
+              alVerAhora()
+            }
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+        ) {
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = SobreRealce, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(4.dp))
+            Text("Ver ahora", color = SobreRealce, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+          }
+        }
+        Box(
+          contentAlignment = Alignment.Center,
+          modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color(0x22FFFFFF))
+            .clickable {
+              alVerCreditos()
+            }
+            .padding(horizontal = 10.dp, vertical = 6.dp)
+        ) {
+          Text("Créditos", color = Color.White, fontSize = 11.sp)
         }
       }
     }
