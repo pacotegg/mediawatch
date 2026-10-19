@@ -11,6 +11,8 @@ interface ModalColeccionistaProps {
 
 export default function ModalColeccionista({ item, es4k = false, onClose }: ModalColeccionistaProps) {
   const [abierto, setAbierto] = useState(false);
+  // Apertura terminada (tapa y disco en su sitio): arranca el movimiento de reposo.
+  const [reposo, setReposo] = useState(false);
   const [rotY, setRotY] = useState(-6);
   const [rotX, setRotX] = useState(2);
   const escenarioRef = useRef<HTMLDivElement>(null);
@@ -26,12 +28,14 @@ export default function ModalColeccionista({ item, es4k = false, onClose }: Moda
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  // Apertura cinemática inicial de la tapa
+  // Apertura cinemática inicial de la tapa (1,6 s) y del disco (de 0,65 s a 1,75 s); a los 2 s, reposo. Ver styles.css.
   useEffect(() => {
-    const t = window.setTimeout(() => {
-      setAbierto(true);
-    }, 120);
-    return () => window.clearTimeout(t);
+    const t = window.setTimeout(() => setAbierto(true), 120);
+    const r = window.setTimeout(() => setReposo(true), 2120);
+    return () => {
+      window.clearTimeout(t);
+      window.clearTimeout(r);
+    };
   }, []);
 
   // Inclinación 3D fluida siguiendo el ratón
@@ -130,22 +134,34 @@ export default function ModalColeccionista({ item, es4k = false, onClose }: Moda
           style={{ perspective: '1800px' }}
         >
           <div
-            className="relative flex items-stretch transition-transform duration-200 ease-out will-change-transform"
+            className="relative will-change-transform"
             style={{
               transformStyle: 'preserve-3d',
               transform: `rotateY(${rotY}deg) rotateX(${rotX}deg)`,
+              // Siguiendo al ratón con frenada larga: con 0,2 s la caja daba saltitos.
+              transition: 'transform 0.6s cubic-bezier(0.22, 1, 0.36, 1)',
             }}
+          >
+          {/* Cerrada, la caja es solo la hoja derecha: se centra corriendo el libro media hoja a la izquierda. */}
+          <div
+            style={{
+              transformStyle: 'preserve-3d',
+              transform: abierto ? 'translateX(0)' : 'translateX(calc(-25% - 3.5px))',
+              transition: 'transform 1.6s cubic-bezier(0.45, 0.05, 0.55, 0.95)',
+            }}
+          >
+          <div
+            className={`coleccionista-flotar-web relative flex items-stretch ${reposo ? 'reposo' : ''}`}
+            style={{ transformStyle: 'preserve-3d' }}
           >
             {/* ========================================================== */}
             {/* HOJA IZQUIERDA: TAPA QUE GIRA TIPO LIBRO (2 CARAS)         */}
             {/* ========================================================== */}
             <div
-              className="relative w-[280px] h-[410px] sm:w-[340px] sm:h-[500px] md:w-[380px] md:h-[550px]"
+              className={`coleccionista-tapa-web relative w-[280px] h-[410px] sm:w-[340px] sm:h-[500px] md:w-[380px] md:h-[550px] ${abierto ? 'abriendo' : ''}`}
               style={{
                 transformStyle: 'preserve-3d',
                 transformOrigin: 'calc(100% + 7px) center',
-                transform: abierto ? 'translateZ(2px) rotateY(0deg)' : 'translateZ(2px) rotateY(180deg)',
-                transition: 'transform 0.95s cubic-bezier(0.16, 1, 0.3, 1)',
               }}
             >
               {/* CARA EXTERIOR (Carátula física 4K / Blu-ray) - visible cuando la caja está cerrada */}
@@ -300,11 +316,15 @@ export default function ModalColeccionista({ item, es4k = false, onClose }: Moda
               {/* DISCO ÓPTICO (DISCART)                                    */}
               {/* ======================================================== */}
               <div
-                className="relative w-[230px] h-[230px] sm:w-[280px] sm:h-[280px] md:w-[320px] md:h-[320px] rounded-full overflow-hidden shadow-[0_12px_35px_rgba(0,0,0,0.9)] ring-1 ring-white/35 transition-transform duration-1000 ease-out"
+                className="relative w-[230px] h-[230px] sm:w-[280px] sm:h-[280px] md:w-[320px] md:h-[320px] rounded-full overflow-hidden shadow-[0_12px_35px_rgba(0,0,0,0.9)] ring-1 ring-white/35"
                 style={{
-                  transform: abierto ? 'rotate(0deg) scale(1)' : 'rotate(-180deg) scale(0.96)',
+                  // Quieto mientras la tapa lo cubre; se asienta con un cuarto de vuelta cuando la tapa pasa de 90° (0,65 s).
+                  transform: abierto ? 'rotate(0deg) scale(1)' : 'rotate(-75deg) scale(0.94)',
+                  transition: 'transform 1.1s cubic-bezier(0.22, 1, 0.36, 1) 0.65s',
                 }}
               >
+                {/* Lo que gira despacio en reposo es solo el disco; los reflejos de encima se quedan quietos, como en uno de verdad. */}
+                <div className={`coleccionista-disco-web absolute inset-0 ${reposo ? 'reposo' : ''}`}>
                 {discartSrc ? (
                   <img
                     src={discartSrc}
@@ -325,6 +345,7 @@ export default function ModalColeccionista({ item, es4k = false, onClose }: Moda
                     </span>
                   </div>
                 )}
+                </div>
 
                 {/* Iridiscencia óptica viva (Arcoíris Blu-ray) */}
                 <div
@@ -356,6 +377,8 @@ export default function ModalColeccionista({ item, es4k = false, onClose }: Moda
               {/* Pivote central plástico de la bandeja */}
               <div className="absolute w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-gradient-to-b from-white/30 to-black/80 border border-white/40 shadow-md pointer-events-none" />
             </div>
+          </div>
+          </div>
           </div>
         </div>
 

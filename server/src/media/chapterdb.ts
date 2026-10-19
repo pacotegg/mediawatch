@@ -73,6 +73,18 @@ export function sonCapitulosGenericos(capitulos: Capitulo[]): boolean {
   return capitulos.every((c) => esTituloGenerico(c.title));
 }
 
+/**
+ * Unos capítulos solo valen para un fichero si caben en él y lo recorren: ninguno empieza más de 30 s después del final
+ * (los de Blu-ray traen a veces una marca de fin justo ahí) y el último pasa de la mitad. Medido el 19/10/2026: 13
+ * películas tenían capítulos de otro montaje (Thor: el último a 11.766 s en una película de 6.890 s) y otras 13 una lista
+ * que se quedaba en el primer cuarto o era un único capítulo en el segundo 0.
+ */
+export function capitulosEncajan(capitulos: Capitulo[], duracion: number): boolean {
+  if (capitulos.length < 2 || !(duracion > 0)) return false;
+  const ultimo = Math.max(...capitulos.map((c) => c.start));
+  return ultimo <= duracion + 30 && ultimo >= duracion * 0.5;
+}
+
 /** Convierte cadenas tipo '01:23:45.678', '02:09.15' o '12:34' a segundos. */
 export function tiempoASegundos(str: string): number {
   if (!str) return 0;
@@ -323,10 +335,8 @@ export async function autoEnriquecerPeliculaEnSegundoPlano(
     const conNombre = resultados.filter(
       (r) => r.hasNames && (coincideTitulo(original || titulo, r.title) || coincideTitulo(titulo, r.title))
     );
-    let candidato = conNombre.find((r) => r.durationSec > 0 && Math.abs(r.durationSec - duracion) <= 15);
-    if (!candidato && conNombre.length > 0) {
-      candidato = conNombre[0];
-    }
+    // Sin una duración que case no hay candidato: coger el primero de la lista metía capítulos de otro montaje.
+    const candidato = conNombre.find((r) => r.durationSec > 0 && Math.abs(r.durationSec - duracion) <= 15);
     if (!candidato) return;
 
     const capsRemotos = await descargarCapitulosChapterDb(candidato.id, duracion);
@@ -335,6 +345,7 @@ export async function autoEnriquecerPeliculaEnSegundoPlano(
     const capsFinales = capitulosLocales.length > 0
       ? fusionarNombresConTiemposLocales(capitulosLocales, capsRemotos)
       : capsRemotos;
+    if (!capitulosEncajan(capsFinales, duracion)) return;
 
     guardarCapitulosBd(itemId, capsFinales, `chapterdb:${candidato.id}`);
     console.log(`[chapterdb] Enriquecida película ${itemId} ("${titulo}") con ${capsFinales.length} capítulos de ChapterDB`);

@@ -289,3 +289,35 @@ video::-webkit-media-controls {
   transform: scale(1.04);
 }
 
+
+/*
+ * Visor de edición coleccionista (ModalColeccionista.tsx): la misma secuencia que en la tele (tv/public/app.css).
+ * La tapa gira 1,6 s con curva casi sinusoidal y un rebote de 4° al final; el disco no se mueve mientras la tapa lo
+ * cubre (antes giraba desde el primer instante y se le veía dar vueltas por la rendija). Abierta, la caja flota y el
+ * disco gira despacio bajo reflejos fijos.
+ */
+.coleccionista-tapa-web {
+  transform: translateZ(2px) rotateY(180deg);
+}
+.coleccionista-tapa-web.abriendo {
+  animation: coleccionistaAbrirTapa 1.6s cubic-bezier(0.45, 0.05, 0.55, 0.95) both;
+}
+@keyframes coleccionistaAbrirTapa {
+  0% { transform: translateZ(2px) rotateY(180deg); }
+  82% { transform: translateZ(2px) rotateY(-4deg); }
+  100% { transform: translateZ(2px) rotateY(0deg); }
+}
+.coleccionista-flotar-web.reposo {
+  animation: coleccionistaFlotar 9s ease-in-out infinite;
+}
+@keyframes coleccionistaFlotar {
+  0%, 100% { transform: translateY(0) rotateY(0deg) rotateX(0deg); }
+  50% { transform: translateY(-8px) rotateY(2.5deg) rotateX(-1deg); }
+}
+.coleccionista-disco-web.reposo {
+  animation: coleccionistaGirarDisco 60s linear infinite;
+}
+@keyframes coleccionistaGirarDisco {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

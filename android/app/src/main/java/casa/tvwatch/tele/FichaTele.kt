@@ -57,6 +57,8 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -744,16 +746,39 @@ private fun ModalColeccionistaTele(
     abierta = true
   }
 
+  // Inclinar con las flechas: muelle blando, en vez del salto seco de rigidez 400.
   val anguloYAnimado by animateFloatAsState(
     targetValue = anguloY,
-    animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
+    animationSpec = spring(dampingRatio = 0.85f, stiffness = 140f),
     label = "anguloY",
   )
-  val progresoApertura by animateFloatAsState(
-    targetValue = if (abierta) 1f else 0f,
-    animationSpec = tween(durationMillis = 1000, easing = androidx.compose.animation.core.FastOutSlowInEasing),
-    label = "apertura",
-  )
+
+  /*
+   * La misma secuencia que la tele de Samsung, la web y el móvil (tv/public/app.css): tapa 1,6 s con curva casi sinusoidal
+   * y rebote de 4°; el disco quieto mientras la tapa lo cubre (antes giraba 720° desde el principio y se le veía por la
+   * rendija) y asentándose cuando la tapa pasa de 90°; abierta, la caja flota y el disco gira despacio.
+   */
+  val seno = remember { CubicBezierEasing(0.45f, 0.05f, 0.55f, 0.95f) }
+  val tapa = remember { Animatable(180f) }
+  val centrado = remember { Animatable(0f) }
+  val asiento = remember { Animatable(0f) }
+  val giro = remember { Animatable(0f) }
+  val flotar = remember { Animatable(0f) }
+  LaunchedEffect(abierta) {
+    if (!abierta) return@LaunchedEffect
+    launch { tapa.animateTo(-4f, tween(1312, easing = seno)); tapa.animateTo(0f, tween(288, easing = seno)) }
+    launch { centrado.animateTo(1f, tween(1600, easing = seno)) }
+    launch { kotlinx.coroutines.delay(650); asiento.animateTo(1f, tween(1100, easing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f))) }
+    kotlinx.coroutines.delay(2000)
+    launch { while (true) giro.animateTo(giro.value + 360f, tween(60_000, easing = LinearEasing)) }
+    while (true) {
+      flotar.animateTo(1f, tween(9_000, easing = LinearEasing))
+      flotar.snapTo(0f)
+    }
+  }
+  val progresoApertura = centrado.value
+  // 0 -> 1 -> 0 en cada ciclo, arrancando y parando sin velocidad.
+  val f = (1f - kotlin.math.cos(2f * Math.PI.toFloat() * flotar.value)) / 2f
 
   val resolucionTexto = if (es4k) "4K ULTRA HD" else "BLU-RAY 1080P"
   val fichero = ficha.files.firstOrNull { it.episodioId == null } ?: ficha.files.firstOrNull()
@@ -822,7 +847,7 @@ private fun ModalColeccionistaTele(
       modifier = Modifier.padding(24.dp),
     ) {
       // 180° = cerrada sobre la bandeja; 0° = abierta a la izquierda.
-      val anguloTapa = (1f - progresoApertura) * 180f
+      val anguloTapa = tapa.value
       // Cerrada, la caja es solo la hoja derecha: se corre media caja para que quede centrada en pantalla.
       val offsetCentrado = (anchoCara * 0.5f + anchoLomo * 0.5f) * (1f - progresoApertura)
 
@@ -833,8 +858,9 @@ private fun ModalColeccionistaTele(
             scaleX = zoom
             scaleY = zoom
             translationX = -offsetCentrado.toPx()
-            rotationY = anguloYAnimado
-            rotationX = 2f
+            translationY = -8.dp.toPx() * f
+            rotationY = anguloYAnimado + 2.5f * f
+            rotationX = 2f - 1f * f
             cameraDistance = 22f * density
           }
           .shadow(36.dp, RoundedCornerShape(12.dp)),
@@ -988,12 +1014,17 @@ private fun ModalColeccionistaTele(
                 .clip(CircleShape)
                 .border(1.dp, Color(0x18FFFFFF), CircleShape),
             )
-            // El disco entra girando y se para recto (0°) cuando la tapa termina de abrirse.
+            // Quieto mientras la tapa lo cubre; se asienta al quedar a la vista y luego gira despacio.
+            val escalaDisco = 0.94f + 0.06f * asiento.value
             val modifierDisco = Modifier
               .size(tamanoDisco)
-              .clip(CircleShape)
+              .graphicsLayer {
+                rotationZ = -75f * (1f - asiento.value) + giro.value
+                scaleX = escalaDisco
+                scaleY = escalaDisco
+              }
               .shadow(14.dp, CircleShape)
-              .graphicsLayer { rotationZ = (1f - progresoApertura) * 720f }
+              .clip(CircleShape)
             Imagen(
               if (ficha.tieneDisco == 1) Api.imagen(ficha.id, "discart", 800) else Api.imagen(ficha.id, "poster", 800),
               "Disco",

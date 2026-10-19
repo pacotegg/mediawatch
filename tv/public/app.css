@@ -897,13 +897,22 @@ body.rend-rapido .lamina img {
 .coleccionista-estuche {
   position: relative;
   transform-style: preserve-3d;
-  transition: transform 0.16s ease-out;
+  /* Inclinar con las flechas: medio segundo con frenada larga, en vez de un salto de 0,16 s por pulsación. */
+  transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
   will-change: transform;
 }
 
-/* both: el estado final se mantiene hasta que el script suelta la clase (1,3 s) y pone la inclinación a mano. */
+/*
+ * Secuencia de apertura (la suelta el script a los 2,15 s, cuando todo ha terminado):
+ *   0 - 0,75 s    la caja vuela desde la carátula de la ficha hasta el centro
+ *   0,35 - 1,95 s la tapa gira sobre la bisagra (con un rebote corto al final) y el libro se recentra
+ *   1 - 2,1 s     el disco, quieto mientras la tapa lo cubre, se asienta cuando la tapa pasa de 90°
+ * Curva casi sinusoidal en la tapa: con una de entrada y salida marcada, la velocidad punta era 2,5 veces la media y la
+ * tapa recorría 75° en 200 ms (medido en el navegador). Así la punta se queda en ~1,6 veces.
+ * both: el estado final se mantiene hasta que el script quita la clase y pone la inclinación a mano.
+ */
 .coleccionista-estuche.animando-apertura {
-  animation: abrirEstucheColeccionista 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: abrirEstucheColeccionista 0.75s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 @keyframes abrirEstucheColeccionista {
@@ -924,7 +933,17 @@ body.rend-rapido .lamina img {
 
 /* Cerrada, la caja es solo la hoja derecha: se centra corriendo el libro media caja (400 + 16) / 2 a la izquierda. */
 .animando-apertura .coleccionista-libro {
-  animation: centrarLibroColeccionista 0.95s cubic-bezier(0.5, 0, 0.15, 1) 0.3s both;
+  animation: centrarLibroColeccionista 1.6s cubic-bezier(0.45, 0.05, 0.55, 0.95) 0.35s both;
+}
+
+/* Abierta: flota y se balancea muy poco (9 s por ciclo). Empieza y acaba en reposo, así que entra sin salto. */
+.coleccionista-estuche.abierto .coleccionista-libro {
+  animation: flotarLibroColeccionista 9s ease-in-out infinite;
+}
+
+@keyframes flotarLibroColeccionista {
+  0%, 100% { transform: translateY(0) rotateY(0deg) rotateX(0deg); }
+  50% { transform: translateY(-8px) rotateY(2.5deg) rotateX(-1deg); }
 }
 
 @keyframes centrarLibroColeccionista {
@@ -951,12 +970,14 @@ body.rend-rapido .lamina img {
 
 /* Los 2 px de profundidad evitan que la tapa y la bandeja, en el mismo plano al cerrar, se pisen. */
 .animando-apertura .coleccionista-tapa {
-  animation: abrirTapaColeccionista 0.95s cubic-bezier(0.5, 0, 0.15, 1) 0.3s both;
+  animation: abrirTapaColeccionista 1.6s cubic-bezier(0.45, 0.05, 0.55, 0.95) 0.35s both;
 }
 
+/* La bisagra se pasa 4° y vuelve: el pequeño rebote de una tapa de verdad al abrirla del todo. */
 @keyframes abrirTapaColeccionista {
-  from { transform: translateZ(2px) rotateY(180deg); }
-  to { transform: translateZ(2px) rotateY(0deg); }
+  0% { transform: translateZ(2px) rotateY(180deg); }
+  82% { transform: translateZ(2px) rotateY(-4deg); }
+  100% { transform: translateZ(2px) rotateY(0deg); }
 }
 
 .cara {
@@ -1125,14 +1146,45 @@ body.rend-rapido .lamina img {
   z-index: 3;
 }
 
-/* Sale girando y se para recto (0°) justo cuando la tapa termina de abrirse. */
+/*
+ * El disco no se mueve mientras la tapa lo tapa: antes giraba 720° desde el principio y casi todo el giro caía en los
+ * primeros 300 ms, con la caja aún cerrada, así que se le veía dar vueltas por la rendija. Ahora espera a que la tapa
+ * pase de 90° (1 s) y entonces se asienta con un cuarto de vuelta.
+ */
 .animando-apertura .coleccionista-disco {
-  animation: rotarDiscoSteelbook 1.15s cubic-bezier(0.16, 1, 0.3, 1) 0.3s both;
+  animation: asentarDiscoColeccionista 1.1s cubic-bezier(0.22, 1, 0.36, 1) 1s both;
 }
 
-@keyframes rotarDiscoSteelbook {
-  from { transform: rotate(720deg); }
-  to { transform: rotate(0deg); }
+@keyframes asentarDiscoColeccionista {
+  from { transform: rotate(-75deg) scale(0.94); }
+  to { transform: rotate(0deg) scale(1); }
+}
+
+/* Abierta, el disco gira despacio (un minuto por vuelta) bajo un reflejo fijo, como uno de verdad. */
+.coleccionista-estuche.abierto .coleccionista-disco {
+  animation: girarDiscoColeccionista 60s linear infinite;
+}
+
+@keyframes girarDiscoColeccionista {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.coleccionista-reflejo {
+  position: absolute;
+  width: 360px;
+  height: 360px;
+  border-radius: 50%;
+  background: conic-gradient(from 25deg, rgba(255, 255, 255, 0) 0deg, rgba(255, 255, 255, 0.13) 28deg, rgba(255, 255, 255, 0) 64deg,
+    rgba(255, 255, 255, 0) 190deg, rgba(255, 255, 255, 0.09) 216deg, rgba(255, 255, 255, 0) 250deg);
+  pointer-events: none;
+  z-index: 3;
+  opacity: 0;
+  transition: opacity 1.2s ease;
+}
+
+.coleccionista-estuche.abierto .coleccionista-reflejo {
+  opacity: 1;
 }
 
 .coleccionista-pivote {
@@ -4358,22 +4410,47 @@ body.viendo-extra .marco * {
   color: var(--texto-sec);
 }
 
-/* Transición cinemática hacia la ficha (estilo Apple TV / AAA) */
-.tarjeta.tarjeta-abriendo {
-  transform: scale(1.18) translateZ(0) !important;
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.95), 0 0 35px rgba(255, 255, 255, 0.45) !important;
-  border-color: #fff !important;
-  z-index: 100 !important;
-  transition: transform 0.28s cubic-bezier(0.2, 0, 0.2, 1), box-shadow 0.28s ease !important;
+/*
+ * Transición del cartel a la ficha (ver `despegarCartel` en main.ts): el cartel va en una capa propia, fuera del contenido
+ * que se funde (antes crecía dentro de él y se apagaba con todo lo demás), se eleva y luego crece y se disuelve en la ficha.
+ */
+.contenido.transicion-saliendo {
+  opacity: 0;
+  transition: opacity 0.22s ease;
 }
 
-.contenido.transicion-saliendo {
-  opacity: 0.35;
-  transition: opacity 0.25s ease;
+.vuelo-cartel {
+  position: fixed;
+  z-index: 500;
+  border-radius: 14px;
+  overflow: hidden;
+  transform-origin: 0 0;
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.85);
+  transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform, opacity;
+  pointer-events: none;
+}
+
+.vuelo-cartel img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Se despega: crece un 8 % sobre su centro (el origen está arriba a la izquierda, de ahí el desplazamiento). */
+.vuelo-cartel.elevado {
+  transform: translate(-4%, -4%) scale(1.08);
+}
+
+/* Fundido: crece hacia el centro y se disuelve mientras la ficha entra debajo (0,45 s, `entradaFicha`). */
+.vuelo-cartel.fundiendo {
+  opacity: 0;
+  transition: transform 0.55s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.45s ease 0.08s;
 }
 
 .ficha.animar-entrada {
-  animation: entradaFicha 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: entradaFicha 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   will-change: transform, opacity;
 }
 

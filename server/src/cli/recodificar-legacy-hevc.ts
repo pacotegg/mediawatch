@@ -1,28 +1,32 @@
 /**
  * Recodificación de vídeos legacy (XviD / DivX / AVI) a HEVC (H.265) de alta eficiencia.
  *
- * Convierte los 123 archivos legacy de la biblioteca a MKV con HEVC y audio AAC/AC3,
- * permitiendo Direct Play nativo en Smart TV (Samsung Tizen) y reduciendo el tamaño en disco.
+ * Convierte los archivos legacy de la biblioteca a MKV con HEVC. El audio y los subtítulos se copian tal cual
+ * (MKV admite MP3, AC3 y AAC): recomprimirlos a AAC solo perdía calidad.
  *
- * Aplica verificación estricta con ffprobe antes de reemplazar ningún fichero original:
- * - Duración idéntica (+/- 1 s)
- * - Pistas de audio y subtítulos preservadas
- * - Reemplazo atómico con .tmp
+ * Verificación con ffprobe antes de sustituir nada (ver `media/recodificar.ts`):
+ * - Duración (+/- 2 s) y códec HEVC
+ * - Las mismas pistas de audio y subtítulos que el original. Esta comprobación la anunciaba la versión anterior
+ *   pero no la hacía, y sin `-map 0` ffmpeg se quedaba con un solo audio.
+ * - El original se aparta a `<unidad>\_retirados\<fecha>\`, no se borra.
  *
  * Uso:
  *   npx tsx src/cli/recodificar-legacy-hevc.ts [--probar] [--confirmar]
  */
-import { existsSync, renameSync, statSync, unlinkSync, appendFileSync, writeFileSync } from 'node:fs';
+import { existsSync, renameSync, statSync, unlinkSync, appendFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { join } from 'node:path';
 import { config, DATA_DIR } from '../config.ts';
 import { db } from '../db.ts';
+import { probeFile, type MediaInfo } from '../media/probe.ts';
+import { argumentosHevc, pistasQueFaltan, retirarOriginal } from '../media/recodificar.ts';
 
 const args = process.argv.slice(2);
 const modoProbar = args.includes('--probar') || !args.includes('--confirmar');
 
 const LOG_FILE = join(DATA_DIR, 'recodificar-legacy.log');
-writeFileSync(LOG_FILE, `[${new Date().toISOString()}] Inicio de recodificación de vídeos legacy (modo: ${modoProbar ? 'PRUEBA 1 FICHERO' : 'LOTE COMPLETO'})\n`, 'utf-8');
+// Se añade al final: sobrescribirlo en cada ejecución borraba el rastro de las anteriores.
+appendFileSync(LOG_FILE, `[${new Date().toISOString()}] Inicio de recodificación de vídeos legacy (modo: ${modoProbar ? 'PRUEBA 1 FICHERO' : 'LOTE COMPLETO'})\n`, 'utf-8');
 
 console.log('=== Recodificador de Vídeos Legacy (XviD/DivX -> HEVC QSV/NVENC/CPU) ===');
 console.log(`Modo: ${modoProbar ? 'PRUEBA (solo 1 fichero piloto)' : 'COMPLETO (con reemplazo verificado)'}`);
@@ -51,76 +55,23 @@ const candidatas = db.prepare(`
 console.log(`Total vídeos legacy detectados en la biblioteca: ${candidatas.length}`);
 const aProcesar = modoProbar ? candidatas.slice(0, 1) : candidatas;
 
-/** Ejecuta ffprobe para verificar duración y códecs de un fichero */
-function sondear(fichero: string): Promise<{ duracion: number; videoCodec: string } | null> {
+/** Recodifica un archivo con ffmpeg a HEVC: QSV, y si falla, libx265 por CPU. Mismas pistas en los dos casos. */
+function lanzar(args: string[], tope: number): Promise<boolean> {
   return new Promise((resolve) => {
-    const ffprobe = config.ffmpeg.replace(/ffmpeg(\.exe)?$/i, 'ffprobe$1');
-    const proc = spawn(ffprobe, [
-      '-hide_banner', '-loglevel', 'error',
-      '-show_entries', 'format=duration:stream=codec_name,codec_type',
-      '-of', 'json',
-      fichero,
-    ], { windowsHide: true });
-
-    let salida = '';
-    proc.stdout.on('data', (d) => (salida += d.toString()));
-    proc.on('close', (code) => {
-      if (code !== 0) return resolve(null);
-      try {
-        const data = JSON.parse(salida);
-        const dur = parseFloat(data.format?.duration || '0');
-        const vStream = (data.streams || []).find((s: any) => s.codec_type === 'video');
-        resolve({ duracion: dur, videoCodec: vStream?.codec_name || '' });
-      } catch {
-        resolve(null);
-      }
-    });
-    proc.on('error', () => resolve(null));
+    const proc = spawn(config.ffmpeg, args, { windowsHide: true, timeout: tope });
+    proc.on('close', (code) => resolve(code === 0));
+    proc.on('error', () => resolve(false));
   });
 }
 
-/** Recodifica un archivo con ffmpeg a HEVC */
-function recodificar(input: string, output: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    // Probamos con hevc_qsv para aprovechar la Intel Arc; si no está disponible, libx265
-    const proc = spawn(config.ffmpeg, [
-      '-hide_banner', '-loglevel', 'error', '-y',
-      '-i', input,
-      '-c:v', 'hevc_qsv',
-      '-global_quality', '24',
-      '-preset', 'medium',
-      '-c:a', 'aac',
-      '-b:a', '128k',
-      '-c:s', 'copy',
-      output,
-    ], { windowsHide: true, timeout: 30 * 60_000 });
-
-    proc.on('close', async (code) => {
-      if (code === 0 && existsSync(output) && statSync(output).size > 0) {
-        resolve(true);
-      } else {
-        // Fallback a libx265 por CPU si QSV no responde para este contenedor
-        try { if (existsSync(output)) unlinkSync(output); } catch {}
-        const procCpu = spawn(config.ffmpeg, [
-          '-hide_banner', '-loglevel', 'error', '-y',
-          '-i', input,
-          '-c:v', 'libx265',
-          '-crf', '23',
-          '-preset', 'fast',
-          '-c:a', 'aac',
-          '-b:a', '128k',
-          '-c:s', 'copy',
-          output,
-        ], { windowsHide: true, timeout: 30 * 60_000 });
-
-        procCpu.on('close', (c) => {
-          resolve(c === 0 && existsSync(output) && statSync(output).size > 0);
-        });
-        procCpu.on('error', () => resolve(false));
-      }
-    });
-    proc.on('error', () => resolve(false));
-  });
+async function recodificar(input: string, output: string, original: MediaInfo): Promise<boolean> {
+  const tope = Math.max(30 * 60_000, (original.duration || 0) * 2000);
+  const qsv = argumentosHevc(input, output, original);
+  if ((await lanzar(qsv, tope)) && existsSync(output) && statSync(output).size > 0) return true;
+  try { if (existsSync(output)) unlinkSync(output); } catch {}
+  const i = qsv.indexOf('hevc_qsv');
+  const cpu = [...qsv.slice(0, i), 'libx265', '-crf', '23', '-preset', 'fast', ...qsv.slice(i + 5)];
+  return (await lanzar(cpu, tope * 4)) && existsSync(output) && statSync(output).size > 0;
 }
 
 const actualizarBd = db.prepare(`
@@ -144,8 +95,8 @@ for (const f of aProcesar) {
     continue;
   }
 
-  const sondaOrig = await sondear(f.path);
-  if (!sondaOrig || sondaOrig.duracion <= 0) {
+  const sondaOrig = await probeFile(f.path).catch(() => null);
+  if (!sondaOrig || sondaOrig.duration <= 0) {
     console.log(`  x No se pudo sondear la duración original con ffprobe.`);
     continue;
   }
@@ -157,7 +108,7 @@ for (const f of aProcesar) {
 
   const t0 = Date.now();
   console.log(`  Iniciando recodificación a HEVC (QSV / Intel Arc)...`);
-  const exito = await recodificar(f.path, tempOutput);
+  const exito = await recodificar(f.path, tempOutput, sondaOrig);
 
   if (!exito) {
     console.log(`  x Falló la recodificación de ffmpeg.`);
@@ -166,14 +117,21 @@ for (const f of aProcesar) {
   }
 
   // Verificación estricta de paridad con ffprobe
-  const sondaNuevo = await sondear(tempOutput);
-  if (!sondaNuevo || sondaNuevo.videoCodec !== 'hevc') {
+  const sondaNuevo = await probeFile(tempOutput).catch(() => null);
+  if (!sondaNuevo || sondaNuevo.video?.codec !== 'hevc') {
     console.log(`  x Verificación fallida: el nuevo archivo no tiene códec HEVC válido.`);
     try { unlinkSync(tempOutput); } catch {}
     continue;
   }
 
-  const difSegundos = Math.abs(sondaNuevo.duracion - sondaOrig.duracion);
+  const faltan = pistasQueFaltan(sondaOrig, sondaNuevo);
+  if (faltan) {
+    console.log(`  x Verificación fallida: faltan pistas (${faltan}).`);
+    try { unlinkSync(tempOutput); } catch {}
+    continue;
+  }
+
+  const difSegundos = Math.abs(sondaNuevo.duration - sondaOrig.duration);
   if (difSegundos > 2) {
     console.log(`  x Verificación fallida: diferencia de duración excesiva (${difSegundos.toFixed(1)} s vs original).`);
     try { unlinkSync(tempOutput); } catch {}
@@ -185,7 +143,7 @@ for (const f of aProcesar) {
   const ahorroPct = ((1 - szNuevo / szOriginal) * 100).toFixed(1);
   const durSec = ((Date.now() - t0) / 1000).toFixed(1);
 
-  console.log(`  ✔ Verificación superada: Duración: ${sondaNuevo.duracion.toFixed(1)}s (dif: ${difSegundos.toFixed(2)}s)`);
+  console.log(`  ✔ Verificación superada: Duración: ${sondaNuevo.duration.toFixed(1)}s (dif: ${difSegundos.toFixed(2)}s)`);
   console.log(`  ✔ Tamaño: ${(szOriginal / 1048576).toFixed(1)} MB -> ${(szNuevo / 1048576).toFixed(1)} MB (${ahorroPct}% ahorro) en ${durSec}s`);
 
   if (modoProbar) {
@@ -197,11 +155,15 @@ for (const f of aProcesar) {
 
   // Si no es modo prueba, reemplazo atómico
   try {
-    if (f.path !== nuevoNombre) {
-      unlinkSync(f.path);
+    const retirado = retirarOriginal(f.path);
+    try {
+      renameSync(tempOutput, nuevoNombre);
+    } catch (e) {
+      renameSync(retirado, f.path);
+      throw e;
     }
-    renameSync(tempOutput, nuevoNombre);
-    actualizarBd.run(nuevoNombre, szNuevo, sondaNuevo.duracion, f.id);
+    actualizarBd.run(nuevoNombre, szNuevo, sondaNuevo.duration, f.id);
+    console.log(`  Original apartado en ${retirado}`);
 
     bytesOriginales += szOriginal;
     bytesFinales += szNuevo;

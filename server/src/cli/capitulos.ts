@@ -17,6 +17,7 @@ import {
   descargarCapitulosChapterDb,
   esTituloGenerico,
   fusionarNombresConTiemposLocales,
+  capitulosEncajan,
   guardarCapitulosBd,
   obtenerCapitulosBd,
   sonCapitulosGenericos,
@@ -26,9 +27,11 @@ import {
   descargarCapitulosChapterEditor,
 } from '../media/chaptereditor.ts';
 import { spawn } from 'node:child_process';
-import { writeFileSync, unlinkSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, writeFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { DATA_DIR } from '../config.ts';
 
 type PeliculaFila = {
   item_id: number;
@@ -201,8 +204,7 @@ async function comandoEnriquecer(limite: number, soloGenericos: boolean) {
     if (noTiene) {
       candidato = candidatosConNombre.find((r) => r.durationSec > 0 && Math.abs(r.durationSec - duracion) <= 120);
     } else {
-      candidato = candidatosConNombre.find((r) => r.durationSec > 0 && Math.abs(r.durationSec - duracion) <= 15)
-        || candidatosConNombre[0];
+      candidato = candidatosConNombre.find((r) => r.durationSec > 0 && Math.abs(r.durationSec - duracion) <= 15);
     }
     if (!candidato) {
       // Intentar en Chapter-Database (Doom9 / hubblec4)
@@ -215,7 +217,7 @@ async function comandoEnriquecer(limite: number, soloGenericos: boolean) {
       );
       const ceMatch = ceCandidatos.find(
         (r) => r.durationSec > 0 && Math.abs(r.durationSec - duracion) <= (noTiene ? 120 : 15)
-      ) || (noTiene ? undefined : ceCandidatos[0]);
+      );
 
       if (ceMatch) {
         console.log(`  + Encontrado en Chapter-Database: [MID ${ceMatch.mid}] "${ceMatch.title}" (${ceMatch.durationStr}, ${ceMatch.chaptersCount} caps)`);
@@ -224,6 +226,10 @@ async function comandoEnriquecer(limite: number, soloGenericos: boolean) {
           const capsFinales = info.chapters && info.chapters.length > 0
             ? fusionarNombresConTiemposLocales(info.chapters, capsRemotos)
             : capsRemotos;
+          if (!capitulosEncajan(capsFinales, duracion)) {
+            console.log(`  - Los capítulos no encajan con la duración local (${duracion.toFixed(0)}s): descartados.`);
+            continue;
+          }
           guardarCapitulosBd(p.item_id, capsFinales, `chaptereditor:${ceMatch.mid}`);
           guardados++;
           console.log(`  ✓ Guardados ${capsFinales.length} capítulos en BD desde Chapter-Database.`);
@@ -242,6 +248,10 @@ async function comandoEnriquecer(limite: number, soloGenericos: boolean) {
     const capsFinales = info.chapters && info.chapters.length > 0
       ? fusionarNombresConTiemposLocales(info.chapters, capsRemotos)
       : capsRemotos;
+    if (!capitulosEncajan(capsFinales, duracion)) {
+      console.log(`  - Los capítulos no encajan con la duración local (${duracion.toFixed(0)}s): descartados.`);
+      continue;
+    }
 
     guardarCapitulosBd(p.item_id, capsFinales, `chapterdb:${candidato.id}`);
     guardados++;
@@ -290,7 +300,7 @@ async function comandoEnriquecerCE(limite: number, soloGenericos: boolean) {
     );
     const ceMatch = ceCandidatos.find(
       (r) => r.durationSec > 0 && Math.abs(r.durationSec - duracion) <= (noTiene ? 120 : 15)
-    ) || (noTiene ? undefined : ceCandidatos[0]);
+    );
 
     if (!ceMatch) {
       console.log(`  - Sin coincidencia válida en Chapter-Database (duración local: ${duracion.toFixed(0)}s).`);
@@ -307,6 +317,10 @@ async function comandoEnriquecerCE(limite: number, soloGenericos: boolean) {
     const capsFinales = info.chapters && info.chapters.length > 0
       ? fusionarNombresConTiemposLocales(info.chapters, capsRemotos)
       : capsRemotos;
+    if (!capitulosEncajan(capsFinales, duracion)) {
+      console.log(`  - Los capítulos no encajan con la duración local (${duracion.toFixed(0)}s): descartados.`);
+      continue;
+    }
 
     guardarCapitulosBd(p.item_id, capsFinales, `chaptereditor:${ceMatch.mid}`);
     guardados++;
@@ -386,15 +400,28 @@ async function comandoPurgar() {
   }
 }
 
-async function comandoMkvpropedit(itemId: number, confirmar: boolean, silencioso = false) {
+/** Lanza una herramienta de MKVToolNix con tope de tiempo; rechaza con su salida si falla. */
+function mkvtoolnix(exe: string, args: string[], silencioso: boolean): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const proc = spawn(join('C:\\Program Files\\MKVToolNix', exe), args, { windowsHide: true, timeout: 120_000 });
+    let salida = '';
+    proc.stdout.on('data', (d) => { salida += d.toString(); if (!silencioso) process.stdout.write(d); });
+    proc.stderr.on('data', (d) => { salida += d.toString(); if (!silencioso) process.stderr.write(d); });
+    proc.on('error', (e) => reject(e));
+    // mkvextract y mkvpropedit devuelven 1 cuando solo hay avisos.
+    proc.on('close', (code) => (code === 0 || code === 1 ? resolve() : reject(new Error(`${exe} falló con código ${code}: ${salida.trim()}`))));
+  });
+}
+
+async function comandoMkvpropedit(itemId: number, confirmar: boolean, silencioso = false, ruta?: string) {
   const peli = db
     .prepare(
       `SELECT items.title, media_files.path
        FROM items
        JOIN media_files ON media_files.item_id = items.id
-       WHERE items.id = ?`
+       WHERE items.id = ? AND media_files.path LIKE '%.mkv' AND (? IS NULL OR media_files.path = ?)`
     )
-    .get(itemId) as { title: string; path: string } | undefined;
+    .get(itemId, ruta ?? null, ruta ?? null) as { title: string; path: string } | undefined;
 
   if (!peli) {
     if (!silencioso) console.error(`Película no encontrada: item_id = ${itemId}`);
@@ -422,43 +449,38 @@ async function comandoMkvpropedit(itemId: number, confirmar: boolean, silencioso
   let oggContent = '';
   caps.forEach((c, idx) => {
     const num = String(idx + 1).padStart(2, '0');
-    const horas = Math.floor(c.start / 3600);
-    const mins = Math.floor((c.start % 3600) / 60);
-    const secs = c.start % 60;
-    const hh = String(horas).padStart(2, '0');
-    const mm = String(mins).padStart(2, '0');
-    const ss = secs.toFixed(3).padStart(6, '0');
+    // En milisegundos enteros: con decimales, 59,9996 s salía como «60.000» segundos, que no es un tiempo válido.
+    const ms = Math.round(c.start * 1000);
+    const hh = String(Math.floor(ms / 3_600_000)).padStart(2, '0');
+    const mm = String(Math.floor((ms % 3_600_000) / 60_000)).padStart(2, '0');
+    const ss = (((ms % 60_000) / 1000).toFixed(3)).padStart(6, '0');
     oggContent += `CHAPTER${num}=${hh}:${mm}:${ss}\nCHAPTER${num}NAME=${c.title}\n`;
   });
 
+  /*
+   * Antes de sobrescribir, se guardan los capítulos que tenga el fichero (una sola vez por fichero: la primera copia es
+   * la original). mkvpropedit --chapters reemplaza TODOS los capítulos y el 17/10 se escribieron 710 MKV sin copia.
+   * Para deshacerlo: mkvpropedit "<mkv>" --chapters "<copia.xml>".
+   */
+  const dirCopias = join(DATA_DIR, 'capitulos-originales');
+  mkdirSync(dirCopias, { recursive: true });
+  const copia = join(dirCopias, `${itemId}-${createHash('sha1').update(peli.path).digest('hex').slice(0, 8)}.xml`);
+  if (!existsSync(copia)) {
+    await mkvtoolnix('mkvextract.exe', [peli.path, 'chapters', copia], true);
+    // Sin capítulos, mkvextract no escribe nada: se deja una marca vacía para no volver a extraer después de escribir.
+    if (!existsSync(copia)) writeFileSync(copia, '', 'utf8');
+  }
+
   const tempFile = join(tmpdir(), `chapters_${itemId}_${Date.now()}.txt`);
   writeFileSync(tempFile, oggContent, 'utf8');
-
-  if (!silencioso) console.log(`Ejecutando mkvpropedit sobre ${peli.path}...`);
-  const mkvpropedit = 'C:\\Program Files\\MKVToolNix\\mkvpropedit.exe';
-
-  await new Promise<void>((resolve, reject) => {
-    const proc = spawn(mkvpropedit, [peli.path, '--chapters', tempFile]);
-    let errOutput = '';
-    if (!silencioso) {
-      proc.stdout.on('data', (d) => process.stdout.write(d));
-    }
-    proc.stderr.on('data', (d) => {
-      errOutput += d.toString();
-      if (!silencioso) process.stderr.write(d);
-    });
-    proc.on('close', (code) => {
-      try {
-        unlinkSync(tempFile);
-      } catch {}
-      if (code === 0) {
-        if (!silencioso) console.log(`\n✓ Capítulos incrustados correctamente en ${peli.path}`);
-        resolve();
-      } else {
-        reject(new Error(`mkvpropedit falló con código ${code}: ${errOutput}`));
-      }
-    });
-  });
+  if (!silencioso) console.log(`Ejecutando mkvpropedit sobre ${peli.path} (copia de los capítulos anteriores: ${copia})...`);
+  try {
+    await mkvtoolnix('mkvpropedit.exe', [peli.path, '--chapters', tempFile], silencioso);
+  } finally {
+    try { unlinkSync(tempFile); } catch {}
+  }
+  if (!silencioso) console.log(`
+✓ Capítulos incrustados correctamente en ${peli.path}`);
 }
 
 async function comandoIncrustarTodos(confirmar: boolean) {
@@ -491,7 +513,7 @@ async function comandoIncrustarTodos(confirmar: boolean) {
     const p = pelis[i];
     process.stdout.write(`\rIncrustando capítulos [${i + 1}/${pelis.length}]: "${p.title.slice(0, 40)}" (éxitos: ${exitos})...`);
     try {
-      await comandoMkvpropedit(p.item_id, true, true);
+      await comandoMkvpropedit(p.item_id, true, true, p.path);
       exitos++;
     } catch (e: any) {
       console.error(`\nError en ${p.title}: ${e.message}`);

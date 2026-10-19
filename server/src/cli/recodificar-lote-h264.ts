@@ -7,8 +7,9 @@
  * 1. Pausa automática si alguien ve algo: Monitoriza `hayAlguienViendo()`. Si detecta
  *    reproducción en Smart TV, móvil o web, cancela/pausa inmediatamente para liberar el disco E:\.
  * 2. Codificación en SSD local: Escribe en `G:\MediaTmp\recodificar-h264\`, nunca directamente en E:\.
- * 3. Verificación estricta antes de reemplazar: Duración idéntica (+/- 1.5s), códec hevc válido, tamaño menor.
- * 4. Sustitución atómica y actualización en SQLite.
+ * 3. Verificación antes de reemplazar: duración (+/- 2 s), códec hevc, tamaño menor y LAS MISMAS PISTAS de audio y
+ *    subtítulos que el original (ver `media/recodificar.ts`: sin `-map 0` se perdieron pistas en 101 ficheros).
+ * 4. El original no se borra: se aparta a `<unidad>\_retirados\<fecha>\` y se actualiza SQLite.
  * 5. Reanudable: Guarda progreso en `data/recodificar-h264.log` y avanza archivo a archivo.
  *
  * Uso:
@@ -20,7 +21,8 @@ import { basename, dirname, extname, join } from 'node:path';
 import { config, DATA_DIR } from '../config.ts';
 import { db } from '../db.ts';
 import { hayAlguienViendo } from '../media/ocupado.ts';
-import { mediaInfo, probeFile } from '../media/probe.ts';
+import { mediaInfo, probeFile, type MediaInfo } from '../media/probe.ts';
+import { argumentosHevc, pistasQueFaltan, retirarOriginal } from '../media/recodificar.ts';
 
 const args = process.argv.slice(2);
 const modoProbar = args.includes('--probar');
@@ -69,25 +71,16 @@ async function esperarTranquilidad(): Promise<void> {
   console.log(`[Reanudando] Casa tranquila. Reanudando lote.`);
 }
 
-function codificarAHevc(input: string, output: string): Promise<{ ok: boolean; interrumpido: boolean }> {
+function codificarAHevc(input: string, output: string, original: MediaInfo): Promise<{ ok: boolean; interrumpido: boolean }> {
   return new Promise((resolve) => {
     let interrumpido = false;
-    const params = [
-      '-nostdin',
-      '-hide_banner', '-loglevel', 'error', '-y',
-      '-i', input,
-      '-c:v', 'hevc_qsv',
-      '-global_quality', '24',
-      '-preset', 'medium',
-      '-c:a', 'copy',
-      '-c:s', 'copy',
-      output,
-    ];
+    const params = argumentosHevc(input, output, original);
 
+    // Tope: lo que dura el vídeo (QSV va muy por encima de tiempo real), y nunca menos de 20 min.
     const proc = spawn(config.ffmpeg, params, {
       windowsHide: true,
       stdio: ['ignore', 'ignore', 'ignore'],
-      timeout: 10 * 60_000,
+      timeout: Math.max(20 * 60_000, (original.duration || 0) * 1000),
     });
 
     // Vigilante de reproducción: si alguien ve algo, cancela el encode actual para soltar el disco
@@ -145,15 +138,22 @@ async function procesar() {
     console.log(`\n[${convertidos + 1}/${Math.min(candidatos.length, limite)}] Codificando: ${nombreBase}`);
     console.log(`  Tamaño original: ${(szOriginal / 1048576).toFixed(1)} MB (${f.width || '?'}x${f.height || '?'})`);
 
+    const sondaOrig = await probeFile(f.path).catch(() => null);
+    if (!sondaOrig) {
+      fallos++;
+      console.log(`  x No se pudo sondear el original: no se toca.`);
+      continue;
+    }
+
     let t0 = Date.now();
-    let res = await codificarAHevc(f.path, tmpSalida);
+    let res = await codificarAHevc(f.path, tmpSalida, sondaOrig);
 
     // Si fue interrumpido por reproducción, esperamos y reintentamos este mismo fichero
     while (res.interrumpido) {
       console.log(`  [Pausa] Interrumpido por reproducción activa. Esperando a que termine...`);
       await esperarTranquilidad();
       t0 = Date.now();
-      res = await codificarAHevc(f.path, tmpSalida);
+      res = await codificarAHevc(f.path, tmpSalida, sondaOrig);
     }
 
     if (!res.ok) {
@@ -168,6 +168,14 @@ async function procesar() {
     if (!sondaNuevo || !sondaNuevo.video || sondaNuevo.video.codec !== 'hevc') {
       fallos++;
       console.log(`  x Verificación fallida: no se detectó flujo HEVC válido.`);
+      try { if (existsSync(tmpSalida)) unlinkSync(tmpSalida); } catch {}
+      continue;
+    }
+
+    const faltan = pistasQueFaltan(sondaOrig, sondaNuevo);
+    if (faltan) {
+      fallos++;
+      console.log(`  x Verificación fallida: faltan pistas (${faltan}).`);
       try { if (existsSync(tmpSalida)) unlinkSync(tmpSalida); } catch {}
       continue;
     }
@@ -215,12 +223,16 @@ async function procesar() {
         throw new Error('Fallo al copiar archivo a E:\\');
       }
 
-      // 2. Si el original tenía otra extensión (.mp4), borrar el viejo y renombrar
-      if (f.path !== nuevaRuta && existsSync(f.path)) {
-        unlinkSync(f.path);
+      // 2. Apartar el original (no se borra) y poner el nuevo en su sitio; si esto último falla, el original vuelve.
+      const retirado = retirarOriginal(f.path);
+      try {
+        renameSync(rutaDestinoTmp, nuevaRuta);
+      } catch (e) {
+        renameSync(retirado, f.path);
+        throw e;
       }
-      renameSync(rutaDestinoTmp, nuevaRuta);
       unlinkSync(tmpSalida);
+      console.log(`  Original apartado en ${retirado}`);
 
       // 3. Actualizar base de datos
       db.prepare(`

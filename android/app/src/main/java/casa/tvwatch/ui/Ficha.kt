@@ -33,6 +33,9 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.draw.alpha
@@ -1520,18 +1523,58 @@ private fun ModalColeccionistaAndroid(
   }
 
   var anguloY by remember { mutableFloatStateOf(-8f) }
+  // Arrastre más blando: con rigidez 400 la caja seguía al dedo a tirones.
   val anguloYAnimado by animateFloatAsState(
     targetValue = anguloY,
-    animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
+    animationSpec = spring(dampingRatio = 0.85f, stiffness = 140f),
     label = "anguloY",
   )
-  val progresoApertura by animateFloatAsState(
-    targetValue = if (abierta) 1f else 0f,
-    animationSpec = tween(durationMillis = 950, easing = FastOutSlowInEasing),
-    label = "apertura",
-  )
-  val rotacionDisco = (1f - progresoApertura) * 720f
-  val escalaZoom = 0.82f + (progresoApertura * 0.18f)
+
+  /*
+   * La misma secuencia que la tele y la web (tv/public/app.css): la tapa gira 1,6 s con curva casi sinusoidal y un rebote
+   * de 4° al final; el disco NO se mueve mientras la tapa lo cubre (antes giraba 720° desde el primer instante y se le veía
+   * dar vueltas por la rendija) y se asienta con un cuarto de vuelta cuando la tapa pasa de 90°. Abierta, la caja flota y
+   * el disco gira despacio (un minuto por vuelta) bajo un reflejo fijo.
+   */
+  val seno = remember { CubicBezierEasing(0.45f, 0.05f, 0.55f, 0.95f) }
+  val tapa = remember { Animatable(180f) }
+  val centrado = remember { Animatable(0f) }
+  val asiento = remember { Animatable(0f) }
+  val giro = remember { Animatable(0f) }
+  val flotar = remember { Animatable(0f) }
+  var reposo by remember { mutableStateOf(false) }
+  LaunchedEffect(abierta) {
+    if (abierta) {
+      launch { tapa.animateTo(-4f, tween(1312, easing = seno)); tapa.animateTo(0f, tween(288, easing = seno)) }
+      launch { centrado.animateTo(1f, tween(1600, easing = seno)) }
+      launch { delay(650); asiento.animateTo(1f, tween(1100, easing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f))) }
+      delay(2000)
+      reposo = true
+    } else {
+      reposo = false
+      launch { tapa.animateTo(180f, tween(900, easing = seno)) }
+      launch { centrado.animateTo(0f, tween(900, easing = seno)) }
+      // Se vuelve a dejar en su sitio cuando ya está tapado.
+      launch { delay(900); asiento.snapTo(0f) }
+    }
+  }
+  LaunchedEffect(reposo) {
+    if (!reposo) {
+      // Al cerrar, la flotación vuelve a reposo por el camino más corto; el giro se queda donde está (va tapado).
+      flotar.animateTo(if (flotar.value < 0.5f) 0f else 1f, tween(600))
+      return@LaunchedEffect
+    }
+    launch { while (true) giro.animateTo(giro.value + 360f, tween(60_000, easing = LinearEasing)) }
+    while (true) {
+      flotar.animateTo(1f, tween(9_000, easing = LinearEasing))
+      flotar.snapTo(0f)
+    }
+  }
+  val rotacionDisco = -75f * (1f - asiento.value) + giro.value
+  val escalaDisco = 0.94f + 0.06f * asiento.value
+  val escalaZoom = 0.82f + (centrado.value * 0.18f)
+  // 0 -> 1 -> 0 en cada ciclo, arrancando y parando sin velocidad: mismo perfil que la clave 0/50/100 % de la tele.
+  val f = (1f - kotlin.math.cos(2f * Math.PI.toFloat() * flotar.value)) / 2f
 
   val resolucionTexto = if (es4k) "4K ULTRA HD" else "BLU-RAY 1080P"
   val hdrTexto = ficha.files.firstOrNull()?.hdr?.takeIf { it.isNotBlank() }
@@ -1612,9 +1655,9 @@ private fun ModalColeccionistaAndroid(
       Spacer(Modifier.height(if (esApaisado) 10.dp else 16.dp))
 
       // Ángulo de apertura de la tapa izquierda (de 180° = cerrada sobre la bandeja derecha a 0° = abierta)
-      val anguloTapa = (1f - progresoApertura) * 180f
+      val anguloTapa = tapa.value
       // Compensación de centrado en X para que la caja cerrada esté perfectamente centrada en pantalla
-      val offsetCentrado = (anchoCara * 0.5f + anchoLomo * 0.5f) * (1f - progresoApertura)
+      val offsetCentrado = (anchoCara * 0.5f + anchoLomo * 0.5f) * (1f - centrado.value)
 
       Box(
         modifier = Modifier
@@ -1622,8 +1665,9 @@ private fun ModalColeccionistaAndroid(
             scaleX = escalaZoom
             scaleY = escalaZoom
             translationX = -offsetCentrado.toPx()
-            rotationY = anguloYAnimado
-            rotationX = 3f
+            translationY = -8.dp.toPx() * f
+            rotationY = anguloYAnimado + 2.5f * f
+            rotationX = 3f - 1f * f
             cameraDistance = 18f * density
           }
           .shadow(32.dp, RoundedCornerShape(10.dp))
@@ -1949,14 +1993,16 @@ private fun ModalColeccionistaAndroid(
                 .border(1.dp, Color(0x18FFFFFF), CircleShape),
             )
 
-            // Disco con rotación sincronizada que se clava en 0°
+            // Disco: quieto mientras la tapa lo cubre, se asienta al quedar a la vista y luego gira despacio.
             val modifierDisco = Modifier
               .size(tamanoDisco)
-              .clip(CircleShape)
-              .shadow(14.dp, CircleShape)
               .graphicsLayer {
                 rotationZ = rotacionDisco
+                scaleX = escalaDisco
+                scaleY = escalaDisco
               }
+              .shadow(14.dp, CircleShape)
+              .clip(CircleShape)
 
             if (ficha.tieneDisco == 1) {
               Imagen(
@@ -1974,9 +2020,13 @@ private fun ModalColeccionistaAndroid(
               )
             }
 
-            // Reflejo iridiscente sobre el disco
+            // Reflejo sobre el disco: fijo, no gira con él, así el brillo «corre» por el disco como en uno de verdad.
             Box(
-              modifierDisco.background(
+              Modifier
+                .size(tamanoDisco)
+                .graphicsLayer { scaleX = escalaDisco; scaleY = escalaDisco }
+                .clip(CircleShape)
+                .background(
                 Brush.sweepGradient(
                   listOf(
                     Color(0x28FFFFFF),

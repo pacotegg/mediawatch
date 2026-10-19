@@ -1784,22 +1784,59 @@ function notasHtml(ficha: Ficha): string {
   );
 }
 
+/*
+ * Transición del cartel a la ficha, con fundido al estilo Apple TV. La anterior agrandaba la tarjeta DENTRO del contenido
+ * que a la vez se oscurecía (así que se apagaba con todo lo demás), el carrusel la recortaba y la ficha la sustituía a los
+ * 220 ms, antes de que terminara: no se veía. Ahora el cartel se copia a una capa fija encima de todo (fuera de `marco`,
+ * que se repinta), se eleva mientras el resto se funde y, cuando la ficha está pintada debajo, crece hacia el centro de
+ * la pantalla y se disuelve en ella. Solo `transform` y `opacity` sobre una imagen ya cargada: lo que la tele mueve gratis.
+ */
+function despegarCartel(elOrigen: HTMLElement): { aterrizar: () => void; cancelar: () => void } {
+  const lamina = elOrigen.querySelector<HTMLElement>('.lamina') || elOrigen;
+  const img = lamina.querySelector<HTMLImageElement>('img');
+  const cont = elOrigen.closest('.contenido');
+  if (cont) cont.classList.add('transicion-saliendo');
+  if (!img || !img.src) return { aterrizar: () => {}, cancelar: () => cont && cont.classList.remove('transicion-saliendo') };
+
+  const r = lamina.getBoundingClientRect();
+  const vuelo = document.createElement('div');
+  vuelo.className = 'vuelo-cartel';
+  vuelo.style.left = r.left + 'px';
+  vuelo.style.top = r.top + 'px';
+  vuelo.style.width = r.width + 'px';
+  vuelo.style.height = r.height + 'px';
+  vuelo.innerHTML = '<img src="' + img.src + '" alt="">';
+  document.body.appendChild(vuelo);
+  lamina.style.visibility = 'hidden';
+  // Dos fotogramas: el primero pinta la copia en su sitio; el segundo arranca la transición desde ahí.
+  requestAnimationFrame(() => requestAnimationFrame(() => vuelo.classList.add('elevado')));
+
+  const quitar = () => { if (vuelo.parentElement) vuelo.parentElement.removeChild(vuelo); };
+  return {
+    cancelar: quitar,
+    aterrizar: () => {
+      // Del sitio del cartel hacia el centro de la pantalla (1920 x 1080), creciendo al doble mientras se disuelve.
+      const escala = 2;
+      const dx = 960 - (r.left + r.width / 2) - (r.width * escala) / 2 + r.width / 2;
+      const dy = 540 - (r.top + r.height / 2) - (r.height * escala) / 2 + r.height / 2;
+      vuelo.classList.add('fundiendo');
+      vuelo.style.transform = 'translate(' + Math.round(dx) + 'px, ' + Math.round(dy) + 'px) scale(' + escala + ')';
+      window.setTimeout(quitar, 560);
+    },
+  };
+}
+
 async function pantallaFicha(id: number, volverA?: (() => void) | null, focoInicialId?: number, elOrigen?: HTMLElement | null) {
   entrarEn('ficha-' + id, () => void pantallaFicha(id, volverA, focoInicialId));
   const vengoDe = volverA || volverDesde;
-  if (elOrigen) {
-    elOrigen.classList.add('tarjeta-abriendo');
-    const cont = elOrigen.closest('.contenido') || elOrigen.closest('.rejilla') || elOrigen.closest('.carrusel');
-    if (cont) cont.classList.add('transicion-saliendo');
-  } else {
-    pintar('inicio', '<div class="vacio">Cargando…</div>');
-  }
+  const vuelo = elOrigen ? despegarCartel(elOrigen) : null;
+  if (!elOrigen) pintar('inicio', '<div class="vacio">Cargando…</div>');
 
   let ficha: Ficha;
   try {
     const pFicha = api.ficha(id);
     if (elOrigen) {
-      const [f] = await Promise.all([pFicha, new Promise((res) => window.setTimeout(res, 220))]);
+      const [f] = await Promise.all([pFicha, new Promise((res) => window.setTimeout(res, 260))]);
       ficha = f;
     } else {
       ficha = await pFicha;
@@ -1810,6 +1847,7 @@ async function pantallaFicha(id: number, volverA?: (() => void) | null, focoInic
       pararTemaMusical();
     }
   } catch (e) {
+    if (vuelo) vuelo.cancelar();
     /*
      * Antes esto te echaba a la portada. Si el servidor tarda —porque está
      * ocupado, o acaba de reiniciarse— te encontrabas en el inicio sin saber
@@ -2056,13 +2094,14 @@ function formatoAspecto(ancho?: number | null, alto?: number | null): string {
 
   cuerpo += '</div>';
   pintar('inicio', cuerpo);
+  if (vuelo) vuelo.aterrizar();
 
   marco.querySelectorAll<HTMLElement>('.tarjeta:not([data-lista])').forEach((el) => {
     el.setAttribute('data-lista', '1');
     el.addEventListener('click', () => {
       const relId = Number(el.getAttribute('data-id'));
       if (relId) {
-        void pantallaFicha(relId, () => void pantallaFicha(ficha.id, vengoDe, relId));
+        void pantallaFicha(relId, () => void pantallaFicha(ficha.id, vengoDe, relId), undefined, el);
       }
     });
   });
@@ -3284,6 +3323,7 @@ function dialogoEdicionColeccionista(ficha: Ficha, elOrigen?: HTMLElement | null
     (ficha.has_discart
       ? '<img class="coleccionista-disco" src="' + imagen.disco(ficha.id, 800) + '" alt="Disco ' + esc(ficha.title) + '">'
       : '<img class="coleccionista-disco" src="' + imagen.poster(ficha.id, 800) + '" style="border-radius:50%; object-fit:cover;" alt="Disco">') +
+    '<div class="coleccionista-reflejo"></div>' +
     '<div class="coleccionista-pivote"></div>' +
     '</div>' +
     '</div>' +
@@ -3305,13 +3345,15 @@ function dialogoEdicionColeccionista(ficha: Ficha, elOrigen?: HTMLElement | null
     estuche.style.transform = 'translate(0, 0) scale(1) rotateY(' + rotacionY + 'deg) rotateX(2deg)';
   };
 
-  // Al acabar la animación (zoom + giro de la tapa, 1,3 s) se suelta la clase: la tapa y el libro ya están en su sitio
-  // definitivo, y el transform en línea deja inclinar con las flechas sin que la animación lo pise.
+  // Al acabar la apertura (vuelo, tapa y disco: 2,1 s; ver app.css) se suelta la clase: la tapa y el libro ya están en
+  // su sitio definitivo, el transform en línea deja inclinar con las flechas sin que la animación lo pise, y `abierto`
+  // arranca el movimiento de reposo (la caja flota y el disco gira despacio).
   const temporizadorApertura = window.setTimeout(() => {
     estuche.classList.remove('animando-apertura');
+    estuche.classList.add('abierto');
     abierto = true;
     actualizarPerspectiva();
-  }, 1300);
+  }, 2150);
 
   const cerrar = () => {
     window.clearTimeout(temporizadorApertura);
