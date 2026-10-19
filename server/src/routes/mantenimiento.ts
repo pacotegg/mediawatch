@@ -176,11 +176,9 @@ export default async function mantenimientoRoutes(app: FastifyInstance) {
    */
   const reinicio = crearReinicio({
     ahora: () => Date.now(),
-    alguienViendo: () => {
-      if (hayAlguienViendo()) return true;
-      const desde = new Date(Date.now() - 120_000).toISOString();
-      return ((db.prepare('SELECT COUNT(*) AS n FROM playbacks WHERE updated_at >= ? AND finished = 0').get(desde) as { n: number }).n) > 0;
-    },
+    // Solo la señal de actividad, que ya no refresca una pausa (ver /api/progress): con la tabla `playbacks` una película en
+    // pausa bloqueaba el reinicio «cuando libre» para siempre.
+    alguienViendo: () => hayAlguienViendo(),
     sesiones: () => {
       const desde = new Date(Date.now() - 24 * 3600_000).toISOString();
       return (db.prepare('SELECT substr(token, 1, 8) AS s FROM sessions WHERE COALESCE(last_seen, created_at) >= ?').all(desde) as { s: string }[]).map((r) => r.s);

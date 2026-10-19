@@ -1154,7 +1154,6 @@ export default async function libraryRoutes(app: FastifyInstance) {
   });
 
   app.post('/api/progress', async (req, reply) => {
-    marcarActividad();
     const user = requireUser(req);
     const { itemId, episodeId, position, duration, watched, audio, subtitle } = (req.body ?? {}) as {
       itemId: number; episodeId?: number | null; position: number; duration?: number; watched?: boolean;
@@ -1166,6 +1165,15 @@ export default async function libraryRoutes(app: FastifyInstance) {
     }
     if (episodeId != null && !Number.isInteger(episodeId)) return reply.code(400).send({ error: 'Episodio no válido' });
     if (!db.prepare('SELECT 1 FROM items WHERE id = ?').get(itemId)) return reply.code(400).send({ error: 'Ese título no existe' });
+    /*
+     * Solo cuenta como «alguien viendo algo» lo que avanza. Una sesión en pausa sigue mandando este informe cada 15 s con la
+     * misma posición, y refrescar la señal con él daba «viendo» para siempre: una película en pausa 4 horas bloqueó el arte de
+     * los monólogos, la recodificación y la espera de un reinicio (19-20/10/2026). Cuenta: el primer informe, terminar y
+     * cualquier avance de un segundo o más.
+     */
+    const anterior = db.prepare('SELECT position FROM progress WHERE user_id = ? AND item_id = ? AND episode_id IS ?')
+      .get(user.id, itemId, episodeId ?? null) as { position: number } | undefined;
+    if (!anterior || watched || Math.abs(position - anterior.position) >= 1) marcarActividad();
     /*
      * Un cero no es una duración, es que el cliente no la sabía. Como el
      * guardado hace `COALESCE(?, duration)` y COALESCE solo esquiva NULL, un
