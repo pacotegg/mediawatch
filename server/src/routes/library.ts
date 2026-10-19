@@ -23,6 +23,7 @@ import { paginaTrailer, trailerDe } from '../media/trailers.ts';
 import { toString as qrComoSvg } from 'qrcode';
 import { parsearRango } from '../media/rango.ts';
 import { etiquetasTecnicas } from '../media/etiquetas.ts';
+import { versionClara } from '../media/logos-estudio.ts';
 
 const MIME: Record<string, string> = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp' };
 
@@ -942,7 +943,8 @@ export default async function libraryRoutes(app: FastifyInstance) {
     marvel: ['marvel'],
     pixar: ['pixar'],
     dreamworks: ['dreamworks'],
-    mgm: ['mgm', 'metro-goldwyn', 'united artists'],
+    // Sin 'united artists': mandaba el león de MGM a las de 007 («EON Productions, United Artists»), y UA tiene su logo.
+    mgm: ['mgm', 'metro-goldwyn'],
     lionsgate: ['lionsgate', 'summit'],
     lucasfilm: ['lucasfilm'],
     hbo: ['hbo'],
@@ -964,31 +966,61 @@ export default async function libraryRoutes(app: FastifyInstance) {
     movistar: ['movistar'],
   };
 
+  /*
+   * Estudio a estudio, en el orden guardado (el primero es el principal): primero su logo propio, luego un alias, luego
+   * TMDb. Antes los alias se miraban sobre la cadena entera y ganaban a todo: en «EON Productions, United Artists» salía
+   * el león de MGM, y en «Pixar, Walt Disney Pictures», Disney.
+   */
+  const partesDeEstudio = (nombre: string) => nombre.split(/[,/]/).map((p) => p.trim()).filter(Boolean);
+
   async function resolverLogoEstudio(nombreEstudio: string): Promise<string | null> {
+    for (const parte of partesDeEstudio(nombreEstudio)) {
+      const ruta = await logoDeUnEstudio(parte);
+      if (ruta) return ruta;
+    }
+    return null;
+  }
+
+  /** Todos los logos distintos de los estudios de un título, en su orden. */
+  async function logosDeEstudios(nombreEstudio: string): Promise<{ nombre: string; ruta: string }[]> {
+    const vistos = new Set<string>();
+    const res: { nombre: string; ruta: string }[] = [];
+    for (const parte of partesDeEstudio(nombreEstudio)) {
+      const ruta = await logoDeUnEstudio(parte);
+      if (!ruta || vistos.has(ruta)) continue;
+      vistos.add(ruta);
+      res.push({ nombre: parte, ruta });
+    }
+    return res;
+  }
+
+  async function logoDeUnEstudio(parte: string): Promise<string | null> {
     const dir = join(DATA_DIR, 'artwork', 'studios');
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-
-    const lower = nombreEstudio.toLowerCase();
-    for (const [slug, patrones] of Object.entries(STUDIO_ALIASES)) {
-      if (patrones.some((p) => lower.includes(p))) {
-        const webp = join(dir, `${slug}.webp`);
-        if (existsSync(webp)) return webp;
-        const png = join(dir, `${slug}.png`);
-        if (existsSync(png)) return png;
+    const existente = (slug: string) => {
+      for (const ext of ['webp', 'png']) {
+        const f = join(dir, `${slug}.${ext}`);
+        if (existsSync(f)) return f;
       }
-    }
-
-    const partes = nombreEstudio.split(/[,/]/).map((p) => p.trim()).filter(Boolean);
-    for (const parte of partes) {
+      return null;
+    };
+    {
       const slug = parte.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-      if (!slug) continue;
-      const webp = join(dir, `${slug}.webp`);
-      if (existsSync(webp)) return webp;
-      const png = join(dir, `${slug}.png`);
-      if (existsSync(png)) return png;
+      if (!slug) return null;
+      const propio = existente(slug);
+      if (propio) return propio;
 
+      const lower = parte.toLowerCase();
+      for (const [alias, patrones] of Object.entries(STUDIO_ALIASES)) {
+        if (patrones.some((p) => lower.includes(p))) {
+          const f = existente(alias);
+          if (f) return f;
+        }
+      }
+
+      const webp = join(dir, `${slug}.webp`);
       const missing = join(dir, `${slug}.missing`);
-      if (existsSync(missing)) continue;
+      if (existsSync(missing)) return null;
 
       const apiKey = config.tmdbApiKey;
       if (apiKey) {
@@ -1006,7 +1038,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
               try {
                 const { spawn } = await import('node:child_process');
                 await new Promise((res) => {
-                  const p = spawn('ffmpeg', ['-y', '-v', 'error', '-i', destPng, '-c:v', 'libwebp', '-lossless', '1', webp], {
+                  const p = spawn(config.ffmpeg, ['-y', '-v', 'error', '-i', destPng, '-c:v', 'libwebp', '-lossless', '1', webp], {
                     stdio: ['ignore', 'ignore', 'ignore'],
                     timeout: 6000,
                   });
@@ -1044,12 +1076,23 @@ export default async function libraryRoutes(app: FastifyInstance) {
     return serveArt(reply, logo, width);
   });
 
+  /** Los estudios del título que tienen logo, sin repetir logo, en su orden: la tele los pone uno debajo de otro. */
+  app.get('/api/items/:id/studio-logos', async (req, reply) => {
+    const id = Number((req.params as { id: string }).id);
+    if (!itemPermitido(id, currentUser(req))) return reply.code(404).send({ error: 'No encontrado' });
+    const row = db.prepare('SELECT studio FROM items WHERE id = ?').get(id) as { studio: string | null } | undefined;
+    if (!row?.studio) return { estudios: [] };
+    return { estudios: (await logosDeEstudios(row.studio)).map((l) => l.nombre) };
+  });
+
+  // `claro=1`: la versión que se lee sobre fondo oscuro (ver media/logos-estudio.ts).
   app.get('/api/studios/:nombre/logo', async (req, reply) => {
     const nombre = (req.params as { nombre: string }).nombre;
-    const width = (req.query as { w?: string }).w ? Number((req.query as { w: string }).w) : undefined;
+    const q = req.query as { w?: string; claro?: string };
+    const width = q.w ? Number(q.w) : undefined;
     const logo = await resolverLogoEstudio(nombre);
     if (!logo) return reply.code(404).send({ error: 'Sin logo para este estudio' });
-    return serveArt(reply, logo, width);
+    return serveArt(reply, q.claro === '1' ? await versionClara(logo) : logo, width);
   });
 
   /*

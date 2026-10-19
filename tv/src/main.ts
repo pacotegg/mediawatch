@@ -1785,18 +1785,20 @@ function notasHtml(ficha: Ficha): string {
 }
 
 /*
- * Transición del cartel a la ficha, con fundido al estilo Apple TV. La anterior agrandaba la tarjeta DENTRO del contenido
- * que a la vez se oscurecía (así que se apagaba con todo lo demás), el carrusel la recortaba y la ficha la sustituía a los
- * 220 ms, antes de que terminara: no se veía. Ahora el cartel se copia a una capa fija encima de todo (fuera de `marco`,
- * que se repinta), se eleva mientras el resto se funde y, cuando la ficha está pintada debajo, crece hacia el centro de
- * la pantalla y se disuelve en ella. Solo `transform` y `opacity` sobre una imagen ya cargada: lo que la tele mueve gratis.
+ * Transición del cartel a la ficha: el cartel se viene hacia delante. Se copia a una capa fija encima de todo (fuera de
+ * `marco`, que se repinta), se eleva mientras el resto se apaga y, cuando la ficha ya está pintada, crece OPACO hasta tapar
+ * la pantalla entera (la ficha, oculta hasta entonces) y sigue de largo mientras se desvanece: lo que queda es la ficha.
+ * Antes crecía solo al doble y ya transparente, y la ficha se veía a través: no parecía que viniera hacia delante.
+ * Dos fases con su propia curva en vez de una: así el desvanecido empieza seguro con la pantalla ya tapada, sea cual sea el
+ * tamaño de la tarjeta. Solo `transform` y `opacity`. La miniatura de la tarjeta es pequeña y ampliada se vería borrosa: se
+ * pide el cartel grande al despegar y se cambia en cuanto está decodificado.
  */
-function despegarCartel(elOrigen: HTMLElement): { aterrizar: () => void; cancelar: () => void } {
+function despegarCartel(elOrigen: HTMLElement): { aterrizar: () => void; cancelar: () => void; vuela: boolean } {
   const lamina = elOrigen.querySelector<HTMLElement>('.lamina') || elOrigen;
   const img = lamina.querySelector<HTMLImageElement>('img');
   const cont = elOrigen.closest('.contenido');
   if (cont) cont.classList.add('transicion-saliendo');
-  if (!img || !img.src) return { aterrizar: () => {}, cancelar: () => cont && cont.classList.remove('transicion-saliendo') };
+  if (!img || !img.src) return { aterrizar: () => {}, cancelar: () => cont && cont.classList.remove('transicion-saliendo'), vuela: false };
 
   const r = lamina.getBoundingClientRect();
   const vuelo = document.createElement('div');
@@ -1811,19 +1813,96 @@ function despegarCartel(elOrigen: HTMLElement): { aterrizar: () => void; cancela
   // Dos fotogramas: el primero pinta la copia en su sitio; el segundo arranca la transición desde ahí.
   requestAnimationFrame(() => requestAnimationFrame(() => vuelo.classList.add('elevado')));
 
-  const quitar = () => { if (vuelo.parentElement) vuelo.parentElement.removeChild(vuelo); };
+  const idCartel = Number(elOrigen.getAttribute('data-id'));
+  if (idCartel) {
+    const grande = new Image();
+    grande.src = imagen.poster(idCartel, 800);
+    const cambiar = () => { const i = vuelo.querySelector('img'); if (i && vuelo.parentElement) i.src = grande.src; };
+    if (typeof grande.decode === 'function') grande.decode().then(cambiar, () => {});
+    else grande.onload = cambiar;
+  }
+
+  const temporizadores: number[] = [];
+  const quitar = () => {
+    temporizadores.forEach((t) => window.clearTimeout(t));
+    marco.style.opacity = '';
+    if (vuelo.parentElement) vuelo.parentElement.removeChild(vuelo);
+  };
+  const a = (escala: number) => {
+    // Centro del cartel al centro de la pantalla (1920 x 1080); el origen de la transformación es la esquina.
+    const dx = 960 - r.left - (r.width * escala) / 2;
+    const dy = 540 - r.top - (r.height * escala) / 2;
+    return 'translate(' + Math.round(dx) + 'px, ' + Math.round(dy) + 'px) scale(' + escala.toFixed(3) + ')';
+  };
   return {
+    vuela: true,
     cancelar: quitar,
     aterrizar: () => {
-      // Del sitio del cartel hacia el centro de la pantalla (1920 x 1080), creciendo al doble mientras se disuelve.
-      const escala = 2;
-      const dx = 960 - (r.left + r.width / 2) - (r.width * escala) / 2 + r.width / 2;
-      const dy = 540 - (r.top + r.height / 2) - (r.height * escala) / 2 + r.height / 2;
-      vuelo.classList.add('fundiendo');
-      vuelo.style.transform = 'translate(' + Math.round(dx) + 'px, ' + Math.round(dy) + 'px) scale(' + escala + ')';
-      window.setTimeout(quitar, 560);
+      // La ficha ya está pintada: oculta hasta que el cartel la tape. Pase lo que pase, `quitar` la devuelve.
+      marco.style.opacity = '0';
+      const cubre = Math.max(1920 / r.width, 1080 / r.height) * 1.02;
+      vuelo.classList.add('viniendo');
+      vuelo.style.transform = a(cubre);
+      temporizadores.push(window.setTimeout(() => {
+        marco.style.opacity = '';
+        vuelo.classList.add('pasando');
+        vuelo.style.transform = a(cubre * 1.6);
+      }, 450));
+      temporizadores.push(window.setTimeout(quitar, 760));
     },
   };
+}
+
+/*
+ * Todos los logos de estudio, uno debajo de otro y con el mismo peso visual: misma ÁREA, no misma altura. Con una caja fija
+ * (260 x 75) un logo casi cuadrado como el león de MGM salía a 116 x 75, la mitad que uno alargado. Cada uno espera a
+ * tener su tamaño antes de verse, para no dar saltos. Los que no cargan se quitan.
+ */
+const AREA_LOGO = 12000;
+/*
+ * Hasta dónde pueden bajar: la fila de Reparto empieza hacia los 912 px. Medido el 19/10/2026 sobre 1.973 títulos: 611
+ * tienen un logo, 561 dos, 299 tres y 227 de cuatro a ocho; a tamaño normal caben tres. Con más, se encogen TODOS por igual
+ * hasta caber, en vez de dejar alguno fuera.
+ */
+const FONDO_LOGOS = 890;
+async function pintarLogosEstudio(id: number, caja: HTMLElement) {
+  let estudios: string[] = [];
+  try { estudios = (await api.logosEstudio(id)).estudios; } catch { /* sin lista: sin logos */ }
+  if (!caja.isConnected) return;
+  if (!estudios.length) { caja.style.display = 'none'; return; }
+  let pendientes = estudios.length;
+  const colocar = () => {
+    const imgs = Array.prototype.slice.call(caja.querySelectorAll('img')) as HTMLImageElement[];
+    if (!imgs.length) { caja.style.display = 'none'; return; }
+    const hueco = imgs.length > 3 ? 12 : 18;
+    const tam = imgs.map((img) => {
+      const r = img.naturalWidth / img.naturalHeight || 1;
+      let w = Math.sqrt(AREA_LOGO * r);
+      let h = w / r;
+      if (w > 280) { w = 280; h = w / r; }
+      if (h > 95) { h = 95; w = h * r; }
+      return { w: w, h: h };
+    });
+    const alto = tam.reduce((s, t) => s + t.h, 0) + hueco * (imgs.length - 1);
+    const sitio = FONDO_LOGOS - caja.offsetTop;
+    const k = alto > sitio ? Math.max(0.3, (sitio - hueco * (imgs.length - 1)) / (alto - hueco * (imgs.length - 1))) : 1;
+    imgs.forEach((img, i) => {
+      img.style.width = Math.round(tam[i].w * k) + 'px';
+      img.style.height = Math.round(tam[i].h * k) + 'px';
+      img.style.marginTop = i ? hueco + 'px' : '0';
+      img.classList.add('listo');
+    });
+  };
+  const hecho = () => { if (--pendientes === 0 && caja.isConnected) colocar(); };
+  for (const nombre of estudios) {
+    const img = document.createElement('img');
+    img.className = 'logo-estudio-3d';
+    img.alt = nombre;
+    img.onload = hecho;
+    img.onerror = () => { if (img.parentElement) img.parentElement.removeChild(img); hecho(); };
+    img.src = imagen.estudioNombre(nombre, 400);
+    caja.appendChild(img);
+  }
 }
 
 async function pantallaFicha(id: number, volverA?: (() => void) | null, focoInicialId?: number, elOrigen?: HTMLElement | null) {
@@ -1980,7 +2059,7 @@ function formatoAspecto(ancho?: number | null, alto?: number | null): string {
   let cuerpo =
     '<div class="ficha-fondo">' + (ficha.has_fanart ? '<img src="' + imagen.fondo(ficha.id, 1920) + '" alt="">' : '') + '</div>' +
     '<div class="ficha-velo"></div>' +
-    '<div class="ficha' + (elOrigen ? ' animar-entrada' : '') + '" data-bloque>' +
+    '<div class="ficha' + (elOrigen && !(vuelo && vuelo.vuela) ? ' animar-entrada' : '') + '" data-bloque>' +
     '<div class="ficha-cuerpo">' +
 
     (ficha.has_logo
@@ -2031,10 +2110,9 @@ function formatoAspecto(ancho?: number | null, alto?: number | null): string {
         '<div class="estuche-hint-tv">Edición física · Enter</div>' +
         '</div>'
       : '') +
+    // Los logos (todos los estudios, uno debajo de otro) se ponen al llegar la lista: ver pintarLogosEstudio.
     (ficha.studio
-      ? '<div class="estudio-logo-tv-wrap' + (ajustes().estuche3D && ficha.has_poster ? '' : ' sin-estuche') + '">' +
-        '<img class="logo-estudio-3d" src="' + imagen.estudio(ficha.id, 360) + '" alt="' + esc(ficha.studio) + '" onerror="this.parentElement.style.display=\'none\'">' +
-        '</div>'
+      ? '<div class="estudio-logo-tv-wrap' + (ajustes().estuche3D && ficha.has_poster ? '' : ' sin-estuche') + '" data-logos-estudio></div>'
       : '') +
     '</div>';
 
@@ -2095,6 +2173,8 @@ function formatoAspecto(ancho?: number | null, alto?: number | null): string {
   cuerpo += '</div>';
   pintar('inicio', cuerpo);
   if (vuelo) vuelo.aterrizar();
+  const cajaLogos = marco.querySelector<HTMLElement>('[data-logos-estudio]');
+  if (cajaLogos) void pintarLogosEstudio(ficha.id, cajaLogos);
 
   marco.querySelectorAll<HTMLElement>('.tarjeta:not([data-lista])').forEach((el) => {
     el.setAttribute('data-lista', '1');
@@ -3318,6 +3398,8 @@ function dialogoEdicionColeccionista(ficha: Ficha, elOrigen?: HTMLElement | null
     '<div class="coleccionista-lomo-bisagra"></div>' +
     // Hoja derecha: bandeja con el disco
     '<div class="coleccionista-bandeja">' +
+    // Se destapa al ritmo de la tapa (ver .coleccionista-destapado en app.css).
+    '<div class="coleccionista-destapado"><div class="coleccionista-destapado-dentro">' +
     (ficha.has_fanart ? '<img class="coleccionista-bandeja-fondo" src="' + imagen.fondo(ficha.id, 1280) + '" alt="">' : '') +
     '<div class="coleccionista-bandeja-circulo"></div>' +
     (ficha.has_discart
@@ -3325,6 +3407,7 @@ function dialogoEdicionColeccionista(ficha: Ficha, elOrigen?: HTMLElement | null
       : '<img class="coleccionista-disco" src="' + imagen.poster(ficha.id, 800) + '" style="border-radius:50%; object-fit:cover;" alt="Disco">') +
     '<div class="coleccionista-reflejo"></div>' +
     '<div class="coleccionista-pivote"></div>' +
+    '</div></div>' +
     '</div>' +
     '</div>' +
     '</div>' +
@@ -3347,7 +3430,7 @@ function dialogoEdicionColeccionista(ficha: Ficha, elOrigen?: HTMLElement | null
 
   // Al acabar la apertura (vuelo, tapa y disco: 2,1 s; ver app.css) se suelta la clase: la tapa y el libro ya están en
   // su sitio definitivo, el transform en línea deja inclinar con las flechas sin que la animación lo pise, y `abierto`
-  // arranca el movimiento de reposo (la caja flota y el disco gira despacio).
+  // arranca el movimiento de reposo (la caja flota; el disco se queda quieto).
   const temporizadorApertura = window.setTimeout(() => {
     estuche.classList.remove('animando-apertura');
     estuche.classList.add('abierto');

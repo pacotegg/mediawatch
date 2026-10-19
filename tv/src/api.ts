@@ -254,6 +254,8 @@ export const api = {
     pedir<{ total: number; letras: { letra: string; offset: number }[] }>('/api/items/letras?library=' + biblioteca),
   generos: (biblioteca?: number) =>
     pedir<{ id: number; name: string; count: number }[]>(biblioteca ? '/api/genres?library=' + biblioteca : '/api/genres'),
+  /** Los estudios del título con logo, sin repetir y en su orden (el primero, el principal). */
+  logosEstudio: (id: number) => pedir<{ estudios: string[] }>('/api/items/' + id + '/studio-logos'),
   estudios: (biblioteca?: number) =>
     pedir<{ name: string; count: number }[]>(biblioteca ? '/api/studios?library=' + biblioteca : '/api/studios'),
   actores: (biblioteca?: number) =>
@@ -496,6 +498,9 @@ export const imagen = {
   plataforma: (ruta: string, w: number) => conToken(servidor() + '/api/plataformas/caratula/w' + w + ruta),
   disco: (id: number, w: number) => conToken(servidor() + '/api/items/' + id + '/discart?w=' + w),
   estudio: (id: number, w: number) => conToken(servidor() + '/api/items/' + id + '/studio-logo?w=' + w),
+  /** El logo de un estudio en su versión para fondo oscuro (el servidor aclara los que son negros). */
+  estudioNombre: (nombre: string, w: number) =>
+    conToken(servidor() + '/api/studios/' + encodeURIComponent(nombre) + '/logo?claro=1&w=' + w),
   tema: (id: number) => conToken(servidor() + '/api/items/' + id + '/theme'),
   persona: (id: number, w: number) => conToken(servidor() + '/api/people/' + id + '/thumb?w=' + w),
   tira: (fileId: number, hoja: number) => conToken(servidor() + '/api/play/' + fileId + '/trickplay/' + hoja),

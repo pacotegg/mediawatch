@@ -814,15 +814,15 @@ body.rend-rapido .lamina img {
   transform: translateX(-50%) translateY(0);
 }
 
+/* Uno debajo de otro: el primero (el estudio principal) donde iba el logo único; el tamaño de cada uno lo pone el script. */
 .estudio-logo-tv-wrap {
   position: absolute;
   top: 525px;
   right: 105px;
   width: 280px;
-  height: 85px;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
   pointer-events: none;
   z-index: 8;
 }
@@ -831,15 +831,23 @@ body.rend-rapido .lamina img {
   top: 90px;
 }
 
+/*
+ * Sin el viejo `brightness(0) invert(1)`, que dejaba todo en una silueta blanca (el león de MGM, una mancha): el servidor ya
+ * aclara los logos negros (claro=1) y los de color se ven con su color. Se queda el relieve de antes: un filo de luz de 1 px
+ * arriba, uno de sombra abajo y la sombra que lo despega del fondo. Es estático: se pinta una vez.
+ */
 .logo-estudio-3d {
-  max-width: 260px;
-  max-height: 75px;
+  display: block;
   object-fit: contain;
-  filter: brightness(0) invert(1)
-          drop-shadow(0 1px 0 rgba(255, 255, 255, 0.45))
+  filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.45))
           drop-shadow(0 -1px 0 rgba(0, 0, 0, 0.7))
           drop-shadow(0 3px 6px rgba(0, 0, 0, 0.85));
-  opacity: 0.88;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.logo-estudio-3d.listo {
+  opacity: 0.92;
 }
 
 /*
@@ -906,7 +914,7 @@ body.rend-rapido .lamina img {
  * Secuencia de apertura (la suelta el script a los 2,15 s, cuando todo ha terminado):
  *   0 - 0,75 s    la caja vuela desde la carátula de la ficha hasta el centro
  *   0,35 - 1,95 s la tapa gira sobre la bisagra (con un rebote corto al final) y el libro se recentra
- *   1 - 2,1 s     el disco, quieto mientras la tapa lo cubre, se asienta cuando la tapa pasa de 90°
+ *   0,45 - 0,95 s la bandeja se destapa por donde la tapa deja de cubrirla; el disco gira desde que asoma (0,55 s) y se para a los 2,1 s
  * Curva casi sinusoidal en la tapa: con una de entrada y salida marcada, la velocidad punta era 2,5 veces la media y la
  * tapa recorría 75° en 200 ms (medido en el navegador). Así la punta se queda en ~1,6 veces.
  * both: el estado final se mantiene hasta que el script quita la clase y pone la inclinación a mano.
@@ -1147,27 +1155,93 @@ body.rend-rapido .lamina img {
 }
 
 /*
- * El disco no se mueve mientras la tapa lo tapa: antes giraba 720° desde el principio y casi todo el giro caía en los
- * primeros 300 ms, con la caja aún cerrada, así que se le veía dar vueltas por la rendija. Ahora espera a que la tapa
- * pase de 90° (1 s) y entonces se asienta con un cuarto de vuelta.
+ * La bandeja se destapa por donde la tapa deja de taparla, no de golpe. En la tele el disco (capa propia por su animación)
+ * se pintaba POR ENCIMA de la tapa cerrada: se veía a través de ella. Así solo se pinta la parte de bandeja que la tapa ya
+ * no cubre vista desde delante, aunque la tele ordene mal los planos. Los valores salen de proyectar el borde libre de la
+ * tapa con la misma perspectiva (1800 px), inclinación (-8° / 2°), recentrado del libro y curva de la tapa (scratchpad
+ * `destapado-disco.cjs` de la sesión del 19/10/2026): rendija a 0,45 s, el disco asoma a 0,6 s, destapada del todo a 0,95 s.
+ * Dos capas: la de fuera recorta y se mueve; la de dentro hace el movimiento contrario y el contenido no se desplaza.
+ * Solo transform: lo mueve la tele sin repintar.
+ */
+.coleccionista-destapado,
+.coleccionista-destapado-dentro {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.coleccionista-destapado {
+  overflow: hidden;
+}
+
+.coleccionista-destapado-dentro {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.animando-apertura .coleccionista-destapado {
+  animation: destaparBandeja 1s linear both;
+}
+
+.animando-apertura .coleccionista-destapado-dentro {
+  animation: destaparBandejaDentro 1s linear both;
+}
+
+@keyframes destaparBandeja {
+  0%, 40% { transform: translateX(400px); }
+  45% { transform: translateX(399px); }
+  50% { transform: translateX(396px); }
+  55% { transform: translateX(392px); }
+  60% { transform: translateX(383px); }
+  65% { transform: translateX(368px); }
+  70% { transform: translateX(343px); }
+  75% { transform: translateX(305px); }
+  80% { transform: translateX(251px); }
+  85% { transform: translateX(178px); }
+  90% { transform: translateX(87px); }
+  95%, 100% { transform: translateX(0); }
+}
+
+@keyframes destaparBandejaDentro {
+  0%, 40% { transform: translateX(-400px); }
+  45% { transform: translateX(-399px); }
+  50% { transform: translateX(-396px); }
+  55% { transform: translateX(-392px); }
+  60% { transform: translateX(-383px); }
+  65% { transform: translateX(-368px); }
+  70% { transform: translateX(-343px); }
+  75% { transform: translateX(-305px); }
+  80% { transform: translateX(-251px); }
+  85% { transform: translateX(-178px); }
+  90% { transform: translateX(-87px); }
+  95%, 100% { transform: translateX(0); }
+}
+
+/*
+ * El disco arranca a girar cuando empieza a asomar (0,55 s): dos vueltas que frenan y se queda quieto en su sitio a los
+ * 2,1 s, justo antes de que el script quite la animación. Sin giro en reposo: se pidió que se quede parado.
  */
 .animando-apertura .coleccionista-disco {
-  animation: asentarDiscoColeccionista 1.1s cubic-bezier(0.22, 1, 0.36, 1) 1s both;
+  animation: asentarDiscoColeccionista 1.55s cubic-bezier(0.22, 1, 0.36, 1) 0.55s both;
 }
 
 @keyframes asentarDiscoColeccionista {
-  from { transform: rotate(-75deg) scale(0.94); }
+  from { transform: rotate(-720deg) scale(0.96); }
   to { transform: rotate(0deg) scale(1); }
 }
 
-/* Abierta, el disco gira despacio (un minuto por vuelta) bajo un reflejo fijo, como uno de verdad. */
-.coleccionista-estuche.abierto .coleccionista-disco {
-  animation: girarDiscoColeccionista 60s linear infinite;
-}
-
-@keyframes girarDiscoColeccionista {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+/*
+ * Mientras se abre, sin sombras: tres de 70 px de difuminado moviéndose en 3D (y la del disco girando con él) es lo más caro
+ * que tenía la animación. Aparecen al quedar abierta.
+ */
+.animando-apertura .cara-exterior,
+.animando-apertura .cara-interior,
+.animando-apertura .coleccionista-bandeja,
+.animando-apertura .coleccionista-disco {
+  box-shadow: none;
 }
 
 .coleccionista-reflejo {
@@ -4415,7 +4489,7 @@ body.viendo-extra .marco * {
 
 /*
  * Transición del cartel a la ficha (ver `despegarCartel` en main.ts): el cartel va en una capa propia, fuera del contenido
- * que se funde (antes crecía dentro de él y se apagaba con todo lo demás), se eleva y luego crece y se disuelve en la ficha.
+ * que se funde (antes crecía dentro de él y se apagaba con todo lo demás), se eleva y luego se viene hacia delante.
  */
 .contenido.transicion-saliendo {
   opacity: 0;
@@ -4446,10 +4520,20 @@ body.viendo-extra .marco * {
   transform: translate(-4%, -4%) scale(1.08);
 }
 
-/* Fundido: crece hacia el centro y se disuelve mientras la ficha entra debajo (0,45 s, `entradaFicha`). */
-.vuelo-cartel.fundiendo {
+/*
+ * Fase 1 (0,45 s): se viene hacia delante, opaco, acelerando, hasta tapar la pantalla. Sin sombra: escalada nueve veces
+ * sería lo más caro del fotograma y ya no se ve el borde.
+ * Fase 2 (0,25 s): sigue de largo frenando y se desvanece; debajo ya está la ficha. Las curvas casan la velocidad en el
+ * cambio de fase (pendiente final 4 de la primera, inicial 3 de la segunda sobre un tramo 0,6 / 1,02 del primero).
+ */
+.vuelo-cartel.viniendo {
+  box-shadow: none;
+  transition: transform 0.45s cubic-bezier(0.45, 0, 0.9, 0.6);
+}
+
+.vuelo-cartel.pasando {
   opacity: 0;
-  transition: transform 0.55s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.45s ease 0.08s;
+  transition: transform 0.25s cubic-bezier(0.2, 0.6, 0.4, 1), opacity 0.25s ease-out;
 }
 
 .ficha.animar-entrada {
