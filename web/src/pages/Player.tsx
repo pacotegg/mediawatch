@@ -246,7 +246,16 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
 
   // Always honour an explicit `t`: it also carries deep links from a dialogue
   // search, which must jump to the line whatever the resume preference says.
-  const [offset, setOffset] = useState(Number(params.get('t') ?? 0));
+  /*
+   * El desfase va ligado al fichero. Al pasar al siguiente episodio la página no se vuelve a montar, y el `useState`
+   * de antes conservaba el `t` del anterior: el nuevo se pedía desde ahí (sus últimos segundos), saltaba «Siguiente
+   * episodio» y así en cascada; medido en una copia de la base, cinco episodios seguidos marcados como vistos en medio
+   * minuto. Si el desfase guardado es de otro fichero, vale el `t` del de ahora, sin un solo render con el viejo.
+   */
+  const tDeLaUrl = Number(params.get('t') ?? 0);
+  const [desfase, setDesfase] = useState({ fileId, t: tDeLaUrl });
+  const offset = desfase.fileId === fileId ? desfase.t : tDeLaUrl;
+  const setOffset = useCallback((t: number) => setDesfase({ fileId, t }), [fileId]);
   const [current, setCurrent] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [buffering, setBuffering] = useState(true);
@@ -303,6 +312,10 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
   const [buscandoSubs, setBuscandoSubs] = useState(false);
   const [watchNextCancelado, setWatchNextCancelado] = useState(false);
   const [cuentaAtrasNext, setCuentaAtrasNext] = useState(12);
+  // «Ver créditos» vale para este episodio; en el siguiente la tarjeta vuelve a salir.
+  useEffect(() => { setWatchNextCancelado(false); }, [fileId]);
+  // Fichero en el que empezó la cuenta atrás: si al llegar a 0 ya es otro, no se encadena (corta cualquier cascada).
+  const cuentaDeFicheroRef = useRef<number | null>(null);
 
   const buscarSubtitulos = async () => {
     setBuscandoSubs(true);
@@ -791,11 +804,20 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
   const marcadoVistoRef = useRef(false);
   useEffect(() => { marcadoVistoRef.current = false; }, [fileId]);
 
+  /*
+   * Al pasar a otro episodio, el `<video>` sigue con el fichero anterior hasta que carga el nuevo. Guardar en ese hueco
+   * apuntaba la posición del anterior al nuevo: medido, el episodio siguiente quedaba guardado en 1272 s de 1239 y, por
+   * tanto, visto nada más empezar. Solo se guarda cuando el vídeo ya ha cargado el fichero de ahora (`loadeddata` no
+   * vuelve a saltar en el viejo).
+   */
+  const videoDeEsteFicheroRef = useRef(false);
+  useEffect(() => { videoDeEsteFicheroRef.current = false; }, [fileId]);
+
   // Persist position so "continue watching" survives a reload or a jump to another device.
   useEffect(() => {
     if (!itemId || conMpv) return;
     const save = () => {
-      if (marcadoVistoRef.current) return;
+      if (marcadoVistoRef.current || !videoDeEsteFicheroRef.current) return;
       const position = (isTimeshift ? offset : 0) + (videoRef.current?.currentTime ?? 0);
       if (position > 5) {
         api.saveProgress({
@@ -1024,22 +1046,23 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
 
   // Cuenta atrás para reproducir el siguiente episodio si está en modo Watch Next
   useEffect(() => {
+    setCuentaAtrasNext(12);
     if (!enModoWatchNext) {
-      setCuentaAtrasNext(12);
+      cuentaDeFicheroRef.current = null;
       return;
     }
-    const t = window.setInterval(() => {
-      setCuentaAtrasNext((c) => {
-        if (c <= 1) {
-          window.clearInterval(t);
-          irAlSiguiente();
-          return 0;
-        }
-        return c - 1;
-      });
-    }, 1000);
+    cuentaDeFicheroRef.current = fileId;
+    const t = window.setInterval(() => setCuentaAtrasNext((c) => Math.max(0, c - 1)), 1000);
     return () => window.clearInterval(t);
-  }, [enModoWatchNext]);
+  }, [enModoWatchNext, fileId]);
+
+  // Al llegar a 0, una sola vez y con el estado de ahora. Antes se llamaba desde dentro del actualizador de estado, que
+  // React puede ejecutar dos veces (en modo estricto, siempre), y con la `irAlSiguiente` capturada al empezar la cuenta.
+  useEffect(() => {
+    if (!enModoWatchNext || cuentaAtrasNext !== 0 || cuentaDeFicheroRef.current !== fileId) return;
+    cuentaDeFicheroRef.current = null;
+    irAlSiguiente();
+  }, [cuentaAtrasNext, enModoWatchNext, fileId]);
 
   useEffect(() => {
     // El resumen («Anteriormente en…») se salta igual que la cabecera, con el mismo ajuste.
@@ -1130,6 +1153,7 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
           onWaiting={() => setBuffering(true)}
           onPlaying={() => setBuffering(false)}
           onCanPlay={() => setBuffering(false)}
+          onLoadedData={() => { videoDeEsteFicheroRef.current = true; }}
           onTimeUpdate={(e) => !scrubbing && setCurrent(e.currentTarget.currentTime)}
           onEnded={() => {
             if (itemId) {
