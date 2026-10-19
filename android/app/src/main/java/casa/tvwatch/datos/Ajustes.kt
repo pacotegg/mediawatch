@@ -166,6 +166,14 @@ object Ajustes {
     get() = prefs.getBoolean("musicaCabecera", true)
     set(v) = prefs.edit().putBoolean("musicaCabecera", v).apply()
 
+  /**
+   * Modo maratón: en un episodio que llega ENCADENADO del anterior, salta solo la cabecera y el resumen. Antes los saltaba
+   * siempre (también al abrir un episodio a mano o al reanudar), y por eso se llegó a quitar en la 3.68.
+   */
+  var modoMaraton: Boolean
+    get() = prefs.getBoolean("modoMaraton", true)
+    set(v) = prefs.edit().putBoolean("modoMaraton", v).apply()
+
   /** Estuche 3D interactivo con discart extraíble. */
   var estuche3D: Boolean
     get() = prefs.getBoolean("estuche3D", false)

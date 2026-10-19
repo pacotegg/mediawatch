@@ -63,6 +63,7 @@ fun PantallaAjustes(
   var calidadFuera by remember { mutableStateOf(Ajustes.calidadFuera) }
   var encaje by remember { mutableStateOf(Ajustes.encajeVideo) }
   var castCincoUno by remember { mutableStateOf(Ajustes.castCincoUno) }
+  var modoMaraton by remember { mutableStateOf(Ajustes.modoMaraton) }
 
   var descargasSoloWifi by remember { mutableStateOf(Ajustes.descargasSoloWifi) }
   var calidadDescarga by remember { mutableStateOf(Ajustes.calidadDescargaDefecto) }
@@ -209,6 +210,16 @@ fun PantallaAjustes(
           },
         )
       }
+
+      FilaInterruptor(
+        titulo = "Modo maratón",
+        subtitulo = "Al encadenar episodios de una serie, salta solo la cabecera y el resumen.",
+        activo = modoMaraton,
+        alCambiar = {
+          modoMaraton = it
+          Ajustes.modoMaraton = it
+        },
+      )
 
       FilaInterruptor(
         titulo = "Chromecast: sonido 5.1",

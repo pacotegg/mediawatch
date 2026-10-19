@@ -4122,7 +4122,8 @@ function mostrarAvisoEdad(ficha: Ficha, cont: HTMLElement) {
   }, 5500);
 }
 
-function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | null, desde: number, alVolver?: (() => void) | null) {
+/** `encadenado`: llega del episodio anterior (cuenta atrás o «Siguiente episodio»); es lo que activa el modo maratón. */
+function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | null, desde: number, alVolver?: (() => void) | null, encadenado = false) {
   pararTemaMusical();
   window.clearInterval(temporizadorHeroe);
   alPulsar(null);
@@ -4547,7 +4548,8 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     let dentro: RangoSalto | null = null;
     for (const r of rangos) {
       // «Siguiente episodio» no depende del ajuste de saltar cabecera: se ofrece siempre.
-      const ofrecer = aj.saltarCabecera || (r.kind === 'credits' && haySiguiente);
+      const maraton = encadenado && aj.modoMaraton && (r.kind === 'intro' || r.kind === 'recap');
+      const ofrecer = aj.saltarCabecera || maraton || (r.kind === 'credits' && haySiguiente);
       if (ofrecer && segundos >= r.start_s && segundos < r.end_s - 1 && !tramosSaltados[r.kind + r.start_s]) dentro = r;
     }
     if (dentro === tramoActivo) return;
@@ -4556,6 +4558,12 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
       botonTramo.classList.remove('visible', 'enfocado');
       enTramo = false;
       cerrarWatchNext();
+      return;
+    }
+
+    // Modo maratón: solo en un episodio encadenado, ni al abrirlo a mano ni al reanudar (ver ajustes.ts).
+    if (encadenado && aj.modoMaraton && (dentro.kind === 'intro' || dentro.kind === 'recap')) {
+      saltarTramo();
       return;
     }
 
@@ -4925,7 +4933,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     const sig = siguienteEpisodio();
     if (directo && sig && sig.file_id) {
       reproductor.cerrar();
-      pantallaReproductor(ficha, sig.file_id, sig.id, 0, alVolver);
+      pantallaReproductor(ficha, sig.file_id, sig.id, 0, alVolver, true);
       return;
     }
     if (!sig || !sig.file_id) {
@@ -4960,7 +4968,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     };
     const ver = () => {
       parar();
-      pantallaReproductor(ficha, sig.file_id as number, sig.id, 0, alVolver);
+      pantallaReproductor(ficha, sig.file_id as number, sig.id, 0, alVolver, true);
     };
     const reloj10 = window.setInterval(() => {
       quedan--;
@@ -5776,7 +5784,7 @@ function pantallaAjustes(pestanaInicial?: string) {
   if (pestanaInicial && pestanas.some((p) => p.id === pestanaInicial)) {
     pestanaActivaId = pestanaInicial;
   } else if (focoAjustesDespues) {
-    if (['reanudar', 'saltoCorto', 'saltoLargo', 'horaDeFin', 'saltarCabecera'].indexOf(focoAjustesDespues) >= 0) {
+    if (['reanudar', 'saltoCorto', 'saltoLargo', 'horaDeFin', 'modoMaraton', 'saltarCabecera'].indexOf(focoAjustesDespues) >= 0) {
       pestanaActivaId = 'reproduccion';
     } else if (['modoAudio', 'passthroughAvanzado', 'tamanoSubtitulos', 'fondoSubtitulos'].indexOf(focoAjustesDespues) >= 0) {
       pestanaActivaId = 'audio-subs';
@@ -5806,7 +5814,8 @@ function pantallaAjustes(pestanaInicial?: string) {
       elecciones('reanudar', [{ valor: 'si', texto: tr('Reanudar donde lo dejé', 'Resume where I left off') }, { valor: 'no', texto: tr('Empezar de cero', 'Start over') }], a.reanudar ? 'si' : 'no') +
       elecciones('saltoCorto', [10, 15, 30].map(function (n: number) { return { valor: n, texto: tr('Atrás ', 'Back ') + n + ' s' }; }), a.saltoCorto) +
       elecciones('saltoLargo', [30, 60, 120].map(function (n: number) { return { valor: n, texto: tr('Adelante ', 'Forward ') + n + ' s' }; }), a.saltoLargo) +
-      elecciones('horaDeFin', [{ valor: 'si', texto: tr('Mostrar «termina a las…»', 'Show «ends at…»') }, { valor: 'no', texto: tr('Solo lo que queda', 'Time left only') }], a.horaDeFin ? 'si' : 'no'),
+      elecciones('horaDeFin', [{ valor: 'si', texto: tr('Mostrar «termina a las…»', 'Show «ends at…»') }, { valor: 'no', texto: tr('Solo lo que queda', 'Time left only') }], a.horaDeFin ? 'si' : 'no') +
+      siNo('modoMaraton', a.modoMaraton, 'Modo maratón (salta cabecera y resumen al encadenar episodios)', 'Binge mode (skips intro and recap when chaining episodes)'),
     ) +
     grupo(tr('Saltar cabecera y créditos', 'Skip intro and credits'), tr('Muestra el botón para saltar la cabecera de las series y los créditos finales.', 'Shows the button to skip series intros and end credits.'),
       elecciones('saltarCabecera', [{ valor: 'si', texto: tr('Ofrecer saltar', 'Offer to skip') }, { valor: 'no', texto: tr('No ofrecer', "Don't offer") }], a.saltarCabecera ? 'si' : 'no'),
@@ -5973,6 +5982,7 @@ function pantallaAjustes(pestanaInicial?: string) {
       else if (campo === 'musicaCabecera') guardarAjustes({ musicaCabecera: valor === 'si' });
       else if (campo === 'estuche3D') guardarAjustes({ estuche3D: valor === 'si' });
       else if (campo === 'horaDeFin') guardarAjustes({ horaDeFin: valor === 'si' });
+      else if (campo === 'modoMaraton') guardarAjustes({ modoMaraton: valor === 'si' });
       else if (campo === 'idiomaInterfaz') {
         guardarAjustes({ idiomaInterfaz: valor as 'en' | 'es' });
         pantallaAjustes('pantalla');

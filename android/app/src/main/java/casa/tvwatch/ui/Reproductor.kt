@@ -171,6 +171,9 @@ fun PantallaReproductor(
    * reproductor y le devolvía la orientación a vertical.
    */
   var actual by remember { mutableStateOf(Triple(fileId, episodioId, desdeSegundos)) }
+  // El episodio de ahora llegó encadenado del anterior (acabó o se pulsó «Siguiente episodio» en los créditos): es lo
+  // único que activa el modo maratón. Abrirlo a mano o pasar de episodio a mitad no cuenta.
+  var encadenado by remember { mutableStateOf(false) }
 
   /*
    * El reproductor vive en `ReproduccionService`; aquí se pide un mando para
@@ -210,7 +213,8 @@ fun PantallaReproductor(
     Box(Modifier.fillMaxSize().background(Color.Black))
     return
   }
-  Reproduciendo(r, actual.first, itemId, actual.second, actual.third, alSalir) { fichero, episodio ->
+  Reproduciendo(r, actual.first, itemId, actual.second, actual.third, encadenado, alSalir) { fichero, episodio, porEncadenado ->
+    encadenado = porEncadenado
     actual = Triple(fichero, episodio, 0.0)
   }
 }
@@ -223,8 +227,9 @@ private fun Reproduciendo(
   itemId: Int,
   episodioId: Int?,
   desdeSegundos: Double,
+  encadenado: Boolean,
   alSalir: () -> Unit,
-  alSiguiente: (fileId: Int, episodioId: Int) -> Unit,
+  alSiguiente: (fileId: Int, episodioId: Int, encadenado: Boolean) -> Unit,
 ) {
   val contexto = LocalContext.current
   val actividad = contexto as? Activity
@@ -609,7 +614,14 @@ private fun Reproduciendo(
         ("credits" + (duracionViva - 40)) !in tramosSaltados
       ) RangoSalto("credits", duracionViva - 40, duracionViva) else null
       val dentro = deLosDetectados ?: respaldoDeCreditos
-      tramoALaVista = dentro
+      if (dentro != null && encadenado && Ajustes.modoMaraton && (dentro.kind == "intro" || dentro.kind == "recap")) {
+        // Modo maratón: solo en un episodio encadenado (ver Ajustes.modoMaraton).
+        tramosSaltados.add(dentro.kind + dentro.desde)
+        reproductor.seekTo(((dentro.hasta - desfase) * 1000).toLong().coerceAtLeast(0L))
+        tramoALaVista = null
+      } else {
+        tramoALaVista = dentro
+      }
     }
   }
 
@@ -705,7 +717,7 @@ private fun Reproduciendo(
       try {
         withContext(Dispatchers.IO) { Api.guardarProgreso(itemId, episodioId, duracionConocida, duracionConocida, vista = true, audio = pistaAudio?.toString(), subtitulo = subtituloPuesto()) }
       } catch (e: Exception) { /* se pasa igual */ }
-      alSiguiente(fichero, sig.id)
+      alSiguiente(fichero, sig.id, true)
     }
   }
 
@@ -730,7 +742,7 @@ private fun Reproduciendo(
       try {
         withContext(Dispatchers.IO) { Api.guardarProgreso(itemId, episodioId, donde, duracionConocida, vista = yaVisto, audio = pistaAudio?.toString(), subtitulo = subtituloPuesto()) }
       } catch (e: Exception) { /* se cambia igual */ }
-      alSiguiente(fichero, destino.id)
+      alSiguiente(fichero, destino.id, false)
     }
   }
 

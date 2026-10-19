@@ -3,8 +3,16 @@ import type { Capitulo } from './probe.ts';
 import { coincideTitulo, esTituloGenerico, tiempoASegundos } from './chapterdb.ts';
 import zlib from 'node:zlib';
 
-/** Cookie secreta obligatoria extraída de chapterEditor.exe */
-const SECRET_COOKIE = Buffer.from('COOKIE-RETIRADA', 'hex').toString('latin1');
+/**
+ * Cookie que el programa ChapterEditor manda a su base de capítulos. Vive en `data/config.json`
+ * (`chapterEditorClaveHex`, en hexadecimal), junto al usuario y la contraseña de esa base: no es nuestra y el
+ * repositorio es público. Sin ella, esta fuente simplemente no se usa.
+ */
+function cookieDelCliente(): string {
+  const hex = String((config as unknown as { chapterEditorClaveHex?: string }).chapterEditorClaveHex ?? '').trim();
+  if (!/^[0-9a-f]+$/i.test(hex)) throw new Error('Falta chapterEditorClaveHex en config.json');
+  return Buffer.from(hex, 'hex').toString('latin1');
+}
 const CE_ENDPOINT = 'https://www.chaptereditor.lima-city.de/index.php';
 
 export type ResultadoChapterEditor = {
@@ -42,7 +50,7 @@ async function obtenerSesionChapterEditor(): Promise<string> {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
-      Cookie: SECRET_COOKIE,
+      Cookie: cookieDelCliente(),
       'User-Agent': 'chapterEditor',
     },
     body: `task=login&user=${encodeURIComponent(user)}&pass=${encodeURIComponent(pass)}`,
@@ -61,7 +69,7 @@ async function obtenerSesionChapterEditor(): Promise<string> {
     throw new Error('No se recibió token de autenticación desde Chapter-Database.');
   }
 
-  cachedSessionCookie = `${SECRET_COOKIE}${phpSess ? `; ${phpSess}` : ''}; ${token}`;
+  cachedSessionCookie = `${cookieDelCliente()}${phpSess ? `; ${phpSess}` : ''}; ${token}`;
   // Token es válido durante 24h, renovamos a las 20h
   sessionExpiresAt = ahora + 20 * 60 * 60 * 1000;
   return cachedSessionCookie;

@@ -39,6 +39,11 @@ export type Ajustes = {
   estuche3D: boolean;
   /** Enseñar en el reproductor a qué hora termina lo que se está viendo. */
   horaDeFin: boolean;
+  /**
+   * Modo maratón: en un episodio que llega ENCADENADO del anterior, salta solo la cabecera y el resumen. Antes los
+   * saltaba siempre (también al abrir un episodio a mano o al reanudar), y por eso se llegó a quitar.
+   */
+  modoMaraton: boolean;
   /*
    * Salvapantallas de fondos, en minutos de quietud. 0 lo apaga.
    *
@@ -80,6 +85,7 @@ const POR_DEFECTO: Ajustes = {
   musicaCabecera: true,
   estuche3D: false,
   horaDeFin: true,
+  modoMaraton: true,
   salvaMenu: 2,
   salvaPausa: 5,
   idiomaInterfaz: 'en',
@@ -112,6 +118,7 @@ export function cargarAjustes(): Ajustes {
         musicaCabecera: guardado.musicaCabecera !== false,
         estuche3D: guardado.estuche3D === true,
         horaDeFin: guardado.horaDeFin !== false,
+        modoMaraton: guardado.modoMaraton !== false,
         idiomaInterfaz: guardado.idiomaInterfaz || (crudo ? 'es' : 'en'),
         /*
          * Con `??`, no con `||`: cero es «apagado», un valor legítimo que `||`
