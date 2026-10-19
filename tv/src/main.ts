@@ -1889,6 +1889,11 @@ async function pintarLogosEstudio(id: number, caja: HTMLElement) {
   try { estudios = (await api.logosEstudio(id)).estudios; } catch { /* sin lista: sin logos */ }
   if (!caja.isConnected) return;
   if (!estudios.length) { caja.style.display = 'none'; return; }
+  // Rótulo hermano de «Dirigida por» (mismo estilo, .direccion): pedido el 19/10/2026.
+  const rotulo = document.createElement('div');
+  rotulo.className = 'direccion producida-por';
+  rotulo.textContent = 'Producida por';
+  caja.appendChild(rotulo);
   let pendientes = estudios.length;
   /*
    * Uno solo, grande como siempre. Varios, de dos en dos: el segundo al lado del primero, el tercero y el cuarto debajo
@@ -1925,7 +1930,7 @@ async function pintarLogosEstudio(id: number, caja: HTMLElement) {
     if (suelto >= 0) filas.push([suelto]);
     const altoFila = filas.map((f) => Math.max.apply(null, f.map((i) => tam[i].h)));
     const alto = altoFila.reduce((s, h) => s + h, 0) + hueco * (filas.length - 1);
-    const sitio = FONDO_LOGOS - caja.offsetTop;
+    const sitio = FONDO_LOGOS - caja.offsetTop - rotulo.offsetHeight - 12;
     const k = alto > sitio ? Math.max(0.3, (sitio - hueco * (filas.length - 1)) / (alto - hueco * (filas.length - 1))) : 1;
     filas.forEach((f, n) => {
       const fila = document.createElement('div');

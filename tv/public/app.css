@@ -854,6 +854,11 @@ body.rend-rapido .lamina img {
 }
 
 /* Dos logos por fila, centrados; sin `gap` (Chrome 76): el hueco es margen. */
+.producida-por {
+  margin: 0 0 12px;
+  text-align: center;
+}
+
 .fila-logos-estudio {
   display: flex;
   align-items: center;
