@@ -1073,7 +1073,8 @@ export default async function libraryRoutes(app: FastifyInstance) {
     if (!row?.studio) return reply.code(404).send({ error: 'Sin estudio' });
     const logo = await resolverLogoEstudio(row.studio);
     if (!logo) return reply.code(404).send({ error: 'Sin logo para este estudio' });
-    return serveArt(reply, logo, width);
+    // `claro=1` (app Android desde la 3.73): como en /api/studios/:nombre/logo.
+    return serveArt(reply, (req.query as { claro?: string }).claro === '1' ? await versionClara(logo) : logo, width);
   });
 
   /** Los estudios del título que tienen logo, sin repetir logo, en su orden: la tele los pone uno debajo de otro. */

@@ -12,6 +12,11 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.73 — 19/10/2026
+
+- Logo del estudio en la ficha: los que son negros (EON, United Artists, Columbia…) ya no se pierden sobre el fondo oscuro; los de color se ven con su color. Además, los logos tienen ahora más resolución.
+- En tablet, el botón «Reproducir» ya no ocupa todo el ancho de la pantalla.
+
 ## 3.72 — 19/10/2026
 
 - La 3.71 se cerraba al abrir cualquier ficha (Android rechazaba el código del reproductor tal como salía compilado). Corregido: trae todo lo de la 3.71 (el progreso vuelve a guardarse, modo maratón y reloj al encadenar episodios).

@@ -319,7 +319,8 @@ object Api {
    * sondear ahi colgaria la pantalla.
    */
   fun imagen(id: Int, tipo: String, ancho: Int) = "${Servidor.baseCacheada()}/api/items/$id/$tipo?w=$ancho"
-  fun logoEstudio(id: Int, ancho: Int = 360) = "${Servidor.baseCacheada()}/api/items/$id/studio-logo?w=$ancho"
+  // claro=1: la versión que se lee sobre fondo oscuro (el servidor aclara los logos negros; uno viejo lo ignora).
+  fun logoEstudio(id: Int, ancho: Int = 360) = "${Servidor.baseCacheada()}/api/items/$id/studio-logo?w=$ancho&claro=1"
 
   /* ------------------------------------------------------- reproducción */
 

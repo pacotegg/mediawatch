@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -561,6 +562,8 @@ fun BotonReproducirIos(
   Row(
     modifier = modifier
       .scale(escala)
+      // En una tablet ocupaba todo el ancho (25 cm en horizontal); en un móvil no llega a este tope y no cambia nada.
+      .widthIn(max = 480.dp)
       .fillMaxWidth()
       .height(50.dp)
       .clip(RoundedCornerShape(25.dp))
