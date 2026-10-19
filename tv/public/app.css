@@ -839,9 +839,16 @@ body.rend-rapido .lamina img {
 .logo-estudio-3d {
   display: block;
   object-fit: contain;
-  filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.45))
-          drop-shadow(0 -1px 0 rgba(0, 0, 0, 0.7))
-          drop-shadow(0 3px 6px rgba(0, 0, 0, 0.85));
+  /*
+   * Relieve 3D: un filo de luz arriba y una extrusión de 3 px en grises que se oscurecen hacia abajo (cada drop-shadow se
+   * aplica sobre el anterior, así que se apilan como el canto de una pieza), más la sombra que lo despega. El filo de 1 px
+   * de antes apenas se veía en logos finos y blancos (DreamWorks). Estático: se pinta una vez.
+   */
+  filter: drop-shadow(0 -1px 0 rgba(255, 255, 255, 0.35))
+          drop-shadow(0 1px 0 #9aa0aa)
+          drop-shadow(0 1px 0 #6e747e)
+          drop-shadow(0 1px 0 #474c55)
+          drop-shadow(0 5px 8px rgba(0, 0, 0, 0.85));
   opacity: 0;
   transition: opacity 0.3s ease;
 }

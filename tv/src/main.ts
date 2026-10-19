@@ -1900,17 +1900,29 @@ async function pintarLogosEstudio(id: number, caja: HTMLElement) {
     const solo = imgs.length === 1;
     const area = solo ? AREA_LOGO : 5200;
     const maxW = solo ? 280 : 128, maxH = solo ? 95 : 68;
+    // Muy alargados (4:1 o más, p. ej. el texto de DreamWorks Pictures, 11:1): fila propia y todo el ancho. Emparejados
+    // salían a 11 px de alto.
+    const ancho = (img: HTMLImageElement) => (img.naturalWidth / img.naturalHeight || 1) >= 4;
     const tam = imgs.map((img) => {
       const r = img.naturalWidth / img.naturalHeight || 1;
-      let w = Math.sqrt(area * r);
+      const largo = !solo && ancho(img);
+      const mW = largo ? 280 : maxW;
+      let w = Math.sqrt((largo ? 7000 : area) * r);
       let h = w / r;
-      if (w > maxW) { w = maxW; h = w / r; }
+      if (w > mW) { w = mW; h = w / r; }
       if (h > maxH) { h = maxH; w = h * r; }
       return { w: w, h: h };
     });
     const hueco = 14;
     const filas: number[][] = [];
-    for (let i = 0; i < imgs.length; i += 2) filas.push(i + 1 < imgs.length ? [i, i + 1] : [i]);
+    let suelto = -1;
+    imgs.forEach((img, i) => {
+      if (!solo && ancho(img)) { filas.push([i]); return; }
+      if (suelto < 0) { suelto = i; return; }
+      filas.push([suelto, i]);
+      suelto = -1;
+    });
+    if (suelto >= 0) filas.push([suelto]);
     const altoFila = filas.map((f) => Math.max.apply(null, f.map((i) => tam[i].h)));
     const alto = altoFila.reduce((s, h) => s + h, 0) + hueco * (filas.length - 1);
     const sitio = FONDO_LOGOS - caja.offsetTop;

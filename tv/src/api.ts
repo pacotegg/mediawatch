@@ -498,9 +498,12 @@ export const imagen = {
   plataforma: (ruta: string, w: number) => conToken(servidor() + '/api/plataformas/caratula/w' + w + ruta),
   disco: (id: number, w: number) => conToken(servidor() + '/api/items/' + id + '/discart?w=' + w),
   estudio: (id: number, w: number) => conToken(servidor() + '/api/items/' + id + '/studio-logo?w=' + w),
-  /** El logo de un estudio en su versión para fondo oscuro (el servidor aclara los que son negros). */
+  /**
+   * El logo de un estudio en su versión para fondo oscuro (aclarado o dorado, ver media/logos-estudio.ts). `v` sube con cada
+   * cambio de ese estilo: el servidor deja guardar las imágenes 30 días y la tele seguiría con la versión vieja.
+   */
   estudioNombre: (nombre: string, w: number) =>
-    conToken(servidor() + '/api/studios/' + encodeURIComponent(nombre) + '/logo?claro=1&w=' + w),
+    conToken(servidor() + '/api/studios/' + encodeURIComponent(nombre) + '/logo?claro=1&v=4&w=' + w),
   tema: (id: number) => conToken(servidor() + '/api/items/' + id + '/theme'),
   persona: (id: number, w: number) => conToken(servidor() + '/api/people/' + id + '/thumb?w=' + w),
   tira: (fileId: number, hoja: number) => conToken(servidor() + '/api/play/' + fileId + '/trickplay/' + hoja),
