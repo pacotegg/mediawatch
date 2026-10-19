@@ -304,6 +304,7 @@ export function guardarCapitulosBd(itemId: number, capitulos: Capitulo[], source
 }
 
 const enCursoEnriquecer = new Set<number>();
+const intentadosEnriquecer = new Map<number, number>();
 
 /**
  * Enriquecimiento transparente en segundo plano: al reproducir una película que carece
@@ -317,6 +318,11 @@ export async function autoEnriquecerPeliculaEnSegundoPlano(
   capitulosLocales: Capitulo[]
 ): Promise<void> {
   if (enCursoEnriquecer.has(itemId)) return;
+  // Una consulta a internet por película y día: sin esto, cada reproducción de una película sin capítulos en ChapterDB
+  // volvía a preguntar por ella.
+  const ultimo = intentadosEnriquecer.get(itemId);
+  if (ultimo && Date.now() - ultimo < 24 * 3600_000) return;
+  intentadosEnriquecer.set(itemId, Date.now());
   enCursoEnriquecer.add(itemId);
   try {
     const ya = obtenerCapitulosBd(itemId);
