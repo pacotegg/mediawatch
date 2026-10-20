@@ -62,7 +62,9 @@ export default async function scraperRoutes(app: FastifyInstance) {
                 FROM items i JOIN libraries l ON l.id = i.library_id WHERE i.id = ?`)
       .get(Number((req.params as { id: string }).id));
     if (!fila) return reply.code(404).send({ error: 'Título no encontrado' });
-    return fila;
+    const id = (fila as { id: number }).id;
+    const reparto = (db.prepare('SELECT COUNT(*) AS n FROM item_people WHERE item_id = ?').get(id) as { n: number }).n;
+    return { ...fila, reparto };
   });
 
   /** Titulo, id de TMDb, id de IMDb o direccion pegada -> propuestas de TMDb. */

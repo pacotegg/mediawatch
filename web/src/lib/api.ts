@@ -799,6 +799,11 @@ export type Proposal = {
   backdropUrl: string | null;
   logoUrl: string | null;
   genres: string[];
+  reparto?: { nombre: string; personaje: string }[];
+  directores?: string[];
+  guionistas?: string[];
+  estudios?: string[];
+  paises?: string[];
 };
 
 export type Candidate = {
@@ -821,6 +826,7 @@ export type ScraperTitulo = {
   tmdb_id: string | null; imdb_id: string | null; plot: string | null; tagline: string | null; rating: number | null; mpaa: string | null;
   runtime: number | null; collection: string | null; studio: string | null; country: string | null; premiered: string | null;
   origen: string | null; arte_fijado: string | null; arte_actualizado: string | null; poster: number; fanart: number; logo: number;
+  reparto: number;
 };
 
 /** Identificación automática por nombre (MediaWatch Server). */

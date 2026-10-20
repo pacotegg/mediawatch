@@ -1,10 +1,12 @@
-import { closeSync, createWriteStream, mkdirSync, openSync, readSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { closeSync, createWriteStream, existsSync, mkdirSync, openSync, readSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { join } from 'node:path';
 import { DATA_DIR, config } from '../config.ts';
 import { db, normalize } from '../db.ts';
 import { imagenesDeFanart } from './fanart.ts';
+import { escribirFicha, type CampoFicha } from './ficha.ts';
 
 const API = 'https://api.themoviedb.org/3';
 const IMAGES = 'https://image.tmdb.org/t/p';
@@ -32,6 +34,12 @@ export type Proposal = {
   coleccion?: string | null;
   estreno?: string | null;
   votos?: number | null;
+  /** Solo en la ficha completa: reparto (por orden de TMDb), equipo, estudios y paises (en espanol). */
+  reparto?: { nombre: string; personaje: string; tmdbId?: number }[];
+  directores?: string[];
+  guionistas?: string[];
+  estudios?: string[];
+  paises?: string[];
 };
 
 export type Candidate = {
@@ -101,6 +109,29 @@ function toProposal(raw: any, kind: 'movie' | 'show'): Proposal {
     coleccion: raw.belongs_to_collection?.name ?? null,
     estreno: date || null,
     votos: typeof raw.vote_count === 'number' ? raw.vote_count : null,
+    ...equipoDe(raw),
+  };
+}
+
+const unicos = (xs: (string | undefined)[]) => [...new Set(xs.filter((x): x is string => !!x && x.trim() !== ''))];
+
+/** Reparto, directores, guionistas, estudios y paises de una ficha completa (vacio en los resultados de busqueda). */
+function equipoDe(raw: any) {
+  const creditos = raw.credits ?? raw.aggregate_credits;
+  if (!creditos && !raw.production_companies) return {};
+  const nombrePais = (iso: string) => {
+    try { return new Intl.DisplayNames([config.tmdbLanguage], { type: 'region' }).of(iso) ?? iso; } catch { return iso; }
+  };
+  const equipo: any[] = creditos?.crew ?? [];
+  const deTrabajo = (...trabajos: string[]) => unicos(equipo.filter((c) => trabajos.includes(c.job) || (c.jobs ?? []).some((j: any) => trabajos.includes(j.job))).map((c) => c.name));
+  return {
+    reparto: ((creditos?.cast ?? []) as any[]).slice(0, 40).map((c) => ({
+      nombre: String(c.name ?? ''), personaje: String(c.character ?? c.roles?.[0]?.character ?? ''), tmdbId: c.id as number,
+    })).filter((c) => c.nombre),
+    directores: deTrabajo('Director'),
+    guionistas: deTrabajo('Writer', 'Screenplay', 'Story', 'Novel'),
+    estudios: unicos((raw.production_companies ?? []).map((c: any) => c.name)),
+    paises: unicos((raw.production_countries ?? []).map((c: any) => nombrePais(c.iso_3166_1))),
   };
 }
 
@@ -136,7 +167,7 @@ const endpoint = (kind: 'movie' | 'show') => (kind === 'movie' ? 'movie' : 'tv')
 
 async function details(tmdbId: number, kind: 'movie' | 'show'): Promise<Proposal> {
   const raw = await tmdb<any>(`/${endpoint(kind)}/${tmdbId}`, {
-    append_to_response: `images,external_ids,${kind === 'movie' ? 'release_dates' : 'content_ratings'}`,
+    append_to_response: `images,external_ids,${kind === 'movie' ? 'release_dates,credits' : 'content_ratings,aggregate_credits'}`,
     include_image_language: `${config.tmdbLanguage.slice(0, 2)},en,null`,
   });
   return toProposal(raw, kind);
@@ -305,6 +336,36 @@ export async function descargar(url: string, destination: string): Promise<strin
     return destination;
   } finally {
     rmSync(parcial, { force: true });
+  }
+}
+
+/**
+ * Baja una imagen y la deja en WebP (`<destino>.webp`): un cartel de TMDb pesa 3-5 MB y el servidor ya los reduce al servirlos.
+ * Si la conversion falla se conserva la original con su propia extension: mejor una imagen grande que ninguna.
+ */
+export async function descargarWebp(url: string, destinoSinExt: string, calidad = 82): Promise<string> {
+  const original = await descargar(url, destinoSinExt + '.orig');
+  const destino = destinoSinExt + '.webp';
+  const parte = destino + '.parte';
+  try {
+    const codigo = await new Promise<number | null>((resolve) => {
+      const p = spawn(config.ffmpeg, ['-hide_banner', '-loglevel', 'error', '-y', '-i', original, '-frames:v', '1', '-c:v', 'libwebp', '-q:v', String(calidad), '-compression_level', '4', '-f', 'webp', parte],
+        { windowsHide: true, stdio: 'ignore', timeout: 60_000 });
+      p.on('close', resolve);
+      p.on('error', () => resolve(-1));
+    });
+    if (codigo !== 0 || !existsSync(parte) || statSync(parte).size === 0) throw new Error('ffmpeg no pudo convertirla');
+    renameSync(parte, destino);
+    rmSync(original, { force: true });
+    return destino;
+  } catch {
+    rmSync(parte, { force: true });
+    const cabeza = Buffer.alloc(16);
+    const fd = openSync(original, 'r');
+    try { readSync(fd, cabeza, 0, 16, 0); } finally { closeSync(fd); }
+    const conservada = destinoSinExt + '.' + (formatoDeImagen(cabeza) ?? 'jpg');
+    renameSync(original, conservada);
+    return conservada;
   }
 }
 
@@ -552,13 +613,15 @@ function orden(i: ImagenDisponible, idioma: string): number {
   return 3;
 }
 
+/** Calidad de WebP por papel: los de transparencia (logo, disco) un poco mas alta, como en imagenes-webp.ts. */
 const FICHERO_DE: Record<Papel, string> = {
-  poster: 'poster.jpg',
-  fanart: 'fanart.jpg',
-  clearlogo: 'logo.png',
-  landscape: 'landscape.jpg',
-  discart: 'disc.png',
+  poster: 'poster.webp',
+  fanart: 'fanart.webp',
+  clearlogo: 'logo.webp',
+  landscape: 'landscape.webp',
+  discart: 'disc.webp',
 };
+const CALIDAD_DE: Record<Papel, number> = { poster: 82, fanart: 82, clearlogo: 90, landscape: 82, discart: 90 };
 
 const COLUMNA_DE: Record<Papel, string> = {
   poster: 'poster',
@@ -595,7 +658,7 @@ export function urlDeArteValida(url: unknown): url is string {
 export async function ponerArte(itemId: number, papel: Papel, url: string) {
   if (!urlDeArteValida(url)) throw new Error('Esa dirección no es una imagen de TMDb ni de fanart.tv');
   const dir = carpetaDeArte(itemId);
-  const destino = await descargar(url, join(dir, FICHERO_DE[papel]));
+  const destino = await descargarWebp(url, join(dir, FICHERO_DE[papel].replace(EXTENSION, '')), CALIDAD_DE[papel]);
   fijarArte(itemId, papel, destino);
   return { papel, ruta: destino };
 }
@@ -677,7 +740,7 @@ export type ApplyRequest = {
   itemId: number;
   tmdbId: number;
   kind: 'movie' | 'show';
-  fields: ('poster' | 'fanart' | 'logo' | 'plot' | 'rating' | 'genres')[];
+  fields: ('poster' | 'fanart' | 'logo' | 'plot' | 'rating' | 'genres' | CampoFicha)[];
   overwrite?: boolean;
   /**
    * Instalacion sin .nfo: ademas de rellenar huecos, TMDb pasa a ser la
@@ -699,9 +762,9 @@ export async function applyProposal(request: ApplyRequest) {
   const updates: Record<string, string | number> = {};
   const wants = (field: string, current: unknown) => request.fields.includes(field as never) && (request.overwrite || current == null);
 
-  if (wants('poster', item.poster) && proposal.posterUrl) updates.poster = await descargar(proposal.posterUrl, join(dir, 'poster.jpg'));
-  if (wants('fanart', item.fanart) && proposal.backdropUrl) updates.fanart = await descargar(proposal.backdropUrl, join(dir, 'fanart.jpg'));
-  if (wants('logo', item.clearlogo) && proposal.logoUrl) updates.clearlogo = await descargar(proposal.logoUrl, join(dir, 'logo.png'));
+  if (wants('poster', item.poster) && proposal.posterUrl) updates.poster = await descargarWebp(proposal.posterUrl, join(dir, 'poster'), 82);
+  if (wants('fanart', item.fanart) && proposal.backdropUrl) updates.fanart = await descargarWebp(proposal.backdropUrl, join(dir, 'fanart'), 82);
+  if (wants('logo', item.clearlogo) && proposal.logoUrl) updates.clearlogo = await descargarWebp(proposal.logoUrl, join(dir, 'logo'), 90);
   if (wants('plot', item.plot) && proposal.overview) updates.plot = proposal.overview;
   if (wants('rating', item.rating) && proposal.rating != null) updates.rating = proposal.rating;
 
@@ -746,5 +809,8 @@ export async function applyProposal(request: ApplyRequest) {
     db.prepare(`UPDATE items SET ${keys.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`).run(...keys.map((k) => updates[k]), request.itemId);
   }
 
-  return { applied: keys.filter((k) => k !== 'tmdb_id'), title: proposal.title };
+  // Reparto, estudios, pais y valoracion: tras el UPDATE, porque marca el titulo como gestionado por el servidor.
+  const ficha = escribirFicha(request.itemId, proposal, request.fields.filter((f): f is CampoFicha => f === 'cast' || f === 'studio' || f === 'ratings'), Boolean(request.overwrite));
+  const nombres: Record<CampoFicha, string> = { cast: 'reparto', studio: 'estudios y país', ratings: 'valoración TMDb' };
+  return { applied: [...keys.filter((k) => k !== 'tmdb_id'), ...ficha.map((f) => nombres[f])], title: proposal.title };
 }

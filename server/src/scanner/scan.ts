@@ -221,24 +221,24 @@ const stmt = {
       -- Con meta_origen = 'tmdb' el titulo, el ano y todo lo que puso TMDb se quedan:
       -- sin .nfo el escaneo traia NULL en todos y lo borraba cada 24 h. Los items
       -- con .nfo no tienen meta_origen, y para ellos nada cambia.
-      title=CASE WHEN items.meta_origen = 'tmdb' THEN items.title ELSE excluded.title END,
-      search_title=CASE WHEN items.meta_origen = 'tmdb' THEN items.search_title ELSE excluded.search_title END,
-      year=CASE WHEN items.meta_origen = 'tmdb' THEN items.year ELSE excluded.year END,
-      sort_title=CASE WHEN items.meta_origen = 'tmdb' THEN COALESCE(excluded.sort_title, items.sort_title) ELSE excluded.sort_title END,
-      original_title=CASE WHEN items.meta_origen = 'tmdb' THEN COALESCE(excluded.original_title, items.original_title) ELSE excluded.original_title END,
-      plot=CASE WHEN items.meta_origen = 'tmdb' THEN COALESCE(excluded.plot, items.plot) ELSE excluded.plot END,
-      tagline=CASE WHEN items.meta_origen = 'tmdb' THEN COALESCE(excluded.tagline, items.tagline) ELSE excluded.tagline END,
-      runtime=CASE WHEN items.meta_origen = 'tmdb' THEN COALESCE(excluded.runtime, items.runtime) ELSE excluded.runtime END,
-      rating=CASE WHEN items.meta_origen = 'tmdb' THEN COALESCE(excluded.rating, items.rating) ELSE excluded.rating END,
-      votes=CASE WHEN items.meta_origen = 'tmdb' THEN COALESCE(excluded.votes, items.votes) ELSE excluded.votes END,
-      mpaa=CASE WHEN items.meta_origen = 'tmdb' THEN COALESCE(excluded.mpaa, items.mpaa) ELSE excluded.mpaa END,
-      premiered=CASE WHEN items.meta_origen = 'tmdb' THEN COALESCE(excluded.premiered, items.premiered) ELSE excluded.premiered END,
-      studio=CASE WHEN items.meta_origen = 'tmdb' THEN COALESCE(excluded.studio, items.studio) ELSE excluded.studio END,
-      country=CASE WHEN items.meta_origen = 'tmdb' THEN COALESCE(excluded.country, items.country) ELSE excluded.country END,
-      collection=CASE WHEN items.meta_origen = 'tmdb' THEN COALESCE(excluded.collection, items.collection) ELSE excluded.collection END,
-      trailer=CASE WHEN items.meta_origen = 'tmdb' THEN COALESCE(excluded.trailer, items.trailer) ELSE excluded.trailer END,
-      imdb_id=CASE WHEN items.meta_origen = 'tmdb' THEN COALESCE(excluded.imdb_id, items.imdb_id) ELSE excluded.imdb_id END,
-      tmdb_id=CASE WHEN items.meta_origen = 'tmdb' THEN COALESCE(excluded.tmdb_id, items.tmdb_id) ELSE excluded.tmdb_id END,
+      title=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN items.title ELSE excluded.title END,
+      search_title=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN items.search_title ELSE excluded.search_title END,
+      year=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN items.year ELSE excluded.year END,
+      sort_title=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.sort_title, items.sort_title) ELSE excluded.sort_title END,
+      original_title=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.original_title, items.original_title) ELSE excluded.original_title END,
+      plot=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.plot, items.plot) ELSE excluded.plot END,
+      tagline=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.tagline, items.tagline) ELSE excluded.tagline END,
+      runtime=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.runtime, items.runtime) ELSE excluded.runtime END,
+      rating=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.rating, items.rating) ELSE excluded.rating END,
+      votes=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.votes, items.votes) ELSE excluded.votes END,
+      mpaa=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.mpaa, items.mpaa) ELSE excluded.mpaa END,
+      premiered=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.premiered, items.premiered) ELSE excluded.premiered END,
+      studio=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.studio, items.studio) ELSE excluded.studio END,
+      country=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.country, items.country) ELSE excluded.country END,
+      collection=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.collection, items.collection) ELSE excluded.collection END,
+      trailer=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.trailer, items.trailer) ELSE excluded.trailer END,
+      imdb_id=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.imdb_id, items.imdb_id) ELSE excluded.imdb_id END,
+      tmdb_id=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.tmdb_id, items.tmdb_id) ELSE excluded.tmdb_id END,
       -- Las imagenes elegidas a mano no se tocan; el resto se actualiza con lo
       -- que haya ahora en la carpeta. Sin esto, cambiar una caratula desde la
       -- ficha duraba hasta el siguiente escaneo.
@@ -394,7 +394,8 @@ function saveRatings(itemId: number, nfo: { ratings?: { fuente: string; valor: n
 
 function saveGenresAndPeople(itemId: number, nfo: NfoData | null, thumbs: Map<string, string>) {
   // Identificado desde TMDb y sin .nfo: generos y reparto vienen de TMDb, no se borran.
-  if (!nfo && (stmt.metaOrigen.get(itemId) as { meta_origen: string | null } | undefined)?.meta_origen === 'tmdb') return;
+  const origen = (stmt.metaOrigen.get(itemId) as { meta_origen: string | null } | undefined)?.meta_origen;
+  if (!nfo && (origen === 'tmdb' || origen === 'servidor')) return;
   stmt.clearGenres.run(itemId);
   stmt.clearPeople.run(itemId);
   if (!nfo) return;
@@ -427,6 +428,12 @@ function saveGenresAndPeople(itemId: number, nfo: NfoData | null, thumbs: Map<st
     stmt.linkPerson.run(itemId, row.id, p.role, p.character ?? null, p.order ?? null);
   }
 }
+
+/**
+ * «servidor»: el administrador aplico la ficha de TMDb (reparto, estudios...) y el .nfo de ese titulo ya no manda para
+ * los metadatos. El .nfo sigue sirviendo para los datos tecnicos del fichero hasta que ffprobe los mida.
+ */
+const gestionadoPorServidor = db.prepare("SELECT 1 AS si FROM items WHERE folder = ? AND meta_origen = 'servidor'");
 
 function fileMeta(path: string, nfo: NfoData | null) {
   let size = 0;
@@ -512,15 +519,16 @@ function scanMovieFolder(libId: number, dir: string, files: Entry[], now: string
     files.find((f) => f.name.toLowerCase() === `${base.toLowerCase()}.nfo`)?.path ??
     (suelto ? undefined : files.find((f) => f.name.toLowerCase() === 'movie.nfo')?.path) ??
     (suelto ? undefined : files.find((f) => f.name.toLowerCase().endsWith('.nfo'))?.path);
-  const nfo = nfoPath ? parseNfo(nfoPath) : null;
+  const nfoFichero = nfoPath ? parseNfo(nfoPath) : null;
+  const clave = suelto ? suelto.path : dir;
+  const nfo = gestionadoPorServidor.get(clave) ? null : nfoFichero;
   // Una carpeta que no dice nada (CD1, Movies...) no sirve de titulo: vale el nombre del fichero.
   const fromFolder = suelto || esNombreGenerico(basename(dir)) ? parseTitleYear(tituloDeSuelto(base)) : parseTitleYear(basename(dir));
   const title = nfo?.title ?? fromFolder.title;
   // `items.folder` es UNIQUE: 105 sueltos comparten carpeta, asi que la clave
   // de un suelto es su propia ruta, o se machacarian unos a otros.
-  const clave = suelto ? suelto.path : dir;
   const art = artworkFor(files, base);
-  const meta = fileMeta(main.path, nfo);
+  const meta = fileMeta(main.path, nfoFichero);
 
   const item = stmt.upsertItem.get(
     libId, 'movie', clave, title, normalize(title), nfo?.sortTitle ?? null, nfo?.originalTitle ?? null,
@@ -531,11 +539,11 @@ function scanMovieFolder(libId: number, dir: string, files: Entry[], now: string
   ) as { id: number };
 
   const file = stmt.upsertFile.get(
-    item.id, null, main.path, meta.size, meta.container, nfo?.video?.duration ?? null,
-    nfo?.video?.codec ?? null, nfo?.video?.width ?? null, nfo?.video?.height ?? null, nfo?.video?.hdr ?? null,
+    item.id, null, main.path, meta.size, meta.container, nfoFichero?.video?.duration ?? null,
+    nfoFichero?.video?.codec ?? null, nfoFichero?.video?.width ?? null, nfoFichero?.video?.height ?? null, nfoFichero?.video?.hdr ?? null,
   ) as { id: number };
 
-  saveTracks(file.id, nfo, externalSubs(files, base));
+  saveTracks(file.id, nfoFichero, externalSubs(files, base));
   saveRatings(item.id, nfo);
   saveGenresAndPeople(item.id, nfo, actorThumbs(dir));
   // Un suelto no tiene carpeta propia: sus vecinos de la raiz no son sus extras.

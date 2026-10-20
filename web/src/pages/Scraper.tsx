@@ -26,6 +26,7 @@ const CAMPOS = [
   { clave: 'plot', etiqueta: 'Sinopsis' },
   { clave: 'rating', etiqueta: 'Valoración' },
   { clave: 'genres', etiqueta: 'Géneros' },
+  { clave: 'ficha', etiqueta: 'Reparto, estudios y país' },
 ] as const;
 type Campo = (typeof CAMPOS)[number]['clave'];
 
@@ -168,6 +169,16 @@ function Comparar({ titulo, p, campos, setCampos }: { titulo: ScraperTitulo; p: 
       nuevo: <span>{p.rating != null ? p.rating.toFixed(1) : '—'}</span>,
     },
     {
+      c: 'ficha', hay: titulo.kind === 'movie' && !!(p.reparto?.length || p.estudios?.length),
+      actual: <span>{titulo.reparto} personas{titulo.studio ? ' · ' + titulo.studio : ''}{titulo.country ? ' · ' + titulo.country : ''}</span>,
+      nuevo: titulo.kind !== 'movie'
+        ? <span className="text-mist-600">solo películas por ahora</span>
+        : <div className="space-y-0.5">
+            <div>{p.reparto?.length ?? 0} actores{p.directores?.length ? ' · dir. ' + p.directores.slice(0, 2).join(', ') : ''}</div>
+            <div className="text-mist-500">{[p.estudios?.slice(0, 2).join(', '), p.paises?.join(', ')].filter(Boolean).join(' · ')}</div>
+          </div>,
+    },
+    {
       c: 'genres', hay: p.genres.length > 0,
       actual: <span className="text-mist-600">se conservan; marcar añade los de TMDb</span>,
       nuevo: <span>{p.genres.join(', ') || '—'}</span>,
@@ -181,8 +192,8 @@ function Comparar({ titulo, p, campos, setCampos }: { titulo: ScraperTitulo; p: 
         {p.originalTitle && p.originalTitle !== p.title && <div className="text-[11.5px] text-mist-500">Título original: {p.originalTitle}</div>}
       </div>
       <div className="flex gap-2 text-[11.5px]">
-        <button className="font-medium text-accent hover:underline underline-offset-2" onClick={() => setCampos(filas.filter((f) => f.hay).map((f) => f.c))}>Marcar todo</button>
-        <button className="text-mist-500 hover:underline underline-offset-2" onClick={() => setCampos(filas.filter((f) => f.hay && f.c !== 'genres' && !tiene(titulo, f.c)).map((f) => f.c))}>Solo huecos</button>
+        <button className="font-medium text-accent hover:underline underline-offset-2" onClick={() => setCampos(filas.filter((f) => f.hay && f.c !== 'ficha').map((f) => f.c))}>Marcar todo</button>
+        <button className="text-mist-500 hover:underline underline-offset-2" onClick={() => setCampos(filas.filter((f) => f.hay && f.c !== 'genres' && f.c !== 'ficha' && !tiene(titulo, f.c)).map((f) => f.c))}>Solo huecos</button>
         <button className="text-mist-500 hover:underline underline-offset-2" onClick={() => setCampos([])}>Ninguno</button>
       </div>
       <div className="divide-y divide-white/6 rounded-xl bg-white/4">
@@ -209,6 +220,7 @@ function tiene(t: ScraperTitulo, c: Campo): boolean {
     case 'logo': return !!t.logo;
     case 'plot': return !!t.plot;
     case 'rating': return t.rating != null;
+    case 'ficha': return t.reparto > 0 && !!t.studio;
     default: return false;
   }
 }
@@ -248,13 +260,13 @@ function Emparejar({ titulo }: { titulo: ScraperTitulo }) {
   // Propuesta nueva -> por defecto se marcan los huecos (lo que no pisa nada).
   useEffect(() => {
     if (!elegida) return setCampos([]);
-    const hay: Record<Campo, boolean> = { poster: !!elegida.posterUrl, fanart: !!elegida.backdropUrl, logo: !!elegida.logoUrl, plot: !!elegida.overview, rating: elegida.rating != null, genres: elegida.genres.length > 0 };
+    const hay: Record<Campo, boolean> = { poster: !!elegida.posterUrl, fanart: !!elegida.backdropUrl, logo: !!elegida.logoUrl, plot: !!elegida.overview, rating: elegida.rating != null, genres: elegida.genres.length > 0, ficha: false };
     // Géneros nunca por defecto: la biblioteca usa los de IMDb (decisión del 26/09) y TMDb reparte de más.
     setCampos(CAMPOS.map((c) => c.clave).filter((c) => c !== 'genres' && hay[c] && !tiene(titulo, c)));
   }, [elegida, titulo]);
 
   const aplicar = useMutation({
-    mutationFn: () => api.enrichApply({ itemId: titulo.id, tmdbId: elegida!.tmdbId, kind: titulo.kind, fields: campos, overwrite: true }),
+    mutationFn: () => api.enrichApply({ itemId: titulo.id, tmdbId: elegida!.tmdbId, kind: titulo.kind, fields: campos.flatMap((c) => (c === 'ficha' ? ['cast', 'studio', 'ratings'] : [c])), overwrite: true }),
     onSuccess: (r) => {
       setHecho(`Guardado en «${r.title}»: ${r.applied.join(', ')}.`);
       setError('');
@@ -284,6 +296,11 @@ function Emparejar({ titulo }: { titulo: ScraperTitulo }) {
 
       {elegida && <Comparar titulo={titulo} p={elegida} campos={campos} setCampos={setCampos} />}
 
+      {campos.includes('ficha') && (
+        <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-[12px] leading-relaxed text-amber-200">
+          Al aplicar el reparto, los estudios y el país, este título pasa a gestionarse desde el servidor: el reparto y los estudios dejan de leerse de su .nfo.
+        </p>
+      )}
       {error && <p className="text-[12.5px] text-red-400">{error}</p>}
       {hecho && <p className="text-[12.5px] text-emerald-400">{hecho}</p>}
       {elegida && (

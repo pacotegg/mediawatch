@@ -7,7 +7,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { db } from '../db.ts';
-import { DIR_ARTE, TMDB_IMAGENES, descargar, tmdbGet } from './tmdb.ts';
+import { DIR_ARTE, TMDB_IMAGENES, descargarWebp, tmdbGet } from './tmdb.ts';
 
 type EpisodioTmdb = {
   episode_number: number;
@@ -43,7 +43,7 @@ export async function rellenarEpisodios(showId: number, tmdbId: number): Promise
       if (e.still_path) {
         try {
           mkdirSync(dir, { recursive: true });
-          miniatura = await descargar(`${TMDB_IMAGENES}/w780${e.still_path}`, join(dir, `ep-${season}x${e.episode_number}.jpg`));
+          miniatura = await descargarWebp(`${TMDB_IMAGENES}/w780${e.still_path}`, join(dir, `ep-${season}x${e.episode_number}`), 80);
         } catch {
           /* sin miniatura: la ficha sigue valiendo */
         }
