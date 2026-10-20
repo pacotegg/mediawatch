@@ -413,6 +413,13 @@ export const api = {
     post<{ applied: string[]; title: string }>('/api/enrich/apply', body),
   enrichDismiss: (itemId: number) => post<{ ok: true }>('/api/enrich/dismiss', { itemId }),
 
+  // Scraper (solo administrador)
+  scraperTitulos: (p: { filtro: string; q: string; kind: string; offset: number }) =>
+    request<ScraperLista>('/api/scraper/titulos?' + new URLSearchParams({ filtro: p.filtro, q: p.q, kind: p.kind, offset: String(p.offset) })),
+  scraperTitulo: (id: number) => request<ScraperTitulo>('/api/scraper/titulo/' + id),
+  scraperResolver: (entrada: string, kind: 'movie' | 'show', year?: number | null) =>
+    post<{ propuestas: Proposal[]; aviso?: string }>('/api/scraper/resolver', { entrada, kind, year }),
+
   // Actividad (solo administrador): quién ve qué, mensajes y parar.
   actividad: () => request<Aparato[]>('/api/actividad'),
   actividadMensaje: (sesion: string, texto: string) => post<{ enviado: true }>(`/api/actividad/${sesion}/mensaje`, { texto }),
@@ -805,6 +812,15 @@ export type Candidate = {
   matchedBy: string;
   proposal: Proposal | null;
   alternatives: Proposal[];
+};
+
+export type ScraperFila = { id: number; title: string; year: number | null; kind: 'movie' | 'show'; biblioteca: string; tmdb_id: string | null; imdb_id: string | null; origen: string | null; poster: number; fanart: number; logo: number; sinopsis: number; edad: number };
+export type ScraperLista = { total: number; offset: number; pagina: number; items: ScraperFila[]; cuenta: Record<string, number> };
+export type ScraperTitulo = {
+  id: number; title: string; original_title: string | null; year: number | null; kind: 'movie' | 'show'; biblioteca: string;
+  tmdb_id: string | null; imdb_id: string | null; plot: string | null; tagline: string | null; rating: number | null; mpaa: string | null;
+  runtime: number | null; collection: string | null; studio: string | null; country: string | null; premiered: string | null;
+  origen: string | null; arte_fijado: string | null; arte_actualizado: string | null; poster: number; fanart: number; logo: number;
 };
 
 /** Identificación automática por nombre (MediaWatch Server). */

@@ -19,7 +19,8 @@ const Player = lazy(() => import('./pages/Player.tsx'));
 const Search = lazy(() => import('./pages/Search.tsx'));
 const Person = lazy(() => import('./pages/Person.tsx'));
 const Favorites = lazy(() => import('./pages/Favorites.tsx'));
-const Settings = lazy(() => import('./pages/Settings.tsx'));
+const Settings = lazy(() => import('./pages/Settings.tsx'));
+const Scraper = lazy(() => import('./pages/Scraper.tsx'));
 const Estadisticas = lazy(() => import('./pages/Estadisticas.tsx'));
 const Descargas = lazy(() => import('./pages/Descargas.tsx'));
 const Pair = lazy(() => import('./pages/Pair.tsx'));
@@ -130,6 +131,8 @@ export default function App() {
                   <Route path="/plataformas" element={<Page><Plataformas /></Page>} />
                   <Route path="/plataformas/:clave" element={<Page><Plataformas /></Page>} />
                   <Route path="/ajustes" element={<Page><Settings /></Page>} />
+
+                  <Route path="/scraper" element={<Page><Scraper /></Page>} />
                   <Route path="/estadisticas" element={<Page><Estadisticas /></Page>} />
                   <Route path="/descargas" element={<Page><Descargas /></Page>} />
                   <Route path="/emparejar" element={<Page><Pair /></Page>} />

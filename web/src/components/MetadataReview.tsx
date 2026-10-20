@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'motion/react';
+import { Link } from 'react-router-dom';
 import { Button, Field, Panel, Select, TextInput } from './Controls.tsx';
 import { api, img, type Candidate, type Proposal } from '../lib/api.ts';
 import Identificacion, { useIdentificarEstado } from './Identificacion.tsx';
@@ -284,6 +285,13 @@ export default function MetadataReview() {
 
   return (
     <div className="space-y-5">
+      <Link to="/scraper" className="glass flex items-center justify-between gap-4 rounded-[var(--radius-panel)] p-5 transition-colors hover:bg-white/8">
+        <div>
+          <div className="text-[15px] font-semibold">Abrir el Scraper</div>
+          <p className="mt-1 text-[12.5px] text-mist-500">Empareja títulos con TMDb, compara con lo que hay y aplica; por título, con ids o direcciones.</p>
+        </div>
+        <span className="text-mist-400">→</span>
+      </Link>
       <Identificacion />
       <Panel
         title="Metadatos que faltan"
