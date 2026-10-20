@@ -431,6 +431,10 @@ export const api = {
   scraperLoteAplicar: (ids: number[], copiarArte: boolean, escribirNfo: boolean) => post<{ started: boolean }>('/api/scraper/lote/aplicar', { ids, copiarArte, escribirNfo, confirmar: true }),
   scraperNfo: (id: number) => request<{ pasos: { tipo: string; hacia: string; retira: string | null }[] }>('/api/scraper/nfo/' + id),
   scraperNfoAplicar: (id: number) => post<{ escritos: string[]; retirados: number }>('/api/scraper/nfo/' + id, { confirmar: true }),
+  scraperEnvioPlan: (ids: number[], destino: string) =>
+    request<{ planes: { itemId: number; titulo: string; error: string | null; destino: string | null; bytes: number; libre: number | null; mismoDisco: boolean }[] }>('/api/scraper/enviar/plan?' + new URLSearchParams({ ids: ids.join(','), destino })),
+  scraperEnviar: (ids: number[], destino: string, quitarOriginal: boolean) => post<{ started: boolean }>('/api/scraper/enviar', { ids, destino, quitarOriginal, confirmar: true }),
+  scraperEnvio: () => request<EstadoEnvio>('/api/scraper/envio'),
   scraperHistorial: (id: number) => request<{ ultima: { id: number; fecha: string; etiqueta: string } | null }>('/api/scraper/historial/' + id),
   scraperDeshacer: (id: number) => post<{ fecha: string; etiqueta: string }>('/api/scraper/deshacer/' + id),
   scraperTitulo: (id: number) => request<ScraperTitulo>('/api/scraper/titulo/' + id),
@@ -843,6 +847,10 @@ export type FilaNueva = {
 };
 export type ResultadoNuevo = { itemId: number; titulo: string; ok: boolean; error?: string; movidos?: number; detalle?: string };
 export type ScraperNuevos = { pendientes: number; busqueda: EstadoTrabajo<FilaNueva>; aplicacion: EstadoTrabajo<ResultadoNuevo>; renombrado: EstadoTrabajo<ResultadoNuevo> };
+export type EstadoEnvio = {
+  corriendo: boolean; hechos: number; total: number; actual: string; fase: string; bytesHechos: number; bytesTotal: number; archivo: string;
+  resultados: { itemId: number; titulo: string; ok: boolean; error?: string; destino?: string; copiado?: boolean }[]; terminado: string | null;
+};
 export type ScraperFila = { id: number; title: string; year: number | null; kind: 'movie' | 'show'; biblioteca: string; tmdb_id: string | null; imdb_id: string | null; origen: string | null; poster: number; fanart: number; logo: number; sinopsis: number; edad: number };
 export type ScraperLista = { total: number; offset: number; pagina: number; items: ScraperFila[]; cuenta: Record<string, number> };
 export type ScraperTitulo = {

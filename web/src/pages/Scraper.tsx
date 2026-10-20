@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, TextInput } from '../components/Controls.tsx';
 import SelectorDeArte from '../components/SelectorDeArte.tsx';
 import AsistenteNuevos from '../components/AsistenteNuevos.tsx';
+import EnviarTitulos from '../components/EnviarTitulos.tsx';
 import { api, img, type Proposal, type ScraperFila, type ScraperTitulo } from '../lib/api.ts';
 
 /*
@@ -488,6 +489,21 @@ function NfoACarpeta({ id }: { id: number }) {
   );
 }
 
+/** Enviar este título a otra biblioteca (copia comprobada; el original se aparta). */
+function Enviar({ id, kind }: { id: number; kind: 'movie' | 'show' }) {
+  const [abierto, setAbierto] = useState(false);
+  useEffect(() => setAbierto(false), [id]);
+  return (
+    <div className="rounded-xl bg-white/4 p-3 text-[12.5px]">
+      <button onClick={() => setAbierto((v) => !v)} className="flex w-full items-center justify-between text-left font-medium text-mist-300">
+        <span>Enviar a la biblioteca (copiar a la carpeta que elijas)</span>
+        <span className="text-mist-500">{abierto ? '−' : '+'}</span>
+      </button>
+      {abierto && <div className="mt-3"><EnviarTitulos ids={[id]} kind={kind} /></div>}
+    </div>
+  );
+}
+
 /** Deshacer el último cambio hecho desde el Scraper en este título (ficha, reparto, arte...). */
 function Deshacer({ id }: { id: number }) {
   const qc = useQueryClient();
@@ -544,6 +560,7 @@ function Ficha({ id }: { id: number }) {
       <ArteACarpeta id={t.id} />
       <Organizar id={t.id} kind={t.kind} />
       <NfoACarpeta id={t.id} />
+      <Enviar id={t.id} kind={t.kind} />
 
       <div className="flex gap-1 border-b border-white/8">
         {([['emparejar', 'Emparejar y completar'], ['imagenes', 'Imágenes']] as const).map(([k, e]) => (

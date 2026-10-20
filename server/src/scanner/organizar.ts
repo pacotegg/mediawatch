@@ -29,7 +29,7 @@ const VIDEO = /\.(mkv|mp4|avi|m4v|mov|wmv|mpg|mpeg|ts|webm)$/i;
 // Lo que puede acompanar a un video con su mismo nombre: subtitulos, nfo e imagenes. Con sufijos tipo `.es`, `.eng.forced`, `-poster`.
 const COMPANERO = /^([.-][^./\\]{1,24})*\.(srt|ass|ssa|sub|idx|vtt|nfo|jpe?g|png|webp)$/i;
 
-type Item = { id: number; kind: 'movie' | 'show'; title: string; year: number | null; folder: string };
+export type Item = { id: number; kind: 'movie' | 'show'; title: string; year: number | null; folder: string };
 
 function ficherosDeAlLado(dir: string, baseVieja: string): string[] {
   const b = baseVieja.toLowerCase();
@@ -173,13 +173,13 @@ export function aplicarOrganizar(itemId: number, opciones: { edicion?: string | 
 }
 
 /** Todas las rutas que la base guarda de este titulo, a su nueva ubicacion; en una transaccion. */
-function actualizarBase(it: Item, remap: (r: string | null) => string | null, carpetaNueva: string, origenes: string[]) {
+export function actualizarBase(it: Item, remap: (r: string | null) => string | null, carpetaNueva: string, origenes: string[], libraryId?: number) {
   const ids = it.kind === 'movie'
     ? (db.prepare('SELECT id, path FROM media_files WHERE item_id = ?').all(it.id) as { id: number; path: string }[])
     : (db.prepare('SELECT f.id, f.path FROM media_files f JOIN episodes e ON e.id = f.episode_id WHERE e.show_id = ?').all(it.id) as { id: number; path: string }[]);
   db.exec('BEGIN');
   try {
-    db.prepare('UPDATE items SET folder = ? WHERE id = ?').run(carpetaNueva, it.id);
+    db.prepare('UPDATE items SET folder = ?, library_id = COALESCE(?, library_id) WHERE id = ?').run(carpetaNueva, libraryId ?? null, it.id);
     const arte = db.prepare('SELECT poster, fanart, clearlogo, landscape, discart FROM items WHERE id = ?').get(it.id) as Record<string, string | null>;
     for (const c of ['poster', 'fanart', 'clearlogo', 'landscape', 'discart']) {
       const nuevo = remap(arte[c]);

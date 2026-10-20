@@ -9,6 +9,7 @@ import { basename, dirname, relative } from 'node:path';
 import { aplicacion, aplicarDatos, buscarNuevos, busqueda, ejecutarLote, planesDeLote, renombrado, totalPendientes } from '../scanner/lote.ts';
 import { aplicarOrganizar, OrganizarError, planOrganizar } from '../scanner/organizar.ts';
 import { aplicarNfo, NfoError, planNfo } from '../scanner/nfo-escribir.ts';
+import { envio, enviarLote, EnvioError, planEnvio } from '../scanner/enviar.ts';
 import { carpetaDePelicula, carpetaDeSerie } from '../scanner/nombres-tmm.ts';
 import { deshacerUltima, HistorialError, ultimaInstantanea } from '../scanner/historial.ts';
 
@@ -228,6 +229,43 @@ export default async function scraperRoutes(app: FastifyInstance) {
     } catch (err) {
       return reply.code(err instanceof NfoError ? 400 : 500).send({ error: (err as Error).message });
     }
+  });
+
+  /*
+   * Enviar a la biblioteca: llevar titulos preparados en una carpeta de entrada a la biblioteca elegida. Entre discos es copia con
+   * comprobacion SHA-256; el original se aparta a _enviados (o se quita si se pide). GET = plan de cada titulo, sin tocar nada;
+   * POST = hacerlo (trabajo en segundo plano con progreso), con confirmacion expresa.
+   */
+  app.get('/api/scraper/enviar/plan', async (req, reply) => {
+    if (!admin(req, reply)) return;
+    const q = req.query as { ids?: string; destino?: string };
+    const ids = String(q.ids ?? '').split(',').map(Number).filter((n) => Number.isInteger(n) && n > 0).slice(0, 200);
+    const planes = ids.map((id) => {
+      const titulo = (db.prepare('SELECT title FROM items WHERE id = ?').get(id) as { title: string } | undefined)?.title ?? String(id);
+      try {
+        const p = planEnvio(id, String(q.destino ?? ''));
+        return { itemId: id, titulo, error: null, destino: p.destino, bytes: p.bytes, libre: p.libre, mismoDisco: p.mismoDisco };
+      } catch (e) {
+        return { itemId: id, titulo, error: (e as Error).message, destino: null, bytes: 0, libre: null, mismoDisco: false };
+      }
+    });
+    return { planes };
+  });
+
+  app.post('/api/scraper/enviar', async (req, reply) => {
+    if (!admin(req, reply)) return;
+    const body = (req.body ?? {}) as { ids?: number[]; destino?: string; quitarOriginal?: boolean; confirmar?: boolean };
+    if (body.confirmar !== true) return reply.code(400).send({ error: 'Falta la confirmación expresa' });
+    if (envio.corriendo) return reply.code(409).send({ error: 'Ya se está enviando algo' });
+    const ids = (body.ids ?? []).filter((n) => Number.isInteger(n) && n > 0).slice(0, 200);
+    if (ids.length === 0 || !body.destino) return reply.code(400).send({ error: 'Faltan los títulos o el destino' });
+    void enviarLote(ids, body.destino, { quitarOriginal: body.quitarOriginal !== false }).catch((e) => console.error('[enviar]', (e as Error).message));
+    return { started: true, total: ids.length };
+  });
+
+  app.get('/api/scraper/envio', async (req, reply) => {
+    if (!admin(req, reply)) return;
+    return envio;
   });
 
   /** Lo ultimo que se puede deshacer en un titulo (si hay algo) y el boton que lo deshace. */

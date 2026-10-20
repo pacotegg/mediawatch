@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from './Controls.tsx';
 import { api, type FilaNueva } from '../lib/api.ts';
+import EnviarTitulos from './EnviarTitulos.tsx';
 
 /*
  * Asistente de títulos nuevos: el flujo de tinyMediaManager (actualizar fuentes → escrapear → renombrar) sobre una selección.
@@ -196,6 +197,12 @@ export default function AsistenteNuevos() {
               )}
             </>
           )}
+        </Paso>
+      )}
+      {r && !r.corriendo && r.resultados.some((x) => x.ok) && (
+        <Paso n={4} titulo="Enviar a la biblioteca (opcional)">
+          <p className="text-[12.5px] text-mist-500">Si los preparaste en la carpeta de entrada, puedes mandarlos ya a la biblioteca que elijas, en vez de moverlos a mano.</p>
+          <EnviarTitulos ids={r.resultados.filter((x) => x.ok).map((x) => x.itemId)} kind={filas.find((f) => f.itemId === r.resultados[0].itemId)?.kind ?? 'movie'} />
         </Paso>
       )}
       {error && <p className="text-[12.5px] text-red-400">{error}</p>}
