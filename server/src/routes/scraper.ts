@@ -6,6 +6,7 @@ import { detallesDe, search, tmdbGet, TmdbError, type Proposal } from '../scanne
 import { interpretarBusqueda } from '../scanner/buscar-id.ts';
 import { aplicarArteCarpeta, ArteCarpetaError, planArteCarpeta } from '../scanner/arte-carpeta.ts';
 import { basename, dirname } from 'node:path';
+import { deshacerUltima, HistorialError, ultimaInstantanea } from '../scanner/historial.ts';
 
 /*
  * Pantalla «Scraper» (solo administrador): lista de titulos con lo que les falta y emparejado por
@@ -91,6 +92,21 @@ export default async function scraperRoutes(app: FastifyInstance) {
       return { escritos: r.escritos.map((f) => basename(f)), retirados: r.retirados.length };
     } catch (err) {
       return reply.code(err instanceof ArteCarpetaError ? 400 : 500).send({ error: (err as Error).message });
+    }
+  });
+
+  /** Lo ultimo que se puede deshacer en un titulo (si hay algo) y el boton que lo deshace. */
+  app.get('/api/scraper/historial/:id', async (req, reply) => {
+    if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'No autorizado' });
+    return { ultima: ultimaInstantanea(Number((req.params as { id: string }).id)) };
+  });
+
+  app.post('/api/scraper/deshacer/:id', async (req, reply) => {
+    if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'No autorizado' });
+    try {
+      return deshacerUltima(Number((req.params as { id: string }).id));
+    } catch (err) {
+      return reply.code(err instanceof HistorialError ? 400 : 500).send({ error: (err as Error).message });
     }
   });
 

@@ -420,6 +420,8 @@ export const api = {
     request<{ carpeta: string | null; pasos: { papel: string; hacia: string; retira: string | null }[] }>('/api/scraper/arte-carpeta/' + id),
   scraperArteCarpetaAplicar: (id: number) =>
     post<{ escritos: string[]; retirados: number }>('/api/scraper/arte-carpeta/' + id, { confirmar: true }),
+  scraperHistorial: (id: number) => request<{ ultima: { id: number; fecha: string; etiqueta: string } | null }>('/api/scraper/historial/' + id),
+  scraperDeshacer: (id: number) => post<{ fecha: string; etiqueta: string }>('/api/scraper/deshacer/' + id),
   scraperTitulo: (id: number) => request<ScraperTitulo>('/api/scraper/titulo/' + id),
   scraperResolver: (entrada: string, kind: 'movie' | 'show', year?: number | null) =>
     post<{ propuestas: Proposal[]; aviso?: string }>('/api/scraper/resolver', { entrada, kind, year }),

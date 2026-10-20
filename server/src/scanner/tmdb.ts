@@ -7,6 +7,7 @@ import { DATA_DIR, config } from '../config.ts';
 import { db, normalize } from '../db.ts';
 import { imagenesDeFanart } from './fanart.ts';
 import { escribirFicha, type CampoFicha } from './ficha.ts';
+import { tomarInstantanea } from './historial.ts';
 
 const API = 'https://api.themoviedb.org/3';
 const IMAGES = 'https://image.tmdb.org/t/p';
@@ -658,6 +659,7 @@ export function urlDeArteValida(url: unknown): url is string {
 export async function ponerArte(itemId: number, papel: Papel, url: string) {
   if (!urlDeArteValida(url)) throw new Error('Esa dirección no es una imagen de TMDb ni de fanart.tv');
   const dir = carpetaDeArte(itemId);
+  tomarInstantanea(itemId, `Imagen elegida: ${papel}`);
   const destino = await descargarWebp(url, join(dir, FICHERO_DE[papel].replace(EXTENSION, '')), CALIDAD_DE[papel]);
   fijarArte(itemId, papel, destino);
   return { papel, ruta: destino };
@@ -756,6 +758,8 @@ export async function applyProposal(request: ApplyRequest) {
   if (!item) throw new Error('El título ya no existe');
 
   const proposal = await details(request.tmdbId, request.kind);
+  // Para poder deshacer: lo que aplicar puede tocar, tal como esta ahora.
+  tomarInstantanea(request.itemId, `Aplicar ${request.fields.join(', ')} desde TMDb ${request.tmdbId}`);
   const dir = join(ARTWORK_DIR, String(request.itemId));
   mkdirSync(dir, { recursive: true });
 

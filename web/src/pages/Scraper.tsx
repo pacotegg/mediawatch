@@ -271,6 +271,7 @@ function Emparejar({ titulo }: { titulo: ScraperTitulo }) {
       setHecho(`Guardado en «${r.title}»: ${r.applied.join(', ')}.`);
       setError('');
       qc.invalidateQueries({ queryKey: ['scraper-titulo', titulo.id] });
+      qc.invalidateQueries({ queryKey: ['scraper-historial', titulo.id] });
       qc.invalidateQueries({ queryKey: ['scraper-lista'] });
       qc.invalidateQueries({ queryKey: ['home'] });
     },
@@ -367,6 +368,30 @@ function ArteACarpeta({ id }: { id: number }) {
   );
 }
 
+/** Deshacer el último cambio hecho desde el Scraper en este título (ficha, reparto, arte...). */
+function Deshacer({ id }: { id: number }) {
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ['scraper-historial', id], queryFn: () => api.scraperHistorial(id) });
+  const [error, setError] = useState('');
+  const deshacer = useMutation({
+    mutationFn: () => api.scraperDeshacer(id),
+    onSuccess: () => {
+      setError('');
+      for (const k of ['scraper-historial', 'scraper-titulo', 'scraper-lista', 'home']) qc.invalidateQueries({ queryKey: [k] });
+    },
+    onError: (e: Error) => setError(e.message),
+  });
+  if (!data?.ultima) return null;
+  const cuando = new Date(data.ultima.fecha).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' });
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-xl bg-white/4 px-3 py-2 text-[12.5px]">
+      <span className="text-mist-400">Último cambio: {data.ultima.etiqueta} ({cuando})</span>
+      <Button variant="ghost" onClick={() => deshacer.mutate()} disabled={deshacer.isPending}>{deshacer.isPending ? 'Deshaciendo…' : 'Deshacer'}</Button>
+      {error && <span className="text-red-400">{error}</span>}
+    </div>
+  );
+}
+
 function Ficha({ id }: { id: number }) {
   const [pestana, setPestana] = useState<'emparejar' | 'imagenes'>('emparejar');
   const { data: t } = useQuery({ queryKey: ['scraper-titulo', id], queryFn: () => api.scraperTitulo(id) });
@@ -395,6 +420,7 @@ function Ficha({ id }: { id: number }) {
         </div>
       </div>
 
+      <Deshacer id={t.id} />
       <ArteACarpeta id={t.id} />
 
       <div className="flex gap-1 border-b border-white/8">

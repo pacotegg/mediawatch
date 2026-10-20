@@ -115,6 +115,16 @@ CREATE TABLE IF NOT EXISTS imagen_sello (
   size     INTEGER NOT NULL
 );
 
+-- Instantaneas del Scraper para deshacer (las 5 ultimas por titulo): ver scanner/historial.ts.
+CREATE TABLE IF NOT EXISTS scrape_historial (
+  id       INTEGER PRIMARY KEY,
+  item_id  INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+  fecha    TEXT    NOT NULL,
+  etiqueta TEXT    NOT NULL,
+  datos    TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_scrape_historial_item ON scrape_historial(item_id, id);
+
 -- Generos de IMDb (via OMDb), ya traducidos al vocabulario de la biblioteca.
 -- Si una pelicula tiene fila aqui, el escaner usa ESTOS en vez de los del
 -- .nfo: decision del usuario el 26/09/2026. TMDb reparte generos de mas
