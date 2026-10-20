@@ -71,6 +71,20 @@ export function verificarRecodificado(orig: Pick<MediaInfo, 'duration' | 'video'
     if (i < 0) return `subtítulo perdido: ${norm(s.language)}${s.forced ? ' forzado' : ''} (${orig.subs.length} -> ${nuevo.subs.length})`;
     subsLibres.splice(i, 1);
   }
+  // El orden también cuenta: el audio y el subtítulo elegidos en cada perfil se guardan por índice de pista (`embedded-3`),
+  // y si la salida las reordena (visto el 20/10/2026: spa,eng,cat -> eng,spa,cat) el perfil abriría otro idioma.
+  const enOrden = (o: { language?: string }[], n: { language?: string }[]) => {
+    let i = 0;
+    for (const x of o) {
+      while (i < n.length && norm(n[i].language) !== norm(x.language)) i++;
+      if (i >= n.length) return false;
+      i++;
+    }
+    return true;
+  };
+  const idiomasDe = (l: { language?: string }[]) => l.map((x) => norm(x.language)).join(',');
+  if (!enOrden(orig.audio, nuevo.audio)) return `audio en otro orden: ${idiomasDe(orig.audio)} -> ${idiomasDe(nuevo.audio)}`;
+  if (!enOrden(orig.subs, nuevo.subs)) return `subtítulos en otro orden: ${idiomasDe(orig.subs)} -> ${idiomasDe(nuevo.subs)}`;
   if (tamNuevo > tamOrig * 0.85) return `ahorra menos del 15 % (${(tamOrig / 1e6).toFixed(0)} -> ${(tamNuevo / 1e6).toFixed(0)} MB)`;
   return null;
 }

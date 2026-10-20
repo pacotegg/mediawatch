@@ -94,6 +94,14 @@ test('verificarRecodificado exige paridad pista a pista y la duración del víde
   // Vídeo cortado con el audio entero: el contenedor dice 6000 en los dos.
   assert.match(verificarRecodificado(orig, igual, 1000, 500, 6000, 5570), /duración del vídeo/);
   assert.match(verificarRecodificado(orig, igual, 1000, 500, 6000, NaN), /duración del vídeo/);
+  // Mismo conjunto de idiomas pero reordenado (20/10/2026: spa,eng,cat -> eng,spa,cat): los perfiles guardan la pista por índice.
+  const sb = (l) => ({ language: l, forced: false });
+  const conSubs = (subs) => ({ ...base([a('spa', 2)], subs), video: igual.video });
+  assert.match(verificarRecodificado(base([a('spa', 2)], [sb('spa'), sb('eng'), sb('cat')]), conSubs([sb('eng'), sb('spa'), sb('cat')]), 1000, 500, 6000, 6000), /subtítulos en otro orden: spa,eng,cat -> eng,spa,cat/);
+  assert.match(verificarRecodificado(base([a('spa', 2), a('eng', 2)]), { ...base([a('eng', 2), a('spa', 2)]), video: igual.video }, 1000, 500, 6000, 6000), /audio en otro orden/);
+  // Ganar una pista al final o en medio sin reordenar lo anterior no es reordenar.
+  assert.equal(verificarRecodificado(base([a('spa', 2)], [sb('spa')]), conSubs([sb('spa'), sb('eng')]), 1000, 500, 6000, 6000), null);
+  assert.equal(verificarRecodificado(base([a('spa', 2)], []), conSubs([sb('eng')]), 1000, 500, 6000, 6000), null);
   // Con más canales en la salida, vale.
   assert.equal(verificarRecodificado(base([a('spa', 2)]), { ...base([a('spa', 6)]), video: igual.video }, 1000, 500, 6000, 6000), null);
 });
