@@ -107,6 +107,14 @@ CREATE TABLE IF NOT EXISTS item_ratings (
   PRIMARY KEY (item_id, fuente)
 );
 
+-- Fecha y tamano de cada imagen de la BIBLIOTECA (E:), tal como estaban en el ultimo escaneo. La clave de la miniatura en C: sale
+-- de aqui y no de un stat en E: por peticion, que despertaba el disco. Lo refresca el escaner; ver media/images.ts.
+CREATE TABLE IF NOT EXISTS imagen_sello (
+  ruta     TEXT PRIMARY KEY,
+  mtime_ms REAL    NOT NULL,
+  size     INTEGER NOT NULL
+);
+
 -- Generos de IMDb (via OMDb), ya traducidos al vocabulario de la biblioteca.
 -- Si una pelicula tiene fila aqui, el escaner usa ESTOS en vez de los del
 -- .nfo: decision del usuario el 26/09/2026. TMDb reparte generos de mas

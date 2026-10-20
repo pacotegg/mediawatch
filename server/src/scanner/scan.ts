@@ -6,6 +6,7 @@ import { db, normalize } from '../db.ts';
 import { config, DATA_DIR, type LibraryConfig } from '../config.ts';
 import { parseNfo, type NfoData } from './nfo.ts';
 import { indexarExtras } from '../media/extras.ts';
+import { refrescarSello } from '../media/images.ts';
 import { descargarTema } from './themes.ts';
 import { limpiarNombre, esNombreGenerico, tituloDespuesDeNumeracion } from './nombres.ts';
 
@@ -165,6 +166,19 @@ function artworkFor(files: Entry[], base: string) {
     clearlogo: findArt(files, base, ['-clearlogo.png', '-logo.png', '-clearlogo.webp', '-logo.webp'], ['clearlogo.png', 'logo.png', 'clearlogo.webp', 'logo.webp'], COMO_SE_LLAMA.clearlogo),
     landscape: findArt(files, base, ['-landscape.jpg', '-thumb.jpg', '-landscape.webp', '-thumb.webp'], ['landscape.jpg', 'thumb.jpg', 'landscape.webp', 'thumb.webp'], COMO_SE_LLAMA.landscape),
   };
+}
+
+/**
+ * La miniatura de UN episodio: solo la que se llama exactamente como el. Con `findArt` valia cualquier `-thumb` de la
+ * carpeta y, como los nombres de una temporada casi coinciden, el episodio 1 se quedaba con la del 3.
+ */
+function miniaturaDeEpisodio(files: Entry[], base: string): string | undefined {
+  const b = base.toLowerCase();
+  for (const ext of ['webp', 'jpg', 'png']) {
+    const hit = files.find((f) => f.name.toLowerCase() === `${b}-thumb.${ext}`);
+    if (hit) return hit.path;
+  }
+  return undefined;
 }
 
 function externalSubs(files: Entry[], base: string) {
@@ -529,6 +543,7 @@ function scanMovieFolder(libId: number, dir: string, files: Entry[], now: string
   // de un suelto es su propia ruta, o se machacarian unos a otros.
   const art = artworkFor(files, base);
   const meta = fileMeta(main.path, nfoFichero);
+  for (const ruta of Object.values(art)) refrescarSello(ruta);
 
   const item = stmt.upsertItem.get(
     libId, 'movie', clave, title, normalize(title), nfo?.sortTitle ?? null, nfo?.originalTitle ?? null,
@@ -596,6 +611,7 @@ function scanShowFolder(libId: number, dir: string, files: Entry[], now: string)
   const fromFolder = parseTitleYear(basename(dir));
   const title = nfo?.title ?? fromFolder.title;
   const art = artworkFor(files, basename(dir));
+  for (const ruta of Object.values(art)) refrescarSello(ruta);
 
   const item = stmt.upsertItem.get(
     libId, 'show', dir, title, normalize(title), nfo?.sortTitle ?? null, nfo?.originalTitle ?? null,
@@ -641,7 +657,8 @@ function scanShowFolder(libId: number, dir: string, files: Entry[], now: string)
         ?? { season: seasonNumber(grupo.nombre) ?? 1, episode: episodeEnEstaTemporada + 1 };
       const epNfoPath = seasonFiles.find((f) => f.name.toLowerCase() === `${base.toLowerCase()}.nfo`)?.path;
       const epNfo = epNfoPath ? parseNfo(epNfoPath) : null;
-      const thumb = findArt(seasonFiles, base, ['-thumb.jpg', '-thumb.png'], []);
+      const thumb = miniaturaDeEpisodio(seasonFiles, base);
+      refrescarSello(thumb);
       const meta = fileMeta(video.path, epNfo);
       if (meta.added && (!latestAdded || meta.added > latestAdded)) latestAdded = meta.added;
 
