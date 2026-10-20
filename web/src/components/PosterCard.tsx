@@ -58,7 +58,7 @@ function PosterCard({ item, width, index = 0 }: { item: ItemSummary; width?: num
           {item.title}
         </div>
         <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-mist-500">
-          {item.year && <span>{item.year}</span>}
+          {!!item.year && <span>{item.year}</span>}
           {item.rating != null && item.rating > 0 && (
             <>
               <span className="text-mist-600">·</span>

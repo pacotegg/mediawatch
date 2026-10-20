@@ -23,6 +23,7 @@ export const TRANSLATIONS = {
     // Home
     continueWatching: 'Continue watching',
     recentlyAdded: 'Recently added',
+    newReleases: 'Recently released',
     play: 'Play',
     viewDetails: 'View details',
 
@@ -78,7 +79,8 @@ export const TRANSLATIONS = {
 
     // Home
     continueWatching: 'Continuar viendo',
-    recentlyAdded: 'Estrenadas recientemente',
+    recentlyAdded: 'Añadido recientemente',
+    newReleases: 'Estrenadas recientemente',
     play: 'Reproducir',
     viewDetails: 'Ver ficha',
 

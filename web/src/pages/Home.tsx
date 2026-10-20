@@ -43,7 +43,10 @@ export default function Home() {
   const localizeTitle = (row: { kind: string; title: string }) => {
     if (row.kind === 'progress') return t('continueWatching', lang);
     const low = row.title.toLowerCase();
-    if (low.includes('estrenadas') || low.includes('recient')) return t('recentlyAdded', lang);
+    // Dos filas distintas: «Añadido recientemente» (últimos ficheros) y «Estrenadas recientemente» (por fecha de estreno); antes las dos
+    // salían con el mismo rótulo, «Estrenadas recientemente».
+    if (low.includes('estrenadas')) return t('newReleases', lang);
+    if (low.includes('añadido') || low.includes('recient')) return t('recentlyAdded', lang);
     return row.title;
   };
 

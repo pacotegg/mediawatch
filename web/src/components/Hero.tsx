@@ -163,7 +163,7 @@ export default function Hero({ items }: { items: ItemSummary[] }) {
             )}
 
             <div className="mb-3 flex flex-wrap items-center gap-2.5 text-[13px] text-mist-300">
-              {item.year && <span>{item.year}</span>}
+              {!!item.year && <span>{item.year}</span>}
               {item.runtime ? <span>{runtime(item.runtime)}</span> : null}
               {certification(item.mpaa) && (
                 <span className="rounded border border-white/25 px-1.5 py-px text-[11px]">{certification(item.mpaa)}</span>

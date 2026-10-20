@@ -105,7 +105,7 @@ export function CandidateRow({
         <div className="min-w-52 flex-1">
           <div className="mb-1 flex flex-wrap items-center gap-2">
             <span className="text-[14px] font-semibold">{candidate.title}</span>
-            {candidate.year && <span className="text-[12px] text-mist-500">{candidate.year}</span>}
+            {!!candidate.year && <span className="text-[12px] text-mist-500">{candidate.year}</span>}
             <span className={`rounded-md px-2 py-0.5 text-[10.5px] font-medium ring-1 ${confidence.tone}`}>{confidence.label}</span>
           </div>
           <div className="mb-2 text-[11.5px] text-mist-600">
