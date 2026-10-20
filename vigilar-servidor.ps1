@@ -68,10 +68,21 @@ function Apuntar($texto) {
   "$(Get-Date -Format s)  $texto" | Out-File -Append -Encoding utf8 $registro
 }
 
+# Pid de quien escucha en el puerto. A diferencia de la linea de comandos, esto se ve aunque el proceso sea de otro nivel
+# de permisos.
+function Get-PidEscucha {
+  $c = Get-NetTCPConnection -LocalPort $Puerto -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($c) { return [int]$c.OwningProcess }
+  return 0
+}
+
 function Test-ServidorVivo {
   $p = Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue |
        Where-Object { $_.CommandLine -like '*index.ts*' }
-  return [bool]$p
+  # CommandLine sale VACIA para un proceso elevado cuando el vigilante no lo es (20/10/2026: el vigilante relanzado por la
+  # tarea programada no veia el servidor que habia levantado el de una terminal de administrador, lo daba por caido y
+  # lanzaba un servidor tras otro contra el puerto ocupado). Si alguien escucha en el puerto, hay servidor.
+  return ([bool]$p) -or ((Get-PidEscucha) -ne 0)
 }
 
 $script:ultimoError = ''
@@ -135,6 +146,12 @@ function Matar-Servidor {
   $ps = @(Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue |
           Where-Object { $_.CommandLine -like '*index.ts*' })
   foreach ($p in $ps) { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue }
+  # Y el que escucha en el puerto, por si su linea de comandos no se podia leer. Si es de un nivel superior, esto falla y
+  # lo dice (antes lo hacia en silencio).
+  $q = Get-PidEscucha
+  if ($q -ne 0 -and (Get-Process -Id $q -ErrorAction SilentlyContinue)) {
+    try { Stop-Process -Id $q -Force -ErrorAction Stop } catch { Apuntar ('no pude matar el pid ' + $q + ' que escucha en el puerto: ' + $_.Exception.Message) }
+  }
 }
 
 # Devuelve 'ok:<segundos>', 'murio' (el proceso desaparecio) o 'mudo' (vive y no contesta).
