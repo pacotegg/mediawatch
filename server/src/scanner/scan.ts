@@ -314,7 +314,7 @@ const stmt = {
   genre: db.prepare('INSERT INTO genres (name) VALUES (?) ON CONFLICT(name) DO UPDATE SET name=excluded.name RETURNING id'),
   linkGenre: db.prepare('INSERT OR IGNORE INTO item_genres (item_id, genre_id) VALUES (?,?)'),
   clearGenres: db.prepare('DELETE FROM item_genres WHERE item_id = ?'),
-  episodioTmdb: db.prepare("SELECT id FROM episodes WHERE show_id = ? AND season = ? AND episode = ? AND meta_origen = 'tmdb'"),
+  episodioTmdb: db.prepare("SELECT id FROM episodes WHERE show_id = ? AND season = ? AND episode = ? AND meta_origen IN ('tmdb', 'servidor')"),
   metaOrigen: db.prepare('SELECT meta_origen FROM items WHERE id = ?'),
   imdbGeneros: db.prepare('SELECT generos FROM imdb_generos WHERE imdb_id = ?'),
   clearRatings: db.prepare("DELETE FROM item_ratings WHERE item_id = ? AND origen = 'nfo'"),
@@ -607,7 +607,10 @@ function tituloDeEpisodioSinNfo(base: string, episodio: number): string {
 
 function scanShowFolder(libId: number, dir: string, files: Entry[], now: string) {
   const nfoPath = files.find((f) => f.name.toLowerCase() === 'tvshow.nfo')?.path;
-  const nfo = nfoPath ? parseNfo(nfoPath) : null;
+  const nfoFichero = nfoPath ? parseNfo(nfoPath) : null;
+  // Serie adoptada por el servidor: ni ella ni sus episodios se reescriben desde los .nfo (los datos tecnicos si, hasta medirlos).
+  const servidor = Boolean(gestionadoPorServidor.get(dir));
+  const nfo = servidor ? null : nfoFichero;
   const fromFolder = parseTitleYear(basename(dir));
   const title = nfo?.title ?? fromFolder.title;
   const art = artworkFor(files, basename(dir));
@@ -656,10 +659,11 @@ function scanShowFolder(libId: number, dir: string, files: Entry[], now: string)
         ?? (suelto !== null ? { season: seasonNumber(grupo.nombre) ?? 1, episode: suelto } : null)
         ?? { season: seasonNumber(grupo.nombre) ?? 1, episode: episodeEnEstaTemporada + 1 };
       const epNfoPath = seasonFiles.find((f) => f.name.toLowerCase() === `${base.toLowerCase()}.nfo`)?.path;
-      const epNfo = epNfoPath ? parseNfo(epNfoPath) : null;
+      const epNfoFichero = epNfoPath ? parseNfo(epNfoPath) : null;
+      const epNfo = servidor ? null : epNfoFichero;
       const thumb = miniaturaDeEpisodio(seasonFiles, base);
       refrescarSello(thumb);
-      const meta = fileMeta(video.path, epNfo);
+      const meta = fileMeta(video.path, epNfoFichero);
       if (meta.added && (!latestAdded || meta.added > latestAdded)) latestAdded = meta.added;
 
       // Episodio ya rellenado desde TMDb y sin .nfo: titulo, sinopsis y miniatura se quedan.
@@ -675,11 +679,11 @@ function scanShowFolder(libId: number, dir: string, files: Entry[], now: string)
       ) as { id: number };
 
       const file = stmt.upsertFile.get(
-        null, ep.id, video.path, meta.size, meta.container, epNfo?.video?.duration ?? null,
-        epNfo?.video?.codec ?? null, epNfo?.video?.width ?? null, epNfo?.video?.height ?? null, epNfo?.video?.hdr ?? null,
+        null, ep.id, video.path, meta.size, meta.container, epNfoFichero?.video?.duration ?? null,
+        epNfoFichero?.video?.codec ?? null, epNfoFichero?.video?.width ?? null, epNfoFichero?.video?.height ?? null, epNfoFichero?.video?.hdr ?? null,
       ) as { id: number };
 
-      saveTracks(file.id, epNfo, externalSubs(seasonFiles, base));
+      saveTracks(file.id, epNfoFichero, externalSubs(seasonFiles, base));
       episodes++;
       episodeEnEstaTemporada++;
     }

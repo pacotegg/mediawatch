@@ -69,9 +69,3 @@ test('sin sobrescribir, no pisa un reparto que ya existe', () => {
   assert.deepEqual(escribirFicha(id('Sin Tocar'), propuesta, ['cast'], false), []);
   assert.deepEqual(gente(id('Sin Tocar')), antes);
 });
-
-test('las series se rechazan: sus episodios dependen del .nfo', () => {
-  db.prepare("INSERT INTO items (library_id, kind, folder, title, search_title, added_at, scanned_at) VALUES ((SELECT id FROM libraries LIMIT 1),'show','/x','S','s','2000','2000')").run();
-  const s = db.prepare("SELECT id FROM items WHERE kind = 'show'").get().id;
-  assert.throws(() => escribirFicha(s, propuesta, ['cast']), /solo se aplican a películas/);
-});

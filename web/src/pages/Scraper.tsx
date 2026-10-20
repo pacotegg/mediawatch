@@ -169,11 +169,9 @@ function Comparar({ titulo, p, campos, setCampos }: { titulo: ScraperTitulo; p: 
       nuevo: <span>{p.rating != null ? p.rating.toFixed(1) : '—'}</span>,
     },
     {
-      c: 'ficha', hay: titulo.kind === 'movie' && !!(p.reparto?.length || p.estudios?.length),
+      c: 'ficha', hay: !!(p.reparto?.length || p.estudios?.length),
       actual: <span>{titulo.reparto} personas{titulo.studio ? ' · ' + titulo.studio : ''}{titulo.country ? ' · ' + titulo.country : ''}</span>,
-      nuevo: titulo.kind !== 'movie'
-        ? <span className="text-mist-600">solo películas por ahora</span>
-        : <div className="space-y-0.5">
+      nuevo: <div className="space-y-0.5">
             <div>{p.reparto?.length ?? 0} actores{p.directores?.length ? ' · dir. ' + p.directores.slice(0, 2).join(', ') : ''}</div>
             <div className="text-mist-500">{[p.estudios?.slice(0, 2).join(', '), p.paises?.join(', ')].filter(Boolean).join(' · ')}</div>
           </div>,
@@ -299,7 +297,7 @@ function Emparejar({ titulo }: { titulo: ScraperTitulo }) {
 
       {campos.includes('ficha') && (
         <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-[12px] leading-relaxed text-amber-200">
-          Al aplicar el reparto, los estudios y el país, este título pasa a gestionarse desde el servidor: el reparto y los estudios dejan de leerse de su .nfo.
+          Al aplicar el reparto, los estudios y el país, este título pasa a gestionarse desde el servidor: sus datos (y los de sus episodios, si es una serie) dejan de leerse de los .nfo. Se puede deshacer.
         </p>
       )}
       {error && <p className="text-[12.5px] text-red-400">{error}</p>}

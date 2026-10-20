@@ -5,8 +5,11 @@
  *
  * Marca el titulo con `meta_origen = 'servidor'`: «a partir de ahora este titulo lo gestiona el servidor y su .nfo ya no
  * manda». Sin esa marca el siguiente escaneo reescribiria reparto y estudios con lo del .nfo (o los borraria, si no hay),
- * que es justo lo que `saveGenresAndPeople` hace con todo titulo que no sea de TMDb. Solo para peliculas: los episodios de
- * una serie con .nfo se rellenan desde el .nfo y habria que copiarlos antes de dejar de leerlo.
+ * que es justo lo que `saveGenresAndPeople` hace con todo titulo que no sea de TMDb.
+ *
+ * En una serie, ademas, sus episodios se marcan `servidor` y se quedan como estan en ese momento (titulo, sinopsis, fecha): el
+ * escaneo dejaba de ser la fuente y, si no, los volveria a escribir desde los .nfo de episodio. Los episodios nuevos que aparezcan
+ * despues se rellenan desde TMDb (`rellenarEpisodios`), no desde el .nfo.
  */
 import { db, normalize } from '../db.ts';
 import type { Proposal } from './tmdb.ts';
@@ -20,7 +23,6 @@ export function escribirFicha(itemId: number, p: Proposal, campos: CampoFicha[],
   const item = db.prepare('SELECT id, kind FROM items WHERE id = ?').get(itemId) as { id: number; kind: string } | undefined;
   if (!item) throw new FichaError('El título ya no existe');
   if (campos.length === 0) return [];
-  if (item.kind !== 'movie') throw new FichaError('Reparto, estudios y valoración solo se aplican a películas por ahora');
 
   const hechos: CampoFicha[] = [];
   db.exec('BEGIN');
@@ -52,7 +54,10 @@ export function escribirFicha(itemId: number, p: Proposal, campos: CampoFicha[],
         .run(itemId, 'themoviedb', p.rating, 10, p.votos ?? 0);
       hechos.push('ratings');
     }
-    if (hechos.length > 0) db.prepare("UPDATE items SET meta_origen = 'servidor' WHERE id = ?").run(itemId);
+    if (hechos.length > 0) {
+      db.prepare("UPDATE items SET meta_origen = 'servidor' WHERE id = ?").run(itemId);
+      if (item.kind === 'show') db.prepare("UPDATE episodes SET meta_origen = 'servidor' WHERE show_id = ? AND meta_origen IS NULL").run(itemId);
+    }
     db.exec('COMMIT');
   } catch (e) {
     db.exec('ROLLBACK');

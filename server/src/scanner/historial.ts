@@ -95,6 +95,9 @@ export function deshacerUltima(itemId: number): { fecha: string; etiqueta: strin
     db.prepare("DELETE FROM item_ratings WHERE item_id = ? AND fuente = 'themoviedb'").run(itemId);
     if (s.valoracion) db.prepare("INSERT INTO item_ratings (item_id, fuente, valor, maximo, votos, origen) VALUES (?, 'themoviedb', ?, ?, ?, ?)").run(itemId, s.valoracion.valor, s.valoracion.maximo, s.valoracion.votos, s.valoracion.origen);
 
+    // Una serie que deja de estar adoptada: sus episodios vuelven a seguir a los .nfo.
+    if (s.items.meta_origen !== 'servidor') db.prepare("UPDATE episodes SET meta_origen = NULL WHERE show_id = ? AND meta_origen = 'servidor'").run(itemId);
+
     db.prepare('DELETE FROM scrape_historial WHERE id = ?').run(fila.id);
     db.exec('COMMIT');
   } catch (e) {

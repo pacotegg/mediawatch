@@ -132,7 +132,8 @@ function equipoDe(raw: any) {
     directores: deTrabajo('Director'),
     guionistas: deTrabajo('Writer', 'Screenplay', 'Story', 'Novel'),
     estudios: unicos((raw.production_companies ?? []).map((c: any) => c.name)),
-    paises: unicos((raw.production_countries ?? []).map((c: any) => nombrePais(c.iso_3166_1))),
+    // Las series a veces no traen production_countries: entonces, origin_country (codigos ISO).
+    paises: unicos((raw.production_countries ?? (raw.origin_country ?? []).map((iso: string) => ({ iso_3166_1: iso }))).map((c: any) => nombrePais(c.iso_3166_1))),
   };
 }
 
