@@ -627,4 +627,19 @@ if (existsSync(webDist)) {
 }
 
 await app.listen({ port: config.port, host: config.host });
+
+// Si el servidor se queda "vivo pero sin responder" (20/10/2026, dos veces en 14 h, sin rastro), esto distingue un
+// listener cerrado de un bucle atascado: el primero deja estas lineas en latido.log, el segundo no deja nada.
+{
+  const apuntarServidor = (texto: string) => {
+    try {
+      appendFileSync(join(DATA_DIR, 'latido.log'), `${new Date().toISOString()}  [servidor] ${texto}\n`);
+    } catch {
+      /* apuntar no puede tumbar nada */
+    }
+  };
+  app.server.on('close', () => apuntarServidor('el listener se cerro'));
+  app.server.on('error', (e) => apuntarServidor(`error del listener: ${(e as Error).message}`));
+  process.on('exit', (codigo) => apuntarServidor(`el proceso sale con codigo ${codigo}`));
+}
 console.log(`TvWatch en http://localhost:${config.port}  (red local: http://<ip-del-equipo>:${config.port})`);

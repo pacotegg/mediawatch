@@ -37,6 +37,13 @@
      tras 8, 300 s. Y no mata por cuelgue mas de 6 veces por hora, para que un
      fallo del propio chequeo no deje un bucle de reinicios de un servidor sano.
 
+  9. (20/10) **Dejar pruebas de por que se cuelga.** Dos veces en 14 horas (19/10 19:53 y 20/10 08:02) el
+     servidor quedo "vivo pero sin respuesta", el vigilante lo relanzo bien en ~80 s, pero no quedo nada que
+     dijera POR QUE: ni excepcion en server.err ni aviso en latido.log. Ahora, al primer fallo y justo antes de
+     matar, se apunta el error del chequeo (tiempo agotado o conexion rechazada), si el puerto sigue en
+     escucha, las conexiones por estado (CloseWait acumulado = el sintoma de index.ts), memoria e hilos de cada
+     node.exe (un CLI aparte con la base bloqueada se veria aqui) y cuantos ffmpeg hay.
+
   Se puede cargar con `. .\vigilar-servidor.ps1` (punto delante) para probar las
   funciones sin que arranque el bucle ni coja el candado.
 #>
@@ -67,12 +74,38 @@ function Test-ServidorVivo {
   return [bool]$p
 }
 
+$script:ultimoError = ''
+
 function Test-Responde {
   try {
     $r = Invoke-WebRequest -Uri $urlSalud -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
-    return ($r.StatusCode -eq 200 -and $r.Content -match '"ok"\s*:\s*true')
+    $bien = ($r.StatusCode -eq 200 -and $r.Content -match '"ok"\s*:\s*true')
+    if (-not $bien) { $script:ultimoError = ('respondio ' + $r.StatusCode + ' sin {"ok":true}') }
+    return $bien
   } catch {
+    $script:ultimoError = $_.Exception.Message
     return $false
+  }
+}
+
+# Deja en vigilante.log lo que se ve en este momento, para saber DESPUES por que se colgo.
+# Nunca puede tumbar al vigilante: todo va dentro de un try.
+function Diagnostico([string]$momento) {
+  try {
+    $escucha = [bool](Get-NetTCPConnection -LocalPort $Puerto -State Listen -ErrorAction SilentlyContinue)
+    $estados = (Get-NetTCPConnection -LocalPort $Puerto -ErrorAction SilentlyContinue |
+                Group-Object State | ForEach-Object { $_.Name + '=' + $_.Count }) -join ' '
+    $nodos = (Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue |
+              ForEach-Object {
+                $c = [string]$_.CommandLine
+                if ($c.Length -gt 70) { $c = $c.Substring($c.Length - 70) }
+                'pid ' + $_.ProcessId + ' ' + [int]($_.WorkingSetSize / 1MB) + 'MB hilos ' + $_.ThreadCount + ' handles ' + $_.HandleCount + ' [' + $c + ']'
+              }) -join ' | '
+    $ffmpeg = @(Get-Process ffmpeg -ErrorAction SilentlyContinue).Count
+    Apuntar ('diagnostico (' + $momento + '): chequeo=' + $script:ultimoError + ' | escucha=' + $escucha + ' | conexiones ' + $estados + ' | ffmpeg=' + $ffmpeg)
+    Apuntar ('diagnostico (' + $momento + '): node: ' + $nodos)
+  } catch {
+    Apuntar ('diagnostico fallo: ' + $_.Exception.Message)
   }
 }
 
@@ -171,7 +204,9 @@ if ($MyInvocation.InvocationName -ne '.') {
     } else {
       $fallos++
       Apuntar "vivo pero sin respuesta de /api/salud ($fallos de $FallosParaMatar)"
+      if ($fallos -eq 1) { Diagnostico 'primer fallo' }
       if ($fallos -ge $FallosParaMatar) {
+        Diagnostico 'antes de matar'
         $fallos = 0
         $limite = (Get-Date).AddHours(-1)
         $muertes = @($muertes | Where-Object { $_ -gt $limite })
