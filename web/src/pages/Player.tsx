@@ -72,11 +72,13 @@ function generarAvisoEdadWeb(mpaa?: string | null, genres?: string[]): { badge: 
   } else if (cat === '16') {
     if (generos.some((g) => g.includes('terror'))) motivos.push('Terror y suspense psicológico');
     else if (generos.some((g) => g.includes('acci') || g.includes('crimen'))) motivos.push('Violencia y acción continuada');
+    else if (generos.some((g) => g.includes('comedia') || g.includes('humor'))) motivos.push('Humor adulto');
     else motivos.push('Violencia moderada');
     motivos.push('Lenguaje soez');
     if (motivos.length < 3) motivos.push('Situaciones de conflicto y tensión');
   } else if (cat === '12') {
     if (generos.some((g) => g.includes('acci') || g.includes('aventur'))) motivos.push('Violencia fantástica y acción');
+    else if (generos.some((g) => g.includes('comedia') || g.includes('humor'))) motivos.push('Humor y situaciones cómicas');
     else motivos.push('Tensión dramática moderada');
     motivos.push('Lenguaje moderado');
   } else if (cat === '7') {
@@ -451,7 +453,8 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
   })();
 
   useEffect(() => {
-    if (ficha && !avisoEdadLanzadoRef.current && virtual >= 0 && !buffering) {
+    // Sin calificación real no hay aviso: antes se inventaba un «12» con «Tensión dramática moderada» (visto en monólogos de humor).
+    if (ficha && ficha.mpaa && ficha.mpaa.trim() && !avisoEdadLanzadoRef.current && virtual >= 0 && !buffering) {
       avisoEdadLanzadoRef.current = true;
       setMostrarAvisoEdad(true);
       const timer = window.setTimeout(() => setMostrarAvisoEdad(false), 5200);
