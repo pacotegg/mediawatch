@@ -24,6 +24,10 @@ import { hayAlguienViendo } from '../media/ocupado.ts';
 const ejecutar = promisify(execFile);
 const iLim = process.argv.indexOf('--limite');
 const limite = iLim >= 0 ? Number(process.argv[iLim + 1]) : Infinity;
+// `--ids 12,34`: en vez de los monólogos, esos títulos concretos. `--solo-fotograma`: sin buscar fotos por nombre (para documentales).
+const iIds = process.argv.indexOf('--ids');
+const ids = iIds >= 0 ? process.argv[iIds + 1].split(',').map(Number).filter(Boolean) : [];
+const soloFotograma = process.argv.includes('--solo-fotograma');
 const espera = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const normal = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
@@ -95,7 +99,7 @@ async function fotograma(video: string, t: number, salida: string, filtro: strin
 
 const filas = db.prepare(`SELECT i.id, i.title, i.fanart, i.arte_fijado, (SELECT path FROM media_files m WHERE m.item_id = i.id LIMIT 1) ruta,
     (SELECT duration FROM media_files m WHERE m.item_id = i.id LIMIT 1) dur
-  FROM items i JOIN libraries l ON l.id = i.library_id WHERE l.name = 'Monólogos' AND i.poster IS NULL ORDER BY i.id`).all() as
+  FROM items i JOIN libraries l ON l.id = i.library_id WHERE ${ids.length ? `i.id IN (${ids.join(',')})` : "l.name = 'Monólogos'"} AND i.poster IS NULL ORDER BY i.id`).all() as
   { id: number; title: string; fanart: string | null; arte_fijado: string | null; ruta: string | null; dur: number | null }[];
 console.log(`${filas.length} monólogos sin cartel`);
 
@@ -121,7 +125,7 @@ for (const f of filas) {
 
   let cartel = join(dir, 'poster-humorista.webp');
   let fuente = '';
-  for (const nombre of candidatosNombre(f.title)) {
+  for (const nombre of soloFotograma ? [] : candidatosNombre(f.title)) {
     try {
       const foto = await fotoTmdb(nombre);
       if (foto) {
@@ -134,7 +138,7 @@ for (const f of filas) {
     await espera(300);
   }
   // Wikidata/Commons: foto de cualquier proporción; se recorta a 2:3 por arriba-centro (la cara suele estar arriba).
-  for (const nombre of fuente ? [] : candidatosNombre(f.title)) {
+  for (const nombre of fuente || soloFotograma ? [] : candidatosNombre(f.title)) {
     try {
       const foto = await fotoWikidata(nombre);
       if (foto) {
