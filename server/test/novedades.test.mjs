@@ -91,3 +91,21 @@ test('marcarlas como vistas las vacia', async () => {
   const d = bd(); d.prepare('UPDATE users SET novedades_vistas = ? WHERE id = 1').run(local(120_000)); d.close();
   assert.equal((await novedades(galletaAdmin)).total, 0);
 });
+
+test('los monólogos no salen en las novedades ni en «Añadido recientemente»', async () => {
+  const d = bd();
+  d.prepare('UPDATE users SET novedades_vistas = ? WHERE id = 1').run(local(-3_600_000));
+  d.prepare("INSERT OR IGNORE INTO libraries (id,name,path,kind) VALUES (2,'Monólogos','y','movie')").run();
+  d.prepare("INSERT INTO items (library_id, kind, folder, title, search_title, scanned_at, mpaa, added_at) VALUES (2,'movie','m','Monologo nuevo','monologo nuevo','x','ES:TP',?)").run(local(60_000));
+  d.prepare("INSERT INTO items (library_id, kind, folder, title, search_title, scanned_at, mpaa, added_at) VALUES (1,'movie','n','Pelicula nueva','pelicula nueva','x','ES:TP',?)").run(local(61_000));
+  d.close();
+  const n = await novedades(galletaAdmin);
+  assert.ok(n.items.some((i) => i.title === 'Pelicula nueva'), 'las películas nuevas siguen saliendo');
+  assert.ok(!n.items.some((i) => i.title === 'Monologo nuevo'), 'el monólogo no debe salir en novedades');
+  assert.equal(n.items.filter((i) => i.title.startsWith('Monologo')).length, 0);
+  const home = await (await pedir('GET', '/api/home', { galleta: galletaAdmin })).json();
+  const recientes = (home.rows ?? home.filas ?? []).find((r) => r.key === 'recent');
+  assert.ok(recientes, 'hay fila de recientes');
+  assert.ok(recientes.items.some((i) => i.title === 'Pelicula nueva'));
+  assert.ok(!recientes.items.some((i) => i.title === 'Monologo nuevo'), 'el monólogo no debe salir en recientes');
+});

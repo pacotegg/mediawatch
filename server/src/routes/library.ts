@@ -515,7 +515,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
 
     const recent = db
       .prepare(`SELECT ${ITEM_FIELDS} FROM items i JOIN libraries l ON l.id = i.library_id
-                WHERE i.added_at IS NOT NULL ${crAnd} ${noDupMovie} ORDER BY i.added_at DESC LIMIT 24`)
+                WHERE i.added_at IS NOT NULL AND l.name <> 'Monólogos' ${crAnd} ${noDupMovie} ORDER BY i.added_at DESC LIMIT 24`)
       .all(...cr.params);
     rows.push({ key: 'recent', title: 'Añadido recientemente', kind: 'poster', items: withProgress(recent, user?.id ?? null) });
 

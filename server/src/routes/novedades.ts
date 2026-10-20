@@ -22,9 +22,11 @@ export default async function novedadesRoutes(app: FastifyInstance) {
     }
     const cr = clausulaRating(user);
     const y = cr.sql ? `AND ${cr.sql}` : '';
-    const total = (db.prepare(`SELECT COUNT(*) AS n FROM items i WHERE i.added_at > ? ${y}`).get(fila.m, ...cr.params) as { n: number }).n;
+    // Los monólogos (cortes de El Club de la Comedia, cientos y de golpe) no son «novedades»: tapaban las películas y series nuevas.
+    const sinMonologos = "AND i.library_id NOT IN (SELECT id FROM libraries WHERE name = 'Monólogos')";
+    const total = (db.prepare(`SELECT COUNT(*) AS n FROM items i WHERE i.added_at > ? ${sinMonologos} ${y}`).get(fila.m, ...cr.params) as { n: number }).n;
     const items = db
-      .prepare(`SELECT i.id, i.title, i.kind, i.year, i.added_at FROM items i WHERE i.added_at > ? ${y} ORDER BY i.added_at DESC LIMIT 12`)
+      .prepare(`SELECT i.id, i.title, i.kind, i.year, i.added_at FROM items i WHERE i.added_at > ? ${sinMonologos} ${y} ORDER BY i.added_at DESC LIMIT 12`)
       .all(fila.m, ...cr.params);
     return { desde: fila.m, total, items };
   });
