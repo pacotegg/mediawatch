@@ -405,6 +405,7 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
 
   const [mostrarAvisoEdad, setMostrarAvisoEdad] = useState(false);
   const avisoEdadLanzadoRef = useRef(false);
+  const avisoEdadTimerRef = useRef<number | undefined>(undefined);
 
   const { data: skip } = useQuery({
     queryKey: ['skip', episodeId],
@@ -457,10 +458,12 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
     if (ficha && ficha.mpaa && ficha.mpaa.trim() && !avisoEdadLanzadoRef.current && virtual >= 0 && !buffering) {
       avisoEdadLanzadoRef.current = true;
       setMostrarAvisoEdad(true);
-      const timer = window.setTimeout(() => setMostrarAvisoEdad(false), 5200);
-      return () => window.clearTimeout(timer);
+      // El temporizador NO puede limpiarse al volver a ejecutarse este efecto: `virtual` cambia con cada fotograma, se cancelaba
+      // al instante y el cartel se quedaba fijo para siempre (visto el 20/10/2026 en la web).
+      avisoEdadTimerRef.current = window.setTimeout(() => setMostrarAvisoEdad(false), 5200);
     }
   }, [ficha, virtual, buffering]);
+  useEffect(() => () => window.clearTimeout(avisoEdadTimerRef.current), []);
 
   // Arrancar con la pista guardada, la marcada por defecto o la primera; restaurar subtítulos si se eligieron.
   useEffect(() => {
