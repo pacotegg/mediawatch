@@ -7,6 +7,7 @@ import { DATA_DIR, MODO_PORTABLE, ROOT, config } from './config.ts';
 import { backupBaseDeDatosEnWorker, db } from './db.ts';
 import { limpiarCache as limpiarCacheImagenes } from './media/images.ts';
 import { hayAlguienViendo } from './media/ocupado.ts';
+import { comprimirImagenesDeLaBiblioteca } from './media/imagenes-webp.ts';
 import { limpiarHuerfanas as limpiarTrickplayHuerfano, reanudarLoteSiPendiente } from './media/trickplay.ts';
 import { reanudarAfinadoSiPendiente, revisarAfinadas } from './media/creditos-afinado.ts';
 import animeRoutes from './routes/anime.ts';
@@ -392,6 +393,10 @@ async function escanearSiToca(motivo: string) {
       /* sin sello se reintentará dentro de una hora; no vale tumbar nada por esto */
     }
     console.log(`[escaneo ${motivo}] ${r.map((x) => `${x.name}: ${x.count}`).join(', ')} en ${((Date.now() - t0) / 1000).toFixed(0)} s`);
+    // Imagenes JPG/PNG nuevas -> WebP (solo si imagenesAWebp esta en config.json; se para si alguien ve algo).
+    void comprimirImagenesDeLaBiblioteca()
+      .then((res) => { if (res && (res.convertidas || res.errores)) console.log(`[imagenes-webp] ${res.convertidas} convertidas (${(res.ahorroBytes / 1e6).toFixed(1)} MB menos), ${res.errores} con error${res.interrumpido ? ' (parado: ' + res.interrumpido + ')' : ''}`); })
+      .catch((e) => console.error('[imagenes-webp]', (e as Error).message));
     // MediaWatch Server: tras escanear, los titulos nuevos se identifican por su nombre.
     if (MODO_PORTABLE) void identificarPendientes().catch((e) => console.error('[identificar]', (e as Error).message));
   } catch (err) {

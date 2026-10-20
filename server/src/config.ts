@@ -66,6 +66,11 @@ export type AppConfig = {
    */
   publicUrl: string;
   licenseKey?: string;
+  /**
+   * Pasa a WebP las imagenes JPG/PNG que aparezcan en las carpetas de la biblioteca despues de cada escaneo (ver media/imagenes-webp.ts).
+   * Escribe en E:, asi que NO esta puesto por defecto: 'retirar' deja el original en <raiz>/_retirados/<fecha>/ y 'borrar' lo borra.
+   */
+  imagenesAWebp?: 'retirar' | 'borrar';
 };
 
 const DEFAULT_LIBRARIES: LibraryConfig[] = [
