@@ -315,6 +315,58 @@ function Emparejar({ titulo }: { titulo: ScraperTitulo }) {
   );
 }
 
+/**
+ * Copiar el arte elegido a la carpeta del título, con los nombres de tinyMediaManager, para quien lea la biblioteca con otro
+ * programa (Plex con «usar activos locales», Jellyfin, Kodi). Es lo único de esta pantalla que escribe en la biblioteca:
+ * primero se enseña el plan, y no se hace nada hasta confirmarlo. Lo que se sustituye se aparta, no se borra.
+ */
+function ArteACarpeta({ id }: { id: number }) {
+  const [abierto, setAbierto] = useState(false);
+  const [hecho, setHecho] = useState('');
+  const qc = useQueryClient();
+  const plan = useQuery({ queryKey: ['scraper-arte-carpeta', id], queryFn: () => api.scraperArteCarpeta(id), enabled: abierto, retry: false, staleTime: 0 });
+  const aplicar = useMutation({
+    mutationFn: () => api.scraperArteCarpetaAplicar(id),
+    onSuccess: (r) => { setHecho(`Escritos ${r.escritos.length} ficheros${r.retirados ? ` y apartados ${r.retirados} en _retirados` : ''}.`); qc.invalidateQueries({ queryKey: ['scraper-arte-carpeta', id] }); },
+  });
+  useEffect(() => { setAbierto(false); setHecho(''); }, [id]);
+
+  return (
+    <div className="rounded-xl bg-white/4 p-3 text-[12.5px]">
+      <button onClick={() => setAbierto((v) => !v)} className="flex w-full items-center justify-between text-left font-medium text-mist-300">
+        <span>Copiar el arte a la carpeta del título (Plex y otros programas)</span>
+        <span className="text-mist-500">{abierto ? '−' : '+'}</span>
+      </button>
+      {abierto && (
+        <div className="mt-3 space-y-2">
+          {plan.isLoading && <p className="text-mist-500">Calculando…</p>}
+          {plan.error && <p className="text-red-400">{(plan.error as Error).message}</p>}
+          {plan.data && plan.data.pasos.length === 0 && <p className="text-mist-500">Nada que copiar: la carpeta ya tiene el arte elegido, o este título aún no tiene arte propio del servidor.</p>}
+          {plan.data && plan.data.pasos.length > 0 && (
+            <>
+              <p className="text-mist-400">Se va a escribir en la biblioteca, en <span className="break-all text-mist-200">{plan.data.carpeta}</span>:</p>
+              <ul className="space-y-1">
+                {plan.data.pasos.map((p) => (
+                  <li key={p.papel} className="rounded-lg bg-black/20 px-2.5 py-1.5">
+                    <span className="text-emerald-300">crear</span> <span className="break-all">{p.hacia}</span>
+                    {p.retira && <div className="text-amber-300/90">apartar a _retirados: <span className="break-all">{p.retira}</span></div>}
+                  </li>
+                ))}
+              </ul>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button variant="danger" onClick={() => aplicar.mutate()} disabled={aplicar.isPending}>{aplicar.isPending ? 'Escribiendo…' : 'Sí, escribir en la biblioteca'}</Button>
+                <span className="text-[11.5px] text-mist-600">Nada se borra: lo que se sustituye va a la carpeta _retirados de la biblioteca.</span>
+              </div>
+            </>
+          )}
+          {aplicar.error && <p className="text-red-400">{(aplicar.error as Error).message}</p>}
+          {hecho && <p className="text-emerald-400">{hecho}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Ficha({ id }: { id: number }) {
   const [pestana, setPestana] = useState<'emparejar' | 'imagenes'>('emparejar');
   const { data: t } = useQuery({ queryKey: ['scraper-titulo', id], queryFn: () => api.scraperTitulo(id) });
@@ -342,6 +394,8 @@ function Ficha({ id }: { id: number }) {
           {t.plot && <p className="mt-2 line-clamp-3 text-[12.5px] leading-relaxed text-mist-500">{t.plot}</p>}
         </div>
       </div>
+
+      <ArteACarpeta id={t.id} />
 
       <div className="flex gap-1 border-b border-white/8">
         {([['emparejar', 'Emparejar y completar'], ['imagenes', 'Imágenes']] as const).map(([k, e]) => (

@@ -416,6 +416,10 @@ export const api = {
   // Scraper (solo administrador)
   scraperTitulos: (p: { filtro: string; q: string; kind: string; offset: number }) =>
     request<ScraperLista>('/api/scraper/titulos?' + new URLSearchParams({ filtro: p.filtro, q: p.q, kind: p.kind, offset: String(p.offset) })),
+  scraperArteCarpeta: (id: number) =>
+    request<{ carpeta: string | null; pasos: { papel: string; hacia: string; retira: string | null }[] }>('/api/scraper/arte-carpeta/' + id),
+  scraperArteCarpetaAplicar: (id: number) =>
+    post<{ escritos: string[]; retirados: number }>('/api/scraper/arte-carpeta/' + id, { confirmar: true }),
   scraperTitulo: (id: number) => request<ScraperTitulo>('/api/scraper/titulo/' + id),
   scraperResolver: (entrada: string, kind: 'movie' | 'show', year?: number | null) =>
     post<{ propuestas: Proposal[]; aviso?: string }>('/api/scraper/resolver', { entrada, kind, year }),

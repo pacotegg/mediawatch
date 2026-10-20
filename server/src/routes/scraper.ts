@@ -4,6 +4,8 @@ import { db, normalize } from '../db.ts';
 import { requireUser } from './auth.ts';
 import { detallesDe, search, tmdbGet, TmdbError, type Proposal } from '../scanner/tmdb.ts';
 import { interpretarBusqueda } from '../scanner/buscar-id.ts';
+import { aplicarArteCarpeta, ArteCarpetaError, planArteCarpeta } from '../scanner/arte-carpeta.ts';
+import { basename, dirname } from 'node:path';
 
 /*
  * Pantalla «Scraper» (solo administrador): lista de titulos con lo que les falta y emparejado por
@@ -65,6 +67,31 @@ export default async function scraperRoutes(app: FastifyInstance) {
     const id = (fila as { id: number }).id;
     const reparto = (db.prepare('SELECT COUNT(*) AS n FROM item_people WHERE item_id = ?').get(id) as { n: number }).n;
     return { ...fila, reparto };
+  });
+
+  /*
+   * Copiar el arte elegido a la carpeta del titulo (Plex con activos locales, Jellyfin, Kodi). GET = plan, sin tocar nada;
+   * POST = aplicar ese plan. Es la UNICA ruta de esta pantalla que escribe en la biblioteca, y pide confirmacion expresa.
+   */
+  app.get('/api/scraper/arte-carpeta/:id', async (req, reply) => {
+    if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'No autorizado' });
+    try {
+      const plan = planArteCarpeta(Number((req.params as { id: string }).id));
+      return { carpeta: plan[0] ? dirname(plan[0].hacia) : null, pasos: plan.map((p) => ({ papel: p.papel, hacia: basename(p.hacia), retira: p.retira ? basename(p.retira) : null })) };
+    } catch (err) {
+      return reply.code(err instanceof ArteCarpetaError ? 400 : 500).send({ error: (err as Error).message });
+    }
+  });
+
+  app.post('/api/scraper/arte-carpeta/:id', async (req, reply) => {
+    if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'No autorizado' });
+    if ((req.body as { confirmar?: boolean } | null)?.confirmar !== true) return reply.code(400).send({ error: 'Falta la confirmación expresa' });
+    try {
+      const r = aplicarArteCarpeta(Number((req.params as { id: string }).id));
+      return { escritos: r.escritos.map((f) => basename(f)), retirados: r.retirados.length };
+    } catch (err) {
+      return reply.code(err instanceof ArteCarpetaError ? 400 : 500).send({ error: (err as Error).message });
+    }
   });
 
   /** Titulo, id de TMDb, id de IMDb o direccion pegada -> propuestas de TMDb. */
