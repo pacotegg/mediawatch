@@ -158,10 +158,12 @@ const COMO_SE_LLAMA = {
 
 function artworkFor(files: Entry[], base: string) {
   return {
-    poster: findArt(files, base, ['-poster.jpg', '-poster.png', '-poster.webp'], ['poster.jpg', 'folder.jpg', 'cover.jpg', 'poster.png'], COMO_SE_LLAMA.poster, true),
-    fanart: findArt(files, base, ['-fanart.jpg', '-fanart.png', '-backdrop.jpg'], ['fanart.jpg', 'backdrop.jpg', 'backdrop1.jpg', 'fanart1.jpg'], COMO_SE_LLAMA.fanart),
-    clearlogo: findArt(files, base, ['-clearlogo.png', '-logo.png'], ['clearlogo.png', 'logo.png'], COMO_SE_LLAMA.clearlogo),
-    landscape: findArt(files, base, ['-landscape.jpg', '-thumb.jpg'], ['landscape.jpg', 'thumb.jpg'], COMO_SE_LLAMA.landscape),
+    // Los .webp sin prefijo (`poster.webp`...) los dejo la migracion de la cache a WebP: sin ellos, 20/10/2026, 5 fichas sin
+    // cartel, 90 sin fondo, 77 sin logo y 38 sin horizontal teniendo el fichero en su carpeta.
+    poster: findArt(files, base, ['-poster.jpg', '-poster.png', '-poster.webp'], ['poster.jpg', 'folder.jpg', 'cover.jpg', 'poster.png', 'poster.webp', 'folder.webp', 'cover.webp'], COMO_SE_LLAMA.poster, true),
+    fanart: findArt(files, base, ['-fanart.jpg', '-fanart.png', '-fanart.webp', '-backdrop.jpg', '-backdrop.webp'], ['fanart.jpg', 'backdrop.jpg', 'backdrop1.jpg', 'fanart1.jpg', 'fanart.webp', 'backdrop.webp', 'fanart1.webp'], COMO_SE_LLAMA.fanart),
+    clearlogo: findArt(files, base, ['-clearlogo.png', '-logo.png', '-clearlogo.webp', '-logo.webp'], ['clearlogo.png', 'logo.png', 'clearlogo.webp', 'logo.webp'], COMO_SE_LLAMA.clearlogo),
+    landscape: findArt(files, base, ['-landscape.jpg', '-thumb.jpg', '-landscape.webp', '-thumb.webp'], ['landscape.jpg', 'thumb.jpg', 'landscape.webp', 'thumb.webp'], COMO_SE_LLAMA.landscape),
   };
 }
 
