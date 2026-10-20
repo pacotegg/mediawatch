@@ -89,6 +89,11 @@ export function verificarRecodificado(orig: Pick<MediaInfo, 'duration' | 'video'
   return null;
 }
 
+/** El registro de un encode de encode.ps1 acaba en «Conversion failed!» cuando ffmpeg lo abandona (p. ej. QSV -40 con ciertos MP4). */
+export function encodeFallido(registro: string): boolean {
+  return /Conversion failed!/.test(registro);
+}
+
 /**
  * Aparta el original a `<unidad>\_retirados\<AAAA-MM-DD>\<ruta relativa>`. Es un renombrado en la misma unidad
  * (instantáneo, sin copiar) y se deshace moviéndolo de vuelta. Devuelve dónde ha quedado.

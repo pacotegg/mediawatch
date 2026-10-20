@@ -25,14 +25,14 @@
  *   node src/cli/recodificar-biblioteca.ts --aplicar --tanda-gb 150   lote real, por tandas de 150 GB
  */
 import { execFile } from 'node:child_process';
-import { appendFileSync, copyFileSync, existsSync, readFileSync, renameSync, statSync, unlinkSync, utimesSync } from 'node:fs';
+import { appendFileSync, copyFileSync, existsSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, utimesSync } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { config, DATA_DIR } from '../config.ts';
 import { db } from '../db.ts';
 import { hayAlguienViendo } from '../media/ocupado.ts';
 import { mediaInfo, probeFile, type MediaInfo } from '../media/probe.ts';
-import { retirarOriginal, verificarRecodificado } from '../media/recodificar.ts';
+import { encodeFallido, retirarOriginal, verificarRecodificado } from '../media/recodificar.ts';
 
 const args = process.argv.slice(2);
 const aplicar = args.includes('--aplicar');
@@ -46,6 +46,7 @@ const EN_CURSO = 'C:\\Media\\encode_running';
 const COMPLETADOS = 'C:\\Media\\encode_logs\\completed.jsonl';
 const REGISTRO = join(DATA_DIR, 'recodificar-biblioteca.jsonl');
 const PARADA = join(DATA_DIR, 'recodificar-biblioteca.stop');
+const LOGS_ENCODE = 'C:\\Media\\encode_logs';
 const TOPE_ESPERA_MS = 6 * 3600_000; // un fichero que no sale en 6 h se da por atascado
 
 type Fila = { id: number; path: string; size: number };
@@ -55,7 +56,7 @@ const anotar = (o: object) => appendFileSync(REGISTRO, JSON.stringify({ cuando: 
 const hechos = new Set<string>();
 if (existsSync(REGISTRO)) {
   for (const l of readFileSync(REGISTRO, 'utf8').split('\n')) {
-    try { const o = JSON.parse(l); if (o.ruta && (o.resultado === 'sustituido' || o.resultado === 'rechazado')) hechos.add(o.ruta); } catch { /* línea a medias */ }
+    try { const o = JSON.parse(l); if (o.ruta && (o.resultado === 'sustituido' || o.resultado === 'rechazado' || o.resultado === 'fallido' || o.resultado === 'atascado')) hechos.add(o.ruta); } catch { /* línea a medias */ }
   }
 }
 
@@ -102,10 +103,25 @@ async function duracionVideo(ruta: string): Promise<number> {
  * Terminado = el pipeline ha anotado el trabajo en completed.jsonl (salida `mw<id>.mkv`, posterior a ponerlo en cola).
  * NO vale mirar encode_running: el pipeline deja ahí las fuentes al acabar bien y las barre horas después.
  */
-async function esperarSalida(id: number, desde: number): Promise<string | null> {
+/** ¿El encode de este id ya ha terminado mal? (su registro `<fecha>_mw<id>.log` acaba en «Conversion failed!») */
+function encodeAbandonado(id: number, desde: number): boolean {
+  try {
+    for (const n of readdirSync(LOGS_ENCODE)) {
+      if (!n.endsWith(`_mw${id}.log`)) continue;
+      const ruta = join(LOGS_ENCODE, n);
+      if (statSync(ruta).mtimeMs < desde - 60_000) continue;
+      if (encodeFallido(readFileSync(ruta, 'utf8').slice(-4000))) return true;
+    }
+  } catch { /* sin registro todavía */ }
+  return false;
+}
+
+async function esperarSalida(id: number, desde: number): Promise<string | null | 'fallido'> {
   const salida = join(SALIDA, `mw${id}.mkv`);
   while (Date.now() - desde < TOPE_ESPERA_MS) {
     await espera(30_000);
+    // Sin esto el lote se quedaba 6 h esperando un encode que ffmpeg ya había abandonado (Be Water, 20/10/2026).
+    if (encodeAbandonado(id, desde)) return 'fallido';
     let hecho = false;
     try {
       for (const l of readFileSync(COMPLETADOS, 'utf8').split('\n')) {
@@ -127,6 +143,12 @@ async function procesar(f: Fila) {
   copyFileSync(f.path, join(COLA, `mw${f.id}${ext}`));
   console.log(`  en cola: mw${f.id}${ext}`);
   const salida = await esperarSalida(f.id, puesto);
+  if (salida === 'fallido') {
+    try { unlinkSync(join(EN_CURSO, `mw${f.id}${ext}`)); } catch { /* ya no estaba */ }
+    anotar({ ruta: f.path, id: f.id, resultado: 'fallido', motivo: 'ffmpeg abandonó el encode (Conversion failed!)' });
+    console.log('  x el encode falló (ffmpeg: Conversion failed!); original intacto, no se reintenta');
+    return;
+  }
   if (!salida) { anotar({ ruta: f.path, id: f.id, resultado: 'atascado' }); console.log('  x no salió en 6 h'); return; }
   // La copia de la fuente es nuestra: fuera en cuanto el pipeline la ha usado, que son GB en C:.
   try { unlinkSync(join(EN_CURSO, `mw${f.id}${ext}`)); } catch { /* ya no estaba */ }

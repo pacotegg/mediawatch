@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { argumentosHevc, pistasQueFaltan, retirarOriginal, verificarRecodificado } from '../src/media/recodificar.ts';
+import { argumentosHevc, encodeFallido, pistasQueFaltan, retirarOriginal, verificarRecodificado } from '../src/media/recodificar.ts';
 import { probeFile } from '../src/media/probe.ts';
 
 // En los ejecutores del CI no hay ffmpeg: sin él no se puede fabricar el vídeo de prueba.
@@ -104,4 +104,11 @@ test('verificarRecodificado exige paridad pista a pista y la duración del víde
   assert.equal(verificarRecodificado(base([a('spa', 2)], []), conSubs([sb('eng')]), 1000, 500, 6000, 6000), null);
   // Con más canales en la salida, vale.
   assert.equal(verificarRecodificado(base([a('spa', 2)]), { ...base([a('spa', 6)]), video: igual.video }, 1000, 500, 6000, 6000), null);
+});
+
+test('encodeFallido reconoce el registro de un encode que ffmpeg abandono (20/10/2026: Be Water, QSV -40)', () => {
+  const malo = 'Error reinitializing filters!\nTask finished with error code: -40 (Function not implemented)\nConversion failed!\n';
+  assert.equal(encodeFallido(malo), true);
+  assert.equal(encodeFallido('frame= 100 fps=120\nvideo:52KiB audio:62KiB\n'), false);
+  assert.equal(encodeFallido(''), false);
 });
