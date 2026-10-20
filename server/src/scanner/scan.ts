@@ -289,6 +289,9 @@ const stmt = {
       probed=CASE WHEN excluded.size <> media_files.size THEN 0 ELSE media_files.probed END
     RETURNING id`),
   clearTracks: db.prepare('DELETE FROM audio_tracks WHERE file_id = ?'),
+  fileMedido: db.prepare('SELECT 1 AS si FROM media_files WHERE id = ? AND probed = 1'),
+  clearSubsExternos: db.prepare('DELETE FROM sub_tracks WHERE file_id = ? AND external IS NOT NULL'),
+  audioMedido: db.prepare('SELECT 1 AS si FROM media_files WHERE id = ? AND probed = 1 AND EXISTS (SELECT 1 FROM audio_tracks WHERE file_id = ?)'),
   clearSubs: db.prepare('DELETE FROM sub_tracks WHERE file_id = ?'),
   addAudio: db.prepare('INSERT INTO audio_tracks (file_id, idx, codec, language, channels) VALUES (?,?,?,?,?)'),
   addSub: db.prepare('INSERT INTO sub_tracks (file_id, idx, codec, language, forced, external) VALUES (?,?,?,?,?,?)'),
@@ -333,9 +336,17 @@ function subtitulosDescargados(fileId: number) {
 }
 
 function saveTracks(fileId: number, nfo: NfoData | null, subs: ReturnType<typeof externalSubs>) {
-  stmt.clearTracks.run(fileId);
-  stmt.clearSubs.run(fileId);
-  nfo?.audio.forEach((a, i) => stmt.addAudio.run(fileId, i, a.codec ?? null, lang(a.language) ?? null, a.channels ?? null));
+  // Medido por ffprobe: las pistas incrustadas ya son las del contenedor; solo se refrescan las de fuera (.srt).
+  const medido = Boolean(stmt.fileMedido.get(fileId));
+  if (medido) stmt.clearSubsExternos.run(fileId);
+  else stmt.clearSubs.run(fileId);
+  // El audio que ya midio ffprobe (indice de flujo real, Atmos, titulos) manda sobre el del .nfo: antes cada escaneo lo
+  // borraba y, si el .nfo no traia audio, el fichero quedaba medido y mudo (254 de 5.671 el 20/10/2026).
+  // Si el tamano cambia el upsert pone probed = 0 y vuelve a mandar el .nfo hasta que se mida de nuevo.
+  if (!stmt.audioMedido.get(fileId, fileId)) {
+    stmt.clearTracks.run(fileId);
+    nfo?.audio.forEach((a, i) => stmt.addAudio.run(fileId, i, a.codec ?? null, lang(a.language) ?? null, a.channels ?? null));
+  }
 
   /*
    * Los `<subtitle>` del `<streamdetails>` de tinyMediaManager **no son solo
@@ -363,7 +374,7 @@ function saveTracks(fileId: number, nfo: NfoData | null, subs: ReturnType<typeof
    */
   const todosSubs = [...subs, ...subtitulosDescargados(fileId)];
   const idiomasExternos = new Set(todosSubs.map((s) => s.language ?? '?'));
-  nfo?.subtitles.forEach((s, i) => {
+  if (!medido) nfo?.subtitles.forEach((s, i) => {
     if (idiomasExternos.has(lang(s.language) ?? '?')) return;
     stmt.addSub.run(fileId, i, s.codec ?? 'embedded', lang(s.language) ?? null, 0, null);
   });
