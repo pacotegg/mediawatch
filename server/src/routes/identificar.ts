@@ -29,7 +29,7 @@ export default async function identificarRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: `La clasificacion tiene que ser una de: ${CATEGORIAS.join(', ')}` });
     }
     const pais = config.tmdbLanguage.split('-')[1] ?? 'ES';
-    const r = db.prepare("UPDATE items SET mpaa = ? WHERE id = ? AND meta_origen = 'tmdb'").run(`${pais}:${categoria}`, itemId);
+    const r = db.prepare("UPDATE items SET mpaa = ? WHERE id = ? AND meta_origen IN ('tmdb', 'servidor')").run(`${pais}:${categoria}`, itemId);
     if (r.changes === 0) return reply.code(404).send({ error: 'Ese titulo no esta identificado' });
     return { ok: true };
   });

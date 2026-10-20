@@ -59,7 +59,8 @@ export async function identificarPendientes(limite = 150, log: (m: string) => vo
         if (mejor) {
           await applyProposal({
             itemId: fila.id, tmdbId: mejor.tmdbId, kind: fila.kind,
-            fields: ['poster', 'fanart', 'logo', 'plot', 'rating', 'genres'], identidad: true,
+            // Las peliculas llevan tambien reparto, estudios, pais y valoracion: sin .nfo no hay otra fuente.
+            fields: fila.kind === 'movie' ? ['poster', 'fanart', 'logo', 'plot', 'rating', 'genres', 'cast', 'studio', 'ratings'] : ['poster', 'fanart', 'logo', 'plot', 'rating', 'genres'], identidad: true,
           });
           if (fila.kind === 'show') await rellenarEpisodios(fila.id, mejor.tmdbId);
           r.identificados++;
@@ -90,9 +91,9 @@ export function estadoIdentificacion() {
   return {
     pendientes: n("SELECT COUNT(*) n FROM items WHERE tmdb_id IS NULL AND meta_origen IS NULL AND ident_intento IS NULL"),
     dudosos: n("SELECT COUNT(*) n FROM items WHERE tmdb_id IS NULL AND meta_origen IS NULL AND ident_intento IS NOT NULL"),
-    identificados: n("SELECT COUNT(*) n FROM items WHERE meta_origen = 'tmdb'"),
+    identificados: n("SELECT COUNT(*) n FROM items WHERE meta_origen IN ('tmdb', 'servidor')"),
     sinClasificar: db
-      .prepare("SELECT id, title, year, kind FROM items WHERE meta_origen = 'tmdb' AND mpaa IS NULL ORDER BY title")
+      .prepare("SELECT id, title, year, kind FROM items WHERE meta_origen IN ('tmdb', 'servidor') AND mpaa IS NULL ORDER BY title")
       .all() as { id: number; title: string; year: number | null; kind: string }[],
   };
 }
