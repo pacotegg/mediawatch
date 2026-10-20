@@ -5,7 +5,7 @@ import { api } from '../lib/api.ts';
 
 /*
  * Enviar a la biblioteca: llevar títulos preparados en la carpeta de entrada (C:\Videos) a la biblioteca que elijas (E:\Películas).
- * Entre discos es una COPIA que se comprueba (SHA-256 del origen y del destino); solo si coincide, el título pasa a la otra biblioteca
+ * Entre discos es una COPIA que se comprueba (por defecto, que cada fichero pese lo mismo; opcionalmente SHA-256 completo); solo si coincide, el título pasa a la otra biblioteca
  * conservando sus datos, y entonces el original se quita de la entrada (traslado); si no, no se toca. Se ve el plan antes de confirmar.
  */
 const gb = (n: number) => (n / 1e9).toFixed(1) + ' GB';
@@ -17,12 +17,13 @@ export default function EnviarTitulos({ ids, kind }: { ids: number[]; kind: 'mov
   const destinos = (fuentes ?? []).filter((f) => f.kind === kind);
   const [destino, setDestino] = useState('');
   const [conservar, setConservar] = useState(false);
+  const [completa, setCompleta] = useState(false);
   const [error, setError] = useState('');
   const elegido = destino || destinos[0]?.path || '';
   const plan = useQuery({ queryKey: ['scraper-envio-plan', ids.join(','), elegido], queryFn: () => api.scraperEnvioPlan(ids, elegido), enabled: ids.length > 0 && Boolean(elegido), staleTime: 0, retry: false });
   const estado = useQuery({ queryKey: ['scraper-envio'], queryFn: api.scraperEnvio, refetchInterval: (q) => (q.state.data?.corriendo ? 1000 : false), refetchIntervalInBackground: true });
   const enviar = useMutation({
-    mutationFn: () => api.scraperEnviar(posibles.map((p) => p.itemId), elegido, !conservar),
+    mutationFn: () => api.scraperEnviar(posibles.map((p) => p.itemId), elegido, !conservar, completa ? 'completa' : 'rapida'),
     onSuccess: () => { setError(''); qc.invalidateQueries({ queryKey: ['scraper-envio'] }); qc.invalidateQueries({ queryKey: ['scraper-lista'] }); qc.invalidateQueries({ queryKey: ['scraper-titulo'] }); },
     onError: (e: Error) => setError(e.message),
   });
@@ -58,11 +59,15 @@ export default function EnviarTitulos({ ids, kind }: { ids: number[]; kind: 'mov
             <input type="checkbox" checked={conservar} onChange={(ev) => setConservar(ev.target.checked)} className="mt-0.5 accent-[var(--color-accent,#7c8cff)]" />
             <span>Conservar una copia de seguridad del original en <span className="text-mist-200">_enviados</span> <span className="text-mist-500">(ocupa espacio en la carpeta de entrada hasta que la borres tú; normalmente no hace falta)</span></span>
           </label>
+          <label className="flex items-start gap-2 text-mist-300">
+            <input type="checkbox" checked={completa} onChange={(ev) => setCompleta(ev.target.checked)} className="mt-0.5 accent-[var(--color-accent,#7c8cff)]" />
+            <span>Comprobación completa <span className="text-mist-500">(vuelve a leer toda la copia y la compara con el original con SHA-256; mucho más lenta, minutos por película grande. Por defecto solo se comprueba que cada fichero pese exactamente lo mismo)</span></span>
+          </label>
           <div className="flex flex-wrap items-center gap-3">
             <Button variant="danger" onClick={() => enviar.mutate()} disabled={enviar.isPending || Boolean(e?.corriendo)}>
               {e?.corriendo ? `Enviando ${e.hechos + 1}/${e.total}…` : `Sí, enviar ${posibles.length} título${posibles.length === 1 ? '' : 's'}`}
             </Button>
-            <span className="text-[11.5px] text-mist-600">Si algo falla o la copia no coincide, el original NO se toca.</span>
+            <span className="text-[11.5px] text-mist-600">Si algo falla o un fichero no pesa lo mismo que el original, el original NO se toca.</span>
           </div>
         </>
       )}

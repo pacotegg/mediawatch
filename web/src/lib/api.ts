@@ -433,7 +433,7 @@ export const api = {
   scraperNfoAplicar: (id: number) => post<{ escritos: string[]; retirados: number }>('/api/scraper/nfo/' + id, { confirmar: true }),
   scraperEnvioPlan: (ids: number[], destino: string) =>
     request<{ planes: { itemId: number; titulo: string; error: string | null; destino: string | null; bytes: number; libre: number | null; mismoDisco: boolean }[] }>('/api/scraper/enviar/plan?' + new URLSearchParams({ ids: ids.join(','), destino })),
-  scraperEnviar: (ids: number[], destino: string, quitarOriginal: boolean) => post<{ started: boolean }>('/api/scraper/enviar', { ids, destino, quitarOriginal, confirmar: true }),
+  scraperEnviar: (ids: number[], destino: string, quitarOriginal: boolean, verificacion: 'rapida' | 'completa') => post<{ started: boolean }>('/api/scraper/enviar', { ids, destino, quitarOriginal, verificacion, confirmar: true }),
   scraperEnvio: () => request<EstadoEnvio>('/api/scraper/envio'),
   scraperHistorial: (id: number) => request<{ ultima: { id: number; fecha: string; etiqueta: string } | null }>('/api/scraper/historial/' + id),
   scraperDeshacer: (id: number) => post<{ fecha: string; etiqueta: string }>('/api/scraper/deshacer/' + id),

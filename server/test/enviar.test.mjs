@@ -105,3 +105,31 @@ test('si algo falla a medias, el destino parcial se limpia y el original queda c
   assert.deepEqual(readdirSync(destino).filter((n) => n.startsWith('_enviando')), []);
   assert.deepEqual({ ...db.prepare('SELECT folder, library_id FROM items WHERE id = ?').get(i) }, { ...antes });
 });
+
+test('por defecto la comprobacion es RAPIDA (tamano de cada fichero): no se relee el destino entero', async () => {
+  crear('Pelicula Cuatro (2020)', 'Pelicula Cuatro (2020) 1080p AC3', 4);
+  await scanLibrary(libE);
+  const i = id('Pelicula Cuatro (2020)');
+  const bytesVistos = [];
+  await enviarTitulo(i, destino, { quitarOriginal: true, forzarCopia: true }, (p) => { if (p.fase === 'verificando') bytesVistos.push(p.bytesHechos); });
+  assert.ok(existsSync(join(destino, 'Pelicula Cuatro (2020)', 'Pelicula Cuatro (2020) 1080p AC3.mkv')));
+  assert.ok(!existsSync(join(entrada, 'Pelicula Cuatro (2020)')));
+  assert.ok(bytesVistos.every((b) => b === 0), 'en modo rapido la fase de comprobacion no lee bytes');
+});
+
+test('con comprobacion COMPLETA se relee el destino y una copia distinta se detecta', async () => {
+  crear('Pelicula Cinco (2020)', 'Pelicula Cinco (2020) 1080p AC3', 5);
+  await scanLibrary(libE);
+  const i = id('Pelicula Cinco (2020)');
+  let leidos = 0;
+  await enviarTitulo(i, destino, { quitarOriginal: false, forzarCopia: true, verificacion: 'completa' }, (p) => { if (p.fase === 'verificando') leidos = Math.max(leidos, p.bytesHechos); });
+  assert.ok(leidos > 0, 'en modo completo la fase de comprobacion lee la copia');
+  // Una copia que difiere en un byte pero pesa lo mismo: solo la comprobacion completa la detecta.
+  crear('Pelicula Seis (2020)', 'Pelicula Seis (2020) 1080p AC3', 6);
+  await scanLibrary(libE);
+  const j = id('Pelicula Seis (2020)');
+  await assert.rejects(() => enviarTitulo(j, destino, { quitarOriginal: true, forzarCopia: true, verificacion: 'completa' }, (p) => {
+    if (p.fase === 'verificando' && p.bytesHechos === 0) { const f = join(destino, '_enviando-Pelicula Seis (2020)', 'Pelicula Seis (2020) 1080p AC3.mkv'); const b = readFileSync(f); b[1000] ^= 0xff; writeFileSync(f, b); }
+  }), /no coincide/);
+  assert.ok(existsSync(join(entrada, 'Pelicula Seis (2020)', 'Pelicula Seis (2020) 1080p AC3.mkv')), 'el original sigue');
+});

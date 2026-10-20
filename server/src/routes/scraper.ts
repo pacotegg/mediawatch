@@ -254,12 +254,12 @@ export default async function scraperRoutes(app: FastifyInstance) {
 
   app.post('/api/scraper/enviar', async (req, reply) => {
     if (!admin(req, reply)) return;
-    const body = (req.body ?? {}) as { ids?: number[]; destino?: string; quitarOriginal?: boolean; confirmar?: boolean };
+    const body = (req.body ?? {}) as { ids?: number[]; destino?: string; quitarOriginal?: boolean; verificacion?: string; confirmar?: boolean };
     if (body.confirmar !== true) return reply.code(400).send({ error: 'Falta la confirmación expresa' });
     if (envio.corriendo) return reply.code(409).send({ error: 'Ya se está enviando algo' });
     const ids = (body.ids ?? []).filter((n) => Number.isInteger(n) && n > 0).slice(0, 200);
     if (ids.length === 0 || !body.destino) return reply.code(400).send({ error: 'Faltan los títulos o el destino' });
-    void enviarLote(ids, body.destino, { quitarOriginal: body.quitarOriginal !== false }).catch((e) => console.error('[enviar]', (e as Error).message));
+    void enviarLote(ids, body.destino, { quitarOriginal: body.quitarOriginal !== false, verificacion: body.verificacion === 'completa' ? 'completa' : 'rapida' }).catch((e) => console.error('[enviar]', (e as Error).message));
     return { started: true, total: ids.length };
   });
 

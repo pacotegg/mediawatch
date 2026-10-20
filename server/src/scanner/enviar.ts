@@ -2,9 +2,10 @@
  * «Enviar a la biblioteca»: llevar un titulo preparado en una carpeta de entrada (C:\Videos) a la biblioteca que se elija (E:\Peliculas).
  *
  * Entre discos no hay `rename`: es COPIA, y se comprueba antes de dar nada por hecho:
- *   1. se copia a `<biblioteca>/_enviando-<carpeta>` (el escaner no entra en carpetas que empiezan por `_`) calculando el SHA-256 de cada
- *      fichero MIENTRAS se lee del origen;
- *   2. se vuelve a leer lo copiado y se compara el SHA-256 y el tamano de cada fichero;
+ *   1. se copia a `<biblioteca>/_enviando-<carpeta>` (el escaner no entra en carpetas que empiezan por `_`);
+ *   2. comprobacion. Por defecto RAPIDA: cada fichero copiado pesa exactamente lo mismo que el original (lo que hace Windows al mover; un error de
+ *      escritura lo da el propio sistema). Con `verificacion: 'completa'` ademas se calcula el SHA-256 del origen mientras se lee y se vuelve a leer
+ *      TODA la copia para compararlo (lenta: un video grande tarda minutos);
  *   3. solo si todo coincide, la carpeta temporal pasa a su nombre definitivo y la base de datos se actualiza (el titulo conserva su id, sus
  *      miniaturas y su progreso, y pasa a la otra biblioteca);
  *   4. el original se QUITA de la entrada (es un traslado: si se envia es porque no se quiere alli); con `quitarOriginal: false` se aparta a
@@ -89,7 +90,7 @@ function idBiblioteca(destinoRaiz: string): number {
 }
 
 export async function enviarTitulo(
-  itemId: number, destinoRaiz: string, opciones: { quitarOriginal: boolean; forzarCopia?: boolean },
+  itemId: number, destinoRaiz: string, opciones: { quitarOriginal: boolean; forzarCopia?: boolean; verificacion?: 'rapida' | 'completa' },
   alProgresar: (p: ProgresoEnvio) => void = () => {},
 ): Promise<{ copiado: boolean; destino: string }> {
   if (hayAlguienViendo()) throw new EnvioError('Alguien está viendo algo: espera a que termine para mover ficheros de la biblioteca');
@@ -113,13 +114,19 @@ export async function enviarTitulo(
   const temporal = join(dirname(plan.destino), `_enviando-${basename(plan.destino)}`);
   if (existsSync(temporal)) throw new EnvioError(`Quedó una copia a medias en ${temporal}: revísala antes de reintentar`);
   const lista = ficheros(it.folder);
+  const completa = opciones.verificacion === 'completa';
   const hashes = new Map<string, string>();
   try {
     avisar('copiando');
     mkdirSync(temporal);
     for (const f of lista) {
       mkdirSync(dirname(join(temporal, f.rel)), { recursive: true });
-      hashes.set(f.rel, await copiarConHash(join(it.folder, f.rel), join(temporal, f.rel), (n) => { progreso.bytesHechos += n; }));
+      if (completa) hashes.set(f.rel, await copiarConHash(join(it.folder, f.rel), join(temporal, f.rel), (n) => { progreso.bytesHechos += n; }));
+      else {
+        const rs = createReadStream(join(it.folder, f.rel), { highWaterMark: 4 * 1024 * 1024 });
+        rs.on('data', (c) => { progreso.bytesHechos += c.length; });
+        await pipeline(rs, createWriteStream(join(temporal, f.rel)));
+      }
       avisar('copiando', f.rel);
     }
     progreso.bytesHechos = 0;
@@ -127,7 +134,7 @@ export async function enviarTitulo(
     for (const f of lista) {
       const copia = join(temporal, f.rel);
       if (statSync(copia).size !== f.size) throw new EnvioError(`La copia de ${f.rel} no tiene el mismo tamaño que el original`);
-      if ((await hashDe(copia, (n) => { progreso.bytesHechos += n; })) !== hashes.get(f.rel)) throw new EnvioError(`La copia de ${f.rel} no coincide con el original (SHA-256)`);
+      if (completa && (await hashDe(copia, (n) => { progreso.bytesHechos += n; })) !== hashes.get(f.rel)) throw new EnvioError(`La copia de ${f.rel} no coincide con el original (SHA-256)`);
       avisar('verificando', f.rel);
     }
     avisar('actualizando');
@@ -164,7 +171,7 @@ export const envio = {
   resultados: [] as ResultadoEnvio[], terminado: null as string | null,
 };
 
-export async function enviarLote(ids: number[], destinoRaiz: string, opciones: { quitarOriginal: boolean }): Promise<void> {
+export async function enviarLote(ids: number[], destinoRaiz: string, opciones: { quitarOriginal: boolean; verificacion?: 'rapida' | 'completa' }): Promise<void> {
   if (envio.corriendo) return;
   Object.assign(envio, { corriendo: true, hechos: 0, total: ids.length, actual: '', resultados: [] as ResultadoEnvio[], terminado: null });
   try {
