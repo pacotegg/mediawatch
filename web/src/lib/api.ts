@@ -425,7 +425,9 @@ export const api = {
     request<{ pasos: { tipo: 'fichero' | 'carpeta'; desde: string; final: string }[] }>('/api/scraper/organizar/' + id + '?' + new URLSearchParams({ edicion })),
   scraperOrganizarAplicar: (id: number, edicion: string) => post<{ movidos: number }>('/api/scraper/organizar/' + id, { confirmar: true, edicion }),
   scraperNuevos: () => request<ScraperNuevos>('/api/scraper/nuevos'),
-  scraperNuevosBuscar: (limite: number) => post<{ started: boolean }>('/api/scraper/nuevos/buscar', { limite }),
+  scraperNuevosLista: (p: { biblioteca: string; q: string; todos: boolean }) =>
+    request<{ items: Candidato[]; fuentes: { name: string; ruta: string; kind: 'movie' | 'show'; pendientes: number }[] }>('/api/scraper/nuevos/lista?' + new URLSearchParams({ biblioteca: p.biblioteca, q: p.q, todos: p.todos ? '1' : '0' })),
+  scraperNuevosBuscar: (ids: number[]) => post<{ started: boolean }>('/api/scraper/nuevos/buscar', { ids }),
   scraperNuevosAplicar: (items: { itemId: number; tmdbId: number }[]) => post<{ started: boolean }>('/api/scraper/nuevos/aplicar', { items }),
   scraperLotePlan: (ids: number[]) => request<{ planes: { itemId: number; titulo: string; error: string | null; pasos: { tipo: 'fichero' | 'carpeta'; desde: string; final: string }[] }[] }>('/api/scraper/lote/plan?ids=' + ids.join(',')),
   scraperLoteAplicar: (ids: number[], copiarArte: boolean, escribirNfo: boolean) => post<{ started: boolean }>('/api/scraper/lote/aplicar', { ids, copiarArte, escribirNfo, confirmar: true }),
@@ -840,6 +842,7 @@ export type Candidate = {
   alternatives: Proposal[];
 };
 
+export type Candidato = { id: number; titulo: string; anio: number | null; kind: 'movie' | 'show'; carpeta: string; biblioteca: string; ruta: string; alta: string | null; escrapeado: boolean };
 export type EstadoTrabajo<T> = { corriendo: boolean; hechos: number; total: number; error: string | null; resultados: T[]; terminado: string | null };
 export type FilaNueva = {
   itemId: number; titulo: string; anio: number | null; kind: 'movie' | 'show'; biblioteca: string;

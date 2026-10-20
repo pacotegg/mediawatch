@@ -1,14 +1,16 @@
 /*
  * El flujo de tMM sobre una SELECCION de titulos nuevos: buscar coincidencias, aplicar los datos, renombrar.
  *
- *   `buscarNuevos`      TMDb propone un emparejado para cada titulo sin identificar (solo lee; nada se aplica).
+ *   `listarCandidatos`  la LISTA de ficheros de las fuentes (como tMM): el usuario marca los que quiere escrapear.
+ *   `buscarNuevos`      TMDb propone un emparejado SOLO para los titulos marcados (solo lee; nada se aplica).
  *   `aplicarDatos`      aplica la ficha completa y el arte de los emparejados que el usuario ha aceptado (BD y data/artwork).
  *   `planesDeLote`      el plan de renombrado de TODOS los titulos de la seleccion, sin tocar nada.
  *   `ejecutarLote`      hace esos renombrados, uno a uno; un titulo que falla no frena a los demas. Lo unico que escribe en la biblioteca.
  *
  * Cada fase corre como un trabajo en segundo plano con progreso (`EstadoLote`) que la web consulta.
  */
-import { db } from '../db.ts';
+import { basename } from 'node:path';
+import { db, normalize } from '../db.ts';
 import { config } from '../config.ts';
 import { applyProposal, search, TmdbError, type Proposal } from './tmdb.ts';
 import { coincidenciaSegura } from './identificar.ts';
@@ -28,23 +30,47 @@ export type EstadoLote<T> = { corriendo: boolean; hechos: number; total: number;
 const vacio = <T>(): EstadoLote<T> => ({ corriendo: false, hechos: 0, total: 0, error: null, resultados: [], terminado: null });
 const pausa = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** Los titulos sin identificar: sin id de TMDb y que nadie ha emparejado (los nuevos, sin .nfo). */
-export function pendientes(limite = 100) {
-  return db
-    .prepare(`SELECT i.id, i.title, i.year, i.kind, l.name AS biblioteca FROM items i JOIN libraries l ON l.id = i.library_id
-              WHERE (i.tmdb_id IS NULL OR i.tmdb_id = '') AND i.meta_origen IS NULL ORDER BY i.added_at DESC LIMIT ?`)
-    .all(limite) as { id: number; title: string; year: number | null; kind: 'movie' | 'show'; biblioteca: string }[];
+const SIN_ESCRAPEAR = "(i.tmdb_id IS NULL OR i.tmdb_id = '') AND i.meta_origen IS NULL";
+
+export type Candidato = { id: number; titulo: string; anio: number | null; kind: 'movie' | 'show'; carpeta: string; biblioteca: string; ruta: string; alta: string | null; escrapeado: boolean };
+
+/**
+ * Los ficheros de las fuentes, como la lista de tMM. Por defecto solo los SIN escrapear (sin id de TMDb y que nadie ha emparejado: lo que
+ * llega nuevo, sin .nfo); con `todos`, tambien los ya escrapeados (marcados). `carpeta` es el nombre que tiene en disco, que es lo que el usuario reconoce.
+ */
+export function listarCandidatos(o: { biblioteca?: string; q?: string; todos?: boolean; limite?: number }): Candidato[] {
+  const donde: string[] = [o.todos ? '1' : SIN_ESCRAPEAR];
+  const params: (string | number)[] = [];
+  if (o.biblioteca) { donde.push('l.path = ?'); params.push(o.biblioteca); }
+  const q = normalize(o.q ?? '');
+  if (q) { donde.push('(i.search_title LIKE ? OR LOWER(i.folder) LIKE ?)'); params.push(`%${q}%`, `%${(o.q ?? '').toLowerCase().trim()}%`); }
+  const filas = db
+    .prepare(`SELECT i.id, i.title, i.year, i.kind, i.folder, i.added_at, i.tmdb_id, i.meta_origen, l.name AS biblioteca, l.path AS ruta
+              FROM items i JOIN libraries l ON l.id = i.library_id WHERE ${donde.join(' AND ')} ORDER BY i.added_at DESC, i.id DESC LIMIT ?`)
+    .all(...params, Math.min(Math.max(1, o.limite ?? 500), 1000)) as { id: number; title: string; year: number | null; kind: 'movie' | 'show'; folder: string; added_at: string | null; tmdb_id: string | null; meta_origen: string | null; biblioteca: string; ruta: string }[];
+  return filas.map((f) => ({
+    id: f.id, titulo: f.title, anio: f.year, kind: f.kind, carpeta: basename(f.folder), biblioteca: f.biblioteca, ruta: f.ruta, alta: f.added_at,
+    escrapeado: Boolean(f.tmdb_id) || f.meta_origen != null,
+  }));
 }
-export const totalPendientes = () => (db.prepare("SELECT COUNT(*) AS n FROM items WHERE (tmdb_id IS NULL OR tmdb_id = '') AND meta_origen IS NULL").get() as { n: number }).n;
+
+/** Las fuentes con cuantos ficheros les quedan por escrapear (para el selector). */
+export function fuentesConPendientes() {
+  return db
+    .prepare(`SELECT l.name, l.path AS ruta, l.kind, COUNT(i.id) AS pendientes FROM libraries l
+              LEFT JOIN items i ON i.library_id = l.id AND ${SIN_ESCRAPEAR} GROUP BY l.id ORDER BY l.id`)
+    .all() as { name: string; ruta: string; kind: 'movie' | 'show'; pendientes: number }[];
+}
+export const totalPendientes = () => (db.prepare(`SELECT COUNT(*) AS n FROM items i WHERE ${SIN_ESCRAPEAR}`).get() as { n: number }).n;
 
 /* ------------------------------------------------------------------ 1. buscar */
 
 export const busqueda: EstadoLote<FilaNueva> = vacio();
 
-export async function buscarNuevos(limite = 40): Promise<void> {
+export async function buscarNuevos(ids: number[]): Promise<void> {
   if (busqueda.corriendo) return;
   if (!config.tmdbApiKey) { Object.assign(busqueda, vacio(), { error: 'Falta la clave de API de TMDb' }); return; }
-  const filas = pendientes(limite);
+  const filas = ids.map((id) => db.prepare('SELECT i.id, i.title, i.year, i.kind, l.name AS biblioteca FROM items i JOIN libraries l ON l.id = i.library_id WHERE i.id = ?').get(id) as { id: number; title: string; year: number | null; kind: 'movie' | 'show'; biblioteca: string } | undefined).filter((f): f is NonNullable<typeof f> => Boolean(f));
   Object.assign(busqueda, vacio(), { corriendo: true, total: filas.length });
   try {
     for (const f of filas) {

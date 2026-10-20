@@ -6,7 +6,7 @@ import { detallesDe, search, tmdbGet, TmdbError, type Proposal } from '../scanne
 import { interpretarBusqueda } from '../scanner/buscar-id.ts';
 import { aplicarArteCarpeta, ArteCarpetaError, planArteCarpeta } from '../scanner/arte-carpeta.ts';
 import { basename, dirname, relative } from 'node:path';
-import { aplicacion, aplicarDatos, buscarNuevos, busqueda, ejecutarLote, planesDeLote, renombrado, totalPendientes } from '../scanner/lote.ts';
+import { aplicacion, aplicarDatos, buscarNuevos, busqueda, ejecutarLote, fuentesConPendientes, listarCandidatos, planesDeLote, renombrado, totalPendientes } from '../scanner/lote.ts';
 import { aplicarOrganizar, OrganizarError, planOrganizar } from '../scanner/organizar.ts';
 import { aplicarNfo, NfoError, planNfo } from '../scanner/nfo-escribir.ts';
 import { envio, enviarLote, EnvioError, planEnvio } from '../scanner/enviar.ts';
@@ -170,12 +170,20 @@ export default async function scraperRoutes(app: FastifyInstance) {
     return { pendientes: totalPendientes(), busqueda, aplicacion, renombrado };
   });
 
+  /** La lista de ficheros de las fuentes (como tMM): el usuario marca los que quiere escrapear. */
+  app.get('/api/scraper/nuevos/lista', async (req, reply) => {
+    if (!admin(req, reply)) return;
+    const q = req.query as { biblioteca?: string; q?: string; todos?: string };
+    return { items: listarCandidatos({ biblioteca: q.biblioteca || undefined, q: q.q, todos: q.todos === '1' }), fuentes: fuentesConPendientes() };
+  });
+
   app.post('/api/scraper/nuevos/buscar', async (req, reply) => {
     if (!admin(req, reply)) return;
     if (busqueda.corriendo) return reply.code(409).send({ error: 'Ya hay una búsqueda en curso' });
-    const limite = Math.min(Math.max(1, Math.trunc(Number((req.body as { limite?: number } | null)?.limite ?? 40)) || 40), 150);
-    void buscarNuevos(limite);
-    return { started: true };
+    const ids = ((req.body as { ids?: number[] } | null)?.ids ?? []).filter((n) => Number.isInteger(n) && n > 0).slice(0, 200);
+    if (ids.length === 0) return reply.code(400).send({ error: 'Marca primero los ficheros que quieres escrapear' });
+    void buscarNuevos(ids);
+    return { started: true, total: ids.length };
   });
 
   app.post('/api/scraper/nuevos/aplicar', async (req, reply) => {

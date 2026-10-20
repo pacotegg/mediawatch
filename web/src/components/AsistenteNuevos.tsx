@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button } from './Controls.tsx';
-import { api, type FilaNueva } from '../lib/api.ts';
+import { Button, TextInput } from './Controls.tsx';
+import { api, type FilaNueva, type Proposal } from '../lib/api.ts';
 import EnviarTitulos from './EnviarTitulos.tsx';
 
 /*
- * Asistente de títulos nuevos: el flujo de tinyMediaManager (actualizar fuentes → escrapear → renombrar) sobre una selección.
+ * Asistente: el flujo de tinyMediaManager sobre los ficheros de tus fuentes.
  *
- *   1. Buscar     TMDb propone un emparejado para cada título sin identificar. No se aplica nada.
- *   2. Aplicar    ficha completa y arte de los que aceptas (base de datos y data/artwork; la biblioteca no se toca).
- *   3. Renombrar  carpeta (Título (Año)) y fichero (Título (Año) 1080p AC3) como los dejaba tMM. Se ve la lista COMPLETA de cambios
- *                 y solo se hace si la confirmas; es lo único que escribe en la biblioteca. Un título que falla no frena a los demás.
+ *   1. Elegir      aparece la LISTA de ficheros de la fuente y marcas los que quieres escrapear. No se busca nada por su cuenta.
+ *   2. Emparejar   TMDb propone una coincidencia para cada marcado; puedes cambiarla o buscar otra a mano (título, id o dirección).
+ *   3. Aplicar     ficha completa y arte de los que aceptas (base de datos y data/artwork; la biblioteca no se toca).
+ *   4. Renombrar   carpeta (Título (Año)) y fichero (Título (Año) 1080p AC3) como los dejaba tMM, con la lista completa y una confirmación.
+ *   5. Enviar      (opcional) a la biblioteca que elijas, en vez de moverlo a mano.
  */
 
 const CONFIANZA = {
@@ -21,6 +22,7 @@ const CONFIANZA = {
 } as const;
 
 const pequena = (url: string | null) => (url ? url.replace('/original/', '/w92/') : null);
+const fecha = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '');
 
 function Barra({ hechos, total }: { hechos: number; total: number }) {
   return (
@@ -41,6 +43,26 @@ function Paso({ n, titulo, children }: { n: number; titulo: string; children: Re
 
 type Eleccion = { tmdbId: number | null; incluir: boolean };
 
+/** Búsqueda manual para una fila: título, id de TMDb, id de IMDb o dirección de su página (como «buscar» de tMM). */
+function BuscarOtra({ fila, alEncontrar }: { fila: FilaNueva; alEncontrar: (p: Proposal[]) => void }) {
+  const [abierto, setAbierto] = useState(false);
+  const [texto, setTexto] = useState(fila.titulo);
+  const [aviso, setAviso] = useState('');
+  const buscar = useMutation({
+    mutationFn: () => api.scraperResolver(texto, fila.kind, null),
+    onSuccess: (r) => { alEncontrar(r.propuestas); setAviso(r.aviso ?? (r.propuestas.length ? '' : 'Sin resultados')); },
+    onError: (e: Error) => setAviso(e.message),
+  });
+  if (!abierto) return <button onClick={() => setAbierto(true)} className="mt-1 text-[11.5px] text-accent hover:underline underline-offset-2">Buscar otra…</button>;
+  return (
+    <form className="mt-1 flex flex-wrap items-center gap-2" onSubmit={(e) => { e.preventDefault(); if (texto.trim()) buscar.mutate(); }}>
+      <TextInput value={texto} onChange={setTexto} placeholder="Título, id de TMDb, tt… o dirección" className="w-64 max-w-full" />
+      <Button variant="ghost" onClick={() => texto.trim() && buscar.mutate()} disabled={buscar.isPending}>{buscar.isPending ? 'Buscando…' : 'Buscar'}</Button>
+      {aviso && <span className="text-[11.5px] text-mist-500">{aviso}</span>}
+    </form>
+  );
+}
+
 export default function AsistenteNuevos() {
   const qc = useQueryClient();
   const { data } = useQuery({
@@ -49,11 +71,26 @@ export default function AsistenteNuevos() {
     refetchInterval: (q) => (q.state.data && (q.state.data.busqueda.corriendo || q.state.data.aplicacion.corriendo || q.state.data.renombrado.corriendo) ? 1200 : false),
     refetchIntervalInBackground: true,
   });
-  const [limite, setLimite] = useState(40);
+
+  // 1. La lista de ficheros y lo marcado.
+  const [fuente, setFuente] = useState('');
+  const [texto, setTexto] = useState('');
+  const [q, setQ] = useState('');
+  const [todos, setTodos] = useState(false);
+  const [marcados, setMarcados] = useState<Set<number>>(new Set());
+  useEffect(() => { const t = setTimeout(() => setQ(texto), 250); return () => clearTimeout(t); }, [texto]);
+  const lista = useQuery({ queryKey: ['scraper-nuevos-lista', fuente, q, todos], queryFn: () => api.scraperNuevosLista({ biblioteca: fuente, q, todos }), placeholderData: (p) => p });
+  const items = lista.data?.items ?? [];
+  const fuentes = lista.data?.fuentes ?? [];
+  const alternar = (id: number) => setMarcados((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const visiblesMarcados = items.filter((i) => marcados.has(i.id)).length;
+
+  // 2. El emparejado.
   const [eleccion, setEleccion] = useState<Record<number, Eleccion>>({});
+  const [extras, setExtras] = useState<Record<number, Proposal[]>>({});
+  const [error, setError] = useState('');
   const [copiarArte, setCopiarArte] = useState(true);
   const [escribirNfo, setEscribirNfo] = useState(true);
-  const [error, setError] = useState('');
   const refrescar = () => qc.invalidateQueries({ queryKey: ['scraper-nuevos'] });
 
   const filas = data?.busqueda.resultados ?? [];
@@ -68,7 +105,11 @@ export default function AsistenteNuevos() {
 
   const elegidas = useMemo(() => filas.filter((f) => eleccion[f.itemId]?.incluir && eleccion[f.itemId]?.tmdbId), [filas, eleccion]);
 
-  const buscar = useMutation({ mutationFn: () => api.scraperNuevosBuscar(limite), onSuccess: () => { setEleccion({}); setError(''); refrescar(); }, onError: (e: Error) => setError(e.message) });
+  const buscar = useMutation({
+    mutationFn: () => api.scraperNuevosBuscar([...marcados]),
+    onSuccess: () => { setEleccion({}); setExtras({}); setError(''); refrescar(); },
+    onError: (e: Error) => setError(e.message),
+  });
   const aplicar = useMutation({
     mutationFn: () => api.scraperNuevosAplicar(elegidas.map((f) => ({ itemId: f.itemId, tmdbId: eleccion[f.itemId].tmdbId! }))),
     onSuccess: () => { setError(''); refrescar(); },
@@ -88,28 +129,61 @@ export default function AsistenteNuevos() {
   const b = data?.busqueda;
   const a = data?.aplicacion;
   const r = data?.renombrado;
-  const cambiar = (f: FilaNueva, tmdbId: number) => setEleccion((p) => ({ ...p, [f.itemId]: { tmdbId, incluir: true } }));
 
   return (
     <div className="space-y-5">
-      <Paso n={1} titulo="Buscar coincidencias de los títulos nuevos">
-        <p className="text-[12.5px] text-mist-500">
-          Hay <b className="text-mist-200">{data?.pendientes ?? '…'}</b> títulos sin identificar (sin id de TMDb). TMDb propone un emparejado para cada uno; todavía no se aplica nada.
-        </p>
-        <div className="flex flex-wrap items-center gap-3">
-          <select value={limite} onChange={(e) => setLimite(Number(e.target.value))} className="rounded-xl border border-white/8 bg-white/6 px-3 py-2 text-[13px]">
-            {[10, 20, 40, 80, 150].map((n) => <option key={n} value={n} className="bg-ink-900">{n} títulos</option>)}
+      <Paso n={1} titulo="Elige qué ficheros escrapear">
+        <div className="flex flex-wrap items-center gap-2">
+          <select value={fuente} onChange={(e) => setFuente(e.target.value)} className="rounded-xl border border-white/8 bg-white/6 px-3 py-2 text-[13px]">
+            <option value="" className="bg-ink-900">Todas las fuentes</option>
+            {fuentes.map((f) => <option key={f.ruta} value={f.ruta} className="bg-ink-900">{f.name} ({f.pendientes} sin escrapear)</option>)}
           </select>
-          <Button onClick={() => buscar.mutate()} disabled={b?.corriendo || buscar.isPending || (data?.pendientes ?? 0) === 0}>{b?.corriendo ? `Buscando ${b.hechos}/${b.total}…` : 'Buscar coincidencias'}</Button>
+          <TextInput value={texto} onChange={setTexto} placeholder="Buscar en la lista…" className="w-56" />
+          <label className="flex items-center gap-2 text-[12.5px] text-mist-400">
+            <input type="checkbox" checked={todos} onChange={(e) => setTodos(e.target.checked)} className="accent-[var(--color-accent,#7c8cff)]" />
+            Mostrar también los ya escrapeados
+          </label>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3 text-[12px]">
+          <span className="tabular-nums text-mist-500">{items.length} ficheros · {marcados.size} marcados</span>
+          <button className="font-medium text-accent hover:underline underline-offset-2" onClick={() => setMarcados((s) => new Set([...s, ...items.map((i) => i.id)]))}>Marcar todos los de la lista</button>
+          <button className="text-mist-500 hover:underline underline-offset-2" onClick={() => setMarcados(new Set())}>Quitar marcas</button>
+        </div>
+
+        <div className="max-h-96 space-y-1 overflow-y-auto pr-1">
+          {items.map((i) => (
+            <label key={i.id} className={`flex cursor-pointer items-center gap-3 rounded-lg px-2.5 py-1.5 transition-colors ${marcados.has(i.id) ? 'bg-white/10' : 'hover:bg-white/5'}`}>
+              <input type="checkbox" checked={marcados.has(i.id)} onChange={() => alternar(i.id)} className="accent-[var(--color-accent,#7c8cff)]" />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[13px]">{i.carpeta}</div>
+                <div className="text-[11px] text-mist-600">{i.biblioteca} · {i.kind === 'show' ? 'Serie' : 'Película'}{i.alta ? ` · ${fecha(i.alta)}` : ''}</div>
+              </div>
+              {i.escrapeado && <span className="rounded bg-white/8 px-1.5 py-0.5 text-[10.5px] text-mist-400">escrapeado</span>}
+            </label>
+          ))}
+          {!lista.isFetching && items.length === 0 && (
+            <p className="px-2 py-6 text-center text-[12.5px] text-mist-500">No hay ficheros sin escrapear{fuente ? ' en esta fuente' : ''}. Si acabas de dejar algo en la carpeta, escanéala desde Ajustes → Biblioteca («Escanear solo esta»).</p>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <Button onClick={() => buscar.mutate()} disabled={marcados.size === 0 || b?.corriendo || buscar.isPending}>
+            {b?.corriendo ? `Buscando ${b.hechos}/${b.total}…` : `Escrapear los ${marcados.size} marcados`}
+          </Button>
+          <span className="text-[11.5px] text-mist-600">Solo se busca en TMDb para los marcados; aún no se aplica nada.{visiblesMarcados !== marcados.size ? ' (Hay marcados fuera de este filtro.)' : ''}</span>
         </div>
         {b?.corriendo && <Barra hechos={b.hechos} total={b.total} />}
         {b?.error && <p className="text-[12.5px] text-red-400">{b.error}</p>}
+      </Paso>
 
-        {filas.length > 0 && (
+      {filas.length > 0 && (
+        <Paso n={2} titulo="Revisa el emparejado">
+          <p className="text-[12.5px] text-mist-500">Lo seguro y lo probable viene marcado; lo dudoso, no. Cambia la coincidencia con el desplegable o con «Buscar otra…».</p>
           <div className="space-y-2">
             {filas.map((f) => {
               const e = eleccion[f.itemId];
-              const opciones = [...(f.propuesta ? [f.propuesta] : []), ...f.alternativas];
+              const opciones = [...(f.propuesta ? [f.propuesta] : []), ...f.alternativas, ...(extras[f.itemId] ?? [])].filter((o, i, arr) => arr.findIndex((x) => x.tmdbId === o.tmdbId) === i);
               const actual = opciones.find((o) => o.tmdbId === e?.tmdbId) ?? f.propuesta;
               const [etiqueta, tono] = CONFIANZA[f.confianza];
               return (
@@ -124,20 +198,21 @@ export default function AsistenteNuevos() {
                       <span className={`rounded-md px-1.5 py-0.5 text-[10.5px] ring-1 ${tono}`}>{etiqueta}</span>
                     </div>
                     {opciones.length > 1 && (
-                      <select value={actual?.tmdbId ?? ''} onChange={(ev) => cambiar(f, Number(ev.target.value))} className="mt-1 max-w-full rounded-lg border border-white/8 bg-white/6 px-2 py-1 text-[11.5px]">
+                      <select value={actual?.tmdbId ?? ''} onChange={(ev) => setEleccion((p) => ({ ...p, [f.itemId]: { tmdbId: Number(ev.target.value), incluir: true } }))} className="mt-1 max-w-full rounded-lg border border-white/8 bg-white/6 px-2 py-1 text-[11.5px]">
                         {opciones.map((o) => <option key={o.tmdbId} value={o.tmdbId} className="bg-ink-900">{o.title} ({o.year ?? 's/f'}) · TMDb {o.tmdbId}</option>)}
                       </select>
                     )}
+                    <div><BuscarOtra fila={f} alEncontrar={(ps) => { if (ps.length) { setExtras((p) => ({ ...p, [f.itemId]: [...ps, ...(p[f.itemId] ?? [])] })); setEleccion((p) => ({ ...p, [f.itemId]: { tmdbId: ps[0].tmdbId, incluir: true } })); } }} /></div>
                   </div>
                 </div>
               );
             })}
           </div>
-        )}
-      </Paso>
+        </Paso>
+      )}
 
       {filas.length > 0 && !b?.corriendo && (
-        <Paso n={2} titulo="Aplicar los datos">
+        <Paso n={3} titulo="Aplicar los datos">
           <p className="text-[12.5px] text-mist-500">
             Se aplicará a <b className="text-mist-200">{elegidas.length}</b> títulos: título, año, sinopsis, valoración, reparto, estudios, país y el arte (cartel, fondo y logo, ya en WebP). Se guarda en la base de datos y en
             <span className="text-mist-300"> data/artwork</span>; <b>la biblioteca no se toca</b>. Cada título puede deshacerse desde su ficha.
@@ -153,7 +228,7 @@ export default function AsistenteNuevos() {
       )}
 
       {aplicados.length > 0 && !a?.corriendo && (
-        <Paso n={3} titulo="Renombrar carpetas y ficheros como tMM">
+        <Paso n={4} titulo="Renombrar carpetas y ficheros como tMM">
           {!verPlan && <Button onClick={() => setVerPlan(true)}>Ver los cambios de nombre ({aplicados.length} títulos)</Button>}
           {verPlan && plan.isLoading && <p className="text-[12.5px] text-mist-500">Calculando…</p>}
           {plan.data && (
@@ -199,8 +274,9 @@ export default function AsistenteNuevos() {
           )}
         </Paso>
       )}
+
       {r && !r.corriendo && r.resultados.some((x) => x.ok) && (
-        <Paso n={4} titulo="Enviar a la biblioteca (opcional)">
+        <Paso n={5} titulo="Enviar a la biblioteca (opcional)">
           <p className="text-[12.5px] text-mist-500">Si los preparaste en la carpeta de entrada, puedes mandarlos ya a la biblioteca que elijas, en vez de moverlos a mano.</p>
           <EnviarTitulos ids={r.resultados.filter((x) => x.ok).map((x) => x.itemId)} kind={filas.find((f) => f.itemId === r.resultados[0].itemId)?.kind ?? 'movie'} />
         </Paso>
