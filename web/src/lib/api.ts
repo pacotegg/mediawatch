@@ -409,7 +409,7 @@ export const api = {
   enrichCandidates: () => request<{ running: boolean; done: number; total: number; error: string | null; candidates: Candidate[] }>('/api/enrich/candidates'),
   enrichSearch: (query: string, kind: 'movie' | 'show', year?: number | null) =>
     post<{ results: Proposal[] }>('/api/enrich/search', { query, kind, year }),
-  enrichApply: (body: { itemId: number; tmdbId: number; kind: 'movie' | 'show'; fields: string[]; overwrite?: boolean }) =>
+  enrichApply: (body: { itemId: number; tmdbId: number; kind: 'movie' | 'show'; fields: string[]; overwrite?: boolean; identidad?: boolean }) =>
     post<{ applied: string[]; title: string }>('/api/enrich/apply', body),
   enrichDismiss: (itemId: number) => post<{ ok: true }>('/api/enrich/dismiss', { itemId }),
 
@@ -423,6 +423,11 @@ export const api = {
   scraperOrganizar: (id: number, edicion: string) =>
     request<{ pasos: { tipo: 'fichero' | 'carpeta'; desde: string; final: string }[] }>('/api/scraper/organizar/' + id + '?' + new URLSearchParams({ edicion })),
   scraperOrganizarAplicar: (id: number, edicion: string) => post<{ movidos: number }>('/api/scraper/organizar/' + id, { confirmar: true, edicion }),
+  scraperNuevos: () => request<ScraperNuevos>('/api/scraper/nuevos'),
+  scraperNuevosBuscar: (limite: number) => post<{ started: boolean }>('/api/scraper/nuevos/buscar', { limite }),
+  scraperNuevosAplicar: (items: { itemId: number; tmdbId: number }[]) => post<{ started: boolean }>('/api/scraper/nuevos/aplicar', { items }),
+  scraperLotePlan: (ids: number[]) => request<{ planes: { itemId: number; titulo: string; error: string | null; pasos: { tipo: 'fichero' | 'carpeta'; desde: string; final: string }[] }[] }>('/api/scraper/lote/plan?ids=' + ids.join(',')),
+  scraperLoteAplicar: (ids: number[], copiarArte: boolean) => post<{ started: boolean }>('/api/scraper/lote/aplicar', { ids, copiarArte, confirmar: true }),
   scraperHistorial: (id: number) => request<{ ultima: { id: number; fecha: string; etiqueta: string } | null }>('/api/scraper/historial/' + id),
   scraperDeshacer: (id: number) => post<{ fecha: string; etiqueta: string }>('/api/scraper/deshacer/' + id),
   scraperTitulo: (id: number) => request<ScraperTitulo>('/api/scraper/titulo/' + id),
@@ -828,6 +833,13 @@ export type Candidate = {
   alternatives: Proposal[];
 };
 
+export type EstadoTrabajo<T> = { corriendo: boolean; hechos: number; total: number; error: string | null; resultados: T[]; terminado: string | null };
+export type FilaNueva = {
+  itemId: number; titulo: string; anio: number | null; kind: 'movie' | 'show'; biblioteca: string;
+  propuesta: Proposal | null; alternativas: Proposal[]; confianza: 'segura' | 'probable' | 'dudosa' | 'ninguna';
+};
+export type ResultadoNuevo = { itemId: number; titulo: string; ok: boolean; error?: string; movidos?: number; detalle?: string };
+export type ScraperNuevos = { pendientes: number; busqueda: EstadoTrabajo<FilaNueva>; aplicacion: EstadoTrabajo<ResultadoNuevo>; renombrado: EstadoTrabajo<ResultadoNuevo> };
 export type ScraperFila = { id: number; title: string; year: number | null; kind: 'movie' | 'show'; biblioteca: string; tmdb_id: string | null; imdb_id: string | null; origen: string | null; poster: number; fanart: number; logo: number; sinopsis: number; edad: number };
 export type ScraperLista = { total: number; offset: number; pagina: number; items: ScraperFila[]; cuenta: Record<string, number> };
 export type ScraperTitulo = {

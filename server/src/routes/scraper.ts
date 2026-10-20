@@ -6,6 +6,7 @@ import { detallesDe, search, tmdbGet, TmdbError, type Proposal } from '../scanne
 import { interpretarBusqueda } from '../scanner/buscar-id.ts';
 import { aplicarArteCarpeta, ArteCarpetaError, planArteCarpeta } from '../scanner/arte-carpeta.ts';
 import { basename, dirname, relative } from 'node:path';
+import { aplicacion, aplicarDatos, buscarNuevos, busqueda, ejecutarLote, planesDeLote, renombrado, totalPendientes } from '../scanner/lote.ts';
 import { aplicarOrganizar, OrganizarError, planOrganizar } from '../scanner/organizar.ts';
 import { carpetaDePelicula, carpetaDeSerie } from '../scanner/nombres-tmm.ts';
 import { deshacerUltima, HistorialError, ultimaInstantanea } from '../scanner/historial.ts';
@@ -153,6 +154,55 @@ export default async function scraperRoutes(app: FastifyInstance) {
     } catch (err) {
       return reply.code(err instanceof OrganizarError ? 400 : 500).send({ error: (err as Error).message });
     }
+  });
+
+  /*
+   * Asistente de titulos nuevos (el flujo de tMM): buscar coincidencias -> aplicar datos -> renombrar. Cada fase es un trabajo en segundo
+   * plano con progreso. Solo la ultima (renombrar) escribe en la biblioteca, y solo con la lista confirmada.
+   */
+  const admin = (req: Parameters<typeof requireUser>[0], reply: { code: (n: number) => { send: (b: unknown) => unknown } }) =>
+    requireUser(req).is_admin ? true : (reply.code(403).send({ error: 'No autorizado' }), false);
+
+  app.get('/api/scraper/nuevos', async (req, reply) => {
+    if (!admin(req, reply)) return;
+    return { pendientes: totalPendientes(), busqueda, aplicacion, renombrado };
+  });
+
+  app.post('/api/scraper/nuevos/buscar', async (req, reply) => {
+    if (!admin(req, reply)) return;
+    if (busqueda.corriendo) return reply.code(409).send({ error: 'Ya hay una búsqueda en curso' });
+    const limite = Math.min(Math.max(1, Math.trunc(Number((req.body as { limite?: number } | null)?.limite ?? 40)) || 40), 150);
+    void buscarNuevos(limite);
+    return { started: true };
+  });
+
+  app.post('/api/scraper/nuevos/aplicar', async (req, reply) => {
+    if (!admin(req, reply)) return;
+    if (aplicacion.corriendo) return reply.code(409).send({ error: 'Ya se están aplicando datos' });
+    const items = ((req.body as { items?: { itemId: number; tmdbId: number }[] } | null)?.items ?? []).filter((i) => Number.isInteger(i?.itemId) && Number.isInteger(i?.tmdbId));
+    if (items.length === 0) return reply.code(400).send({ error: 'No hay títulos que aplicar' });
+    void aplicarDatos(items);
+    return { started: true, total: items.length };
+  });
+
+  /** Plan de renombrado de TODA la seleccion (no toca nada). */
+  app.get('/api/scraper/lote/plan', async (req, reply) => {
+    if (!admin(req, reply)) return;
+    const ids = String((req.query as { ids?: string }).ids ?? '').split(',').map(Number).filter((n) => Number.isInteger(n) && n > 0).slice(0, 200);
+    return {
+      planes: planesDeLote(ids).map((p) => ({ itemId: p.itemId, titulo: p.titulo, error: p.error ?? null, pasos: p.pasos.map((s) => ({ tipo: s.tipo, desde: ver(p.itemId, s.desde), final: ver(p.itemId, s.final) })) })),
+    };
+  });
+
+  app.post('/api/scraper/lote/aplicar', async (req, reply) => {
+    if (!admin(req, reply)) return;
+    const body = (req.body ?? {}) as { ids?: number[]; copiarArte?: boolean; confirmar?: boolean };
+    if (body.confirmar !== true) return reply.code(400).send({ error: 'Falta la confirmación expresa' });
+    if (renombrado.corriendo) return reply.code(409).send({ error: 'Ya se está renombrando' });
+    const ids = (body.ids ?? []).filter((n) => Number.isInteger(n) && n > 0).slice(0, 200);
+    if (ids.length === 0) return reply.code(400).send({ error: 'No hay títulos que renombrar' });
+    void ejecutarLote(ids, { copiarArte: body.copiarArte === true }).catch((e) => console.error('[lote]', (e as Error).message));
+    return { started: true, total: ids.length };
   });
 
   /** Lo ultimo que se puede deshacer en un titulo (si hay algo) y el boton que lo deshace. */

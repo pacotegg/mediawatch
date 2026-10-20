@@ -99,7 +99,8 @@ export default async function enrichRoutes(app: FastifyInstance) {
     if (!Array.isArray(body.fields)) return reply.code(400).send({ error: 'Faltan los campos a aplicar' });
 
     try {
-      const result = await applyProposal({ ...body, identidad: MODO_PORTABLE });
+      // `identidad`: poner tambien titulo, ano y datos de identidad de TMDb (siempre en MediaWatch Server; en el resto, si el administrador lo pide).
+      const result = await applyProposal({ ...body, identidad: MODO_PORTABLE || body.identidad === true });
       job.candidates = job.candidates.filter((c) => c.itemId !== body.itemId);
       return result;
     } catch (err) {

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, TextInput } from '../components/Controls.tsx';
 import SelectorDeArte from '../components/SelectorDeArte.tsx';
+import AsistenteNuevos from '../components/AsistenteNuevos.tsx';
 import { api, img, type Proposal, type ScraperFila, type ScraperTitulo } from '../lib/api.ts';
 
 /*
@@ -234,6 +235,8 @@ function Emparejar({ titulo }: { titulo: ScraperTitulo }) {
   const [aviso, setAviso] = useState('');
   const [error, setError] = useState('');
   const [hecho, setHecho] = useState('');
+  // Titulo, ano y datos de identidad: por defecto solo si el titulo aun no esta emparejado (es lo que despues usa «Organizar» para el nombre).
+  const [identidad, setIdentidad] = useState(false);
   const lanzada = useRef<number | null>(null);
 
   const buscar = useMutation({
@@ -251,7 +254,7 @@ function Emparejar({ titulo }: { titulo: ScraperTitulo }) {
   // Al elegir otro título de la lista se parte de cero y se lanza la primera búsqueda sola.
   useEffect(() => {
     setEntrada(inicial);
-    setPropuestas([]); setElegida(null); setCampos([]); setAviso(''); setError(''); setHecho('');
+    setPropuestas([]); setElegida(null); setCampos([]); setAviso(''); setError(''); setHecho(''); setIdentidad(!titulo.tmdb_id);
     if (lanzada.current !== titulo.id) { lanzada.current = titulo.id; buscar.mutate(inicial); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [titulo.id]);
@@ -265,7 +268,7 @@ function Emparejar({ titulo }: { titulo: ScraperTitulo }) {
   }, [elegida, titulo]);
 
   const aplicar = useMutation({
-    mutationFn: () => api.enrichApply({ itemId: titulo.id, tmdbId: elegida!.tmdbId, kind: titulo.kind, fields: campos.flatMap((c) => (c === 'ficha' ? ['cast', 'studio', 'ratings'] : [c])), overwrite: true }),
+    mutationFn: () => api.enrichApply({ itemId: titulo.id, tmdbId: elegida!.tmdbId, kind: titulo.kind, fields: campos.flatMap((c) => (c === 'ficha' ? ['cast', 'studio', 'ratings'] : [c])), overwrite: true, identidad }),
     onSuccess: (r) => {
       setHecho(`Guardado en «${r.title}»: ${r.applied.join(', ')}.`);
       setError('');
@@ -296,6 +299,12 @@ function Emparejar({ titulo }: { titulo: ScraperTitulo }) {
 
       {elegida && <Comparar titulo={titulo} p={elegida} campos={campos} setCampos={setCampos} />}
 
+      {elegida && (
+        <label className="flex items-start gap-2 text-[12.5px] text-mist-300">
+          <input type="checkbox" checked={identidad} onChange={(e) => setIdentidad(e.target.checked)} className="mt-0.5 accent-[var(--color-accent,#7c8cff)]" />
+          <span>Poner también el título, el año y la clasificación de TMDb <span className="text-mist-500">({elegida.title}{elegida.year ? ` · ${elegida.year}` : ''}). Es lo que usa «Organizar» para el nombre de la carpeta y del fichero.</span></span>
+        </label>
+      )}
       {campos.includes('ficha') && (
         <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-[12px] leading-relaxed text-amber-200">
           Al aplicar el reparto, los estudios y el país, este título pasa a gestionarse desde el servidor: sus datos (y los de sus episodios, si es una serie) dejan de leerse de los .nfo. Se puede deshacer.
@@ -502,7 +511,9 @@ function Ficha({ id }: { id: number }) {
 export default function Scraper() {
   const { data: yo } = useQuery({ queryKey: ['me'], queryFn: api.me, staleTime: Infinity });
   const [id, setId] = useState<number | null>(null);
+  const [modo, setModo] = useState<'lista' | 'nuevos'>('lista');
   const detalle = useRef<HTMLDivElement>(null);
+  const { data: nuevos } = useQuery({ queryKey: ['scraper-nuevos'], queryFn: api.scraperNuevos, enabled: yo?.is_admin === 1 });
 
   if (yo && yo.is_admin !== 1) return <p className="mx-auto max-w-3xl px-4 page-pt text-[13px] text-mist-500">Solo un administrador puede usar el Scraper.</p>;
 
@@ -512,7 +523,13 @@ export default function Scraper() {
         <h1 className="text-2xl font-semibold tracking-tight">Scraper</h1>
         <p className="hidden text-[12.5px] text-mist-500 sm:block">Empareja con TMDb, compara con lo que hay y aplica. La biblioteca no se toca.</p>
       </div>
-      <div className="grid gap-6 lg:grid-cols-[22rem_1fr]">
+      <div className="mb-5 flex gap-1 border-b border-white/8">
+        {([['lista', 'Biblioteca'], ['nuevos', `Asistente de nuevos${nuevos?.pendientes ? ` (${nuevos.pendientes})` : ''}`]] as const).map(([k, e]) => (
+          <button key={k} onClick={() => setModo(k)} className={`-mb-px border-b-2 px-3 py-2 text-[13px] transition-colors ${modo === k ? 'border-accent text-mist-100' : 'border-transparent text-mist-500 hover:text-mist-200'}`}>{e}</button>
+        ))}
+      </div>
+      {modo === 'nuevos' && <AsistenteNuevos />}
+      <div className={modo === 'nuevos' ? 'hidden' : 'grid gap-6 lg:grid-cols-[22rem_1fr]'}>
         <Lista seleccion={id} onSelect={(f) => { setId(f.id); setTimeout(() => detalle.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50); }} />
         <div ref={detalle} className="glass min-h-64 rounded-[var(--radius-panel)] p-5">
           {id ? <Ficha id={id} /> : <p className="py-16 text-center text-[13px] text-mist-500">Elige un título de la lista para ver qué le falta y qué propone TMDb.</p>}
