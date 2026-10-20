@@ -5,7 +5,9 @@ import { requireUser } from './auth.ts';
 import { detallesDe, search, tmdbGet, TmdbError, type Proposal } from '../scanner/tmdb.ts';
 import { interpretarBusqueda } from '../scanner/buscar-id.ts';
 import { aplicarArteCarpeta, ArteCarpetaError, planArteCarpeta } from '../scanner/arte-carpeta.ts';
-import { basename, dirname } from 'node:path';
+import { basename, dirname, relative } from 'node:path';
+import { aplicarOrganizar, OrganizarError, planOrganizar } from '../scanner/organizar.ts';
+import { carpetaDePelicula, carpetaDeSerie } from '../scanner/nombres-tmm.ts';
 import { deshacerUltima, HistorialError, ultimaInstantanea } from '../scanner/historial.ts';
 
 /*
@@ -20,9 +22,31 @@ const FILTROS: Record<string, string> = {
   sinsinopsis: "(i.plot IS NULL OR i.plot = '')",
   sinedad: "(i.mpaa IS NULL OR i.mpaa = '')",
   sinlogo: 'i.clearlogo IS NULL',
+  sinorganizar: '1', // se resuelve aparte: depende del nombre de la carpeta, no de una columna
 };
 
 const PAGINA = 60;
+
+/** ¿La carpeta del titulo ya se llama como la dejaria tMM? Solo con datos de la base: no toca el disco. */
+function carpetaOrganizada(f: { kind: string; title: string; year: number | null; folder: string }): boolean {
+  if (/\.(mkv|mp4|avi|m4v|mov|wmv|mpg|mpeg|ts|webm)$/i.test(f.folder)) return false; // video suelto en la raiz
+  const real = basename(f.folder);
+  if (f.kind === 'show') return real === carpetaDeSerie(f.title, f.year);
+  if (real === carpetaDePelicula({ titulo: f.title, anio: f.year })) return true;
+  // Con edicion: «Titulo - Extended Edition (1986)»
+  const m = real.match(/^.*? - (.+?) \(\d{4}\)$/);
+  return Boolean(m && real === carpetaDePelicula({ titulo: f.title, anio: f.year, edicion: m[1] }));
+}
+
+/** Los contadores de las pastillas no dependen del filtro elegido, solo de la busqueda y el tipo. */
+function contadores(base: string[], params: (string | number)[]): Record<string, number> {
+  const cuenta: Record<string, number> = {};
+  for (const [nombre, sql] of Object.entries(FILTROS)) {
+    cuenta[nombre] = (db.prepare(`SELECT COUNT(*) AS n FROM items i WHERE ${[sql, ...base].join(' AND ')}`).get(...params) as { n: number }).n;
+  }
+  cuenta.sinorganizar = (db.prepare(`SELECT i.kind, i.title, i.year, i.folder FROM items i WHERE ${['1', ...base].join(' AND ')}`).all(...params) as { kind: string; title: string; year: number | null; folder: string }[]).filter((f) => !carpetaOrganizada(f)).length;
+  return cuenta;
+}
 
 export default async function scraperRoutes(app: FastifyInstance) {
   app.get('/api/scraper/titulos', async (req, reply) => {
@@ -36,6 +60,16 @@ export default async function scraperRoutes(app: FastifyInstance) {
     if (texto) { donde.push('i.search_title LIKE ?'); params.push(`%${texto}%`); }
     const offset = Math.max(0, Math.trunc(Number(q.offset)) || 0);
 
+    const base = donde.slice(1);
+    if (q.filtro === 'sinorganizar') {
+      const todas = db.prepare(`SELECT i.id, i.title, i.year, i.kind, i.folder, l.name AS biblioteca, i.tmdb_id, i.imdb_id, i.meta_origen AS origen,
+                       i.poster IS NOT NULL AS poster, i.fanart IS NOT NULL AS fanart, i.clearlogo IS NOT NULL AS logo,
+                       (i.plot IS NOT NULL AND i.plot <> '') AS sinopsis, (i.mpaa IS NOT NULL AND i.mpaa <> '') AS edad
+                FROM items i JOIN libraries l ON l.id = i.library_id WHERE ${donde.slice(1).concat('1').join(' AND ')}
+                ORDER BY COALESCE(i.sort_title, i.title) COLLATE NOCASE`).all(...params) as (Record<string, unknown> & { kind: string; title: string; year: number | null; folder: string })[];
+      const sin = todas.filter((f) => !carpetaOrganizada(f));
+      return { total: sin.length, offset, pagina: PAGINA, items: sin.slice(offset, offset + PAGINA).map(({ folder: _f, ...resto }) => resto), cuenta: contadores(base, params) };
+    }
     const total = (db.prepare(`SELECT COUNT(*) AS n FROM items i WHERE ${donde.join(' AND ')}`).get(...params) as { n: number }).n;
     const items = db
       .prepare(`SELECT i.id, i.title, i.year, i.kind, l.name AS biblioteca, i.tmdb_id, i.imdb_id, i.meta_origen AS origen,
@@ -46,12 +80,7 @@ export default async function scraperRoutes(app: FastifyInstance) {
                 ORDER BY COALESCE(i.sort_title, i.title) COLLATE NOCASE LIMIT ? OFFSET ?`)
       .all(...params, PAGINA, offset);
 
-    // Los contadores de las pastillas no dependen del filtro elegido, solo de la busqueda y el tipo.
-    const base = donde.slice(1);
-    const cuenta: Record<string, number> = {};
-    for (const [nombre, sql] of Object.entries(FILTROS)) {
-      cuenta[nombre] = (db.prepare(`SELECT COUNT(*) AS n FROM items i WHERE ${[sql, ...base].join(' AND ')}`).get(...params) as { n: number }).n;
-    }
+    const cuenta = contadores(base, params);
     return { total, offset, pagina: PAGINA, items, cuenta };
   });
 
@@ -92,6 +121,37 @@ export default async function scraperRoutes(app: FastifyInstance) {
       return { escritos: r.escritos.map((f) => basename(f)), retirados: r.retirados.length };
     } catch (err) {
       return reply.code(err instanceof ArteCarpetaError ? 400 : 500).send({ error: (err as Error).message });
+    }
+  });
+
+  /*
+   * Organizar: dejar carpeta y ficheros con los nombres de tMM. GET = plan, sin tocar nada; POST = aplicar ese plan (confirmacion expresa).
+   * Es escritura en la biblioteca: renombra, no borra.
+   */
+  const ver = (id: number, ruta: string) => {
+    const raiz = (db.prepare('SELECT l.path FROM items i JOIN libraries l ON l.id = i.library_id WHERE i.id = ?').get(id) as { path: string } | undefined)?.path ?? '';
+    return relative(raiz, ruta);
+  };
+  app.get('/api/scraper/organizar/:id', async (req, reply) => {
+    if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'No autorizado' });
+    const id = Number((req.params as { id: string }).id);
+    const edicion = (req.query as { edicion?: string }).edicion?.trim() || null;
+    try {
+      const plan = planOrganizar(id, { edicion });
+      return { pasos: plan.pasos.map((p) => ({ tipo: p.tipo, desde: ver(id, p.desde), final: ver(id, p.final) })) };
+    } catch (err) {
+      return reply.code(err instanceof OrganizarError ? 400 : 500).send({ error: (err as Error).message });
+    }
+  });
+
+  app.post('/api/scraper/organizar/:id', async (req, reply) => {
+    if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'No autorizado' });
+    const body = (req.body ?? {}) as { confirmar?: boolean; edicion?: string };
+    if (body.confirmar !== true) return reply.code(400).send({ error: 'Falta la confirmación expresa' });
+    try {
+      return aplicarOrganizar(Number((req.params as { id: string }).id), { edicion: body.edicion?.trim() || null });
+    } catch (err) {
+      return reply.code(err instanceof OrganizarError ? 400 : 500).send({ error: (err as Error).message });
     }
   });
 

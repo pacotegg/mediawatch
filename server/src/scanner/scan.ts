@@ -952,7 +952,12 @@ export async function scanAll(onProgress?: (p: ScanProgress) => void, opciones: 
  * pase ahí dentro, el servidor HTTP no se entera. Ver el comentario de
  * scan-worker.ts para el porqué completo.
  */
+let escaneosEnCurso = 0;
+/** ¿Hay un escaneo corriendo en su hilo? Lo mira `organizar`, que no debe mover ficheros mientras se escanea. */
+export const escaneoEnCurso = () => escaneosEnCurso > 0;
+
 export function scanAllEnWorker(onProgress?: (p: ScanProgress) => void): Promise<{ name: string; count: number }[]> {
+  escaneosEnCurso++;
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL('./scan-worker.ts', import.meta.url));
     let asentado = false;
@@ -961,17 +966,19 @@ export function scanAllEnWorker(onProgress?: (p: ScanProgress) => void): Promise
         onProgress?.(msg.progress);
       } else if (msg.type === 'done') {
         asentado = true;
+        escaneosEnCurso--;
         resolve(msg.results ?? []);
       } else if (msg.type === 'error') {
         asentado = true;
+        escaneosEnCurso--;
         reject(new Error(msg.message));
       }
     });
     worker.on('error', (err) => {
-      if (!asentado) reject(err);
+      if (!asentado) { asentado = true; escaneosEnCurso--; reject(err); }
     });
     worker.on('exit', (code) => {
-      if (!asentado) reject(new Error(`El worker de escaneo terminó sin avisar (código ${code})`));
+      if (!asentado) { asentado = true; escaneosEnCurso--; reject(new Error(`El worker de escaneo terminó sin avisar (código ${code})`)); }
     });
   });
 }

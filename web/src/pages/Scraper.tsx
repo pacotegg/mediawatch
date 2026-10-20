@@ -17,6 +17,7 @@ const FILTROS = [
   { clave: 'sinsinopsis', etiqueta: 'Sin sinopsis' },
   { clave: 'sinedad', etiqueta: 'Sin edad' },
   { clave: 'sinlogo', etiqueta: 'Sin logo' },
+  { clave: 'sinorganizar', etiqueta: 'Nombre sin organizar' },
 ] as const;
 
 const CAMPOS = [
@@ -366,6 +367,68 @@ function ArteACarpeta({ id }: { id: number }) {
   );
 }
 
+/**
+ * Organizar: dejar carpeta y ficheros con los nombres que ponía tinyMediaManager (Título (Año)/Título (Año) 1080p AC3.mkv,
+ * Serie (Año)/Season N/Serie - S01E01 - Título.mkv). Renombra, no borra, y la base de datos se actualiza en el mismo paso (el
+ * fichero conserva su id). Primero se enseña el plan y no se hace nada hasta confirmarlo.
+ */
+function Organizar({ id, kind }: { id: number; kind: 'movie' | 'show' }) {
+  const [abierto, setAbierto] = useState(false);
+  const [edicion, setEdicion] = useState('');
+  const [hecho, setHecho] = useState('');
+  const qc = useQueryClient();
+  const plan = useQuery({ queryKey: ['scraper-organizar', id, edicion], queryFn: () => api.scraperOrganizar(id, edicion), enabled: abierto, retry: false, staleTime: 0 });
+  const aplicar = useMutation({
+    mutationFn: () => api.scraperOrganizarAplicar(id, edicion),
+    onSuccess: (r) => {
+      setHecho(`Hecho: ${r.movidos} cambios de nombre.`);
+      for (const k of ['scraper-organizar', 'scraper-titulo', 'scraper-lista']) qc.invalidateQueries({ queryKey: [k] });
+    },
+  });
+  useEffect(() => { setAbierto(false); setHecho(''); setEdicion(''); }, [id]);
+
+  return (
+    <div className="rounded-xl bg-white/4 p-3 text-[12.5px]">
+      <button onClick={() => setAbierto((v) => !v)} className="flex w-full items-center justify-between text-left font-medium text-mist-300">
+        <span>Organizar: poner los nombres como los dejaba tMM</span>
+        <span className="text-mist-500">{abierto ? '−' : '+'}</span>
+      </button>
+      {abierto && (
+        <div className="mt-3 space-y-2">
+          {kind === 'movie' && (
+            <label className="flex flex-wrap items-center gap-2 text-mist-400">
+              Edición (opcional):
+              <TextInput value={edicion} onChange={setEdicion} placeholder="Extended Edition, IMAX, Final Cut…" className="w-64" />
+            </label>
+          )}
+          {plan.isLoading && <p className="text-mist-500">Calculando…</p>}
+          {plan.error && <p className="text-red-400">{(plan.error as Error).message}</p>}
+          {plan.data && plan.data.pasos.length === 0 && <p className="text-mist-500">Ya está organizado: no hay nada que renombrar.</p>}
+          {plan.data && plan.data.pasos.length > 0 && (
+            <>
+              <p className="text-mist-400">Se va a <b>renombrar en la biblioteca</b> (nada se borra):</p>
+              <ul className="max-h-64 space-y-1 overflow-y-auto">
+                {plan.data.pasos.map((p, i) => (
+                  <li key={i} className="rounded-lg bg-black/20 px-2.5 py-1.5">
+                    <div className="break-all text-mist-500">{p.tipo === 'carpeta' ? 'carpeta ' : ''}{p.desde}</div>
+                    <div className="break-all text-emerald-300">→ {p.final}</div>
+                  </li>
+                ))}
+              </ul>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button variant="danger" onClick={() => aplicar.mutate()} disabled={aplicar.isPending}>{aplicar.isPending ? 'Renombrando…' : 'Sí, renombrar en la biblioteca'}</Button>
+                <span className="text-[11.5px] text-mist-600">Plex verá estos ficheros como nuevos hasta que vuelva a escanear la biblioteca.</span>
+              </div>
+            </>
+          )}
+          {aplicar.error && <p className="text-red-400">{(aplicar.error as Error).message}</p>}
+          {hecho && <p className="text-emerald-400">{hecho}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Deshacer el último cambio hecho desde el Scraper en este título (ficha, reparto, arte...). */
 function Deshacer({ id }: { id: number }) {
   const qc = useQueryClient();
@@ -420,6 +483,7 @@ function Ficha({ id }: { id: number }) {
 
       <Deshacer id={t.id} />
       <ArteACarpeta id={t.id} />
+      <Organizar id={t.id} kind={t.kind} />
 
       <div className="flex gap-1 border-b border-white/8">
         {([['emparejar', 'Emparejar y completar'], ['imagenes', 'Imágenes']] as const).map(([k, e]) => (
