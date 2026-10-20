@@ -438,6 +438,56 @@ function Organizar({ id, kind }: { id: number; kind: 'movie' | 'show' }) {
   );
 }
 
+/**
+ * Escribir el NFO junto al vídeo (como tMM): los datos viajan con la carpeta. Pensado para la carpeta de entrada: se prepara aquí,
+ * se mueve a la biblioteca y el escaneo de allí lo recupera todo. Plan visible y confirmación; lo sustituido se aparta, no se borra.
+ */
+function NfoACarpeta({ id }: { id: number }) {
+  const [abierto, setAbierto] = useState(false);
+  const [hecho, setHecho] = useState('');
+  const qc = useQueryClient();
+  const plan = useQuery({ queryKey: ['scraper-nfo', id], queryFn: () => api.scraperNfo(id), enabled: abierto, retry: false, staleTime: 0 });
+  const aplicar = useMutation({
+    mutationFn: () => api.scraperNfoAplicar(id),
+    onSuccess: (r) => { setHecho(`Escritos ${r.escritos.length} NFO${r.retirados ? ` y apartados ${r.retirados} en _retirados` : ''}.`); qc.invalidateQueries({ queryKey: ['scraper-nfo', id] }); },
+  });
+  useEffect(() => { setAbierto(false); setHecho(''); }, [id]);
+  return (
+    <div className="rounded-xl bg-white/4 p-3 text-[12.5px]">
+      <button onClick={() => setAbierto((v) => !v)} className="flex w-full items-center justify-between text-left font-medium text-mist-300">
+        <span>Escribir el NFO en la carpeta (para que los datos viajen con ella)</span>
+        <span className="text-mist-500">{abierto ? '−' : '+'}</span>
+      </button>
+      {abierto && (
+        <div className="mt-3 space-y-2">
+          {plan.isLoading && <p className="text-mist-500">Calculando…</p>}
+          {plan.error && <p className="text-red-400">{(plan.error as Error).message}</p>}
+          {plan.data && plan.data.pasos.length === 0 && <p className="text-mist-500">Nada que escribir: los NFO de la carpeta ya están al día.</p>}
+          {plan.data && plan.data.pasos.length > 0 && (
+            <>
+              <p className="text-mist-400">Se van a escribir en la carpeta del título:</p>
+              <ul className="max-h-56 space-y-1 overflow-y-auto">
+                {plan.data.pasos.map((p, i) => (
+                  <li key={i} className="rounded-lg bg-black/20 px-2.5 py-1.5">
+                    <span className="text-emerald-300">escribir</span> <span className="break-all">{p.hacia}</span>
+                    {p.retira && <div className="text-amber-300/90">apartar a _retirados: <span className="break-all">{p.retira}</span></div>}
+                  </li>
+                ))}
+              </ul>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button variant="danger" onClick={() => aplicar.mutate()} disabled={aplicar.isPending}>{aplicar.isPending ? 'Escribiendo…' : 'Sí, escribir los NFO'}</Button>
+                <span className="text-[11.5px] text-mist-600">Nada se borra: lo que se sustituye va a _retirados.</span>
+              </div>
+            </>
+          )}
+          {aplicar.error && <p className="text-red-400">{(aplicar.error as Error).message}</p>}
+          {hecho && <p className="text-emerald-400">{hecho}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Deshacer el último cambio hecho desde el Scraper en este título (ficha, reparto, arte...). */
 function Deshacer({ id }: { id: number }) {
   const qc = useQueryClient();
@@ -493,6 +543,7 @@ function Ficha({ id }: { id: number }) {
       <Deshacer id={t.id} />
       <ArteACarpeta id={t.id} />
       <Organizar id={t.id} kind={t.kind} />
+      <NfoACarpeta id={t.id} />
 
       <div className="flex gap-1 border-b border-white/8">
         {([['emparejar', 'Emparejar y completar'], ['imagenes', 'Imágenes']] as const).map(([k, e]) => (

@@ -15,6 +15,7 @@ import { coincidenciaSegura } from './identificar.ts';
 import { rellenarEpisodios } from './episodios-tmdb.ts';
 import { aplicarOrganizar, planOrganizar, type PlanOrganizar } from './organizar.ts';
 import { aplicarArteCarpeta } from './arte-carpeta.ts';
+import { aplicarNfo } from './nfo-escribir.ts';
 
 export type Confianza = 'segura' | 'probable' | 'dudosa' | 'ninguna';
 export type FilaNueva = {
@@ -118,7 +119,7 @@ export function planesDeLote(ids: number[]): PlanDeLote[] {
 export const renombrado: EstadoLote<ResultadoItem> = vacio();
 
 /** Ejecuta los renombrados de la lista. `alAvanzar` recibe el progreso (para pruebas); el estado compartido se actualiza solo. */
-export async function ejecutarLote(ids: number[], opciones: { copiarArte: boolean }, alAvanzar?: (p: { hechos: number; total: number }) => void): Promise<ResultadoItem[]> {
+export async function ejecutarLote(ids: number[], opciones: { copiarArte: boolean; escribirNfo?: boolean }, alAvanzar?: (p: { hechos: number; total: number }) => void): Promise<ResultadoItem[]> {
   const resultados: ResultadoItem[] = [];
   Object.assign(renombrado, vacio(), { corriendo: true, total: ids.length, resultados });
   try {
@@ -126,10 +127,14 @@ export async function ejecutarLote(ids: number[], opciones: { copiarArte: boolea
       const titulo = (db.prepare('SELECT title FROM items WHERE id = ?').get(id) as { title: string } | undefined)?.title ?? String(id);
       try {
         const { movidos } = aplicarOrganizar(id);
-        let detalle: string | undefined;
+        const detalles: string[] = [];
         if (opciones.copiarArte) {
-          try { detalle = `arte copiado: ${aplicarArteCarpeta(id).escritos.length}`; } catch (e) { detalle = `arte no copiado (${(e as Error).message})`; }
+          try { detalles.push(`arte copiado: ${aplicarArteCarpeta(id).escritos.length}`); } catch (e) { detalles.push(`arte no copiado (${(e as Error).message})`); }
         }
+        if (opciones.escribirNfo) {
+          try { detalles.push(`NFO escritos: ${aplicarNfo(id).escritos.length}`); } catch (e) { detalles.push(`NFO no escrito (${(e as Error).message})`); }
+        }
+        const detalle = detalles.length ? detalles.join(', ') : undefined;
         resultados.push({ itemId: id, titulo, ok: true, movidos, detalle });
       } catch (e) {
         resultados.push({ itemId: id, titulo, ok: false, error: (e as Error).message });

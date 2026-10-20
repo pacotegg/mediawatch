@@ -366,7 +366,8 @@ export const api = {
     post<{ ok: true }>(`/api/items/${itemId}/watched`, { watched, episodeId }),
   favorite: (itemId: number, favorite: boolean) => post<{ ok: true }>(`/api/items/${itemId}/favorite`, { favorite }),
   favorites: () => request<ItemSummary[]>('/api/favorites'),
-  scan: () => post<{ started: boolean }>('/api/scan'),
+  scan: (ruta?: string) => (ruta ? post<{ started: boolean }>('/api/scan', { ruta }) : post<{ started: boolean }>('/api/scan')),
+  fuentes: () => request<{ name: string; path: string; kind: 'movie' | 'show'; activa: boolean; titulos: number }[]>('/api/system/fuentes'),
   pairDevice: (code: string) => post<{ ok: true; user: string }>('/api/auth/device/claim', { code }),
 
   serverSettings: () => request<ServerSettings>('/api/server-settings'),
@@ -380,7 +381,7 @@ export const api = {
     request<{ current: string; parent: string | null; dirs: { name: string; path: string }[] }>(
       `/api/system/browse${dir ? `?dir=${encodeURIComponent(dir)}` : ''}`,
     ),
-  saveSystemLibraries: (libraries: { name: string; path: string; kind: 'movie' | 'show' }[]) =>
+  saveSystemLibraries: (libraries: { name: string; path: string; kind: 'movie' | 'show'; activa?: boolean }[]) =>
     request<{ ok: true; libraries: { name: string; path: string; kind: 'movie' | 'show' }[] }>('/api/system/libraries', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -427,7 +428,9 @@ export const api = {
   scraperNuevosBuscar: (limite: number) => post<{ started: boolean }>('/api/scraper/nuevos/buscar', { limite }),
   scraperNuevosAplicar: (items: { itemId: number; tmdbId: number }[]) => post<{ started: boolean }>('/api/scraper/nuevos/aplicar', { items }),
   scraperLotePlan: (ids: number[]) => request<{ planes: { itemId: number; titulo: string; error: string | null; pasos: { tipo: 'fichero' | 'carpeta'; desde: string; final: string }[] }[] }>('/api/scraper/lote/plan?ids=' + ids.join(',')),
-  scraperLoteAplicar: (ids: number[], copiarArte: boolean) => post<{ started: boolean }>('/api/scraper/lote/aplicar', { ids, copiarArte, confirmar: true }),
+  scraperLoteAplicar: (ids: number[], copiarArte: boolean, escribirNfo: boolean) => post<{ started: boolean }>('/api/scraper/lote/aplicar', { ids, copiarArte, escribirNfo, confirmar: true }),
+  scraperNfo: (id: number) => request<{ pasos: { tipo: string; hacia: string; retira: string | null }[] }>('/api/scraper/nfo/' + id),
+  scraperNfoAplicar: (id: number) => post<{ escritos: string[]; retirados: number }>('/api/scraper/nfo/' + id, { confirmar: true }),
   scraperHistorial: (id: number) => request<{ ultima: { id: number; fecha: string; etiqueta: string } | null }>('/api/scraper/historial/' + id),
   scraperDeshacer: (id: number) => post<{ fecha: string; etiqueta: string }>('/api/scraper/deshacer/' + id),
   scraperTitulo: (id: number) => request<ScraperTitulo>('/api/scraper/titulo/' + id),

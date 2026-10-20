@@ -51,6 +51,7 @@ export default function AsistenteNuevos() {
   const [limite, setLimite] = useState(40);
   const [eleccion, setEleccion] = useState<Record<number, Eleccion>>({});
   const [copiarArte, setCopiarArte] = useState(true);
+  const [escribirNfo, setEscribirNfo] = useState(true);
   const [error, setError] = useState('');
   const refrescar = () => qc.invalidateQueries({ queryKey: ['scraper-nuevos'] });
 
@@ -78,7 +79,7 @@ export default function AsistenteNuevos() {
   const plan = useQuery({ queryKey: ['scraper-lote-plan', aplicados.join(',')], queryFn: () => api.scraperLotePlan(aplicados), enabled: verPlan && aplicados.length > 0, staleTime: 0 });
   const conCambios = (plan.data?.planes ?? []).filter((p) => !p.error && p.pasos.length > 0);
   const renombrar = useMutation({
-    mutationFn: () => api.scraperLoteAplicar(conCambios.map((p) => p.itemId), copiarArte),
+    mutationFn: () => api.scraperLoteAplicar(conCambios.map((p) => p.itemId), copiarArte, escribirNfo),
     onSuccess: () => { setError(''); refrescar(); qc.invalidateQueries({ queryKey: ['scraper-lista'] }); },
     onError: (e: Error) => setError(e.message),
   });
@@ -176,6 +177,10 @@ export default function AsistenteNuevos() {
               <label className="flex items-center gap-2 text-[12.5px] text-mist-300">
                 <input type="checkbox" checked={copiarArte} onChange={(e) => setCopiarArte(e.target.checked)} className="accent-[var(--color-accent,#7c8cff)]" />
                 Copiar también el arte a la carpeta de cada título (para Plex y otros programas)
+              </label>
+              <label className="flex items-start gap-2 text-[12.5px] text-mist-300">
+                <input type="checkbox" checked={escribirNfo} onChange={(e) => setEscribirNfo(e.target.checked)} className="mt-0.5 accent-[var(--color-accent,#7c8cff)]" />
+                <span>Escribir también el NFO en cada carpeta <span className="text-mist-500">(como tMM: así los datos viajan con la carpeta cuando la muevas a la biblioteca y el escaneo de allí los recupera)</span></span>
               </label>
               <div className="flex flex-wrap items-center gap-3">
                 <Button variant="danger" onClick={() => renombrar.mutate()} disabled={conCambios.length === 0 || r?.corriendo || renombrar.isPending}>

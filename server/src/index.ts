@@ -538,7 +538,9 @@ app.post('/api/scan', async (req, reply) => {
   // el hilo entre lotes) sigue de fondo sin bloquear al resto del servidor.
   void (async () => {
     try {
-      const results = await scanAllEnWorker();
+      const ruta = (req.body as { ruta?: string } | null)?.ruta;
+      const solo = ruta && config.libraries.some((l) => l.path === ruta) ? [ruta] : undefined;
+      const results = await scanAllEnWorker(undefined, solo);
       console.log('Escaneo completado:', results.map((r) => `${r.name}=${r.count}`).join(' '));
     } catch (err) {
       console.error('Escaneo fallido:', err);

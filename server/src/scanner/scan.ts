@@ -814,6 +814,8 @@ function demasiadoParaSerVerdad(quitar: number, antes: number, minimo: number): 
 export type OpcionesEscaneo = {
   /** Aplicar aunque se retire mucho de golpe: solo cuando el usuario sabe que es verdad. */
   forzar?: boolean;
+  /** Solo estas bibliotecas (por ruta), activas o no. Sin esto se escanean las activas. */
+  solo?: string[];
 };
 
 export async function scanLibrary(lib: LibraryConfig, onProgress?: (p: ScanProgress) => void, opciones: OpcionesEscaneo = {}): Promise<number> {
@@ -914,7 +916,8 @@ export async function scanAll(onProgress?: (p: ScanProgress) => void, opciones: 
   const results: { name: string; count: number }[] = [];
   const fallos: string[] = [];
   // Una biblioteca que no responde no impide escanear las demás; el fallo se avisa al final.
-  for (const lib of config.libraries) {
+  const fuentes = opciones.solo ? config.libraries.filter((l) => opciones.solo!.includes(l.path)) : config.libraries.filter((l) => l.activa !== false);
+  for (const lib of fuentes) {
     try {
       results.push({ name: lib.name, count: await scanLibrary(lib, onProgress, opciones) });
     } catch (err) {
@@ -956,10 +959,10 @@ let escaneosEnCurso = 0;
 /** ¿Hay un escaneo corriendo en su hilo? Lo mira `organizar`, que no debe mover ficheros mientras se escanea. */
 export const escaneoEnCurso = () => escaneosEnCurso > 0;
 
-export function scanAllEnWorker(onProgress?: (p: ScanProgress) => void): Promise<{ name: string; count: number }[]> {
+export function scanAllEnWorker(onProgress?: (p: ScanProgress) => void, solo?: string[]): Promise<{ name: string; count: number }[]> {
   escaneosEnCurso++;
   return new Promise((resolve, reject) => {
-    const worker = new Worker(new URL('./scan-worker.ts', import.meta.url));
+    const worker = new Worker(new URL('./scan-worker.ts', import.meta.url), { workerData: { solo } });
     let asentado = false;
     worker.on('message', (msg: { type: string; progress?: ScanProgress; results?: { name: string; count: number }[]; message?: string }) => {
       if (msg.type === 'progress' && msg.progress) {

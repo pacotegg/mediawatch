@@ -8,6 +8,7 @@ import { aplicarArteCarpeta, ArteCarpetaError, planArteCarpeta } from '../scanne
 import { basename, dirname, relative } from 'node:path';
 import { aplicacion, aplicarDatos, buscarNuevos, busqueda, ejecutarLote, planesDeLote, renombrado, totalPendientes } from '../scanner/lote.ts';
 import { aplicarOrganizar, OrganizarError, planOrganizar } from '../scanner/organizar.ts';
+import { aplicarNfo, NfoError, planNfo } from '../scanner/nfo-escribir.ts';
 import { carpetaDePelicula, carpetaDeSerie } from '../scanner/nombres-tmm.ts';
 import { deshacerUltima, HistorialError, ultimaInstantanea } from '../scanner/historial.ts';
 
@@ -196,13 +197,37 @@ export default async function scraperRoutes(app: FastifyInstance) {
 
   app.post('/api/scraper/lote/aplicar', async (req, reply) => {
     if (!admin(req, reply)) return;
-    const body = (req.body ?? {}) as { ids?: number[]; copiarArte?: boolean; confirmar?: boolean };
+    const body = (req.body ?? {}) as { ids?: number[]; copiarArte?: boolean; escribirNfo?: boolean; confirmar?: boolean };
     if (body.confirmar !== true) return reply.code(400).send({ error: 'Falta la confirmación expresa' });
     if (renombrado.corriendo) return reply.code(409).send({ error: 'Ya se está renombrando' });
     const ids = (body.ids ?? []).filter((n) => Number.isInteger(n) && n > 0).slice(0, 200);
     if (ids.length === 0) return reply.code(400).send({ error: 'No hay títulos que renombrar' });
-    void ejecutarLote(ids, { copiarArte: body.copiarArte === true }).catch((e) => console.error('[lote]', (e as Error).message));
+    void ejecutarLote(ids, { copiarArte: body.copiarArte === true, escribirNfo: body.escribirNfo === true }).catch((e) => console.error('[lote]', (e as Error).message));
     return { started: true, total: ids.length };
+  });
+
+  /*
+   * NFO junto al video (para que los datos viajen con la carpeta). GET = plan, sin tocar nada; POST = aplicar ese plan, con confirmacion.
+   */
+  app.get('/api/scraper/nfo/:id', async (req, reply) => {
+    if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'No autorizado' });
+    const id = Number((req.params as { id: string }).id);
+    try {
+      return { pasos: planNfo(id).map((p) => ({ tipo: p.tipo, hacia: basename(p.hacia), retira: p.retira ? basename(p.retira) : null })) };
+    } catch (err) {
+      return reply.code(err instanceof NfoError ? 400 : 500).send({ error: (err as Error).message });
+    }
+  });
+
+  app.post('/api/scraper/nfo/:id', async (req, reply) => {
+    if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'No autorizado' });
+    if ((req.body as { confirmar?: boolean } | null)?.confirmar !== true) return reply.code(400).send({ error: 'Falta la confirmación expresa' });
+    try {
+      const r = aplicarNfo(Number((req.params as { id: string }).id));
+      return { escritos: r.escritos.map((f) => basename(f)), retirados: r.retirados.length };
+    } catch (err) {
+      return reply.code(err instanceof NfoError ? 400 : 500).send({ error: (err as Error).message });
+    }
   });
 
   /** Lo ultimo que se puede deshacer en un titulo (si hay algo) y el boton que lo deshace. */

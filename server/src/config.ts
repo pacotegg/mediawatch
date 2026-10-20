@@ -25,6 +25,8 @@ export type LibraryConfig = {
   name: string;
   path: string;
   kind: LibraryKind;
+  /** `false`: no entra en el escaneo general (sus titulos se quedan en la base). Se puede escanear a mano. Sin el campo = activa. */
+  activa?: boolean;
 };
 
 export type HwAccel = 'qsv' | 'nvenc' | 'amf' | 'none';

@@ -17,12 +17,13 @@
  * los diez segundos de `timeout` que ya tenía la conexión —muy por debajo de
  * lo que antes tardaba el servidor entero en volver.
  */
-import { parentPort } from 'node:worker_threads';
+import { parentPort, workerData } from 'node:worker_threads';
 import { scanAll, type ScanProgress } from './scan.ts';
 
 async function main() {
   try {
-    const results = await scanAll((p: ScanProgress) => parentPort?.postMessage({ type: 'progress', progress: p }));
+    const solo = (workerData as { solo?: string[] } | null)?.solo;
+    const results = await scanAll((p: ScanProgress) => parentPort?.postMessage({ type: 'progress', progress: p }), solo ? { solo } : {});
     parentPort?.postMessage({ type: 'done', results });
   } catch (err) {
     parentPort?.postMessage({ type: 'error', message: (err as Error).message });

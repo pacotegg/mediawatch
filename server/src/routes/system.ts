@@ -89,6 +89,13 @@ export default async function systemRoutes(app: FastifyInstance) {
     }
   });
 
+  /** Las fuentes del escaneo tal como estan en la configuracion (con la ruta, que a los perfiles normales no se les ensena). */
+  app.get('/api/system/fuentes', async (req, reply) => {
+    if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'Solo administradores' });
+    const cuenta = db.prepare('SELECT l.path, COUNT(i.id) AS n FROM libraries l LEFT JOIN items i ON i.library_id = l.id GROUP BY l.id').all() as { path: string; n: number }[];
+    return config.libraries.map((l) => ({ name: l.name, path: l.path, kind: l.kind, activa: l.activa !== false, titulos: cuenta.find((c) => c.path === l.path)?.n ?? 0 }));
+  });
+
   /**
    * Guarda y actualiza las bibliotecas en config.json y en la base de datos.
    */
@@ -118,7 +125,7 @@ export default async function systemRoutes(app: FastifyInstance) {
       if (!existsSync(path)) {
         return reply.code(400).send({ error: `La ruta "${path}" no existe en el servidor` });
       }
-      validadas.push({ name, path: resolve(path), kind });
+      validadas.push({ name, path: resolve(path), kind, ...(lib.activa === false ? { activa: false } : {}) });
     }
 
     saveConfig({ ...config, libraries: validadas });

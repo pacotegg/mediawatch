@@ -236,6 +236,7 @@ function LibraryTab() {
   const { data: libraries } = useQuery({ queryKey: ['libraries'], queryFn: api.libraries });
   const { data: sessions } = useQuery({ queryKey: ['sessions'], queryFn: api.sessions, refetchInterval: 4000 });
   const { data: serverSettings } = useQuery({ queryKey: ['server-settings'], queryFn: api.serverSettings });
+  const { data: fuentes } = useQuery({ queryKey: ['fuentes'], queryFn: api.fuentes });
   const [message, setMessage] = useState('');
   const [code, setCode] = useState('');
   const [pairResult, setPairResult] = useState('');
@@ -254,15 +255,16 @@ function LibraryTab() {
 
   const saveLib = useMutation({
     mutationFn: async () => {
-      const actuales = (serverSettings?.libraries ?? []).map((l) => ({ name: l.name, path: l.path, kind: l.kind as 'movie' | 'show' }));
+      const actuales = (fuentes ?? []).map((l) => ({ name: l.name, path: l.path, kind: l.kind, ...(l.activa ? {} : { activa: false }) }));
       const nuevas = [...actuales, { name: libNombre.trim(), path: rutaSeleccionada, kind: libTipo }];
       await api.saveSystemLibraries(nuevas);
     },
     onSuccess: () => {
       setModalLib(false);
       queryClient.invalidateQueries({ queryKey: ['libraries'] });
+      queryClient.invalidateQueries({ queryKey: ['fuentes'] });
       queryClient.invalidateQueries({ queryKey: ['server-settings'] });
-      scan.mutate();
+      scan.mutate(undefined);
     },
   });
 
@@ -274,10 +276,21 @@ function LibraryTab() {
     },
   });
 
-  const scan = useMutation({ mutationFn: api.scan, onSuccess: () => setMessage('Escaneo iniciado. Tarda alrededor de medio minuto.') });
+  const scan = useMutation({ mutationFn: (ruta?: string) => api.scan(ruta), onSuccess: () => setMessage('Escaneo iniciado. Tarda alrededor de medio minuto.') });
+  // Activar o desactivar una fuente del escaneo general. Desactivarla NO borra sus títulos: solo deja de escanearse.
+  const alternarFuente = useMutation({
+    mutationFn: async (ruta: string) => {
+      const nuevas = (fuentes ?? []).map((l) => {
+        const activa = l.path === ruta ? !l.activa : l.activa;
+        return { name: l.name, path: l.path, kind: l.kind, ...(activa ? {} : { activa: false }) };
+      });
+      await api.saveSystemLibraries(nuevas);
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['fuentes'] }),
+  });
   return (
     <div className="space-y-5">
-      <Panel title="Biblioteca" action={<Button onClick={() => scan.mutate()} disabled={scan.isPending}>Volver a escanear</Button>}>
+      <Panel title="Biblioteca" action={<Button onClick={() => scan.mutate(undefined)} disabled={scan.isPending}>Volver a escanear</Button>}>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           {[
             ['Películas', stats?.movies],
@@ -292,10 +305,19 @@ function LibraryTab() {
           ))}
         </div>
         <div className="space-y-1.5 pt-2">
-          {libraries?.map((lib) => (
-            <div key={lib.id} className="flex items-center justify-between rounded-xl bg-white/4 px-3 py-2 text-[13px]">
-              <span>{lib.name}</span>
-              <span className="text-mist-500">{lib.count} · {lib.kind === 'movie' ? 'películas' : 'series'}</span>
+          <p className="text-[12px] leading-relaxed text-mist-500">
+            Las fuentes son las carpetas que se escanean. Una desactivada no entra en el escaneo general (sus títulos se quedan como están); se puede escanear a mano. Sirve para una carpeta de entrada donde preparas lo nuevo antes de moverlo a la biblioteca.
+          </p>
+          {(fuentes ?? []).map((f) => (
+            <div key={f.path} className={`flex flex-wrap items-center gap-3 rounded-xl bg-white/4 px-3 py-2 text-[13px] ${f.activa ? '' : 'opacity-70'}`}>
+              <div className="min-w-0 flex-1">
+                <div>{f.name} <span className="text-mist-500">· {f.titulos} · {f.kind === 'movie' ? 'películas' : 'series'}</span></div>
+                <div className="truncate text-[11.5px] text-mist-600">{f.path}</div>
+              </div>
+              <label className="flex items-center gap-2 text-[12px] text-mist-400">
+                Escanear <Toggle checked={f.activa} onChange={() => alternarFuente.mutate(f.path)} />
+              </label>
+              <Button variant="ghost" onClick={() => scan.mutate(f.path)} disabled={scan.isPending}>Escanear solo esta</Button>
             </div>
           ))}
         </div>
