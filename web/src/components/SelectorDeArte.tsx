@@ -207,7 +207,7 @@ export default function SelectorDeArte({
               key={img.url}
               onClick={() => poner.mutate(img.url)}
               disabled={poner.isPending}
-              title={`${img.ancho}×${img.alto}${img.idioma ? ` · ${img.idioma}` : ' · sin texto'}`}
+              title={`${img.ancho > 0 ? `${img.ancho}×${img.alto} · ` : ''}${img.idioma || 'sin texto'}`}
               className={`group relative overflow-hidden rounded-lg bg-ink-800 ring-1 ring-white/10 transition-all hover:ring-white/40 disabled:opacity-50 ${forma}`}
             >
               <img
@@ -217,7 +217,7 @@ export default function SelectorDeArte({
                 className={`h-full w-full ${papel === 'discart' ? 'object-contain p-2' : 'object-cover'}`}
               />
               <span className="absolute inset-x-0 bottom-0 bg-black/70 px-1 py-0.5 text-[9.5px] text-mist-300 opacity-0 transition-opacity group-hover:opacity-100">
-                {img.ancho}×{img.alto} {img.idioma || 'sin texto'}
+                {img.ancho > 0 ? `${img.ancho}×${img.alto} ` : ''}{img.idioma || 'sin texto'}
               </span>
             </button>
           ))}

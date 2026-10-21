@@ -252,12 +252,12 @@ function SelectorDeArteSaga({
                   key={imgObj.url}
                   onClick={() => poner.mutate({ url: imgObj.url })}
                   disabled={poner.isPending}
-                  title={`${imgObj.ancho}×${imgObj.alto}${imgObj.idioma ? ` · ${imgObj.idioma}` : ''}`}
+                  title={`${imgObj.ancho > 0 ? `${imgObj.ancho}×${imgObj.alto}` : ''}${imgObj.ancho > 0 && imgObj.idioma ? ' · ' : ''}${imgObj.idioma}`}
                   className={`group relative overflow-hidden rounded-lg bg-ink-800 ring-1 ring-white/10 transition-all hover:ring-white/40 disabled:opacity-50 ${forma}`}
                 >
                   <img src={imgObj.vista} alt="" loading="lazy" className="h-full w-full object-cover" />
                   <span className="absolute inset-x-0 bottom-0 bg-black/75 px-1.5 py-0.5 text-[10px] text-mist-300 opacity-0 transition-opacity group-hover:opacity-100">
-                    {imgObj.ancho}×{imgObj.alto} {imgObj.idioma}
+                    {imgObj.ancho > 0 ? `${imgObj.ancho}×${imgObj.alto} ` : ''}{imgObj.idioma}
                   </span>
                 </button>
               ))}
