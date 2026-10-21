@@ -9,7 +9,7 @@
  *
  * Cada fase corre como un trabajo en segundo plano con progreso (`EstadoLote`) que la web consulta.
  */
-import { readdirSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import { basename, extname, join, resolve, sep } from 'node:path';
 import { db, normalize } from '../db.ts';
 import { config, type LibraryConfig } from '../config.ts';
@@ -60,6 +60,8 @@ export function listarCandidatos(o: { biblioteca?: string; q?: string; todos?: b
 
 export type SinRegistrar = { carpeta: string; ruta: string; tipo: 'carpeta' | 'video'; biblioteca: string };
 const mismo = (a: string, b: string) => resolve(a).toLowerCase() === resolve(b).toLowerCase();
+/** Bibliotecas de verdad y carpetas de entrada del scraper: de todas se puede escrapear. */
+const todasLasFuentes = (): LibraryConfig[] => [...config.libraries, ...config.fuentesScraper];
 const esVideo = (ruta: string) => VIDEO_EXT.has(extname(ruta).toLowerCase()) && !JUNK.test(basename(ruta));
 const grande = (ruta: string) => { try { return statSync(ruta).size >= MIN_VIDEO_BYTES; } catch { return false; } };
 
@@ -80,7 +82,7 @@ function tieneVideos(dir: string, niveles: number): boolean {
  * escaner (ignora lo pequeno, los extras y las carpetas que empiezan por `_`), y barato: lista la raiz y mira dentro solo de lo desconocido.
  */
 export function sinRegistrar(rutaFuente: string): SinRegistrar[] {
-  const fuente = config.libraries.find((l) => mismo(l.path, rutaFuente));
+  const fuente = todasLasFuentes().find((l) => mismo(l.path, rutaFuente));
   if (!fuente) return [];
   const conocidos = new Set((db.prepare('SELECT i.folder FROM items i JOIN libraries l ON l.id = i.library_id WHERE LOWER(l.path) = LOWER(?)').all(fuente.path) as { folder: string }[]).map((r) => resolve(r.folder).toLowerCase()));
   let raiz;
@@ -104,7 +106,7 @@ export async function registrarRutas(rutas: string[], escanear: (p?: undefined, 
   if (escaneoEnCurso()) throw new Error('Hay un escaneo de la biblioteca en curso: espera a que termine');
   const fuentes = new Set<string>();
   for (const r of rutas) {
-    const f: LibraryConfig | undefined = config.libraries.find((l) => resolve(r).toLowerCase().startsWith(resolve(l.path).toLowerCase() + sep));
+    const f: LibraryConfig | undefined = todasLasFuentes().find((l) => resolve(r).toLowerCase().startsWith(resolve(l.path).toLowerCase() + sep));
     if (!f) throw new Error(`${r} no pertenece a ninguna fuente configurada`);
     fuentes.add(f.path);
   }
@@ -117,12 +119,51 @@ export async function registrarRutas(rutas: string[], escanear: (p?: undefined, 
   return ids;
 }
 
-/** Las fuentes con cuantos ficheros les quedan por escrapear (para el selector). */
+/** Las fuentes (bibliotecas y carpetas de entrada, aunque aun no se hayan escaneado) con cuantos ficheros les quedan por escrapear. */
 export function fuentesConPendientes() {
-  return db
-    .prepare(`SELECT l.name, l.path AS ruta, l.kind, COUNT(i.id) AS pendientes FROM libraries l
-              LEFT JOIN items i ON i.library_id = l.id AND ${SIN_ESCRAPEAR} GROUP BY l.id ORDER BY l.id`)
-    .all() as { name: string; ruta: string; kind: 'movie' | 'show'; pendientes: number }[];
+  const contar = db.prepare(`SELECT COUNT(i.id) AS n FROM libraries l JOIN items i ON i.library_id = l.id AND ${SIN_ESCRAPEAR} WHERE LOWER(l.path) = LOWER(?)`);
+  const marca = (l: LibraryConfig, entrada: boolean) => ({ name: l.name, ruta: l.path, kind: l.kind, entrada, pendientes: (contar.get(l.path) as { n: number }).n });
+  return [...config.libraries.map((l) => marca(l, false)), ...config.fuentesScraper.map((l) => marca(l, true))];
+}
+
+/**
+ * Valida las carpetas de entrada del scraper antes de guardarlas. Una carpeta no puede ser a la vez entrada y biblioteca (ni estar dentro de una
+ * biblioteca, ni contenerla): el escaneo cogeria dos veces lo mismo y la entrada dejaria de estar separada.
+ */
+export function validarFuentes(nuevas: { name?: unknown; path?: unknown; kind?: unknown }[]): LibraryConfig[] {
+  const out: LibraryConfig[] = [];
+  for (const f of nuevas) {
+    const name = String(f.name ?? '').trim();
+    const ruta = String(f.path ?? '').trim();
+    if (!name || name.length > 60) throw new Error('Nombre de fuente inválido');
+    if (f.kind !== 'movie' && f.kind !== 'show') throw new Error('El tipo debe ser películas o series');
+    if (!ruta) throw new Error('Falta la ruta de la fuente');
+    if (!existsSync(ruta)) throw new Error(`La ruta «${ruta}» no existe en el servidor`);
+    const r = resolve(ruta);
+    if (out.some((o) => mismo(o.path, r))) throw new Error(`La fuente ${r} está repetida`);
+    for (const b of config.libraries) {
+      const rb = resolve(b.path).toLowerCase();
+      const rr = r.toLowerCase();
+      if (rr === rb) throw new Error(`${r} ya es una biblioteca («${b.name}»): una carpeta no puede ser entrada y biblioteca a la vez`);
+      if (rr.startsWith(rb + sep)) throw new Error(`${r} está dentro de la biblioteca «${b.name}»`);
+      if (rb.startsWith(rr + sep)) throw new Error(`${r} contiene la biblioteca «${b.name}»`);
+    }
+    out.push({ name, path: r, kind: f.kind });
+  }
+  return out;
+}
+
+/** Deja la base como dice la configuracion: la biblioteca de una fuente del scraper es de ENTRADA (oculta a los clientes); las demas no. */
+export function marcarEntradas(): void {
+  db.exec('BEGIN');
+  try {
+    for (const b of config.libraries) db.prepare('UPDATE libraries SET entrada = 0 WHERE LOWER(path) = LOWER(?)').run(b.path);
+    for (const f of config.fuentesScraper) db.prepare('UPDATE libraries SET entrada = 1 WHERE LOWER(path) = LOWER(?)').run(f.path);
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
 }
 export const totalPendientes = () => (db.prepare(`SELECT COUNT(*) AS n FROM items i WHERE ${SIN_ESCRAPEAR}`).get() as { n: number }).n;
 

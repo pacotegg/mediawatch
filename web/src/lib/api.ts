@@ -368,6 +368,9 @@ export const api = {
   favorites: () => request<ItemSummary[]>('/api/favorites'),
   scan: (ruta?: string) => (ruta ? post<{ started: boolean }>('/api/scan', { ruta }) : post<{ started: boolean }>('/api/scan')),
   fuentes: () => request<{ name: string; path: string; kind: 'movie' | 'show'; activa: boolean; titulos: number }[]>('/api/system/fuentes'),
+  scraperFuentes: () => request<{ name: string; path: string; kind: 'movie' | 'show'; titulos: number }[]>('/api/scraper/fuentes'),
+  scraperGuardarFuentes: (fuentes: { name: string; path: string; kind: 'movie' | 'show' }[]) =>
+    request<{ ok: true; fuentes: { name: string; path: string; kind: 'movie' | 'show' }[] }>('/api/scraper/fuentes', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ fuentes }) }),
   pairDevice: (code: string) => post<{ ok: true; user: string }>('/api/auth/device/claim', { code }),
 
   serverSettings: () => request<ServerSettings>('/api/server-settings'),
@@ -426,7 +429,7 @@ export const api = {
   scraperOrganizarAplicar: (id: number, edicion: string) => post<{ movidos: number }>('/api/scraper/organizar/' + id, { confirmar: true, edicion }),
   scraperNuevos: () => request<ScraperNuevos>('/api/scraper/nuevos'),
   scraperNuevosLista: (p: { biblioteca: string; q: string; todos: boolean }) =>
-    request<{ items: Candidato[]; sinRegistrar: { carpeta: string; ruta: string; tipo: 'carpeta' | 'video'; biblioteca: string }[]; fuentes: { name: string; ruta: string; kind: 'movie' | 'show'; pendientes: number }[] }>('/api/scraper/nuevos/lista?' + new URLSearchParams({ biblioteca: p.biblioteca, q: p.q, todos: p.todos ? '1' : '0' })),
+    request<{ items: Candidato[]; sinRegistrar: { carpeta: string; ruta: string; tipo: 'carpeta' | 'video'; biblioteca: string }[]; fuentes: { name: string; ruta: string; kind: 'movie' | 'show'; pendientes: number; entrada: boolean }[] }>('/api/scraper/nuevos/lista?' + new URLSearchParams({ biblioteca: p.biblioteca, q: p.q, todos: p.todos ? '1' : '0' })),
   scraperNuevosBuscar: (ids: number[], rutas: string[]) => post<{ started: boolean }>('/api/scraper/nuevos/buscar', { ids, rutas }),
   scraperNuevosAplicar: (items: { itemId: number; tmdbId: number }[]) => post<{ started: boolean }>('/api/scraper/nuevos/aplicar', { items }),
   scraperLotePlan: (ids: number[]) => request<{ planes: { itemId: number; titulo: string; error: string | null; pasos: { tipo: 'fichero' | 'carpeta'; desde: string; final: string }[] }[] }>('/api/scraper/lote/plan?ids=' + ids.join(',')),

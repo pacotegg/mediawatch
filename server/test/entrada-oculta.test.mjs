@@ -92,3 +92,32 @@ test('las cifras (estadisticas, recuentos) tampoco cuentan la entrada', async ()
   assert.equal(e.biblioteca?.titulos ?? e.titulos, 1, 'estadisticas cuenta titulos de la entrada: ' + texto.slice(0, 300));
   assert.ok(!/"nombre":"Videos"/.test(texto), 'estadisticas lista la biblioteca de entrada');
 });
+
+/* ---- gestion de las fuentes por la API (al final: quitar una fuente olvida su indice) ---- */
+const put = (cuerpo, conSesion = true) => fetch(U + '/api/scraper/fuentes', { method: 'PUT', headers: { 'content-type': 'application/json', ...(conSesion ? { cookie } : {}) }, body: JSON.stringify(cuerpo) });
+
+test('gestion de fuentes: sin sesion 401; una biblioteca no se acepta como fuente; una nueva se añade; quitar una olvida su indice', async () => {
+  assert.equal((await put({ fuentes: [] }, false)).status, 401);
+  const lista = JSON.parse(await get('/api/scraper/fuentes'));
+  assert.deepEqual(lista.map((f) => [f.name, f.titulos]), [['Videos', 3]]);
+
+  const mala = await put({ fuentes: [{ name: 'X', path: real, kind: 'movie' }] });
+  assert.equal(mala.status, 400);
+  assert.match((await mala.json()).error, /ya es una biblioteca/);
+
+  const otra = join(base, 'Descargas');
+  mkdirSync(otra);
+  const buena = await put({ fuentes: [{ name: 'Videos', path: entrada, kind: 'movie' }, { name: 'Descargas', path: otra, kind: 'movie' }] });
+  assert.equal(buena.status, 200);
+  assert.deepEqual(JSON.parse(await get('/api/scraper/fuentes')).map((f) => f.name), ['Videos', 'Descargas']);
+
+  // Quitar 'Videos': su indice (los 3 titulos escrapeados/escaneados) se olvida; los ficheros del disco no se tocan.
+  const quitar = await put({ fuentes: [{ name: 'Descargas', path: otra, kind: 'movie' }] });
+  assert.equal(quitar.status, 200);
+  const db = new DatabaseSync(join(datos, 'tvwatch.db'), { readOnly: true });
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM items WHERE title LIKE 'ZZSecreto%'").get().n, 0);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM items WHERE title LIKE 'Pelicula Visible%'").get().n, 1, 'lo de la biblioteca real no se toca');
+  db.close();
+  const { existsSync } = await import('node:fs');
+  assert.ok(existsSync(join(entrada, 'ZZSecretoDeEntrada (2024)', 'ZZSecretoDeEntrada (2024).mkv')), 'los ficheros siguen en el disco');
+});

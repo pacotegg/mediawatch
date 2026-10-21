@@ -1,12 +1,12 @@
 import type { FastifyInstance } from 'fastify';
-import { config } from '../config.ts';
+import { config, saveConfig } from '../config.ts';
 import { db, normalize } from '../db.ts';
 import { requireUser } from './auth.ts';
 import { detallesDe, search, tmdbGet, TmdbError, type Proposal } from '../scanner/tmdb.ts';
 import { interpretarBusqueda } from '../scanner/buscar-id.ts';
 import { aplicarArteCarpeta, ArteCarpetaError, planArteCarpeta } from '../scanner/arte-carpeta.ts';
 import { basename, dirname, relative } from 'node:path';
-import { aplicacion, aplicarDatos, buscarNuevos, busqueda, ejecutarLote, fuentesConPendientes, listarCandidatos, planesDeLoteMedidos, renombrado, sinRegistrar, totalPendientes } from '../scanner/lote.ts';
+import { aplicacion, aplicarDatos, buscarNuevos, busqueda, ejecutarLote, fuentesConPendientes, listarCandidatos, marcarEntradas, planesDeLoteMedidos, renombrado, sinRegistrar, totalPendientes, validarFuentes } from '../scanner/lote.ts';
 import { aplicarOrganizar, asegurarMedidos, OrganizarError, planOrganizar } from '../scanner/organizar.ts';
 import { aplicarNfo, NfoError, planNfo } from '../scanner/nfo-escribir.ts';
 import { envio, enviarLote, EnvioError, planEnvio } from '../scanner/enviar.ts';
@@ -52,6 +52,9 @@ function contadores(base: string[], params: (string | number)[]): Record<string,
 }
 
 export default async function scraperRoutes(app: FastifyInstance) {
+  // Al arrancar, la base queda como dice la configuracion: lo que es una fuente del scraper es de ENTRADA (los clientes no lo ven).
+  try { marcarEntradas(); } catch (e) { console.error('[scraper] no se pudieron marcar las entradas:', (e as Error).message); }
+
   app.get('/api/scraper/titulos', async (req, reply) => {
     if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'No autorizado' });
     const q = req.query as { filtro?: string; q?: string; kind?: string; offset?: string };
@@ -172,13 +175,37 @@ export default async function scraperRoutes(app: FastifyInstance) {
     return { pendientes: totalPendientes(), busqueda, aplicacion, renombrado };
   });
 
+  /*
+   * Las fuentes del scraper (carpetas de entrada): separadas de las bibliotecas. Se gestionan aqui, no en Ajustes → Biblioteca.
+   * Quitar una fuente solo olvida su indice en la base (lo escrapeado y aun no enviado); los ficheros del disco no se tocan.
+   */
+  app.get('/api/scraper/fuentes', async (req, reply) => {
+    if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'No autorizado' });
+    const cuenta = db.prepare('SELECT l.path, COUNT(i.id) AS n FROM libraries l LEFT JOIN items i ON i.library_id = l.id WHERE l.entrada = 1 GROUP BY l.id').all() as { path: string; n: number }[];
+    return config.fuentesScraper.map((f) => ({ name: f.name, path: f.path, kind: f.kind, titulos: cuenta.find((c) => c.path.toLowerCase() === f.path.toLowerCase())?.n ?? 0 }));
+  });
+
+  app.put('/api/scraper/fuentes', async (req, reply) => {
+    if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'No autorizado' });
+    const lista = (req.body as { fuentes?: { name?: unknown; path?: unknown; kind?: unknown }[] } | null)?.fuentes;
+    if (!Array.isArray(lista)) return reply.code(400).send({ error: 'Falta la lista de fuentes' });
+    let nuevas;
+    try { nuevas = validarFuentes(lista); } catch (e) { return reply.code(400).send({ error: (e as Error).message }); }
+    const quitadas = config.fuentesScraper.filter((f) => !nuevas.some((n) => n.path.toLowerCase() === f.path.toLowerCase()));
+    saveConfig({ ...config, fuentesScraper: nuevas });
+    // Lo que se quita deja de existir para el scraper: se olvida su indice (cascada a sus titulos); el disco no se toca.
+    for (const q of quitadas) db.prepare('DELETE FROM libraries WHERE LOWER(path) = LOWER(?) AND entrada = 1').run(q.path);
+    marcarEntradas();
+    return { ok: true, fuentes: config.fuentesScraper };
+  });
+
   /** La lista de ficheros de las fuentes (como tMM): el usuario marca los que quiere escrapear. */
   app.get('/api/scraper/nuevos/lista', async (req, reply) => {
     if (!admin(req, reply)) return;
     const q = req.query as { biblioteca?: string; q?: string; todos?: string };
     const texto = (q.q ?? '').trim().toLowerCase();
     // Lo que hay en el disco de la fuente (o de todas) y el servidor aun no ha analizado: videos sueltos y carpetas con video, para marcarlos.
-    const rutas = q.biblioteca ? [q.biblioteca] : config.libraries.map((l) => l.path);
+    const rutas = q.biblioteca ? [q.biblioteca] : [...config.libraries, ...config.fuentesScraper].map((l) => l.path);
     const nuevos = rutas.flatMap((r) => sinRegistrar(r)).filter((n) => !texto || n.carpeta.toLowerCase().includes(texto));
     return { items: listarCandidatos({ biblioteca: q.biblioteca || undefined, q: q.q, todos: q.todos === '1' }), sinRegistrar: nuevos, fuentes: fuentesConPendientes() };
   });

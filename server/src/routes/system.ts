@@ -125,6 +125,9 @@ export default async function systemRoutes(app: FastifyInstance) {
       if (!existsSync(path)) {
         return reply.code(400).send({ error: `La ruta "${path}" no existe en el servidor` });
       }
+      if (config.fuentesScraper.some((f) => resolve(f.path).toLowerCase() === resolve(path).toLowerCase())) {
+        return reply.code(400).send({ error: `«${path}» es una carpeta de entrada del scraper: una carpeta no puede ser entrada y biblioteca a la vez` });
+      }
       validadas.push({ name, path: resolve(path), kind, ...(lib.activa === false ? { activa: false } : {}) });
     }
 
