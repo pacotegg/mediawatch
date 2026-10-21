@@ -3,18 +3,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, img as imgs, type ImagenDisponible, type PapelArte } from '../lib/api.ts';
 
 /*
- * Elegir la carátula, el fondo y el logotipo a mano.
+ * Elegir cartel, fondo, logotipo, apaisada y disco.
  *
- * Antes solo se ofrecía la imagen que TMDb marca por defecto, una por papel y
- * sin alternativa. Una película tiene treinta carteles y el que gusta depende
- * de quién mire: esto es lo que hace Plex y lo que aquí faltaba.
+ * Pensado para no subir y bajar: la barra de arriba (tipo de imagen, la actual frente a la que vas a poner, y los botones) se queda fija
+ * mientras miras; debajo solo hay 6 imágenes y «Cargar más». Todo lo que se usa de vez en cuando (subir una propia, quitar la elegida)
+ * está en esa misma barra; buscar otra película y el buzón van plegados porque casi nunca hacen falta.
  *
- * Lo que se elige **no se escribe en la carpeta de la película**. Las carpetas
- * de la biblioteca son del usuario y están cuidadas; la imagen se guarda aparte,
- * en los datos de TvWatch, y queda marcada para que el escáner no la pise en la
- * siguiente pasada. Sin esa marca, cambiar una carátula duraba hasta el próximo
- * escaneo —cada 24 h y además al arrancar— que es justo lo que pasaba con
- * «Magnolia».
+ * Lo que se elige **no se escribe en la carpeta de la película**: se guarda aparte y queda marcado para que el escáner no lo pise
+ * (antes cambiar una carátula duraba hasta el siguiente escaneo, que es justo lo que pasaba con «Magnolia»).
  */
 
 const PAPELES: { clave: PapelArte; etiqueta: string; proporcion: string }[] = [
@@ -22,10 +18,12 @@ const PAPELES: { clave: PapelArte; etiqueta: string; proporcion: string }[] = [
   { clave: 'fanart', etiqueta: 'Fondo', proporcion: 'aspect-video' },
   { clave: 'clearlogo', etiqueta: 'Logotipo', proporcion: 'aspect-video' },
   { clave: 'landscape', etiqueta: 'Apaisada', proporcion: 'aspect-video' },
-  { clave: 'discart', etiqueta: 'Disco (CD/Blu-ray)', proporcion: 'aspect-square' },
+  { clave: 'discart', etiqueta: 'Disco', proporcion: 'aspect-square' },
 ];
 
-/** Una version de buen tamano para mirarla de cerca: TMDb ofrece w780/w500 de lo que en la rejilla va a w300; fanart.tv ya trae la grande. */
+const DE_GOLPE = 6;
+
+/** Una version de buen tamano para mirarla de cerca: TMDb ofrece w1280 de lo que en la rejilla va a w500; fanart.tv ya trae la grande. */
 function grande(i: ImagenDisponible): string {
   return i.url.includes('image.tmdb.org') ? i.url.replace('/original/', '/w1280/') : i.url;
 }
@@ -48,21 +46,19 @@ export default function SelectorDeArte({
   const [papel, setPapel] = useState<PapelArte>('poster');
   const [consulta, setConsulta] = useState(titulo);
   const [aviso, setAviso] = useState('');
-  // La imagen que se esta mirando en grande, y una marca para repintar la actual cuando cambie.
+  // La imagen que se esta mirando, cuantas se enseñan, y una marca para repintar la actual cuando cambie.
   const [previa, setPrevia] = useState<ImagenDisponible | null>(null);
+  const [visibles, setVisibles] = useState(DE_GOLPE);
   const [version, setVersion] = useState(() => String(Date.now()));
 
   /*
-   * `useState(tmdbId)` solo lee el valor inicial una vez. Este componente se
-   * monta desde «Corregir metadatos» antes de que termine la búsqueda en
-   * TMDb, así que `tmdbId` llega en `null` en el primer render y el selector
-   * se quedaba sin imágenes para siempre aunque la búsqueda encontrara la
-   * película: había que teclear el título otra vez a mano en este mismo
-   * cuadro para que apareciera algo. Al llegar el id de verdad, se adopta.
+   * `useState(tmdbId)` solo lee el valor inicial una vez. Este componente se monta antes de que termine la búsqueda en TMDb, así que
+   * `tmdbId` puede llegar en `null` en el primer render y el selector se quedaba sin imágenes para siempre. Al llegar el id, se adopta.
    */
   useEffect(() => {
     if (tmdbId != null) setElegido(tmdbId);
   }, [tmdbId]);
+  useEffect(() => { setPrevia(null); setVisibles(DE_GOLPE); }, [papel, elegido]);
 
   const busqueda = useMutation({
     mutationFn: () => api.enrichSearch(consulta.trim(), kind, anio),
@@ -76,262 +72,196 @@ export default function SelectorDeArte({
     retry: false,
   });
 
+  const refrescarFicha = () => {
+    setVersion(String(Date.now()));
+    queryClient.invalidateQueries({ queryKey: ['item', itemId] });
+    queryClient.invalidateQueries({ queryKey: ['home'] });
+    // El Scraper pinta su propia cabecera de la ficha: sin esto el cartel nuevo no se veia hasta recargar.
+    queryClient.invalidateQueries({ queryKey: ['scraper-titulo', itemId] });
+    queryClient.invalidateQueries({ queryKey: ['scraper-historial', itemId] });
+  };
+
+  const etiquetaPapel = PAPELES.find((p) => p.clave === papel)!.etiqueta;
+
   const poner = useMutation({
     mutationFn: (url: string | null) => api.ponerArte(itemId, papel, url),
-    onSuccess: () => {
+    onSuccess: (_r, url) => {
       setPrevia(null);
-      setVersion(String(Date.now()));
-      setAviso(
-        papel === 'poster'
-          ? 'Carátula cambiada.'
-          : papel === 'fanart'
-          ? 'Fondo cambiado.'
-          : papel === 'clearlogo'
-          ? 'Logotipo cambiado.'
-          : papel === 'discart'
-          ? 'Disco cambiado.'
-          : 'Imagen cambiada.',
-      );
-      /*
-       * El fichero en disco se llama siempre igual (`poster.jpg`…), así que la
-       * URL con la que se pide la imagen no cambia sola: sin la marca
-       * `arte_actualizado` que ahora trae la ficha, el navegador seguía
-       * enseñando la vieja de su propia caché. Antes esto se «arreglaba» con
-       * una recarga completa de la página (`location.reload()`), que además de
-       * innecesaria cerraba este mismo cuadro de golpe. Con la marca en la
-       * URL, invalidar basta: React vuelve a pedir la ficha y la imagen
-       * cambia sola en cuanto llega el nuevo `arte_actualizado`.
-       */
-      queryClient.invalidateQueries({ queryKey: ['item', itemId] });
-      queryClient.invalidateQueries({ queryKey: ['home'] });
-      // El Scraper pinta su propia cabecera de la ficha: sin esto el cartel nuevo no se veia hasta recargar.
-      queryClient.invalidateQueries({ queryKey: ['scraper-titulo', itemId] });
-      queryClient.invalidateQueries({ queryKey: ['scraper-historial', itemId] });
+      setAviso(url ? `${etiquetaPapel}: cambiada.` : `${etiquetaPapel}: vuelve la de la carpeta.`);
+      refrescarFicha();
     },
     onError: (e: Error) => setAviso(e.message),
   });
 
-  /*
-   * Dos caminos para una imagen que no está en TMDb, porque no se usan igual:
-   * subirla desde este ordenador, y coger una de las que haya en el buzón
-   * (`data/arte-entrada`), que es el único camino que también sirve desde la
-   * tele, donde no se puede navegar el disco con un mando.
-   */
-  const refrescarFicha = () => {
-    queryClient.invalidateQueries({ queryKey: ['item', itemId] });
-    queryClient.invalidateQueries({ queryKey: ['home'] });
-  };
-
   const subir = useMutation({
     mutationFn: (fichero: File) => api.subirArte(itemId, papel, fichero),
-    onSuccess: () => {
-      setAviso('Imagen subida y puesta.');
-      refrescarFicha();
-    },
+    onSuccess: () => { setPrevia(null); setAviso(`${etiquetaPapel}: tu imagen está puesta.`); refrescarFicha(); },
     onError: (e: Error) => setAviso(e.message),
   });
 
   const { data: buzon } = useQuery({ queryKey: ['buzon-arte'], queryFn: () => api.buzonArte(), retry: false });
-
   const delBuzon = useMutation({
     mutationFn: (nombre: string) => api.ponerArteDelBuzon(itemId, papel, nombre),
-    onSuccess: () => {
-      setAviso('Imagen del buzón puesta.');
-      refrescarFicha();
-    },
+    onSuccess: () => { setAviso(`${etiquetaPapel}: imagen del buzón puesta.`); refrescarFicha(); },
     onError: (e: Error) => setAviso(e.message),
   });
 
   const lista: ImagenDisponible[] = imagenes?.[papel] ?? [];
   const forma = PAPELES.find((p) => p.clave === papel)!.proporcion;
+  const contiene = papel === 'discart' || papel === 'clearlogo';
+  const ocupado = poner.isPending || subir.isPending || delBuzon.isPending;
+  // 6 carteles caben en una fila; 6 fondos, en dos de tres.
+  const rejilla = papel === 'poster' || papel === 'discart' ? 'grid-cols-3 sm:grid-cols-6' : 'grid-cols-2 lg:grid-cols-3';
 
   return (
-    <div className="mt-6 border-t border-white/10 pt-5">
-      <h3 className="mb-1 text-[14px] font-semibold text-mist-200">Imágenes</h3>
-      <p className="mb-4 text-[12px] text-mist-500">
-        Elige la que quieras. Se guarda aparte y el escáner ya no la pisa; para volver a la de la carpeta, usa
-        «Quitar la elegida».
-      </p>
-
-      {/* Por si el título que TMDb ha adivinado no es el que toca. */}
-      <div className="mb-4 flex gap-2">
-        <input
-          value={consulta}
-          onChange={(e) => setConsulta(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && busqueda.mutate()}
-          placeholder="¿No es esta película? Búscala por su título"
-          className="min-w-0 flex-1 rounded-xl bg-white/6 px-3 py-2 text-[13px] outline-none ring-1 ring-white/10 focus:ring-white/25"
-        />
-        <button
-          onClick={() => busqueda.mutate()}
-          disabled={busqueda.isPending}
-          className="shrink-0 rounded-xl bg-white/10 px-3 py-2 text-[12.5px] hover:bg-white/18 disabled:opacity-40"
-        >
-          Buscar
-        </button>
-      </div>
-
-      {busqueda.data && busqueda.data.results.length > 0 && (
-        <div className="mb-4 flex flex-wrap gap-1.5">
-          {busqueda.data.results.slice(0, 6).map((r) => (
+    <div className="mt-2">
+      {/* ----- BARRA FIJA: todo lo que se usa, siempre a la vista ----- */}
+      <div className="sticky top-2 z-20 space-y-3 rounded-2xl bg-ink-900/95 p-3 ring-1 ring-white/12 backdrop-blur">
+        <div className="flex flex-wrap gap-1.5">
+          {PAPELES.map((p) => (
             <button
-              key={r.tmdbId}
-              onClick={() => setElegido(r.tmdbId)}
-              className={`rounded-full px-3 py-1.5 text-[12px] ${
-                elegido === r.tmdbId ? 'bg-accent/25 text-accent-soft ring-1 ring-accent/40' : 'bg-white/8 hover:bg-white/14'
-              }`}
+              key={p.clave}
+              onClick={() => setPapel(p.clave)}
+              className={`rounded-full px-3.5 py-1.5 text-[13px] ${papel === p.clave ? 'bg-mist-100 font-medium text-ink-950' : 'bg-white/6 text-mist-300 hover:bg-white/12'}`}
             >
-              {r.title} {r.year ? `(${r.year})` : ''}
+              {p.etiqueta}
+              {imagenes?.[p.clave] ? <span className="ml-1.5 opacity-60">{imagenes[p.clave].length}</span> : null}
             </button>
           ))}
         </div>
-      )}
 
-      <div className="mb-4 flex gap-1.5">
-        {PAPELES.map((p) => (
-          <button
-            key={p.clave}
-            onClick={() => setPapel(p.clave)}
-            className={`rounded-full px-3.5 py-1.5 text-[12.5px] ${
-              papel === p.clave ? 'bg-mist-100 font-medium text-ink-950' : 'bg-white/6 text-mist-300 hover:bg-white/12'
-            }`}
-          >
-            {p.etiqueta}
-            {imagenes?.[p.clave] ? <span className="ml-1.5 opacity-60">{imagenes[p.clave].length}</span> : null}
-          </button>
-        ))}
-      </div>
-
-      {elegido == null && <p className="text-[13px] text-mist-500">Busca primero la película para ver sus imágenes.</p>}
-      {isLoading && <p className="text-[13px] text-mist-500">Pidiendo las imágenes a TMDb…</p>}
-
-      {previa && (
-        <div className="mb-4 rounded-2xl bg-black/30 p-4 ring-1 ring-white/10">
-          <div className="grid gap-4 md:grid-cols-[1fr_1fr]">
-            <div>
-              <div className="mb-1.5 text-[12px] font-medium text-mist-400">Actual</div>
-              <div className={`overflow-hidden rounded-xl bg-ink-800 ring-1 ring-white/10 ${forma}`}>
-                <img src={imgs[papel === 'clearlogo' ? 'logo' : papel](itemId, 800, version)} alt="" className={`h-full w-full ${papel === 'discart' || papel === 'clearlogo' ? 'object-contain p-3' : 'object-cover'}`} onError={(e) => (e.currentTarget.style.opacity = '0')} />
-              </div>
-            </div>
-            <div>
-              <div className="mb-1.5 text-[12px] font-medium text-accent">La que vas a poner</div>
-              <div className={`overflow-hidden rounded-xl bg-ink-800 ring-2 ring-accent/60 ${forma}`}>
-                <img src={grande(previa)} alt="" className={`h-full w-full ${papel === 'discart' || papel === 'clearlogo' ? 'object-contain p-3' : 'object-cover'}`} />
-              </div>
+        <div className="flex flex-wrap items-end gap-4">
+          <div>
+            <div className="mb-1 text-[11.5px] font-medium text-mist-500">Actual</div>
+            <div className={`h-44 shrink-0 overflow-hidden rounded-xl bg-ink-800 ring-1 ring-white/10 ${forma}`}>
+              <img src={imgs[papel === 'clearlogo' ? 'logo' : papel](itemId, 700, version)} alt="" className={`h-full w-full ${contiene ? 'object-contain p-2' : 'object-cover'}`} onError={(e) => (e.currentTarget.style.opacity = '0')} />
             </div>
           </div>
-          <div className="mt-3 flex flex-wrap items-center gap-3 text-[12.5px] text-mist-400">
-            <span>{previa.ancho > 0 ? `${previa.ancho}×${previa.alto} · ` : ''}{previa.idioma ? `idioma: ${previa.idioma}` : 'sin texto'}</span>
-            <button onClick={() => poner.mutate(previa.url)} disabled={poner.isPending} className="rounded-full bg-accent px-4 py-2 text-[13px] font-semibold text-ink-950 transition hover:brightness-110 disabled:opacity-50">
+          <div>
+            <div className={`mb-1 text-[11.5px] font-medium ${previa ? 'text-accent' : 'text-mist-600'}`}>La que vas a poner</div>
+            <div className={`grid h-44 shrink-0 place-items-center overflow-hidden rounded-xl bg-ink-800 ${forma} ${previa ? 'ring-2 ring-accent/70' : 'ring-1 ring-dashed ring-white/10'}`}>
+              {previa
+                ? <img src={grande(previa)} alt="" className={`h-full w-full ${contiene ? 'object-contain p-2' : 'object-cover'}`} />
+                : <span className="px-3 text-center text-[11.5px] text-mist-600">Pulsa una de abajo</span>}
+            </div>
+          </div>
+
+          <div className="flex min-w-48 flex-1 flex-col gap-2">
+            {previa && <div className="text-[12px] text-mist-500">{previa.ancho > 0 ? `${previa.ancho}×${previa.alto} · ` : ''}{previa.idioma ? `idioma: ${previa.idioma}` : 'sin texto'}</div>}
+            <button
+              onClick={() => previa && poner.mutate(previa.url)}
+              disabled={!previa || ocupado}
+              className="rounded-full bg-accent px-5 py-2.5 text-[14px] font-semibold text-ink-950 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-35"
+            >
               {poner.isPending ? 'Guardando…' : 'Usar esta imagen'}
             </button>
-            <button onClick={() => setPrevia(null)} className="rounded-full bg-white/8 px-3.5 py-2 text-[12.5px] text-mist-300 hover:bg-white/14">Cancelar</button>
+            <div className="flex flex-wrap gap-2">
+              <label className={`inline-flex cursor-pointer items-center rounded-full bg-white/10 px-3.5 py-1.5 text-[12.5px] hover:bg-white/18 ${ocupado ? 'pointer-events-none opacity-40' : ''}`} title="JPEG, PNG o WebP, hasta 20 MB. Se guarda aparte, sin tocar la carpeta.">
+                {subir.isPending ? 'Subiendo…' : 'Subir una mía'}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  disabled={ocupado}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    // Se limpia el input: si no, elegir el MISMO fichero otra vez no dispara `change` y parece que no va.
+                    e.target.value = '';
+                    if (f) subir.mutate(f);
+                  }}
+                />
+              </label>
+              <button onClick={() => poner.mutate(null)} disabled={ocupado} className="rounded-full bg-white/8 px-3.5 py-1.5 text-[12.5px] text-mist-300 hover:bg-white/14 disabled:opacity-40" title="Vuelve a la imagen que haya en la carpeta del título">
+                Quitar la elegida
+              </button>
+              {previa && <button onClick={() => setPrevia(null)} className="rounded-full px-3 py-1.5 text-[12.5px] text-mist-500 hover:text-mist-200">Cancelar</button>}
+            </div>
+            {aviso && <div className="text-[12.5px] text-emerald-300">{aviso}</div>}
           </div>
         </div>
-      )}
+      </div>
 
-      {lista.length > 0 && (
-        <div
-          className={`grid gap-2.5 ${
-            papel === 'poster'
-              ? 'grid-cols-[repeat(auto-fill,minmax(170px,1fr))]'
-              : papel === 'discart'
-              ? 'grid-cols-[repeat(auto-fill,minmax(200px,1fr))]'
-              : 'grid-cols-[repeat(auto-fill,minmax(300px,1fr))]'
-          }`}
-        >
-          {lista.slice(0, 40).map((img) => (
-            <button
-              key={img.url}
-              onClick={() => setPrevia(img)}
-              disabled={poner.isPending}
-              title={`${img.ancho > 0 ? `${img.ancho}×${img.alto} · ` : ''}${img.idioma || 'sin texto'}`}
-              className={`group relative overflow-hidden rounded-lg bg-ink-800 ring-1 transition-all hover:ring-white/40 disabled:opacity-50 ${previa?.url === img.url ? 'ring-2 ring-accent' : 'ring-white/10'} ${forma}`}
-            >
-              <img
-                src={img.vista}
-                alt=""
-                loading="lazy"
-                className={`h-full w-full ${papel === 'discart' ? 'object-contain p-2' : 'object-cover'}`}
-              />
-              <span className="absolute inset-x-0 bottom-0 bg-black/70 px-1 py-0.5 text-[9.5px] text-mist-300 opacity-0 transition-opacity group-hover:opacity-100">
-                {img.ancho > 0 ? `${img.ancho}×${img.alto} ` : ''}{img.idioma || 'sin texto'}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
+      {/* ----- LAS IMAGENES: 6 de golpe ----- */}
+      <div className="mt-4">
+        {elegido == null && <p className="text-[13px] text-mist-500">Busca primero la película (abajo, «¿No es esta película?») para ver sus imágenes.</p>}
+        {isLoading && <p className="text-[13px] text-mist-500">Pidiendo las imágenes…</p>}
 
-      {elegido != null && !isLoading && lista.length === 0 && (
-        <p className="text-[13px] text-mist-500">TMDb no tiene ninguna imagen de este tipo para este título.</p>
-      )}
-
-      <div className="mt-5 border-t border-white/10 pt-4">
-        <h4 className="mb-2 text-[13px] font-semibold text-mist-200">Una imagen mía</h4>
-        <p className="mb-3 text-[12px] text-mist-500">
-          Se guarda igual que las de TMDb: aparte de la carpeta de la película y sin que el escáner la pise. Vale
-          JPEG, PNG y WebP, hasta 20 MB; el tipo se comprueba por el contenido del fichero.
-        </p>
-
-        <label className="inline-flex cursor-pointer items-center rounded-full bg-white/10 px-3.5 py-1.5 text-[12.5px] hover:bg-white/18">
-          {subir.isPending ? 'Subiendo…' : `Subir imagen para «${PAPELES.find((p) => p.clave === papel)!.etiqueta}»`}
-          <input
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            className="hidden"
-            disabled={subir.isPending}
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              // Se limpia el input: si no, elegir el MISMO fichero otra vez (por
-              // ejemplo tras recortarlo) no dispara `change` y parece que no va.
-              e.target.value = '';
-              if (f) subir.mutate(f);
-            }}
-          />
-        </label>
-
-        {buzon && buzon.imagenes.length > 0 && (
-          <div className="mt-4">
-            <p className="mb-2 text-[12px] text-mist-500">
-              O una de las {buzon.imagenes.length} que hay en el buzón
-              (<code className="text-mist-400">{buzon.carpeta}</code>), donde puedes dejarlas desde el propio HTPC:
-            </p>
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(110px,1fr))] gap-2.5">
-              {buzon.imagenes.map((img) => (
+        {lista.length > 0 && (
+          <>
+            <div className={`grid gap-3 ${rejilla}`}>
+              {lista.slice(0, visibles).map((i) => (
                 <button
-                  key={img.nombre}
-                  onClick={() => delBuzon.mutate(img.nombre)}
-                  disabled={delBuzon.isPending}
-                  title={`${img.nombre} · ${Math.round(img.bytes / 1024)} kB`}
-                  className={`group relative overflow-hidden rounded-lg bg-ink-800 ring-1 ring-white/10 hover:ring-white/40 disabled:opacity-50 ${forma}`}
+                  key={i.url}
+                  onClick={() => setPrevia(i)}
+                  disabled={ocupado}
+                  title={`${i.ancho > 0 ? `${i.ancho}×${i.alto} · ` : ''}${i.idioma || 'sin texto'}`}
+                  className={`group relative overflow-hidden rounded-xl bg-ink-800 ring-1 transition-all hover:ring-white/50 disabled:opacity-50 ${previa?.url === i.url ? 'ring-2 ring-accent' : 'ring-white/10'} ${forma}`}
                 >
-                  <img
-                    src={`/api/enrich/arte/buzon/${encodeURIComponent(img.nombre)}`}
-                    alt=""
-                    loading="lazy"
-                    className="h-full w-full object-cover"
-                  />
-                  <span className="absolute inset-x-0 bottom-0 truncate bg-black/70 px-1 py-0.5 text-[9.5px] text-mist-300">
-                    {img.nombre}
+                  <img src={i.vista} alt="" loading="lazy" className={`h-full w-full ${contiene ? 'object-contain p-2' : 'object-cover'}`} />
+                  <span className="absolute inset-x-0 bottom-0 bg-black/70 px-1.5 py-1 text-[10.5px] text-mist-200 opacity-0 transition-opacity group-hover:opacity-100">
+                    {i.ancho > 0 ? `${i.ancho}×${i.alto} · ` : ''}{i.idioma || 'sin texto'}
                   </span>
                 </button>
               ))}
             </div>
-          </div>
+            {lista.length > visibles && (
+              <div className="mt-3 text-center">
+                <button onClick={() => setVisibles((v) => v + DE_GOLPE)} className="rounded-full bg-white/10 px-5 py-2 text-[13px] hover:bg-white/18">
+                  Cargar más ({lista.length - visibles} más)
+                </button>
+              </div>
+            )}
+          </>
+        )}
+
+        {elegido != null && !isLoading && lista.length === 0 && (
+          <p className="text-[13px] text-mist-500">No hay imágenes de este tipo para este título. Puedes subir una tuya con el botón de arriba.</p>
         )}
       </div>
 
-      <div className="mt-4 flex items-center gap-3">
-        <button
-          onClick={() => poner.mutate(null)}
-          disabled={poner.isPending}
-          className="rounded-full bg-white/8 px-3 py-1.5 text-[12px] text-mist-300 hover:bg-white/14 disabled:opacity-40"
-        >
-          Quitar la elegida
-        </button>
-        {aviso && <span className="text-[12px] text-mist-400">{aviso}</span>}
-      </div>
+      {/* ----- Lo que casi nunca hace falta, plegado ----- */}
+      <details className="mt-5 rounded-xl bg-white/4 px-3 py-2 text-[12.5px]">
+        <summary className="cursor-pointer text-mist-400">¿No es esta película? Buscar otra</summary>
+        <div className="mt-3 flex gap-2">
+          <input
+            value={consulta}
+            onChange={(e) => setConsulta(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && busqueda.mutate()}
+            placeholder="Búscala por su título"
+            className="min-w-0 flex-1 rounded-xl bg-white/6 px-3 py-2 text-[13px] outline-none ring-1 ring-white/10 focus:ring-white/25"
+          />
+          <button onClick={() => busqueda.mutate()} disabled={busqueda.isPending} className="shrink-0 rounded-xl bg-white/10 px-3 py-2 text-[12.5px] hover:bg-white/18 disabled:opacity-40">Buscar</button>
+        </div>
+        {busqueda.data && busqueda.data.results.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {busqueda.data.results.slice(0, 6).map((r) => (
+              <button key={r.tmdbId} onClick={() => setElegido(r.tmdbId)} className={`rounded-full px-3 py-1.5 text-[12px] ${elegido === r.tmdbId ? 'bg-accent/25 text-accent-soft ring-1 ring-accent/40' : 'bg-white/8 hover:bg-white/14'}`}>
+                {r.title} {r.year ? `(${r.year})` : ''}
+              </button>
+            ))}
+          </div>
+        )}
+      </details>
+
+      {buzon && buzon.imagenes.length > 0 && (
+        <details className="mt-3 rounded-xl bg-white/4 px-3 py-2 text-[12.5px]">
+          <summary className="cursor-pointer text-mist-400">Del buzón ({buzon.imagenes.length} imágenes que dejaste en <code className="text-mist-500">{buzon.carpeta}</code>)</summary>
+          <div className="mt-3 grid grid-cols-3 gap-3 sm:grid-cols-6">
+            {buzon.imagenes.map((i) => (
+              <button
+                key={i.nombre}
+                onClick={() => delBuzon.mutate(i.nombre)}
+                disabled={ocupado}
+                title={`${i.nombre} · ${Math.round(i.bytes / 1024)} kB — pulsa para ponerla como ${etiquetaPapel.toLowerCase()}`}
+                className={`group relative overflow-hidden rounded-xl bg-ink-800 ring-1 ring-white/10 hover:ring-white/50 disabled:opacity-50 ${forma}`}
+              >
+                <img src={`/api/enrich/arte/buzon/${encodeURIComponent(i.nombre)}`} alt="" loading="lazy" className="h-full w-full object-cover" />
+                <span className="absolute inset-x-0 bottom-0 truncate bg-black/70 px-1.5 py-1 text-[10.5px] text-mist-200">{i.nombre}</span>
+              </button>
+            ))}
+          </div>
+        </details>
+      )}
     </div>
   );
 }
