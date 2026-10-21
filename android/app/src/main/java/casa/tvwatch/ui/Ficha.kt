@@ -1534,7 +1534,6 @@ private fun ModalColeccionistaAndroid(
   val tapa = remember { Animatable(180f) }
   val centrado = remember { Animatable(0f) }
   val asiento = remember { Animatable(0f) }
-  val giro = remember { Animatable(0f) }
   val flotar = remember { Animatable(0f) }
   var reposo by remember { mutableStateOf(false) }
   LaunchedEffect(abierta) {
@@ -1558,13 +1557,13 @@ private fun ModalColeccionistaAndroid(
       flotar.animateTo(if (flotar.value < 0.5f) 0f else 1f, tween(600))
       return@LaunchedEffect
     }
-    launch { while (true) giro.animateTo(giro.value + 360f, tween(60_000, easing = LinearEasing)) }
     while (true) {
       flotar.animateTo(1f, tween(9_000, easing = LinearEasing))
       flotar.snapTo(0f)
     }
   }
-  val rotacionDisco = -75f * (1f - asiento.value) + giro.value
+  // El disco no gira (se pidió que se quede quieto): solo se asienta con un leve zoom.
+  val rotacionDisco = 0f
   val escalaDisco = 0.94f + 0.06f * asiento.value
   val escalaZoom = 0.82f + (centrado.value * 0.18f)
   // 0 -> 1 -> 0 en cada ciclo, arrancando y parando sin velocidad: mismo perfil que la clave 0/50/100 % de la tele.

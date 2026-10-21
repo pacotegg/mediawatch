@@ -785,7 +785,8 @@ body.rend-rapido .lamina img {
 .estuche-3d-tv.enfocado .estuche-disco-tv {
   /* +105 px: algo menos de la mitad del disco fuera de la caja. Con 125 (la mitad justa) y la ampliación
      del foco (x1,06) el borde llegaba a 1924 px, fuera de los 1920 de la pantalla. */
-  transform: translateX(105px) rotate(-360deg);
+  /* Sin giro: el disco sale y se queda quieto. */
+  transform: translateX(105px);
   box-shadow: 0 16px 36px rgba(0, 0, 0, 0.75);
 }
 
@@ -1253,8 +1254,9 @@ body.rend-rapido .lamina img {
 }
 
 @keyframes asentarDiscoColeccionista {
-  from { transform: rotate(-720deg) scale(0.96); }
-  to { transform: rotate(0deg) scale(1); }
+  /* Sin vueltas: solo se asienta (un leve zoom) al asomar. */
+  from { transform: scale(0.96); }
+  to { transform: scale(1); }
 }
 
 /*

@@ -60,7 +60,7 @@ export default function Estuche3D({
   return (
     <div
       ref={marcoRef}
-      className="group relative select-none cursor-pointer pr-32 sm:pr-40 py-4 animar-siempre"
+      className="group relative select-none cursor-pointer pr-[170px] xl:pr-[250px] py-4 animar-siempre [--sal-disco:130px] xl:[--sal-disco:236px]"
       style={{
         perspective: '1200px',
         // @ts-ignore
@@ -109,79 +109,35 @@ export default function Estuche3D({
         />
 
         {/* ============================================================== */}
-        {/* DISCO ÓPTICO (DISCART) EXTRAÍBLE CON FÍSICA, GIRO Y LUZ        */}
+        {/* DISCO (DISCART): SALE POR LA DERECHA, DETRÁS DE LA CAJA, SIN GIRAR  */}
         {/* ============================================================== */}
+        {/* Va siempre por detrás de la caja (translateZ negativo): al salir se desliza y se queda a la derecha, sin pasar por encima de la carátula. */}
+        {/* La imagen ya lleva su aro y su agujero; no se le pone nada encima (una capa de color lo teñía de lila) y la sombra sigue su silueta (drop-shadow). */}
         <div
-          className="absolute top-9 bottom-9 right-1 w-[230px] h-[230px] rounded-full pointer-events-none"
+          className="absolute top-[57px] right-1 h-[210px] w-[210px] pointer-events-none"
           style={{
-            transformStyle: 'preserve-3d',
-            transform: extraido
-              ? 'translateX(110px) rotate(0deg) translateZ(8px) scale(1.02)'
-              : 'translateX(0px) rotate(-180deg) translateZ(-2px) scale(0.96)',
+            transform: extraido ? 'translateX(var(--sal-disco)) translateZ(-4px)' : 'translateX(0px) translateZ(-4px)',
             transition: 'transform 0.55s cubic-bezier(0.2, 0, 0, 1)',
-            boxShadow: extraido ? '0 16px 36px rgba(0, 0, 0, 0.85)' : 'none',
             willChange: 'transform',
             zIndex: 1,
           }}
         >
-          {/* Superficie base del disco y bisel de policarbonato */}
-          <div className="relative w-full h-full rounded-full overflow-hidden bg-gradient-to-tr from-slate-900 via-slate-700 to-slate-900 ring-1 ring-white/30 shadow-inner">
-            {discartUrl ? (
-              <img
-                src={discartUrl}
-                alt=""
-                className="w-full h-full object-contain rounded-full"
-                loading="lazy"
-              />
-            ) : (
-              /* Fallback coleccionista de lujo si no hay discart específico */
-              <div className="w-full h-full rounded-full bg-gradient-to-tr from-zinc-900 via-zinc-800 to-zinc-950 flex flex-col items-center justify-between p-6 text-center shadow-inner">
-                <div className="text-[10px] uppercase font-black tracking-widest text-white/55">4K Ultra HD Blu-ray</div>
-                <div className="max-w-[140px] truncate text-xs font-bold text-white/95 drop-shadow-md tracking-tight">
-                  {title}
-                </div>
-                <div className="text-[9px] font-semibold tracking-wider text-amber-400/70 uppercase">Collector Edition</div>
-              </div>
-            )}
-
-            {/* Iridiscencia óptica viva / Difracción arcoíris espectral de Blu-ray */}
-            <div
-              className="absolute inset-0 rounded-full pointer-events-none"
-              style={{
-                mixBlendMode: 'screen',
-                opacity: extraido ? 0.72 : 0.3,
-                transition: 'opacity 0.4s ease',
-                background:
-                  'conic-gradient(from 45deg, transparent 0%, rgba(255, 0, 150, 0.55) 12%, rgba(0, 240, 255, 0.65) 25%, rgba(0, 255, 120, 0.55) 38%, rgba(255, 240, 0, 0.65) 50%, rgba(255, 0, 150, 0.55) 62%, rgba(0, 240, 255, 0.65) 75%, rgba(180, 0, 255, 0.55) 88%, transparent 100%)',
-              }}
+          {discartUrl ? (
+            <img
+              src={discartUrl}
+              alt=""
+              className="h-full w-full rounded-full object-contain"
+              style={{ filter: extraido ? 'drop-shadow(0 14px 22px rgba(0, 0, 0, 0.8))' : 'none', transition: 'filter 0.4s ease' }}
+              loading="lazy"
             />
-
-            {/* Reflejo especular radial en dos conos opuestos de luz (anisotrópico) */}
-            <div
-              className="absolute inset-0 rounded-full pointer-events-none"
-              style={{
-                mixBlendMode: 'overlay',
-                background:
-                  'conic-gradient(from 0deg, transparent 0deg, rgba(255,255,255,0.65) 25deg, transparent 55deg, transparent 180deg, rgba(255,255,255,0.65) 205deg, transparent 235deg)',
-              }}
-            />
-
-            {/* Micro-surcos circulares de lectura óptica */}
-            <div className="absolute inset-[10px] rounded-full border border-white/10 pointer-events-none" />
-            <div className="absolute inset-[20px] rounded-full border border-white/5 pointer-events-none" />
-            <div className="absolute inset-[32px] rounded-full border border-white/5 pointer-events-none" />
-
-            {/* ========================================================== */}
-            {/* ANILLO CENTRAL Y HUECO TRANSPARENTE DEL DISCO              */}
-            {/* ========================================================== */}
-            {/* Pista de datos interna plateada */}
-            <div className="absolute inset-[70px] rounded-full border border-white/35 bg-white/10 backdrop-blur-[1px] pointer-events-none shadow-inner" />
-            {/* Anillo de sujeción de policarbonato translúcido */}
-            <div className="absolute inset-[80px] rounded-full border-2 border-white/45 bg-slate-900/50 backdrop-blur-[2px] pointer-events-none flex items-center justify-center">
-              {/* Agujero central real (spindle) transparente */}
-              <div className="w-[32px] h-[32px] rounded-full bg-ink-950/95 ring-2 ring-black/75 shadow-inner" />
+          ) : (
+            /* Sin disco: un disco liso con el título, sin efectos de color. */
+            <div className="flex h-full w-full flex-col items-center justify-between rounded-full bg-gradient-to-tr from-zinc-900 via-zinc-800 to-zinc-950 p-6 text-center ring-1 ring-white/20">
+              <div className="text-[10px] font-black uppercase tracking-widest text-white/55">{es4k ? '4K Ultra HD Blu-ray' : 'Blu-ray Disc'}</div>
+              <div className="max-w-[140px] truncate text-xs font-bold tracking-tight text-white/95">{title}</div>
+              <div className="text-[9px] font-semibold uppercase tracking-wider text-amber-400/70">Collector Edition</div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* ============================================================== */}

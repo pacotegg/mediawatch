@@ -316,15 +316,14 @@ export default function ModalColeccionista({ item, es4k = false, onClose }: Moda
               {/* DISCO ÓPTICO (DISCART)                                    */}
               {/* ======================================================== */}
               <div
-                className="relative w-[230px] h-[230px] sm:w-[280px] sm:h-[280px] md:w-[320px] md:h-[320px] rounded-full overflow-hidden shadow-[0_12px_35px_rgba(0,0,0,0.9)] ring-1 ring-white/35"
+                className="relative w-[230px] h-[230px] sm:w-[280px] sm:h-[280px] md:w-[320px] md:h-[320px] rounded-full overflow-hidden shadow-[0_12px_35px_rgba(0,0,0,0.9)]"
                 style={{
-                  // Quieto mientras la tapa lo cubre; se asienta con un cuarto de vuelta cuando la tapa pasa de 90° (0,65 s).
-                  transform: abierto ? 'rotate(0deg) scale(1)' : 'rotate(-75deg) scale(0.94)',
+                  // El disco no gira: solo se asienta (un leve zoom) cuando la tapa lo deja a la vista.
+                  transform: abierto ? 'scale(1)' : 'scale(0.94)',
                   transition: 'transform 1.1s cubic-bezier(0.22, 1, 0.36, 1) 0.65s',
                 }}
               >
-                {/* Lo que gira despacio en reposo es solo el disco; los reflejos de encima se quedan quietos, como en uno de verdad. */}
-                <div className={`coleccionista-disco-web absolute inset-0 ${reposo ? 'reposo' : ''}`}>
+                <div className="absolute inset-0">
                 {discartSrc ? (
                   <img
                     src={discartSrc}
@@ -347,31 +346,6 @@ export default function ModalColeccionista({ item, es4k = false, onClose }: Moda
                 )}
                 </div>
 
-                {/* Iridiscencia óptica viva (Arcoíris Blu-ray) */}
-                <div
-                  className="absolute inset-0 rounded-full pointer-events-none"
-                  style={{
-                    mixBlendMode: 'screen',
-                    opacity: 0.65,
-                    background:
-                      'conic-gradient(from 45deg, transparent 0%, rgba(255, 0, 150, 0.45) 12%, rgba(0, 240, 255, 0.55) 25%, rgba(0, 255, 120, 0.45) 38%, rgba(255, 240, 0, 0.55) 50%, rgba(255, 0, 150, 0.45) 62%, rgba(0, 240, 255, 0.55) 75%, rgba(180, 0, 255, 0.45) 88%, transparent 100%)',
-                  }}
-                />
-
-                {/* Reflejos especulares radiales en dos conos opuestos */}
-                <div
-                  className="absolute inset-0 rounded-full pointer-events-none"
-                  style={{
-                    mixBlendMode: 'overlay',
-                    background:
-                      'conic-gradient(from 0deg, transparent 0deg, rgba(255,255,255,0.6) 25deg, transparent 55deg, transparent 180deg, rgba(255,255,255,0.6) 205deg, transparent 235deg)',
-                  }}
-                />
-
-                {/* Orificio central pasante real y pivote de sujeción */}
-                <div className="absolute inset-[32%] rounded-full border border-white/40 bg-slate-900/40 backdrop-blur-[1px] shadow-inner flex items-center justify-center">
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-ink-950/95 ring-2 ring-black shadow-inner" />
-                </div>
               </div>
 
               {/* Pivote central plástico de la bandeja */}
