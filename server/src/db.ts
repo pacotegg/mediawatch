@@ -577,6 +577,12 @@ const COPIAS_DIR = join(DATA_DIR, 'copias');
  */
 export async function backupBaseDeDatos(): Promise<string> {
   mkdirSync(COPIAS_DIR, { recursive: true });
+  // Restos de copias que se quedaron a medias (el servidor se cerró o reinició a mitad): .tmp, .tmp-journal y .parcial de hace más de una hora.
+  // Medido el 21/10/2026: tres `.db.tmp` huérfanos ocupaban 0,6 GB y la rotación no los veía.
+  for (const f of readdirSync(COPIAS_DIR)) {
+    if (!/\.(db\.tmp|db\.tmp-journal|db\.gz\.parcial)$/.test(f)) continue;
+    try { if (Date.now() - statSync(join(COPIAS_DIR, f)).mtimeMs > 3_600_000) rmSync(join(COPIAS_DIR, f), { force: true }); } catch { /* otro proceso lo está usando */ }
+  }
   const base = `tvwatch-${new Date().toISOString().replace(/T/, '-').replace(/:/g, '-').replace(/\..+/, '')}`;
   const sinComprimir = join(COPIAS_DIR, `${base}.db.tmp`);
   const parcial = join(COPIAS_DIR, `${base}.db.gz.parcial`);
