@@ -79,6 +79,7 @@ import androidx.compose.ui.unit.sp
 import casa.tvwatch.datos.Ajustes
 import casa.tvwatch.datos.Api
 import casa.tvwatch.datos.AudioDeFichero
+import casa.tvwatch.datos.PistaAudio
 import casa.tvwatch.datos.EleccionDePistas
 import casa.tvwatch.datos.InfoReproduccion
 import casa.tvwatch.datos.Pistas
@@ -1311,23 +1312,50 @@ private fun estimarDescargas(duracionSegundos: Double, bytesOriginal: Long?, cod
   )
 }
 
-/** «TrueHD Atmos 7.1», «DD+ 5.1»... a partir del códec y los canales que apunta el servidor. */
-internal fun nombreAudioDeFichero(a: AudioDeFichero): String? {
-  val codec = a.codec?.lowercase() ?: return null
-  val nombre = when {
-    codec.contains("atmos") && codec.startsWith("truehd") -> "TrueHD Atmos"
-    codec.contains("atmos") -> "Dolby Atmos"
-    codec.startsWith("truehd") -> "TrueHD"
-    codec.startsWith("eac3") -> "DD+"
-    codec.startsWith("ac3") -> "DD"
-    codec.startsWith("dtshd") -> "DTS-HD"
-    codec.startsWith("dts") -> "DTS"
-    codec.startsWith("aac") -> "AAC"
-    else -> codec.uppercase()
+/**
+ * Nombre limpio de un códec de audio, como lo escribe el fabricante: «Dolby Digital», «Dolby Digital Plus Atmos», «Dolby TrueHD Atmos»,
+ * «DTS-HD Master Audio»… Nunca el identificador interno (`eac3_ddp_atmos`).
+ */
+internal fun nombreCodecAudio(codecCrudo: String?, atmos: Boolean = false): String {
+  val c = (codecCrudo ?: "").lowercase().replace(Regex("[\\s/.:-]+"), "_")
+  val conAtmos = atmos || c.contains("atmos") || c.contains("joc")
+  return when {
+    c.startsWith("truehd") || c.startsWith("mlp") -> if (conAtmos) "Dolby TrueHD Atmos" else "Dolby TrueHD"
+    c.startsWith("eac3") || c == "ddp" -> if (conAtmos) "Dolby Digital Plus Atmos" else "Dolby Digital Plus"
+    c.startsWith("ac3") || c == "dd" -> "Dolby Digital"
+    c.startsWith("dts") -> when {
+      c.contains("_x") -> "DTS:X"
+      c.contains("ma") && c.contains("hd") -> "DTS-HD Master Audio"
+      c.contains("hra") -> "DTS-HD High Resolution"
+      c.contains("hd") -> "DTS-HD"
+      else -> "DTS"
+    }
+    c == "aac" -> "AAC"
+    c == "flac" -> "FLAC"
+    c == "mp3" -> "MP3"
+    c == "mp2" -> "MP2"
+    c == "opus" -> "Opus"
+    c == "vorbis" -> "Vorbis"
+    c == "alac" -> "ALAC"
+    c.startsWith("pcm") -> "PCM"
+    else -> c.replace("_", " ").uppercase()
   }
-  val canales = when (a.channels) { 8 -> " 7.1"; 6 -> " 5.1"; 2 -> " 2.0"; else -> "" }
-  return nombre + canales
 }
+
+internal fun disposicionCanales(canales: Int?): String = when (canales) {
+  null, 0 -> ""
+  1 -> "1.0"; 2 -> "2.0"; 3 -> "2.1"; 4 -> "4.0"; 5 -> "5.0"; 6 -> "5.1"; 7 -> "6.1"; 8 -> "7.1"
+  else -> "${canales}ch"
+}
+
+/** «Dolby Digital Plus Atmos 5.1», «Dolby TrueHD Atmos 7.1»... a partir del códec y los canales que apunta el servidor. */
+internal fun nombreAudioDeFichero(a: AudioDeFichero): String? {
+  val codec = a.codec ?: return null
+  return listOf(nombreCodecAudio(codec), disposicionCanales(a.channels)).filter { it.isNotBlank() }.joinToString(" ")
+}
+
+internal fun nombreAudioDePista(a: PistaAudio): String =
+  listOf(nombreCodecAudio(a.codec, a.atmos), disposicionCanales(a.channels)).filter { it.isNotBlank() }.joinToString(" ")
 
 @Composable
 private fun Estuche3DAndroid(
@@ -1579,8 +1607,8 @@ private fun ModalColeccionistaAndroid(
   // Con la información de reproducción, el detalle real; sin ella, lo que el servidor ya sabe del fichero. Antes el
   // respaldo era el códec de VÍDEO (HEVC) puesto como si fuera el audio.
   val audioTracksTexto = remember(infoPistas, fichero) {
-    infoPistas?.audio?.take(2)?.joinToString(" · ") { etiquetaAudio(it) }
-      ?: fichero?.audio?.take(2)?.mapNotNull { nombreAudioDeFichero(it) }?.joinToString(" · ")?.takeIf { it.isNotBlank() }
+    infoPistas?.audio?.map { nombreAudioDePista(it) }?.distinct()?.take(2)?.joinToString(" · ")
+      ?: fichero?.audio?.mapNotNull { nombreAudioDeFichero(it) }?.distinct()?.take(2)?.joinToString(" · ")?.takeIf { it.isNotBlank() }
   }
   val subsTexto = remember(infoPistas) {
     infoPistas?.subtitles?.mapNotNull { it.language?.uppercase() }?.distinct()?.take(4)?.joinToString(", ")

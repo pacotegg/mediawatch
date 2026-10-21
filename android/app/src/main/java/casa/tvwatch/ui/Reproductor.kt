@@ -1754,7 +1754,7 @@ private fun MenuDePistas(
         val nombre = buildString {
           append(idiomaLegible(a.language))
           append(" · ")
-          append(if (a.atmos) "Dolby Atmos" else a.codec.uppercase())
+          append(nombreCodecAudio(a.codec, a.atmos))
           when (a.channels) {
             8 -> append(" 7.1"); 6 -> append(" 5.1"); 2 -> append(" 2.0")
           }

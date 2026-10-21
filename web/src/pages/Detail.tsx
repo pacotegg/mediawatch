@@ -11,7 +11,7 @@ import Extras from '../components/Extras.tsx';
 import Trailer from '../components/Trailer.tsx';
 import Row from '../components/Row.tsx';
 import { api, img, type Episode, type ItemDetail, type PerfilDescarga, type CodecDescarga } from '../lib/api.ts';
-import { aspectRatioLabel, audioLabel, certification, clock, codecLabel, fileSize, languageName, resolutionLabel, runtime } from '../lib/format.ts';
+import { aspectRatioLabel, audioLabelsUnicas, certification, clock, codecLabel, fileSize, languageName, resolutionLabel, runtime } from '../lib/format.ts';
 import { usePreferences } from '../lib/preferences.tsx';
 import { tintFrom } from '../lib/tint.ts';
 import Estuche3D from '../components/Estuche3D.tsx';
@@ -485,7 +485,7 @@ export default function Detail() {
     aspectRatioLabel(movieFile?.width, movieFile?.height),
     codecLabel(movieFile?.video_codec),
     movieFile?.hdr,
-    ...(movieFile?.audio.slice(0, 2).map((a) => audioLabel(a.codec, a.channels)) ?? []),
+    ...audioLabelsUnicas(movieFile?.audio),
   ].filter(Boolean) as string[];
 
   // Descargar prepara una copia en el servidor; el fichero se recoge después

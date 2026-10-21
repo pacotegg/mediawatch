@@ -12,6 +12,10 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.76 — 21/10/2026
+
+- Edición coleccionista: el disco ya no gira sin parar; da un giro corto al abrir la caja y se queda recto, en su sitio.
+
 ## 3.75 — 21/10/2026
 
 - Series con especiales: la ficha se abre siempre en la Temporada 1 (antes podía abrirse en los especiales). La pestaña «★ Especiales» sigue saliendo la primera, ahora destacada en ámbar y con un aro fino.

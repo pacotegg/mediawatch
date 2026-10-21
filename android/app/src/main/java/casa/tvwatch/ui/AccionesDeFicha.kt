@@ -206,7 +206,7 @@ fun etiquetaAudio(a: PistaAudio): String {
     else -> " ${a.channels}ch"
   }
   val titulo = a.title?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""
-  return idiomaLegible(a.language) + " · " + a.codec.uppercase() + canales + (if (a.atmos) " Atmos" else "") + titulo
+  return idiomaLegible(a.language) + " · " + nombreCodecAudio(a.codec, a.atmos) + canales + titulo
 }
 
 fun etiquetaSubtitulo(s: PistaSubtitulo): String {

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { img, type ItemDetail } from '../lib/api.ts';
-import { audioLabel } from '../lib/format.ts';
+import { audioLabelsUnicas } from '../lib/format.ts';
 
 interface ModalColeccionistaProps {
   item: ItemDetail;
@@ -70,9 +70,7 @@ export default function ModalColeccionista({ item, es4k = false, onClose }: Moda
     : '';
 
   const audios = mejorFichero?.audio || [];
-  const textoAudio = audios.length
-    ? audios.slice(0, 2).map((a) => audioLabel(a.codec, a.channels)).join(' · ')
-    : 'Stereo';
+  const textoAudio = audios.length ? audioLabelsUnicas(audios).join(' · ') : 'Stereo';
 
   const horas = item.runtime ? Math.floor(item.runtime / 60) : 0;
   const minutos = item.runtime ? Math.round(item.runtime % 60) : 0;

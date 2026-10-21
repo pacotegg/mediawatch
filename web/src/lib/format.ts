@@ -84,14 +84,48 @@ export const codecLabel = (codec?: string | null) => {
   return map[codec.toLowerCase()] ?? codec.toUpperCase();
 };
 
-export const audioLabel = (codec?: string | null, channels?: number | null) => {
-  const names: Record<string, string> = {
-    ac3: 'Dolby Digital', eac3: 'Dolby Digital+', truehd: 'Dolby TrueHD',
-    dts: 'DTS', dtshd: 'DTS-HD', aac: 'AAC', flac: 'FLAC', mp3: 'MP3', opus: 'Opus', pcm_s16le: 'PCM',
-  };
-  const layout = channels === 8 ? '7.1' : channels === 6 ? '5.1' : channels === 2 ? '2.0' : channels ? `${channels}ch` : '';
-  const name = names[(codec ?? '').toLowerCase()] ?? (codec ?? '').toUpperCase();
-  return [name, layout].filter(Boolean).join(' ');
+/**
+ * Nombre limpio de un códec de audio, como lo escribe el fabricante: «Dolby Digital», «Dolby Digital Plus Atmos», «Dolby TrueHD Atmos»,
+ * «DTS-HD Master Audio»… Los identificadores internos (`eac3_ddp_atmos`, `dts_hd_ma`) no se enseñan nunca.
+ */
+export const audioCodecName = (codec?: string | null, atmos = false): string => {
+  const c = (codec ?? '').toLowerCase().replace(/[\s/.:-]+/g, '_');
+  const conAtmos = atmos || c.includes('atmos') || c.includes('joc');
+  if (c.startsWith('truehd') || c.startsWith('mlp')) return conAtmos ? 'Dolby TrueHD Atmos' : 'Dolby TrueHD';
+  if (c.startsWith('eac3') || c === 'ddp') return conAtmos ? 'Dolby Digital Plus Atmos' : 'Dolby Digital Plus';
+  if (c.startsWith('ac3') || c === 'dd') return 'Dolby Digital';
+  if (c.startsWith('dts')) {
+    if (c.includes('_x')) return 'DTS:X';
+    if (c.includes('ma') && c.includes('hd')) return 'DTS-HD Master Audio';
+    if (c.includes('hra')) return 'DTS-HD High Resolution';
+    if (c.includes('hd')) return 'DTS-HD';
+    return 'DTS';
+  }
+  const otros: Record<string, string> = { aac: 'AAC', flac: 'FLAC', mp3: 'MP3', mp2: 'MP2', opus: 'Opus', vorbis: 'Vorbis', alac: 'ALAC', wmav2: 'WMA', wmapro: 'WMA Pro' };
+  if (otros[c]) return otros[c];
+  if (c.startsWith('pcm')) return 'PCM';
+  return c ? c.replace(/_/g, ' ').toUpperCase() : '';
+};
+
+export const audioLayout = (channels?: number | null): string => {
+  const mapa: Record<number, string> = { 1: '1.0', 2: '2.0', 3: '2.1', 4: '4.0', 5: '5.0', 6: '5.1', 7: '6.1', 8: '7.1' };
+  return channels ? mapa[channels] ?? `${channels}ch` : '';
+};
+
+export const audioLabel = (codec?: string | null, channels?: number | null, atmos = false) =>
+  [audioCodecName(codec, atmos), audioLayout(channels)].filter(Boolean).join(' ');
+
+/** Las etiquetas distintas de una lista de pistas (dos pistas iguales en idiomas distintos salen una sola vez). */
+export const audioLabelsUnicas = (
+  pistas: { codec?: string | null; channels?: number | null; atmos?: boolean }[] | undefined,
+  max = 2,
+): string[] => {
+  const out: string[] = [];
+  for (const a of pistas ?? []) {
+    const t = audioLabel(a.codec, a.channels, a.atmos === true);
+    if (t && !out.includes(t)) out.push(t);
+  }
+  return out.slice(0, max);
 };
 
 /** tinyMediaManager writes ratings like "ES:16 / ES:16/fig"; only the first token is useful. */

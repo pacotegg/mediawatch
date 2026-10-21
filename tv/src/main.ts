@@ -2058,13 +2058,8 @@ function formatoAspecto(ancho?: number | null, alto?: number | null): string {
     // El audio importa tanto como la resolución: saber si hay 5.1 o si la pista
     // está en tu idioma es lo que decide si vas a poder verla esta noche.
     (fichero.audio || []).slice(0, 3).forEach((a: { codec: string | null; language: string | null; channels: number | null }) => {
-      const nombres: Record<string, string> = {
-        ac3: 'Dolby Digital', eac3: 'Dolby Digital+', truehd: 'Dolby TrueHD',
-        eac3_ddp_atmos: 'Dolby Atmos', 'eac3/atmos': 'Dolby Atmos', truehd_atmos: 'Dolby Atmos TrueHD',
-        dts: 'DTS', 'dts-hd': 'DTS-HD', aac: 'AAC', flac: 'FLAC', mp3: 'MP3', opus: 'Opus',
-      };
-      const nombre = nombres[(a.codec || '').toLowerCase()] || (a.codec || '').toUpperCase();
-      const canales = a.channels === 8 ? '7.1' : a.channels === 6 ? '5.1' : a.channels === 2 ? '2.0' : '';
+      const nombre = nombreCodecAudio(a.codec, false);
+      const canales = disposicionCanales(a.channels);
       const lengua = a.language ? idioma(a.language) : '';
       const texto = [nombre, canales, lengua].filter(Boolean).join(' ');
       if (texto && etiquetas.indexOf(texto) < 0) etiquetas.push(texto);
@@ -2795,6 +2790,31 @@ type PistaInfo = { id: number; codec: string; language: string | null; channels:
 
 const esAtmos = (a: PistaInfo) => a.atmos === true || /atmos|joc/i.test(a.codec);
 
+/** Nombre limpio de un códec de audio («Dolby Digital Plus Atmos», «Dolby TrueHD Atmos», «DTS-HD Master Audio»…): nunca el identificador interno. */
+function nombreCodecAudio(codec: string | null | undefined, atmos: boolean): string {
+  const c = (codec || '').toLowerCase().replace(/[\s/.:-]+/g, '_');
+  const conAtmos = atmos || c.indexOf('atmos') >= 0 || c.indexOf('joc') >= 0;
+  if (c.indexOf('truehd') === 0 || c.indexOf('mlp') === 0) return conAtmos ? 'Dolby TrueHD Atmos' : 'Dolby TrueHD';
+  if (c.indexOf('eac3') === 0 || c === 'ddp') return conAtmos ? 'Dolby Digital Plus Atmos' : 'Dolby Digital Plus';
+  if (c.indexOf('ac3') === 0 || c === 'dd') return 'Dolby Digital';
+  if (c.indexOf('dts') === 0) {
+    if (c.indexOf('_x') >= 0) return 'DTS:X';
+    if (c.indexOf('ma') >= 0 && c.indexOf('hd') >= 0) return 'DTS-HD Master Audio';
+    if (c.indexOf('hra') >= 0) return 'DTS-HD High Resolution';
+    if (c.indexOf('hd') >= 0) return 'DTS-HD';
+    return 'DTS';
+  }
+  const otros: { [k: string]: string } = { aac: 'AAC', flac: 'FLAC', mp3: 'MP3', mp2: 'MP2', opus: 'Opus', vorbis: 'Vorbis', alac: 'ALAC' };
+  if (otros[c]) return otros[c];
+  if (c.indexOf('pcm') === 0) return 'PCM';
+  return c ? c.replace(/_/g, ' ').toUpperCase() : '';
+}
+
+function disposicionCanales(canales: number | null | undefined): string {
+  const mapa: { [k: number]: string } = { 1: '1.0', 2: '2.0', 3: '2.1', 4: '4.0', 5: '5.0', 6: '5.1', 7: '6.1', 8: '7.1' };
+  return canales ? (mapa[canales] || canales + 'ch') : '';
+}
+
 /**
  * Que pista de audio se pone al empezar, si nadie ha elegido a mano.
  *
@@ -2996,8 +3016,8 @@ async function menuPistas(fileId: number, tipo: 'audio' | 'subs', alCambiar?: (i
           i,
           texto:
             idioma(a.language) + ' · ' +
-            (esAtmos(a) ? 'Dolby Atmos' : a.codec.toUpperCase()) +
-            (a.channels === 6 ? ' 5.1' : a.channels === 8 ? ' 7.1' : '') +
+            nombreCodecAudio(a.codec, esAtmos(a)) +
+            (a.channels ? ' ' + disposicionCanales(a.channels) : '') +
             (a.compatible === false ? ' · la tele no la lee: se convertirá a DD+' : ''),
         }))
       : opcionesSubs;
@@ -3236,8 +3256,8 @@ function nombreContenedor(c: string | undefined): string {
 }
 
 function nombreAudio(a: PistaInfo): string {
-  const canales = a.channels === 8 ? ' 7.1' : a.channels === 6 ? ' 5.1' : a.channels === 2 ? ' 2.0' : '';
-  return idioma(a.language) + ' · ' + (esAtmos(a) ? 'Dolby Atmos' : (a.codec || '').toUpperCase()) + canales;
+  const canales = a.channels ? ' ' + disposicionCanales(a.channels) : '';
+  return idioma(a.language) + ' · ' + nombreCodecAudio(a.codec, esAtmos(a)) + canales;
 }
 
 type OpcionLista = { valor: number; texto: string; nota?: string };
@@ -3444,7 +3464,13 @@ function dialogoEdicionColeccionista(ficha: Ficha, elOrigen?: HTMLElement | null
   const textoVideo = fichaVideo
     ? (fichaVideo.width || '?') + '×' + fichaVideo.height + (fichaVideo.video_codec ? ' ' + fichaVideo.video_codec.toUpperCase() : '') + (fichaVideo.hdr ? ' · ' + fichaVideo.hdr : '')
     : '';
-  const textoAudio = (ficha.tags || []).filter((t) => t === 'Atmos' || t === 'DTS-HD' || t === 'TrueHD' || t === '5.1' || t === '7.1').join(' · ');
+  // Los nombres de las pistas del mejor fichero, limpios y sin repetir (dos pistas iguales en idiomas distintos salen una vez).
+  const nombresAudio: string[] = [];
+  ((fichaVideo && fichaVideo.audio) || []).forEach((a: { codec: string | null; channels: number | null }) => {
+    const t = (nombreCodecAudio(a.codec, false) + ' ' + disposicionCanales(a.channels)).trim();
+    if (t && nombresAudio.indexOf(t) < 0) nombresAudio.push(t);
+  });
+  const textoAudio = nombresAudio.slice(0, 2).join(' · ');
   const fila = (clave: string, valor: string) =>
     valor ? '<div class="libreto-fila"><b>' + clave + '</b><span>' + esc(valor) + '</span></div>' : '';
 
