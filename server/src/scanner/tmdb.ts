@@ -420,9 +420,9 @@ export async function imagenesDe(tmdbId: number, kind: 'movie' | 'show') {
       .sort((a, b) => orden(a, idioma) - orden(b, idioma) || b.voto - a.voto);
 
   const deTmdb = {
-    poster: mapa(raw.posters, 342),
-    fanart: mapa(raw.backdrops, 300),
-    clearlogo: mapa(raw.logos, 300),
+    poster: mapa(raw.posters, 500),
+    fanart: mapa(raw.backdrops, 780),
+    clearlogo: mapa(raw.logos, 500),
     landscape: [] as ImagenDisponible[],
     discart: [] as ImagenDisponible[],
   };

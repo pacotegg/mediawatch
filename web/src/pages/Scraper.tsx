@@ -150,18 +150,18 @@ function Comparar({ titulo, p, campos, setCampos }: { titulo: ScraperTitulo; p: 
   const filas: { c: Campo; actual: React.ReactNode; nuevo: React.ReactNode; hay: boolean }[] = [
     {
       c: 'poster', hay: !!p.posterUrl,
-      actual: titulo.poster ? <img src={img.poster(titulo.id, 160, titulo.arte_actualizado)} alt="" className="h-24 rounded" /> : <span className="text-mist-600">—</span>,
-      nuevo: p.posterUrl ? <img src={pequena(p.posterUrl, 'w185')!} alt="" className="h-24 rounded" /> : <span className="text-mist-600">TMDb no tiene</span>,
+      actual: titulo.poster ? <img src={img.poster(titulo.id, 400, titulo.arte_actualizado)} alt="" className="h-48 rounded-lg" /> : <span className="text-mist-600">—</span>,
+      nuevo: p.posterUrl ? <img src={pequena(p.posterUrl, 'w500')!} alt="" className="h-48 rounded-lg" /> : <span className="text-mist-600">TMDb no tiene</span>,
     },
     {
       c: 'fanart', hay: !!p.backdropUrl,
-      actual: titulo.fanart ? <img src={img.fanart(titulo.id, 400, titulo.arte_actualizado)} alt="" className="h-16 rounded" /> : <span className="text-mist-600">—</span>,
-      nuevo: p.backdropUrl ? <img src={pequena(p.backdropUrl, 'w300')!} alt="" className="h-16 rounded" /> : <span className="text-mist-600">TMDb no tiene</span>,
+      actual: titulo.fanart ? <img src={img.fanart(titulo.id, 800, titulo.arte_actualizado)} alt="" className="h-36 rounded-lg" /> : <span className="text-mist-600">—</span>,
+      nuevo: p.backdropUrl ? <img src={pequena(p.backdropUrl, 'w780')!} alt="" className="h-36 rounded-lg" /> : <span className="text-mist-600">TMDb no tiene</span>,
     },
     {
       c: 'logo', hay: !!p.logoUrl,
-      actual: titulo.logo ? <img src={img.logo(titulo.id, 300, titulo.arte_actualizado)} alt="" className="h-10 object-contain" /> : <span className="text-mist-600">—</span>,
-      nuevo: p.logoUrl ? <img src={pequena(p.logoUrl, 'w300')!} alt="" className="h-10 object-contain" /> : <span className="text-mist-600">TMDb no tiene</span>,
+      actual: titulo.logo ? <img src={img.logo(titulo.id, 500, titulo.arte_actualizado)} alt="" className="h-20 object-contain" /> : <span className="text-mist-600">—</span>,
+      nuevo: p.logoUrl ? <img src={pequena(p.logoUrl, 'w500')!} alt="" className="h-20 object-contain" /> : <span className="text-mist-600">TMDb no tiene</span>,
     },
     {
       c: 'plot', hay: !!p.overview,
@@ -539,11 +539,11 @@ function Ficha({ id }: { id: number }) {
   return (
     <div className="space-y-5">
       <div className="flex gap-4">
-        <div className="w-24 shrink-0 overflow-hidden rounded-lg bg-ink-800 ring-1 ring-white/8">
-          <div className="aspect-2/3">{t.poster ? <img src={img.poster(t.id, 240, t.arte_actualizado)} alt="" className="h-full w-full object-cover" /> : null}</div>
+        <div className="w-44 shrink-0 overflow-hidden rounded-xl bg-ink-800 ring-1 ring-white/10">
+          <div className="aspect-2/3">{t.poster ? <img src={img.poster(t.id, 500, t.arte_actualizado)} alt="" className="h-full w-full object-cover" /> : null}</div>
         </div>
         <div className="min-w-0 flex-1">
-          <h2 className="text-lg font-semibold leading-tight">{t.title} <span className="text-[14px] font-normal text-mist-500">{t.year ?? ''}</span></h2>
+          <h2 className="text-2xl font-semibold leading-tight">{t.title} <span className="text-[14px] font-normal text-mist-500">{t.year ?? ''}</span></h2>
           {t.original_title && t.original_title !== t.title && <div className="text-[12px] text-mist-500">{t.original_title}</div>}
           <div className="mt-1.5 flex flex-wrap gap-1.5 text-[11px] text-mist-400">
             <span className="rounded bg-white/8 px-1.5 py-0.5">{t.biblioteca}</span>
@@ -588,7 +588,7 @@ export default function Scraper() {
   if (yo && yo.is_admin !== 1) return <p className="mx-auto max-w-3xl px-4 page-pt text-[13px] text-mist-500">Solo un administrador puede usar el Scraper.</p>;
 
   return (
-    <div className="mx-auto max-w-6xl px-4 page-pt page-pb sm:px-8">
+    <div className="mx-auto max-w-[88rem] px-4 page-pt page-pb sm:px-8">
       <div className="mb-5 flex items-baseline justify-between gap-4">
         <h1 className="text-2xl font-semibold tracking-tight">Scraper</h1>
         <p className="hidden text-[12.5px] text-mist-500 sm:block">Elige qué escrapear, empareja con TMDb, renombra y envía a la biblioteca.</p>
@@ -601,7 +601,7 @@ export default function Scraper() {
       {modo === 'asistente' && <AsistenteNuevos />}
       {modo === 'fuentes' && <FuentesScraper />}
       {modo === 'ajustes' && <AjustesScraper />}
-      <div className={modo === 'biblioteca' ? 'grid gap-6 lg:grid-cols-[22rem_1fr]' : 'hidden'}>
+      <div className={modo === 'biblioteca' ? 'grid gap-6 lg:grid-cols-[20rem_1fr]' : 'hidden'}>
         <Lista seleccion={id} onSelect={(f) => { setId(f.id); setTimeout(() => detalle.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50); }} />
         <div ref={detalle} className="glass min-h-64 rounded-[var(--radius-panel)] p-5">
           {id ? <Ficha id={id} /> : <p className="py-16 text-center text-[13px] text-mist-500">Elige un título de la lista para ver qué le falta y qué propone TMDb.</p>}

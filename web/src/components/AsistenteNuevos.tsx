@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, TextInput } from './Controls.tsx';
-import { api, type FilaNueva, type Proposal } from '../lib/api.ts';
+import { api, img, type FilaNueva, type Proposal } from '../lib/api.ts';
+import SelectorDeArte from './SelectorDeArte.tsx';
 import EnviarTitulos from './EnviarTitulos.tsx';
 
 /*
@@ -9,9 +10,10 @@ import EnviarTitulos from './EnviarTitulos.tsx';
  *
  *   1. Elegir      aparece la LISTA de ficheros de la fuente y marcas los que quieres escrapear. No se busca nada por su cuenta.
  *   2. Emparejar   TMDb propone una coincidencia para cada marcado; puedes cambiarla o buscar otra a mano (título, id o dirección).
- *   3. Aplicar     ficha completa y arte de los que aceptas (base de datos y data/artwork; la biblioteca no se toca).
- *   4. Renombrar   carpeta (Título (Año)) y fichero (Título (Año) 1080p AC3) como los dejaba tMM, con la lista completa y una confirmación.
- *   5. Enviar      (opcional) a la biblioteca que elijas, en vez de moverlo a mano.
+ *   3. Aplicar     ficha completa y arte por defecto de los que aceptas (base de datos y data/artwork; la biblioteca no se toca).
+ *   4. Arte        (opcional) elegir cartel, fondo, logo, horizontal y disco entre los de TMDb y fanart.tv, o subir uno propio.
+ *   5. Renombrar   carpeta (Título (Año)) y fichero (Título (Año) 1080p AC3) como los dejaba tMM, con la lista completa y una confirmación.
+ *   6. Enviar      (opcional) a la biblioteca que elijas, en vez de moverlo a mano.
  */
 
 const CONFIANZA = {
@@ -21,7 +23,7 @@ const CONFIANZA = {
   ninguna: ['Sin resultados', 'bg-white/8 text-mist-500 ring-white/10'],
 } as const;
 
-const pequena = (url: string | null) => (url ? url.replace('/original/', '/w92/') : null);
+const pequena = (url: string | null) => (url ? url.replace('/original/', '/w342/') : null);
 const fecha = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '');
 
 function Barra({ hechos, total }: { hechos: number; total: number }) {
@@ -60,6 +62,33 @@ function BuscarOtra({ fila, alEncontrar }: { fila: FilaNueva; alEncontrar: (p: P
       <Button variant="ghost" onClick={() => texto.trim() && buscar.mutate()} disabled={buscar.isPending}>{buscar.isPending ? 'Buscando…' : 'Buscar'}</Button>
       {aviso && <span className="text-[11.5px] text-mist-500">{aviso}</span>}
     </form>
+  );
+}
+
+/** Un título ya aplicado: se ve su arte actual y se puede abrir el selector (el mismo de la ficha) para cambiarlo. */
+function FilaArte({ id, titulo, kind }: { id: number; titulo: string; kind: 'movie' | 'show' }) {
+  const { data: t } = useQuery({ queryKey: ['scraper-titulo', id], queryFn: () => api.scraperTitulo(id) });
+  const [abierto, setAbierto] = useState(false);
+  return (
+    <div className="rounded-xl bg-white/4 p-3">
+      <div className="flex flex-wrap items-start gap-4">
+        <div className="flex flex-wrap gap-3">
+          <div className="h-60 w-40 overflow-hidden rounded-xl bg-ink-800 ring-1 ring-white/10">{t?.poster ? <img src={img.poster(id, 400, t.arte_actualizado)} alt="" className="h-full w-full object-cover" /> : <div className="grid h-full place-items-center text-[12px] text-mist-600">Sin cartel</div>}</div>
+          <div className="h-60 w-[26rem] max-w-full overflow-hidden rounded-xl bg-ink-800 ring-1 ring-white/10">{t?.fanart ? <img src={img.fanart(id, 800, t.arte_actualizado)} alt="" className="h-full w-full object-cover" /> : <div className="grid h-full place-items-center text-[12px] text-mist-600">Sin fondo</div>}</div>
+          <div className="grid h-60 w-56 place-items-center overflow-hidden rounded-xl bg-ink-800 p-3 ring-1 ring-white/10">{t?.logo ? <img src={img.logo(id, 500, t.arte_actualizado)} alt="" className="max-h-full max-w-full object-contain" /> : <span className="text-[12px] text-mist-600">Sin logo</span>}</div>
+        </div>
+        <div className="min-w-0 flex-1 text-[14px]">
+          <div className="font-semibold">{t?.title ?? titulo}{t?.year ? <span className="font-normal text-mist-500"> ({t.year})</span> : null}</div>
+          <div className="text-[12px] text-mist-600">{[t?.poster ? 'cartel' : null, t?.fanart ? 'fondo' : null, t?.logo ? 'logo' : null].filter(Boolean).join(' · ') || 'sin arte'}</div>
+        </div>
+        <Button variant="ghost" onClick={() => setAbierto((v) => !v)}>{abierto ? 'Cerrar' : 'Elegir imágenes…'}</Button>
+      </div>
+      {abierto && (
+        <div className="mt-3">
+          <SelectorDeArte itemId={id} kind={kind} titulo={t?.title ?? titulo} anio={t?.year ?? null} tmdbId={t?.tmdb_id ? Number(t.tmdb_id) : null} />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -204,8 +233,8 @@ export default function AsistenteNuevos() {
                 <div key={f.itemId} className={`flex gap-3 rounded-xl p-2.5 ${e?.incluir ? 'bg-white/6' : 'bg-white/3 opacity-70'}`}>
                   <input type="checkbox" className="mt-1 accent-[var(--color-accent,#7c8cff)]" disabled={!actual} checked={Boolean(e?.incluir && actual)}
                     onChange={(ev) => setEleccion((p) => ({ ...p, [f.itemId]: { tmdbId: p[f.itemId]?.tmdbId ?? actual?.tmdbId ?? null, incluir: ev.target.checked } }))} />
-                  <div className="h-16 w-11 shrink-0 overflow-hidden rounded bg-ink-800">{actual?.posterUrl && <img src={pequena(actual.posterUrl)!} alt="" className="h-full w-full object-cover" />}</div>
-                  <div className="min-w-0 flex-1 text-[12.5px]">
+                  <div className="h-48 w-32 shrink-0 overflow-hidden rounded-lg bg-ink-800 ring-1 ring-white/10">{actual?.posterUrl && <img src={pequena(actual.posterUrl)!} alt="" className="h-full w-full object-cover" />}</div>
+                  <div className="min-w-0 flex-1 text-[14px]">
                     <div className="truncate text-mist-500">{f.titulo}{f.anio ? ` (${f.anio})` : ''} · {f.biblioteca}</div>
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-medium">{actual ? `${actual.title} (${actual.year ?? 's/f'})` : 'Sin propuesta'}</span>
@@ -242,7 +271,18 @@ export default function AsistenteNuevos() {
       )}
 
       {aplicados.length > 0 && !a?.corriendo && (
-        <Paso n={4} titulo="Renombrar carpetas y ficheros como tMM">
+        <Paso n={4} titulo="Elige el arte (opcional)">
+          <p className="text-[12.5px] text-mist-500">Se ha puesto el que TMDb marca por defecto. Si quieres otro cartel, fondo, logo, horizontal o disco, ábrelo y elígelo (también puedes subir uno propio): lo que elijas es lo que se copiará a la carpeta.</p>
+          <div className="space-y-2">
+            {aplicados.map((id) => (
+              <FilaArte key={id} id={id} titulo={a?.resultados.find((x) => x.itemId === id)?.titulo ?? String(id)} kind={filas.find((f) => f.itemId === id)?.kind ?? 'movie'} />
+            ))}
+          </div>
+        </Paso>
+      )}
+
+      {aplicados.length > 0 && !a?.corriendo && (
+        <Paso n={5} titulo="Renombrar carpetas y ficheros como tMM">
           {!verPlan && <Button onClick={() => setVerPlan(true)}>Ver los cambios de nombre ({aplicados.length} títulos)</Button>}
           {verPlan && plan.isLoading && <p className="text-[12.5px] text-mist-500">Calculando…</p>}
           {plan.data && (
@@ -290,7 +330,7 @@ export default function AsistenteNuevos() {
       )}
 
       {r && !r.corriendo && r.resultados.some((x) => x.ok) && (
-        <Paso n={5} titulo="Enviar a la biblioteca (opcional)">
+        <Paso n={6} titulo="Enviar a la biblioteca (opcional)">
           <p className="text-[12.5px] text-mist-500">Si los preparaste en la carpeta de entrada, puedes mandarlos ya a la biblioteca que elijas, en vez de moverlos a mano.</p>
           <EnviarTitulos ids={r.resultados.filter((x) => x.ok).map((x) => x.itemId)} kind={filas.find((f) => f.itemId === r.resultados[0].itemId)?.kind ?? 'movie'} />
         </Paso>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, type ImagenDisponible, type PapelArte } from '../lib/api.ts';
+import { api, img as imgs, type ImagenDisponible, type PapelArte } from '../lib/api.ts';
 
 /*
  * Elegir la carátula, el fondo y el logotipo a mano.
@@ -25,6 +25,11 @@ const PAPELES: { clave: PapelArte; etiqueta: string; proporcion: string }[] = [
   { clave: 'discart', etiqueta: 'Disco (CD/Blu-ray)', proporcion: 'aspect-square' },
 ];
 
+/** Una version de buen tamano para mirarla de cerca: TMDb ofrece w780/w500 de lo que en la rejilla va a w300; fanart.tv ya trae la grande. */
+function grande(i: ImagenDisponible): string {
+  return i.url.includes('image.tmdb.org') ? i.url.replace('/original/', '/w1280/') : i.url;
+}
+
 export default function SelectorDeArte({
   itemId,
   kind,
@@ -43,6 +48,9 @@ export default function SelectorDeArte({
   const [papel, setPapel] = useState<PapelArte>('poster');
   const [consulta, setConsulta] = useState(titulo);
   const [aviso, setAviso] = useState('');
+  // La imagen que se esta mirando en grande, y una marca para repintar la actual cuando cambie.
+  const [previa, setPrevia] = useState<ImagenDisponible | null>(null);
+  const [version, setVersion] = useState(() => String(Date.now()));
 
   /*
    * `useState(tmdbId)` solo lee el valor inicial una vez. Este componente se
@@ -71,6 +79,8 @@ export default function SelectorDeArte({
   const poner = useMutation({
     mutationFn: (url: string | null) => api.ponerArte(itemId, papel, url),
     onSuccess: () => {
+      setPrevia(null);
+      setVersion(String(Date.now()));
       setAviso(
         papel === 'poster'
           ? 'Carátula cambiada.'
@@ -94,6 +104,9 @@ export default function SelectorDeArte({
        */
       queryClient.invalidateQueries({ queryKey: ['item', itemId] });
       queryClient.invalidateQueries({ queryKey: ['home'] });
+      // El Scraper pinta su propia cabecera de la ficha: sin esto el cartel nuevo no se veia hasta recargar.
+      queryClient.invalidateQueries({ queryKey: ['scraper-titulo', itemId] });
+      queryClient.invalidateQueries({ queryKey: ['scraper-historial', itemId] });
     },
     onError: (e: Error) => setAviso(e.message),
   });
@@ -192,23 +205,49 @@ export default function SelectorDeArte({
       {elegido == null && <p className="text-[13px] text-mist-500">Busca primero la película para ver sus imágenes.</p>}
       {isLoading && <p className="text-[13px] text-mist-500">Pidiendo las imágenes a TMDb…</p>}
 
+      {previa && (
+        <div className="mb-4 rounded-2xl bg-black/30 p-4 ring-1 ring-white/10">
+          <div className="grid gap-4 md:grid-cols-[1fr_1fr]">
+            <div>
+              <div className="mb-1.5 text-[12px] font-medium text-mist-400">Actual</div>
+              <div className={`overflow-hidden rounded-xl bg-ink-800 ring-1 ring-white/10 ${forma}`}>
+                <img src={imgs[papel === 'clearlogo' ? 'logo' : papel](itemId, 800, version)} alt="" className={`h-full w-full ${papel === 'discart' || papel === 'clearlogo' ? 'object-contain p-3' : 'object-cover'}`} onError={(e) => (e.currentTarget.style.opacity = '0')} />
+              </div>
+            </div>
+            <div>
+              <div className="mb-1.5 text-[12px] font-medium text-accent">La que vas a poner</div>
+              <div className={`overflow-hidden rounded-xl bg-ink-800 ring-2 ring-accent/60 ${forma}`}>
+                <img src={grande(previa)} alt="" className={`h-full w-full ${papel === 'discart' || papel === 'clearlogo' ? 'object-contain p-3' : 'object-cover'}`} />
+              </div>
+            </div>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-3 text-[12.5px] text-mist-400">
+            <span>{previa.ancho > 0 ? `${previa.ancho}×${previa.alto} · ` : ''}{previa.idioma ? `idioma: ${previa.idioma}` : 'sin texto'}</span>
+            <button onClick={() => poner.mutate(previa.url)} disabled={poner.isPending} className="rounded-full bg-accent px-4 py-2 text-[13px] font-semibold text-ink-950 transition hover:brightness-110 disabled:opacity-50">
+              {poner.isPending ? 'Guardando…' : 'Usar esta imagen'}
+            </button>
+            <button onClick={() => setPrevia(null)} className="rounded-full bg-white/8 px-3.5 py-2 text-[12.5px] text-mist-300 hover:bg-white/14">Cancelar</button>
+          </div>
+        </div>
+      )}
+
       {lista.length > 0 && (
         <div
           className={`grid gap-2.5 ${
             papel === 'poster'
-              ? 'grid-cols-[repeat(auto-fill,minmax(96px,1fr))]'
+              ? 'grid-cols-[repeat(auto-fill,minmax(170px,1fr))]'
               : papel === 'discart'
-              ? 'grid-cols-[repeat(auto-fill,minmax(120px,1fr))]'
-              : 'grid-cols-[repeat(auto-fill,minmax(170px,1fr))]'
+              ? 'grid-cols-[repeat(auto-fill,minmax(200px,1fr))]'
+              : 'grid-cols-[repeat(auto-fill,minmax(300px,1fr))]'
           }`}
         >
           {lista.slice(0, 40).map((img) => (
             <button
               key={img.url}
-              onClick={() => poner.mutate(img.url)}
+              onClick={() => setPrevia(img)}
               disabled={poner.isPending}
               title={`${img.ancho > 0 ? `${img.ancho}×${img.alto} · ` : ''}${img.idioma || 'sin texto'}`}
-              className={`group relative overflow-hidden rounded-lg bg-ink-800 ring-1 ring-white/10 transition-all hover:ring-white/40 disabled:opacity-50 ${forma}`}
+              className={`group relative overflow-hidden rounded-lg bg-ink-800 ring-1 transition-all hover:ring-white/40 disabled:opacity-50 ${previa?.url === img.url ? 'ring-2 ring-accent' : 'ring-white/10'} ${forma}`}
             >
               <img
                 src={img.vista}
