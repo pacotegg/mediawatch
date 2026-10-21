@@ -109,12 +109,17 @@ function withProgress(rows: any[], userId: number | null) {
   });
 }
 
-/** Filtro del control parental sobre la tabla de títulos con alias `alias` (por defecto `i`). */
+/**
+ * Filtro que se aplica a TODA consulta de titulos para clientes, sobre la tabla con alias `alias` (por defecto `i`):
+ *  - SIEMPRE excluye lo de las carpetas de ENTRADA del scraper (no son biblioteca: solo las ve el scraper);
+ *  - y, para un perfil infantil, el control parental.
+ */
 export function clausulaRating(user: any, alias = 'i'): { sql: string; params: string[] } {
+  const fuera = `${alias}.library_id NOT IN (SELECT id FROM libraries WHERE entrada = 1)`;
   const ratings = user?.kid_ratings;
-  if (!Array.isArray(ratings) || ratings.length === 0) return { sql: '', params: [] };
+  if (!Array.isArray(ratings) || ratings.length === 0) return { sql: fuera, params: [] };
   const placeholders = ratings.map(() => '?').join(',');
-  return { sql: `rating_categoria(${alias}.mpaa, ${alias}.library_id) IN (${placeholders})`, params: ratings };
+  return { sql: `${fuera} AND rating_categoria(${alias}.mpaa, ${alias}.library_id) IN (${placeholders})`, params: ratings };
 }
 
 function nextEpisode(showId: number, userId: number | null) {
@@ -148,7 +153,8 @@ export default async function libraryRoutes(app: FastifyInstance) {
   app.get('/api/libraries', async () => {
     return db
       .prepare(`SELECT l.id, l.name, l.kind, COUNT(i.id) AS count
-                FROM libraries l LEFT JOIN items i ON i.library_id = l.id
+                FROM libraries l LEFT JOIN items_biblioteca i ON i.library_id = l.id
+                WHERE l.entrada = 0
                 GROUP BY l.id ORDER BY l.id`)
       .all();
   });
@@ -157,7 +163,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
     const { library } = req.query as { library?: string };
     return db
       .prepare(`SELECT g.id, g.name, COUNT(*) AS count
-                FROM item_genres ig JOIN genres g ON g.id = ig.genre_id JOIN items i ON i.id = ig.item_id
+                FROM item_genres ig JOIN genres g ON g.id = ig.genre_id JOIN items_biblioteca i ON i.id = ig.item_id
                 WHERE (? IS NULL OR i.library_id = ?)
                 GROUP BY g.id HAVING count > 2 ORDER BY count DESC`)
       .all(library ?? null, library ?? null);
@@ -167,7 +173,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
     const { library } = req.query as { library?: string };
     const libId = library ? Number(library) : null;
     const rows = db
-      .prepare(`SELECT studio FROM items WHERE studio IS NOT NULL AND studio != '' ${libId ? 'AND library_id = ?' : ''}`)
+      .prepare(`SELECT studio FROM items_biblioteca WHERE studio IS NOT NULL AND studio != '' ${libId ? 'AND library_id = ?' : ''}`)
       .all(...(libId ? [libId] : [])) as { studio: string }[];
     const counts: Record<string, number> = {};
     for (const r of rows) {
@@ -186,7 +192,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
     const libId = library ? Number(library) : null;
     return db
       .prepare(`SELECT p.id, p.name, p.thumb, COUNT(*) AS count
-                FROM item_people ip JOIN people p ON p.id = ip.person_id JOIN items i ON i.id = ip.item_id
+                FROM item_people ip JOIN people p ON p.id = ip.person_id JOIN items_biblioteca i ON i.id = ip.item_id
                 WHERE (? IS NULL OR i.library_id = ?)
                 GROUP BY p.id HAVING count >= 2 ORDER BY count DESC, p.name ASC LIMIT 50`)
       .all(libId, libId);
@@ -236,15 +242,15 @@ export default async function libraryRoutes(app: FastifyInstance) {
       params.push(...cr.params);
     }
     where.push(`(i.kind != 'movie' OR NOT EXISTS (
-      SELECT 1 FROM items i2 WHERE i2.kind = 'movie' AND i2.tmdb_id IS NOT NULL AND i2.tmdb_id = i.tmdb_id AND i2.id < i.id
+      SELECT 1 FROM items_biblioteca i2 WHERE i2.kind = 'movie' AND i2.tmdb_id IS NOT NULL AND i2.tmdb_id = i.tmdb_id AND i2.id < i.id
     ))`);
     const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
     const rows = db
-      .prepare(`SELECT ${ITEM_FIELDS} FROM items i JOIN libraries l ON l.id = i.library_id ${clause}
+      .prepare(`SELECT ${ITEM_FIELDS} FROM items_biblioteca i JOIN libraries l ON l.id = i.library_id ${clause}
                 ORDER BY ${order} LIMIT ? OFFSET ?`)
       .all(...params, limit, offset);
-    const total = (db.prepare(`SELECT COUNT(*) AS n FROM items i ${clause}`).get(...params) as { n: number }).n;
+    const total = (db.prepare(`SELECT COUNT(*) AS n FROM items_biblioteca i ${clause}`).get(...params) as { n: number }).n;
     return { total, items: withProgress(rows, user?.id ?? null) };
   });
 
@@ -259,7 +265,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
     const library = Number((req.query as { library?: string }).library);
     if (!library) return { total: 0, letras: [] };
     const filas = db
-      .prepare(`SELECT COALESCE(i.sort_title, i.title) AS k FROM items i WHERE i.library_id = ? ORDER BY ${SORTS.title}`)
+      .prepare(`SELECT COALESCE(i.sort_title, i.title) AS k FROM items_biblioteca i WHERE i.library_id = ? ORDER BY ${SORTS.title}`)
       .all(library) as { k: string }[];
     return { total: filas.length, letras: letrasDe(filas.map((f) => f.k)) };
   });
@@ -275,7 +281,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
                   i.clearlogo IS NOT NULL AS has_logo, i.landscape IS NOT NULL AS has_landscape,
                   i.discart IS NOT NULL AS has_discart,
                   (SELECT COUNT(*) FROM extras WHERE item_id = i.id) AS extras_count
-                FROM items i JOIN libraries l ON l.id = i.library_id WHERE i.id = ? ${crClause}`)
+                FROM items_biblioteca i JOIN libraries l ON l.id = i.library_id WHERE i.id = ? ${crClause}`)
       .get(id, ...cr.params) as any;
     if (!item) return reply.code(404).send({ error: 'No encontrado' });
 
@@ -387,13 +393,13 @@ export default async function libraryRoutes(app: FastifyInstance) {
     let versions: any[] = [];
     if (item.kind === 'movie') {
       const siblingItems = item.tmdb_id
-        ? (db.prepare("SELECT id, folder, title FROM items WHERE kind = 'movie' AND tmdb_id = ?").all(item.tmdb_id) as any[])
+        ? (db.prepare("SELECT id, folder, title FROM items_biblioteca WHERE kind = 'movie' AND tmdb_id = ?").all(item.tmdb_id) as any[])
         : [{ id: item.id, folder: '', title: item.title }];
       const siblingIds = siblingItems.map((s) => s.id);
       const sibPlaceholders = siblingIds.map(() => '?').join(',');
       const siblingFiles = db
         .prepare(`SELECT f.id, f.item_id, f.path, f.size, f.container, f.duration, f.video_codec, f.width, f.height, f.hdr, i.folder
-                  FROM media_files f JOIN items i ON i.id = f.item_id
+                  FROM media_files f JOIN items_biblioteca i ON i.id = f.item_id
                   WHERE f.item_id IN (${sibPlaceholders})`)
         .all(...siblingIds) as any[];
 
@@ -440,7 +446,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
       collectionItems: item.collection
         ? withProgress(
             db
-              .prepare(`SELECT ${ITEM_FIELDS} FROM items i JOIN libraries l ON l.id = i.library_id
+              .prepare(`SELECT ${ITEM_FIELDS} FROM items_biblioteca i JOIN libraries l ON l.id = i.library_id
                         WHERE i.collection = ? ${crClause}
                         ORDER BY COALESCE(i.premiered, printf('%04d-06-30', i.year)), i.title`)
               .all(item.collection, ...cr.params),
@@ -452,10 +458,10 @@ export default async function libraryRoutes(app: FastifyInstance) {
       // lo comparte media biblioteca), asi que se ordena por cuantos.
       similar: db
         .prepare(`SELECT ${ITEM_FIELDS}, COUNT(*) AS en_comun
-                    FROM items i JOIN libraries l ON l.id = i.library_id
+                    FROM items_biblioteca i JOIN libraries l ON l.id = i.library_id
                     JOIN item_genres a ON a.item_id = i.id
                     JOIN item_genres b ON b.genre_id = a.genre_id AND b.item_id = ?
-                   WHERE i.id != ? AND i.kind = (SELECT kind FROM items WHERE id = ?) ${crClause}
+                   WHERE i.id != ? AND i.kind = (SELECT kind FROM items_biblioteca WHERE id = ?) ${crClause}
                    GROUP BY i.id
                    ORDER BY en_comun DESC, i.rating DESC NULLS LAST LIMIT 20`)
         .all(id, id, id, ...cr.params),
@@ -479,7 +485,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
          */
         .prepare(`SELECT ${ITEM_FIELDS}, p.position, p.duration AS progressDuration, p.episode_id,
                          MAX(p.updated_at) AS updated_at
-                  FROM progress p JOIN items i ON i.id = p.item_id JOIN libraries l ON l.id = i.library_id
+                  FROM progress p JOIN items_biblioteca i ON i.id = p.item_id JOIN libraries l ON l.id = i.library_id
                   WHERE p.user_id = ? AND p.watched = 0 AND p.position > 60
                     AND (p.duration IS NULL OR p.position < p.duration * 0.95)
                     ${crAnd}
@@ -501,10 +507,10 @@ export default async function libraryRoutes(app: FastifyInstance) {
      * su primer capítulo, de hace veinte años en muchas— y nunca fechas por
      * venir, que las hay en las fichas y encabezarían la fila sin poder verse.
      */
-    const noDupMovie = `AND (i.kind != 'movie' OR NOT EXISTS (SELECT 1 FROM items i2 WHERE i2.kind = 'movie' AND i2.tmdb_id IS NOT NULL AND i2.tmdb_id = i.tmdb_id AND i2.id < i.id))`;
+    const noDupMovie = `AND (i.kind != 'movie' OR NOT EXISTS (SELECT 1 FROM items_biblioteca i2 WHERE i2.kind = 'movie' AND i2.tmdb_id IS NOT NULL AND i2.tmdb_id = i.tmdb_id AND i2.id < i.id))`;
 
     const estrenos = db
-      .prepare(`SELECT ${ITEM_FIELDS} FROM items i JOIN libraries l ON l.id = i.library_id
+      .prepare(`SELECT ${ITEM_FIELDS} FROM items_biblioteca i JOIN libraries l ON l.id = i.library_id
                 WHERE i.kind = 'movie' AND i.premiered IS NOT NULL AND i.premiered != ''
                   AND i.premiered <= date('now') ${crAnd} ${noDupMovie}
                 ORDER BY i.premiered DESC LIMIT 24`)
@@ -514,21 +520,21 @@ export default async function libraryRoutes(app: FastifyInstance) {
     }
 
     const recent = db
-      .prepare(`SELECT ${ITEM_FIELDS} FROM items i JOIN libraries l ON l.id = i.library_id
+      .prepare(`SELECT ${ITEM_FIELDS} FROM items_biblioteca i JOIN libraries l ON l.id = i.library_id
                 WHERE i.added_at IS NOT NULL AND l.name <> 'Monólogos' ${crAnd} ${noDupMovie} ORDER BY i.added_at DESC LIMIT 24`)
       .all(...cr.params);
     rows.push({ key: 'recent', title: 'Añadido recientemente', kind: 'poster', items: withProgress(recent, user?.id ?? null) });
 
     for (const lib of db.prepare('SELECT id, name, kind FROM libraries ORDER BY id').all() as any[]) {
       const items = db
-        .prepare(`SELECT ${ITEM_FIELDS} FROM items i JOIN libraries l ON l.id = i.library_id
+        .prepare(`SELECT ${ITEM_FIELDS} FROM items_biblioteca i JOIN libraries l ON l.id = i.library_id
                   WHERE i.library_id = ? ${crAnd} ${noDupMovie} ORDER BY RANDOM() LIMIT 20`)
         .all(lib.id, ...cr.params);
       if (items.length) rows.push({ key: `lib-${lib.id}`, title: lib.name, kind: 'poster', items: withProgress(items, user?.id ?? null) });
     }
 
     const hero = db
-      .prepare(`SELECT ${ITEM_FIELDS}, i.plot FROM items i JOIN libraries l ON l.id = i.library_id
+      .prepare(`SELECT ${ITEM_FIELDS}, i.plot FROM items_biblioteca i JOIN libraries l ON l.id = i.library_id
                 WHERE i.fanart IS NOT NULL AND i.clearlogo IS NOT NULL AND i.rating >= 7.4
                   AND (i.tmdb_id IS NOT NULL OR i.trailer IS NOT NULL) ${crAnd}
                 ORDER BY RANDOM() LIMIT 6`)
@@ -543,16 +549,16 @@ export default async function libraryRoutes(app: FastifyInstance) {
     const crAnd = cr.sql ? `AND ${cr.sql}` : '';
     const rows = db
       .prepare(`SELECT i.collection AS name, COUNT(*) AS count, MIN(i.year) AS first_year, MAX(i.year) AS last_year,
-                  COALESCE((SELECT ca.item_id FROM coleccion_arte ca JOIN items x ON x.id = ca.item_id
+                  COALESCE((SELECT ca.item_id FROM coleccion_arte ca JOIN items_biblioteca x ON x.id = ca.item_id
                               WHERE ca.coleccion = i.collection AND x.collection = i.collection AND x.poster IS NOT NULL),
-                           (SELECT id FROM items WHERE collection = i.collection AND poster IS NOT NULL ORDER BY year LIMIT 1)) AS poster_id,
-                  COALESCE((SELECT ca.item_id FROM coleccion_arte ca JOIN items x ON x.id = ca.item_id
+                           (SELECT id FROM items_biblioteca WHERE collection = i.collection AND poster IS NOT NULL ORDER BY year LIMIT 1)) AS poster_id,
+                  COALESCE((SELECT ca.item_id FROM coleccion_arte ca JOIN items_biblioteca x ON x.id = ca.item_id
                               WHERE ca.coleccion = i.collection AND x.collection = i.collection AND x.fanart IS NOT NULL),
-                           (SELECT id FROM items WHERE collection = i.collection AND fanart IS NOT NULL ORDER BY rating DESC LIMIT 1)) AS fanart_id,
+                           (SELECT id FROM items_biblioteca WHERE collection = i.collection AND fanart IS NOT NULL ORDER BY rating DESC LIMIT 1)) AS fanart_id,
                   EXISTS(SELECT 1 FROM coleccion_imagen ci WHERE ci.coleccion = i.collection AND ci.ruta != '') AS imagen_propia,
                   EXISTS(SELECT 1 FROM coleccion_imagen ci WHERE ci.coleccion = i.collection AND ci.fondo IS NOT NULL AND ci.fondo != '') AS fondo_propio,
                   (SELECT ci.actualizado FROM coleccion_imagen ci WHERE ci.coleccion = i.collection) AS arte_actualizado
-                FROM items i
+                FROM items_biblioteca i
                 WHERE i.collection IS NOT NULL AND i.collection != '' ${crAnd}
                 GROUP BY i.collection HAVING count > 1
                 ORDER BY count DESC, name`)
@@ -561,7 +567,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
     if (user) {
       const watched = db
         .prepare(`SELECT i.collection AS name, COUNT(*) AS seen
-                  FROM progress p JOIN items i ON i.id = p.item_id
+                  FROM progress p JOIN items_biblioteca i ON i.id = p.item_id
                   WHERE p.user_id = ? AND p.watched = 1 AND i.collection IS NOT NULL ${crAnd}
                   GROUP BY i.collection`)
         .all(user.id, ...cr.params) as { name: string; seen: number }[];
@@ -577,7 +583,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
     const cr = clausulaRating(user);
     const crAnd = cr.sql ? `AND ${cr.sql}` : '';
     const items = db
-      .prepare(`SELECT ${ITEM_FIELDS} FROM items i JOIN libraries l ON l.id = i.library_id
+      .prepare(`SELECT ${ITEM_FIELDS} FROM items_biblioteca i JOIN libraries l ON l.id = i.library_id
                 WHERE i.collection = ? ${crAnd}
                 ORDER BY COALESCE(i.premiered, printf('%04d-06-30', i.year)), i.title`)
       .all(name, ...cr.params);
@@ -695,7 +701,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
       return { name, arteItemId: null, arteImagen: false };
     }
 
-    const item = db.prepare('SELECT id, poster, fanart FROM items WHERE id = ? AND collection = ?').get(itemId, name) as
+    const item = db.prepare('SELECT id, poster, fanart FROM items_biblioteca WHERE id = ? AND collection = ?').get(itemId, name) as
       | { id: number; poster: string | null; fanart: string | null }
       | undefined;
     if (!item) return reply.code(400).send({ error: 'Esa película no está en la saga' });
@@ -778,7 +784,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
     }
 
     let items = db
-      .prepare(`SELECT ${ITEM_FIELDS} FROM items i JOIN libraries l ON l.id = i.library_id
+      .prepare(`SELECT ${ITEM_FIELDS} FROM items_biblioteca i JOIN libraries l ON l.id = i.library_id
                 WHERE (${tokenClauses.join(' AND ')}) ${crAnd}
                 ORDER BY (i.search_title LIKE ?) DESC, (i.search_title LIKE ?) DESC, i.rating DESC NULLS LAST LIMIT 40`)
       .all(...tokenParams, ...cr.params, `${limpio}%`, term) as any[];
@@ -786,7 +792,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
     // Si no hay coincidencias exactas por tokens y hay al menos 3 letras, tolerancia a erratas (fuzzy)
     if (items.length === 0 && limpio.length >= 3) {
       const crItemAnd = cr.sql ? `WHERE ${cr.sql}` : '';
-      const todos = db.prepare(`SELECT ${ITEM_FIELDS}, i.search_title, i.original_title, i.collection FROM items i JOIN libraries l ON l.id = i.library_id ${crItemAnd}`).all(...cr.params) as any[];
+      const todos = db.prepare(`SELECT ${ITEM_FIELDS}, i.search_title, i.original_title, i.collection FROM items_biblioteca i JOIN libraries l ON l.id = i.library_id ${crItemAnd}`).all(...cr.params) as any[];
       const lev = (a: string, b: string): number => {
         if (a === b) return 0;
         if (!a.length) return b.length;
@@ -821,7 +827,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
 
     const people = db
       .prepare(`SELECT p.id, p.name, p.thumb IS NOT NULL AS has_thumb, COUNT(ip.item_id) AS count
-                FROM people p JOIN item_people ip ON ip.person_id = p.id
+                FROM people p JOIN item_people ip ON ip.person_id = p.id JOIN items_biblioteca ib ON ib.id = ip.item_id
                 WHERE p.search_name LIKE ? OR LOWER(p.name) LIKE ? GROUP BY p.id ORDER BY count DESC LIMIT 12`)
       .all(term, crudo);
     return { items, people };
@@ -868,6 +874,10 @@ export default async function libraryRoutes(app: FastifyInstance) {
     const id = Number((req.params as { id: string }).id);
     const person = db.prepare('SELECT id, name, thumb IS NOT NULL AS has_thumb FROM people WHERE id = ?').get(id);
     if (!person) return reply.code(404).send({ error: 'No encontrado' });
+    // Alguien que solo sale en titulos de una carpeta de entrada del scraper no existe para los clientes.
+    const enBiblioteca = db.prepare('SELECT 1 FROM item_people ip JOIN items_biblioteca i ON i.id = ip.item_id WHERE ip.person_id = ? LIMIT 1').get(id);
+    const enEntrada = db.prepare('SELECT 1 FROM item_people ip JOIN items i ON i.id = ip.item_id JOIN libraries l ON l.id = i.library_id WHERE ip.person_id = ? AND l.entrada = 1 LIMIT 1').get(id);
+    if (!enBiblioteca && enEntrada) return reply.code(404).send({ error: 'No encontrado' });
 
     // Se pide a TMDb la primera vez y queda guardada; si falla, la ficha sigue
     // mostrándose con lo que hay en local.
@@ -881,7 +891,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
     }
     const rawCredits = db
       .prepare(`SELECT ${ITEM_FIELDS}, ip.character, ip.role FROM item_people ip
-                JOIN items i ON i.id = ip.item_id JOIN libraries l ON l.id = i.library_id
+                JOIN items_biblioteca i ON i.id = ip.item_id JOIN libraries l ON l.id = i.library_id
                 WHERE ip.person_id = ? ${crPersona.sql ? `AND ${crPersona.sql}` : ''} ORDER BY i.year DESC`)
       .all(id, ...crPersona.params) as Array<{ id: number; [key: string]: any }>;
     const seen = new Set<number>();
@@ -899,7 +909,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
       const width = (req.query as { w?: string }).w ? Number((req.query as { w: string }).w) : undefined;
       // Un perfil infantil no recibe las imágenes de un título que no puede ver, aunque sepa su número.
       if (!itemPermitido(id, currentUser(req))) return reply.code(404).send({ error: 'Sin imagen' });
-      const row = db.prepare(`SELECT ${column} AS src FROM items WHERE id = ?`).get(id) as { src: string | null } | undefined;
+      const row = db.prepare(`SELECT ${column} AS src FROM items_biblioteca WHERE id = ?`).get(id) as { src: string | null } | undefined;
       return serveArt(reply, row?.src ?? null, width);
     });
   }
@@ -1071,7 +1081,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
     const id = Number((req.params as { id: string }).id);
     const width = (req.query as { w?: string }).w ? Number((req.query as { w: string }).w) : undefined;
     if (!itemPermitido(id, currentUser(req))) return reply.code(404).send({ error: 'Sin imagen' });
-    const row = db.prepare('SELECT studio FROM items WHERE id = ?').get(id) as { studio: string | null } | undefined;
+    const row = db.prepare('SELECT studio FROM items_biblioteca WHERE id = ?').get(id) as { studio: string | null } | undefined;
     if (!row?.studio) return reply.code(404).send({ error: 'Sin estudio' });
     const logo = await resolverLogoEstudio(row.studio);
     if (!logo) return reply.code(404).send({ error: 'Sin logo para este estudio' });
@@ -1083,7 +1093,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
   app.get('/api/items/:id/studio-logos', async (req, reply) => {
     const id = Number((req.params as { id: string }).id);
     if (!itemPermitido(id, currentUser(req))) return reply.code(404).send({ error: 'No encontrado' });
-    const row = db.prepare('SELECT studio FROM items WHERE id = ?').get(id) as { studio: string | null } | undefined;
+    const row = db.prepare('SELECT studio FROM items_biblioteca WHERE id = ?').get(id) as { studio: string | null } | undefined;
     if (!row?.studio) return { estudios: [] };
     const ls = await logosDeEstudios(row.studio);
     // `estudios` lo usan la tele y la web; `logos` (con la proporción de cada uno) lo usa Android.
@@ -1164,7 +1174,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'Falta el título o la posición, o no son números válidos' });
     }
     if (episodeId != null && !Number.isInteger(episodeId)) return reply.code(400).send({ error: 'Episodio no válido' });
-    if (!db.prepare('SELECT 1 FROM items WHERE id = ?').get(itemId)) return reply.code(400).send({ error: 'Ese título no existe' });
+    if (!db.prepare('SELECT 1 FROM items_biblioteca WHERE id = ?').get(itemId)) return reply.code(400).send({ error: 'Ese título no existe' });
     /*
      * Solo cuenta como «alguien viendo algo» lo que avanza. Una sesión en pausa sigue mandando este informe cada 15 s con la
      * misma posición, y refrescar la señal con él daba «viendo» para siempre: una película en pausa 4 horas bloqueó el arte de
@@ -1224,7 +1234,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
   app.post('/api/items/:id/watched', async (req, reply) => {
     const user = requireUser(req);
     const id = Number((req.params as { id: string }).id);
-    if (!Number.isInteger(id) || !db.prepare('SELECT 1 FROM items WHERE id = ?').get(id)) return reply.code(404).send({ error: 'Título no encontrado' });
+    if (!Number.isInteger(id) || !db.prepare('SELECT 1 FROM items_biblioteca WHERE id = ?').get(id)) return reply.code(404).send({ error: 'Título no encontrado' });
     const { watched, episodeId } = (req.body ?? {}) as { watched: boolean; episodeId?: number | null };
     if (episodeId != null && !Number.isInteger(episodeId)) return reply.code(400).send({ error: 'Episodio no válido' });
     guardarProgreso(user.id, id, episodeId ?? null, 0, null, watched ? 1 : 0);
@@ -1237,7 +1247,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
     const libraryId = Number((req.params as { id: string }).id);
     return db
       .prepare(`SELECT ${ITEM_FIELDS}, p.position, p.duration AS progressDuration, p.episode_id, MAX(p.updated_at) AS updated_at
-                  FROM progress p JOIN items i ON i.id = p.item_id JOIN libraries l ON l.id = i.library_id
+                  FROM progress p JOIN items_biblioteca i ON i.id = p.item_id JOIN libraries l ON l.id = i.library_id
                  WHERE p.user_id = ? AND i.library_id = ? AND p.watched = 0 AND p.position > 60
                    AND (p.duration IS NULL OR p.position < p.duration * 0.95)
                  GROUP BY i.id ORDER BY updated_at DESC LIMIT 30`)
@@ -1265,7 +1275,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
     const id = Number((req.params as { id: string }).id);
     const { confirmar } = (req.body ?? {}) as { confirmar?: string };
 
-    const item = db.prepare('SELECT id, title, folder, kind FROM items WHERE id = ?').get(id) as
+    const item = db.prepare('SELECT id, title, folder, kind FROM items_biblioteca WHERE id = ?').get(id) as
       | { id: number; title: string; folder: string; kind: string }
       | undefined;
     if (!item) return reply.code(404).send({ error: 'No encontrado' });
@@ -1288,7 +1298,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
       return r === carpeta.toLowerCase() || r.startsWith(carpeta.toLowerCase() + sep);
     };
     const ajenos =
-      (db.prepare('SELECT folder AS ruta FROM items WHERE id != ?').all(id) as { ruta: string }[]).filter((o) => dentroDe(o.ruta)).length +
+      (db.prepare('SELECT folder AS ruta FROM items_biblioteca WHERE id != ?').all(id) as { ruta: string }[]).filter((o) => dentroDe(o.ruta)).length +
       (db.prepare(`SELECT f.path AS ruta FROM media_files f LEFT JOIN episodes e ON e.id = f.episode_id
                     WHERE COALESCE(f.item_id, e.show_id) != ?`).all(id) as { ruta: string }[]).filter((o) => dentroDe(o.ruta)).length;
     if (ajenos > 0) {
@@ -1314,7 +1324,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
     // Con control parental: lo que ya estuviera en favoritos antes de restringir el perfil no se enseña.
     const cr = clausulaRating(user);
     return db
-      .prepare(`SELECT ${ITEM_FIELDS} FROM favorites fv JOIN items i ON i.id = fv.item_id
+      .prepare(`SELECT ${ITEM_FIELDS} FROM favorites fv JOIN items_biblioteca i ON i.id = fv.item_id
                 JOIN libraries l ON l.id = i.library_id WHERE fv.user_id = ? ${cr.sql ? `AND ${cr.sql}` : ''} ORDER BY fv.added_at DESC`)
       .all(user.id, ...cr.params);
   });
@@ -1322,7 +1332,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
   app.post('/api/items/:id/favorite', async (req, reply) => {
     const user = requireUser(req);
     const id = Number((req.params as { id: string }).id);
-    if (!Number.isInteger(id) || !db.prepare('SELECT 1 FROM items WHERE id = ?').get(id)) return reply.code(404).send({ error: 'Título no encontrado' });
+    if (!Number.isInteger(id) || !db.prepare('SELECT 1 FROM items_biblioteca WHERE id = ?').get(id)) return reply.code(404).send({ error: 'Título no encontrado' });
     const { favorite } = (req.body ?? {}) as { favorite: boolean };
     if (favorite) {
       db.prepare('INSERT OR IGNORE INTO favorites (user_id, item_id, added_at) VALUES (?,?,?)').run(user.id, id, new Date().toISOString());
@@ -1356,7 +1366,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
       });
     }
     const id = Number((req.params as { id: string }).id);
-    const row = db.prepare('SELECT folder, kind, tvdb_id, tmdb_id FROM items WHERE id = ?').get(id) as
+    const row = db.prepare('SELECT folder, kind, tvdb_id, tmdb_id FROM items_biblioteca WHERE id = ?').get(id) as
       | { folder: string; kind: string; tvdb_id: number | null; tmdb_id: number | null }
       | undefined;
     if (!itemPermitido(id, currentUser(req))) return reply.code(404).send({ error: 'Sin tema' });

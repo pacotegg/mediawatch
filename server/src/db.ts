@@ -540,6 +540,15 @@ anadirColumna('items', 'arte_fijado', 'TEXT');
 anadirColumna('items', 'arte_actualizado', 'TEXT');
 // 'tmdb' = metadatos puestos desde TMDb (no vienen de un .nfo): el escaneo no los pisa.
 anadirColumna('items', 'meta_origen', 'TEXT');
+// 1 = carpeta de ENTRADA del scraper (no es una biblioteca): sus titulos solo los ve el scraper, nunca los clientes.
+anadirColumna('libraries', 'entrada', 'INTEGER NOT NULL DEFAULT 0');
+// Lo que SI es biblioteca (sin las carpetas de entrada del scraper): para estadisticas y recuentos.
+db.exec(`
+CREATE VIEW IF NOT EXISTS items_biblioteca AS SELECT * FROM items WHERE library_id NOT IN (SELECT id FROM libraries WHERE entrada = 1);
+CREATE VIEW IF NOT EXISTS episodes_biblioteca AS SELECT * FROM episodes WHERE show_id IN (SELECT id FROM items_biblioteca);
+CREATE VIEW IF NOT EXISTS media_files_biblioteca AS SELECT * FROM media_files
+  WHERE item_id IN (SELECT id FROM items_biblioteca) OR episode_id IN (SELECT id FROM episodes_biblioteca);
+`);
 // Fecha del ultimo intento de identificar el titulo por su nombre (para no repetirlo cada dia).
 anadirColumna('items', 'ident_intento', 'TEXT');
 anadirColumna('episodes', 'meta_origen', 'TEXT');

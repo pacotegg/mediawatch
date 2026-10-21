@@ -539,7 +539,7 @@ app.post('/api/scan', async (req, reply) => {
   void (async () => {
     try {
       const ruta = (req.body as { ruta?: string } | null)?.ruta;
-      const solo = ruta && config.libraries.some((l) => l.path === ruta) ? [ruta] : undefined;
+      const solo = ruta && [...config.libraries, ...config.fuentesScraper].some((l) => l.path === ruta) ? [ruta] : undefined;
       const results = await scanAllEnWorker(undefined, solo);
       console.log('Escaneo completado:', results.map((r) => `${r.name}=${r.count}`).join(' '));
     } catch (err) {
@@ -587,11 +587,11 @@ app.get('/api/app/version', async () => ultimaVersionApp() ?? { version: null, n
 app.get('/api/stats', async () => {
   return db
     .prepare(`SELECT
-      (SELECT COUNT(*) FROM items WHERE kind='movie') AS movies,
-      (SELECT COUNT(*) FROM items WHERE kind='show')  AS shows,
-      (SELECT COUNT(*) FROM episodes)                 AS episodes,
-      (SELECT COUNT(*) FROM users)                    AS users,
-      (SELECT SUM(size) FROM media_files)             AS bytes`)
+      (SELECT COUNT(*) FROM items_biblioteca WHERE kind='movie') AS movies,
+      (SELECT COUNT(*) FROM items_biblioteca WHERE kind='show')  AS shows,
+      (SELECT COUNT(*) FROM episodes_biblioteca)                 AS episodes,
+      (SELECT COUNT(*) FROM users)                               AS users,
+      (SELECT SUM(size) FROM media_files_biblioteca)             AS bytes`)
     .get();
 });
 

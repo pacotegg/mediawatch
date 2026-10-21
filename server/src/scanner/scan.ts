@@ -328,7 +328,7 @@ const stmt = {
                         thumb=COALESCE(people.thumb, excluded.thumb) RETURNING id`),
   linkPerson: db.prepare('INSERT OR REPLACE INTO item_people (item_id, person_id, role, character, ord) VALUES (?,?,?,?,?)'),
   clearPeople: db.prepare('DELETE FROM item_people WHERE item_id = ?'),
-  library: db.prepare('INSERT INTO libraries (name, path, kind) VALUES (?,?,?) ON CONFLICT(path) DO UPDATE SET name=excluded.name, kind=excluded.kind RETURNING id'),
+  library: db.prepare('INSERT INTO libraries (name, path, kind, entrada) VALUES (?,?,?,?) ON CONFLICT(path) DO UPDATE SET name=excluded.name, kind=excluded.kind, entrada=excluded.entrada RETURNING id'),
   staleItems: db.prepare('SELECT id FROM items WHERE library_id = ? AND scanned_at < ?'),
   deleteItem: db.prepare('DELETE FROM items WHERE id = ?'),
 };
@@ -818,10 +818,13 @@ export type OpcionesEscaneo = {
   solo?: string[];
 };
 
+/** Una fuente del scraper (carpeta de entrada) frente a una biblioteca de verdad. */
+export const esFuenteDelScraper = (lib: LibraryConfig) => config.fuentesScraper.some((f) => f.path === lib.path);
+
 export async function scanLibrary(lib: LibraryConfig, onProgress?: (p: ScanProgress) => void, opciones: OpcionesEscaneo = {}): Promise<number> {
   const forzar = Boolean(opciones.forzar);
   const now = new Date().toISOString();
-  const row = stmt.library.get(lib.name, lib.path, lib.kind) as { id: number };
+  const row = stmt.library.get(lib.name, lib.path, lib.kind, esFuenteDelScraper(lib) ? 1 : 0) as { id: number };
   // Si la raíz no se puede leer (E: desconectado, USB reconectándose) no hay nada que escanear ni que retirar: parar.
   // `listDir` devuelve [] ante cualquier error, y una biblioteca «vacía» se llevaba por delante todos sus títulos.
   try {
@@ -916,7 +919,8 @@ export async function scanAll(onProgress?: (p: ScanProgress) => void, opciones: 
   const results: { name: string; count: number }[] = [];
   const fallos: string[] = [];
   // Una biblioteca que no responde no impide escanear las demás; el fallo se avisa al final.
-  const fuentes = opciones.solo ? config.libraries.filter((l) => opciones.solo!.includes(l.path)) : config.libraries.filter((l) => l.activa !== false);
+  // El escaneo general solo toca las bibliotecas; las fuentes del scraper solo se escanean cuando se piden por su ruta.
+  const fuentes = opciones.solo ? [...config.libraries, ...config.fuentesScraper].filter((l) => opciones.solo!.includes(l.path)) : config.libraries.filter((l) => l.activa !== false);
   for (const lib of fuentes) {
     try {
       results.push({ name: lib.name, count: await scanLibrary(lib, onProgress, opciones) });

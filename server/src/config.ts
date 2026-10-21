@@ -35,6 +35,11 @@ export type AppConfig = {
   port: number;
   host: string;
   libraries: LibraryConfig[];
+  /**
+   * Carpetas de ENTRADA del scraper (p. ej. C:\\Videos): de aqui se elige que escrapear y luego se envia a una biblioteca. NO son bibliotecas:
+   * el escaneo general no las toca y los clientes no ven lo que hay en ellas.
+   */
+  fuentesScraper: LibraryConfig[];
   transcodeDir: string;
   ffmpeg: string;
   ffprobe: string;
@@ -135,6 +140,7 @@ function defaultConfig(): AppConfig {
     host: '0.0.0.0',
     publicUrl: '',
     libraries: PORTABLE ? [] : DEFAULT_LIBRARIES.filter((l) => existsSync(l.path)),
+    fuentesScraper: [],
     transcodeDir: env('MEDIAWATCH_TMP_DIR') || (!PORTABLE && existsSync('G:\\') ? 'G:\\TvWatchTmp' : join(DATA_DIR, 'transcode')),
     ffmpeg: localizar('ffmpeg'),
     ffprobe: localizar('ffprobe'),

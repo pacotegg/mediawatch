@@ -17,14 +17,14 @@ export function biblioteca() {
     `SELECT COUNT(*) AS titulos,
             SUM(kind = 'movie') AS peliculas,
             SUM(kind = 'show')  AS series
-       FROM items`,
+       FROM items_biblioteca`,
   );
 
   const ficheros = uno<{ ficheros: number; bytes: number; segundos: number }>(
-    `SELECT COUNT(*) AS ficheros, COALESCE(SUM(size),0) AS bytes, COALESCE(SUM(duration),0) AS segundos FROM media_files`,
+    `SELECT COUNT(*) AS ficheros, COALESCE(SUM(size),0) AS bytes, COALESCE(SUM(duration),0) AS segundos FROM media_files_biblioteca`,
   );
 
-  const episodios = uno<{ n: number }>('SELECT COUNT(*) AS n FROM episodes').n;
+  const episodios = uno<{ n: number }>('SELECT COUNT(*) AS n FROM episodes_biblioteca').n;
 
   // Medido: 2,1 ms. Da el pego de consulta cara —un OR con subconsulta dentro
   // del JOIN—, pero con nueve bibliotecas SQLite la resuelve sin despeinarse.
@@ -34,6 +34,7 @@ export function biblioteca() {
        FROM libraries l
        LEFT JOIN items i ON i.library_id = l.id
        LEFT JOIN media_files f ON f.item_id = i.id OR f.episode_id IN (SELECT id FROM episodes WHERE show_id = i.id)
+      WHERE l.entrada = 0
       GROUP BY l.id ORDER BY bytes DESC`,
   );
 
@@ -45,16 +46,16 @@ export function biblioteca() {
               WHEN height IS NULL THEN 'Sin analizar'
               ELSE 'SD' END AS etiqueta,
             COUNT(*) AS n, COALESCE(SUM(size),0) AS bytes
-       FROM media_files GROUP BY etiqueta ORDER BY n DESC`,
+       FROM media_files_biblioteca GROUP BY etiqueta ORDER BY n DESC`,
   );
 
   const codec = varios<{ etiqueta: string; n: number; bytes: number }>(
     `SELECT COALESCE(UPPER(video_codec), 'Sin analizar') AS etiqueta, COUNT(*) AS n, COALESCE(SUM(size),0) AS bytes
-       FROM media_files GROUP BY etiqueta ORDER BY n DESC`,
+       FROM media_files_biblioteca GROUP BY etiqueta ORDER BY n DESC`,
   );
 
   const hdr = varios<{ etiqueta: string; n: number }>(
-    `SELECT COALESCE(hdr, 'SDR') AS etiqueta, COUNT(*) AS n FROM media_files GROUP BY etiqueta ORDER BY n DESC`,
+    `SELECT COALESCE(hdr, 'SDR') AS etiqueta, COUNT(*) AS n FROM media_files_biblioteca GROUP BY etiqueta ORDER BY n DESC`,
   );
 
   const audio = varios<{ etiqueta: string; n: number }>(
@@ -145,30 +146,30 @@ export function actividad(dias = 30) {
 export function salud() {
   // Un título sin sinopsis ni portada es el que luego no se encuentra al buscar.
   const sinMetadatos = uno<{ n: number }>(
-    'SELECT COUNT(*) AS n FROM items WHERE poster IS NULL OR plot IS NULL OR fanart IS NULL',
+    'SELECT COUNT(*) AS n FROM items_biblioteca WHERE poster IS NULL OR plot IS NULL OR fanart IS NULL',
   ).n;
 
-  const sinAnalizar = uno<{ n: number }>('SELECT COUNT(*) AS n FROM media_files WHERE probed IS NULL OR probed = 0 OR duration IS NULL').n;
+  const sinAnalizar = uno<{ n: number }>('SELECT COUNT(*) AS n FROM media_files_biblioteca WHERE probed IS NULL OR probed = 0 OR duration IS NULL').n;
 
   const sinSubtitulos = uno<{ n: number }>(
-    'SELECT COUNT(*) AS n FROM media_files f WHERE NOT EXISTS (SELECT 1 FROM sub_tracks s WHERE s.file_id = f.id)',
+    'SELECT COUNT(*) AS n FROM media_files_biblioteca f WHERE NOT EXISTS (SELECT 1 FROM sub_tracks s WHERE s.file_id = f.id)',
   ).n;
 
   const sinFichero = varios<{ id: number; titulo: string; tipo: string }>(
-    `SELECT i.id, i.title AS titulo, i.kind AS tipo FROM items i
+    `SELECT i.id, i.title AS titulo, i.kind AS tipo FROM items_biblioteca i
       WHERE NOT EXISTS (SELECT 1 FROM media_files f WHERE f.item_id = i.id)
         AND NOT EXISTS (SELECT 1 FROM episodes e WHERE e.show_id = i.id)
       ORDER BY i.title LIMIT 40`,
   );
 
   const episodiosSinFichero = uno<{ n: number }>(
-    'SELECT COUNT(*) AS n FROM episodes e WHERE NOT EXISTS (SELECT 1 FROM media_files f WHERE f.episode_id = e.id)',
+    'SELECT COUNT(*) AS n FROM episodes_biblioteca e WHERE NOT EXISTS (SELECT 1 FROM media_files f WHERE f.episode_id = e.id)',
   ).n;
 
   // Mismo título y año dos veces suele ser una copia vieja que quedó suelta.
   const duplicados = varios<{ titulo: string; anio: number | null; n: number }>(
     `SELECT title AS titulo, year AS anio, COUNT(*) AS n
-       FROM items GROUP BY search_title, year HAVING n > 1 ORDER BY n DESC, title LIMIT 25`,
+       FROM items_biblioteca GROUP BY search_title, year HAVING n > 1 ORDER BY n DESC, title LIMIT 25`,
   );
 
   return { sinMetadatos, sinAnalizar, sinSubtitulos, sinFichero, episodiosSinFichero, duplicados };
