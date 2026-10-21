@@ -89,6 +89,26 @@ export function verificarRecodificado(orig: Pick<MediaInfo, 'duration' | 'video'
   return null;
 }
 
+/**
+ * ¿El rechazo es de PISTAS o de duración del contenedor, y no del vídeo? Es lo que arregla el rescate: encode.ps1 reordena,
+ * deduplica o descarta pistas de audio y subtítulos (20/10/2026: 12 de 18 rechazos), pero el vídeo recodificado está bien.
+ * El rechazo tras un rescate lleva el prefijo «tras rescate:» y NO coincide, para no reintentar en bucle.
+ */
+export function esFalloDePistas(motivo: string): boolean {
+  return /^(subtítulo perdido|pista de audio perdida|subtítulos en otro orden|audio en otro orden|duración \d)/.test(motivo);
+}
+
+/**
+ * mkvmerge para el rescate: el VÍDEO recodificado de la salida del pipeline + TODO lo demás del original sin tocar (audios,
+ * subtítulos, capítulos, adjuntos y etiquetas), en su orden y con sus marcas. `desfaseVideoMs` compensa que el vídeo de la
+ * salida empiece en otro instante que el del original (el audio y los subtítulos conservan los tiempos del original).
+ */
+export function argumentosRescate(salidaPipeline: string, original: string, destino: string, desfaseVideoMs = 0, pistaVideo = 0): string[] {
+  return ['-o', destino, '--no-audio', '--no-subtitles', '--no-attachments', '--no-chapters', '--no-global-tags',
+    ...(desfaseVideoMs ? ['--sync', `${pistaVideo}:${Math.round(desfaseVideoMs)}`] : []),
+    salidaPipeline, '--no-video', original];
+}
+
 /** El registro de un encode de encode.ps1 acaba en «Conversion failed!» cuando ffmpeg lo abandona (p. ej. QSV -40 con ciertos MP4). */
 export function encodeFallido(registro: string): boolean {
   return /Conversion failed!/.test(registro);

@@ -32,7 +32,7 @@ import { config, DATA_DIR } from '../config.ts';
 import { db } from '../db.ts';
 import { hayAlguienViendo } from '../media/ocupado.ts';
 import { mediaInfo, probeFile, type MediaInfo } from '../media/probe.ts';
-import { encodeFallido, retirarOriginal, verificarRecodificado } from '../media/recodificar.ts';
+import { argumentosRescate, encodeFallido, esFalloDePistas, retirarOriginal, verificarRecodificado } from '../media/recodificar.ts';
 
 const args = process.argv.slice(2);
 const aplicar = args.includes('--aplicar');
@@ -56,7 +56,7 @@ const anotar = (o: object) => appendFileSync(REGISTRO, JSON.stringify({ cuando: 
 const hechos = new Set<string>();
 if (existsSync(REGISTRO)) {
   for (const l of readFileSync(REGISTRO, 'utf8').split('\n')) {
-    try { const o = JSON.parse(l); if (o.ruta && (o.resultado === 'sustituido' || o.resultado === 'rechazado' || o.resultado === 'fallido' || o.resultado === 'atascado')) hechos.add(o.ruta); } catch { /* línea a medias */ }
+    try { const o = JSON.parse(l); if (o.ruta && (o.resultado === 'sustituido' || (o.resultado === 'rechazado' && !esFalloDePistas(String(o.motivo ?? ''))) || o.resultado === 'fallido' || o.resultado === 'atascado')) hechos.add(o.ruta); } catch { /* línea a medias */ }
   }
 }
 
@@ -134,11 +134,45 @@ async function esperarSalida(id: number, desde: number): Promise<string | null |
   return null;
 }
 
+/** Instante en que empieza la pista de vídeo (s); 0 si no se puede leer. */
+async function inicioVideo(ruta: string): Promise<number> {
+  try {
+    const { stdout } = await promisify(execFile)(config.ffprobe, ['-v', 'error', '-select_streams', 'V:0', '-show_entries', 'stream=start_time', '-of', 'csv=p=0', ruta],
+      { timeout: 60_000, windowsHide: true });
+    const n = Number(stdout.trim().split(/\s+/)[0]);
+    return Number.isFinite(n) ? n : 0;
+  } catch { return 0; }
+}
+
+/*
+ * Rescate (20/10/2026): encode.ps1 deduplica, descarta o reordena pistas de audio y subtítulos, y 12 de 18 rechazos fueron por eso
+ * aunque el vídeo recodificado estaba bien. Se monta con mkvmerge el vídeo de la salida + TODAS las demás pistas del original
+ * (copiadas tal cual, en su orden y con sus marcas), y se vuelve a verificar. Devuelve la ruta del montaje o null si no se pudo.
+ */
+async function rescatar(f: Fila, salida: string): Promise<string | null> {
+  const destino = join(SALIDA, `mw${f.id}_rescate.mkv`);
+  const desfaseMs = ((await inicioVideo(f.path)) - (await inicioVideo(salida))) * 1000;
+  if (Math.abs(desfaseMs) > 2000) { console.log(`  rescate descartado: el vídeo de la salida empieza ${desfaseMs.toFixed(0)} ms desfasado`); return null; }
+  try {
+    await promisify(execFile)('C:\\Program Files\\MKVToolNix\\mkvmerge.exe', argumentosRescate(salida, f.path, destino, Math.abs(desfaseMs) >= 20 ? desfaseMs : 0),
+      { timeout: 3600_000, windowsHide: true, maxBuffer: 64 * 1024 * 1024 });
+  } catch (e) {
+    if ((e as { code?: number }).code !== 1) { console.log(`  rescate: mkvmerge falló (${String((e as Error).message).slice(0, 200)})`); try { unlinkSync(destino); } catch { /* no llegó a crearse */ } return null; }
+  }
+  return existsSync(destino) ? destino : null;
+}
+
 async function procesar(f: Fila) {
   while (hayAlguienViendo()) { console.log('  alguien está viendo algo: espero 2 min'); await espera(120_000); }
   const ext = extname(f.path);
   const orig = await probeFile(f.path);
   const vOrig = await duracionVideo(f.path);
+  // La base de datos puede ir por detrás del disco (otros trabajos sustituyen ficheros de E: sin reescanear): solo se recodifica lo que HOY es H.264.
+  if (!orig.video || orig.video.codec !== 'h264') {
+    anotar({ ruta: f.path, id: f.id, resultado: 'omitido', motivo: `ya no es H.264 (${orig.video?.codec ?? '?'})` });
+    console.log(`  omitido: el fichero ya no es H.264 (${orig.video?.codec ?? '?'}); la base de datos iba por detrás`);
+    return;
+  }
   const puesto = Date.now();
   copyFileSync(f.path, join(COLA, `mw${f.id}${ext}`));
   console.log(`  en cola: mw${f.id}${ext}`);
@@ -152,22 +186,34 @@ async function procesar(f: Fila) {
   if (!salida) { anotar({ ruta: f.path, id: f.id, resultado: 'atascado' }); console.log('  x no salió en 6 h'); return; }
   // La copia de la fuente es nuestra: fuera en cuanto el pipeline la ha usado, que son GB en C:.
   try { unlinkSync(join(EN_CURSO, `mw${f.id}${ext}`)); } catch { /* ya no estaba */ }
-  const nuevo = await probeFile(salida);
-  const tamNuevo = statSync(salida).size;
+  let salidaFinal = salida;
+  let nuevo = await probeFile(salida);
+  let tamNuevo = statSync(salida).size;
   const vNuevo = await duracionVideo(salida);
-  const fallo = verificarRecodificado(orig, nuevo, f.size, tamNuevo, vOrig, vNuevo);
+  let fallo = verificarRecodificado(orig, nuevo, f.size, tamNuevo, vOrig, vNuevo);
+  if (fallo && esFalloDePistas(fallo)) {
+    console.log(`  ${fallo}: pruebo el rescate (vídeo de la salida + pistas del original)`);
+    const rescate = await rescatar(f, salida);
+    if (rescate) {
+      const nuevo2 = await probeFile(rescate);
+      const tam2 = statSync(rescate).size;
+      const fallo2 = verificarRecodificado(orig, nuevo2, f.size, tam2, vOrig, vNuevo);
+      if (!fallo2) { unlinkSync(salida); salidaFinal = rescate; nuevo = nuevo2; tamNuevo = tam2; fallo = null; console.log('  rescate verificado'); }
+      else { unlinkSync(rescate); fallo = `tras rescate: ${fallo2}`; }
+    } else fallo = `tras rescate: ${fallo}`;
+  }
   const resumen = `${(f.size / 1e6).toFixed(0)} -> ${(tamNuevo / 1e6).toFixed(0)} MB; vídeo ${vOrig.toFixed(0)} -> ${vNuevo.toFixed(0)} s; audio ${[...idiomas(orig).audio]} -> ${[...idiomas(nuevo).audio]}; subs ${[...idiomas(orig).subs]} -> ${[...idiomas(nuevo).subs]}`;
   if (fallo) {
     anotar({ ruta: f.path, id: f.id, resultado: 'rechazado', motivo: fallo, resumen });
-    unlinkSync(salida);
+    unlinkSync(salidaFinal);
     console.log(`  x RECHAZADO (${fallo}); original intacto`);
     return;
   }
-  if (!aplicar) { anotar({ ruta: f.path, id: f.id, resultado: 'verificado', resumen }); unlinkSync(salida); console.log(`  ok verificado (${resumen}); sin --aplicar no se toca E:`); return; }
+  if (!aplicar) { anotar({ ruta: f.path, id: f.id, resultado: 'verificado', resumen }); unlinkSync(salidaFinal); console.log(`  ok verificado (${resumen}); sin --aplicar no se toca E:`); return; }
 
   const destino = join(dirname(f.path), basename(f.path, ext) + '.mkv');
   const temporal = destino + '.new';
-  copyFileSync(salida, temporal);
+  copyFileSync(salidaFinal, temporal);
   if (statSync(temporal).size !== tamNuevo) { unlinkSync(temporal); throw new Error('la copia a E: no cuadra en tamaño'); }
   // La fecha del fichero es la «fecha de alta» para el escáner cuando el NFO no la trae: el nuevo hereda la del original,
   // o cada recodificado saldría en «Añadido recientemente» (le pasó a los monólogos del lote de Gemini, 18/10).
@@ -175,7 +221,7 @@ async function procesar(f: Fila) {
   const retirado = retirarOriginal(f.path);
   try { renameSync(temporal, destino); } catch (e) { renameSync(retirado, f.path); throw e; }
   utimesSync(destino, new Date(), mtimeOrig);
-  unlinkSync(salida);
+  unlinkSync(salidaFinal);
   db.prepare('UPDATE media_files SET path = ?, size = ?, probed = 0 WHERE id = ?').run(destino, tamNuevo, f.id);
   await mediaInfo(f.id).catch(() => null);
   anotar({ ruta: f.path, id: f.id, resultado: 'sustituido', destino, retirado, resumen });

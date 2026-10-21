@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { argumentosHevc, encodeFallido, pistasQueFaltan, retirarOriginal, verificarRecodificado } from '../src/media/recodificar.ts';
+import { argumentosHevc, argumentosRescate, encodeFallido, esFalloDePistas, pistasQueFaltan, retirarOriginal, verificarRecodificado } from '../src/media/recodificar.ts';
 import { probeFile } from '../src/media/probe.ts';
 
 // En los ejecutores del CI no hay ffmpeg: sin él no se puede fabricar el vídeo de prueba.
@@ -111,4 +111,47 @@ test('encodeFallido reconoce el registro de un encode que ffmpeg abandono (20/10
   assert.equal(encodeFallido(malo), true);
   assert.equal(encodeFallido('frame= 100 fps=120\nvideo:52KiB audio:62KiB\n'), false);
   assert.equal(encodeFallido(''), false);
+});
+
+test('esFalloDePistas separa lo que arregla el rescate de lo que no', () => {
+  for (const m of ['subtítulo perdido: spa (2 -> 0)', 'pista de audio perdida: spa 2 canales (2 -> 1 pistas)', 'subtítulos en otro orden: spa,eng -> eng,spa', 'audio en otro orden: spa,eng -> eng,spa', 'duración 7010.0 -> 7130.0 s']) {
+    assert.equal(esFalloDePistas(m), true, m);
+  }
+  for (const m of ['duración del vídeo 7010.0 -> 7130.0 s', 'ahorra menos del 15 % (3037 -> 2603 MB)', 'la salida no es HEVC', 'resolución 1920x1080 -> 1280x720', 'tras rescate: subtítulo perdido: spa (2 -> 0)']) {
+    assert.equal(esFalloDePistas(m), false, m);
+  }
+});
+
+const hayMkvmerge = spawnSync('mkvmerge', ['--version'], { stdio: 'ignore' }).status === 0;
+/**
+ * El 20/10/2026 encode.ps1 devolvió ficheros sin subtítulos o con un audio menos (12 de 18 rechazos). El rescate pone el vídeo
+ * recodificado sobre las pistas del original: con la salida del pipeline sola, `verificarRecodificado` rechaza; con el rescate, pasa.
+ */
+test('argumentosRescate devuelve las pistas del original con el vídeo de la salida', { skip: (!hayFfmpeg || !hayMkvmerge) && 'faltan ffmpeg o mkvmerge' }, async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'mw-rescate-'));
+  try {
+    const srt = join(dir, 'sub.srt');
+    writeFileSync(srt, '1\n00:00:00,500 --> 00:00:01,500\nHola\n');
+    const original = join(dir, 'original.mkv');
+    assert.equal(spawnSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=duration=3:size=160x90:rate=10', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=3',
+      '-f', 'lavfi', '-i', 'sine=frequency=660:duration=3', '-i', srt, '-map', '0', '-map', '1', '-map', '2', '-map', '3', '-c:v', 'libx264', '-c:a', 'aac', '-c:s', 'srt',
+      '-metadata:s:a:0', 'language=spa', '-metadata:s:a:1', 'language=eng', '-metadata:s:s:0', 'language=spa', original]).status, 0);
+    // «salida del pipeline»: vídeo HEVC-como-x265 no hace falta; basta con que sea otro vídeo y que le falten un audio y el subtítulo
+    const pipeline = join(dir, 'pipeline.mkv');
+    assert.equal(spawnSync('ffmpeg', ['-v', 'error', '-y', '-i', original, '-map', '0:v', '-map', '0:a:1', '-c:v', 'libx265', '-c:a', 'copy', pipeline]).status, 0);
+    const orig = await probeFile(original);
+    const incompleto = await probeFile(pipeline);
+    assert.match(verificarRecodificado(orig, incompleto, 1e9, 1e6, 3, 3) ?? '', /perdida|perdido/);
+
+    const rescatado = join(dir, 'rescatado.mkv');
+    const r = spawnSync('mkvmerge', argumentosRescate(pipeline, original, rescatado));
+    assert.ok(r.status === 0 || r.status === 1, String(r.stdout));
+    const nuevo = await probeFile(rescatado);
+    assert.deepEqual(nuevo.audio.map((a) => a.language), ['spa', 'eng']);
+    assert.equal(nuevo.subs.length, 1);
+    assert.equal(nuevo.video?.codec, 'hevc');
+    assert.equal(verificarRecodificado(orig, nuevo, 1e9, 1e6, 3, 3), null);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
