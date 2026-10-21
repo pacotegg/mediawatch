@@ -17,6 +17,7 @@ import { existsSync, mkdirSync, readdirSync, renameSync, statSync } from 'node:f
 import { basename, dirname, extname, join, sep } from 'node:path';
 import { db } from '../db.ts';
 import { hayAlguienViendo } from '../media/ocupado.ts';
+import { mediaInfo } from '../media/probe.ts';
 import { escaneoEnCurso } from './scan.ts';
 import { carpetaDePelicula, carpetaDeSerie, carpetaDeTemporada, codecDeAudio, ficheroDeEpisodio, ficheroDePelicula, formatoDeVideo } from './nombres-tmm.ts';
 
@@ -42,6 +43,17 @@ function itemDe(itemId: number): Item {
   const it = db.prepare('SELECT id, kind, title, year, folder FROM items WHERE id = ?').get(itemId) as Item | undefined;
   if (!it) throw new OrganizarError('El título ya no existe');
   return it;
+}
+
+/**
+ * El servidor solo mide un video (ffprobe) la primera vez que alguien lo reproduce, asi que un titulo recien escrapeado esta SIN MEDIR. El
+ * nombre lleva el formato y el audio del propio fichero: se miden aqui, al planificar (~1 s por fichero), en vez de pedir que se espere.
+ */
+export async function asegurarMedidos(itemId: number): Promise<void> {
+  const it = db.prepare('SELECT kind FROM items WHERE id = ?').get(itemId) as { kind: string } | undefined;
+  if (it?.kind !== 'movie') return; // el nombre de un episodio no lleva formato ni audio
+  const sin = db.prepare('SELECT id FROM media_files WHERE item_id = ? AND (probed = 0 OR width IS NULL)').all(itemId) as { id: number }[];
+  for (const f of sin) await mediaInfo(f.id).catch(() => { /* si no se puede medir, el plan dara su motivo */ });
 }
 
 export function planOrganizar(itemId: number, opciones: { edicion?: string | null } = {}): PlanOrganizar {

@@ -16,7 +16,7 @@ import { config, type LibraryConfig } from '../config.ts';
 import { applyProposal, search, TmdbError, type Proposal } from './tmdb.ts';
 import { coincidenciaSegura } from './identificar.ts';
 import { rellenarEpisodios } from './episodios-tmdb.ts';
-import { aplicarOrganizar, planOrganizar, type PlanOrganizar } from './organizar.ts';
+import { aplicarOrganizar, asegurarMedidos, planOrganizar, type PlanOrganizar } from './organizar.ts';
 import { aplicarArteCarpeta } from './arte-carpeta.ts';
 import { escaneoEnCurso, JUNK, MIN_VIDEO_BYTES, scanAllEnWorker, SKIP_DIRS, VIDEO_EXT } from './scan.ts';
 import { aplicarNfo } from './nfo-escribir.ts';
@@ -217,6 +217,12 @@ export function planesDeLote(ids: number[]): PlanDeLote[] {
   });
 }
 
+/** El plan del lote, midiendo antes (ffprobe) lo que aun no se haya medido. */
+export async function planesDeLoteMedidos(ids: number[]): Promise<PlanDeLote[]> {
+  for (const id of ids) await asegurarMedidos(id);
+  return planesDeLote(ids);
+}
+
 export const renombrado: EstadoLote<ResultadoItem> = vacio();
 
 /** Ejecuta los renombrados de la lista. `alAvanzar` recibe el progreso (para pruebas); el estado compartido se actualiza solo. */
@@ -227,6 +233,7 @@ export async function ejecutarLote(ids: number[], opciones: { copiarArte: boolea
     for (const id of ids) {
       const titulo = (db.prepare('SELECT title FROM items WHERE id = ?').get(id) as { title: string } | undefined)?.title ?? String(id);
       try {
+        await asegurarMedidos(id);
         const { movidos } = aplicarOrganizar(id);
         const detalles: string[] = [];
         if (opciones.copiarArte) {

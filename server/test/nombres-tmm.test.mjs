@@ -36,6 +36,9 @@ test('codec de audio como en los nombres reales', () => {
   assert.equal(codecDeAudio('eac3', 'EAC3 Atmos 5.1'), 'EAC3⁄Atmos');
   assert.equal(codecDeAudio('truehd', 'TrueHD Atmos 7.1'), 'TrueHD Atmos');
   assert.equal(codecDeAudio('dts'), 'DTS');
+  // Como lo guarda el servidor al medir un Atmos (probe.ts): el codec lleva el sufijo.
+  assert.equal(codecDeAudio('eac3_ddp_atmos'), 'EAC3⁄Atmos');
+  assert.equal(codecDeAudio('truehd_atmos'), 'TrueHD Atmos');
   assert.equal(codecDeAudio(null), null);
 });
 

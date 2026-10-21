@@ -51,9 +51,11 @@ export function formatoDeVideo(width: number | null | undefined, height: number 
 
 /** El codec de la primera pista de audio como lo escribia tMM: `AC3`, `EAC3`, `EAC3⁄Atmos`, `TrueHD Atmos`... */
 export function codecDeAudio(codec: string | null | undefined, titulo?: string | null): string | null {
-  const c = (codec ?? '').toLowerCase();
-  if (!c) return null;
-  const atmos = /atmos/i.test(titulo ?? '');
+  const bruto = (codec ?? '').toLowerCase();
+  if (!bruto) return null;
+  // El servidor guarda un Atmos medido como `eac3_ddp_atmos` / `truehd_atmos` (probe.ts): se separa el codec base de la marca.
+  const c = bruto.replace(/_atmos$/, '').replace(/_ddp$/, '');
+  const atmos = /atmos/i.test(titulo ?? '') || /atmos/.test(bruto);
   const base = ({ ac3: 'AC3', eac3: 'EAC3', aac: 'AAC', mp3: 'MP3', flac: 'FLAC', opus: 'Opus', vorbis: 'Vorbis', truehd: 'TrueHD', mlp: 'TrueHD' } as Record<string, string>)[c]
     ?? (c.startsWith('dts') ? 'DTS' : c.startsWith('pcm') ? 'PCM' : c.toUpperCase());
   if (!atmos) return base;

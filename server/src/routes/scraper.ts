@@ -6,8 +6,8 @@ import { detallesDe, search, tmdbGet, TmdbError, type Proposal } from '../scanne
 import { interpretarBusqueda } from '../scanner/buscar-id.ts';
 import { aplicarArteCarpeta, ArteCarpetaError, planArteCarpeta } from '../scanner/arte-carpeta.ts';
 import { basename, dirname, relative } from 'node:path';
-import { aplicacion, aplicarDatos, buscarNuevos, busqueda, ejecutarLote, fuentesConPendientes, listarCandidatos, planesDeLote, renombrado, sinRegistrar, totalPendientes } from '../scanner/lote.ts';
-import { aplicarOrganizar, OrganizarError, planOrganizar } from '../scanner/organizar.ts';
+import { aplicacion, aplicarDatos, buscarNuevos, busqueda, ejecutarLote, fuentesConPendientes, listarCandidatos, planesDeLoteMedidos, renombrado, sinRegistrar, totalPendientes } from '../scanner/lote.ts';
+import { aplicarOrganizar, asegurarMedidos, OrganizarError, planOrganizar } from '../scanner/organizar.ts';
 import { aplicarNfo, NfoError, planNfo } from '../scanner/nfo-escribir.ts';
 import { envio, enviarLote, EnvioError, planEnvio } from '../scanner/enviar.ts';
 import { carpetaDePelicula, carpetaDeSerie } from '../scanner/nombres-tmm.ts';
@@ -140,6 +140,7 @@ export default async function scraperRoutes(app: FastifyInstance) {
     const id = Number((req.params as { id: string }).id);
     const edicion = (req.query as { edicion?: string }).edicion?.trim() || null;
     try {
+      await asegurarMedidos(id);
       const plan = planOrganizar(id, { edicion });
       return { pasos: plan.pasos.map((p) => ({ tipo: p.tipo, desde: ver(id, p.desde), final: ver(id, p.final) })) };
     } catch (err) {
@@ -152,6 +153,7 @@ export default async function scraperRoutes(app: FastifyInstance) {
     const body = (req.body ?? {}) as { confirmar?: boolean; edicion?: string };
     if (body.confirmar !== true) return reply.code(400).send({ error: 'Falta la confirmación expresa' });
     try {
+      await asegurarMedidos(Number((req.params as { id: string }).id));
       return aplicarOrganizar(Number((req.params as { id: string }).id), { edicion: body.edicion?.trim() || null });
     } catch (err) {
       return reply.code(err instanceof OrganizarError ? 400 : 500).send({ error: (err as Error).message });
@@ -206,7 +208,7 @@ export default async function scraperRoutes(app: FastifyInstance) {
     if (!admin(req, reply)) return;
     const ids = String((req.query as { ids?: string }).ids ?? '').split(',').map(Number).filter((n) => Number.isInteger(n) && n > 0).slice(0, 200);
     return {
-      planes: planesDeLote(ids).map((p) => ({ itemId: p.itemId, titulo: p.titulo, error: p.error ?? null, pasos: p.pasos.map((s) => ({ tipo: s.tipo, desde: ver(p.itemId, s.desde), final: ver(p.itemId, s.final) })) })),
+      planes: (await planesDeLoteMedidos(ids)).map((p) => ({ itemId: p.itemId, titulo: p.titulo, error: p.error ?? null, pasos: p.pasos.map((s) => ({ tipo: s.tipo, desde: ver(p.itemId, s.desde), final: ver(p.itemId, s.final) })) })),
     };
   });
 
