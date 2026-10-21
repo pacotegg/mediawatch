@@ -1562,8 +1562,8 @@ private fun ModalColeccionistaAndroid(
       flotar.snapTo(0f)
     }
   }
-  // El disco no gira (se pidió que se quede quieto): solo se asienta con un leve zoom.
-  val rotacionDisco = 0f
+  // El disco solo da el cuarto de vuelta de asiento al abrir y se queda recto; sin giro en reposo.
+  val rotacionDisco = -75f * (1f - asiento.value)
   val escalaDisco = 0.94f + 0.06f * asiento.value
   val escalaZoom = 0.82f + (centrado.value * 0.18f)
   // 0 -> 1 -> 0 en cada ciclo, arrancando y parando sin velocidad: mismo perfil que la clave 0/50/100 % de la tele.

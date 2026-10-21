@@ -318,8 +318,8 @@ export default function ModalColeccionista({ item, es4k = false, onClose }: Moda
               <div
                 className="relative w-[230px] h-[230px] sm:w-[280px] sm:h-[280px] md:w-[320px] md:h-[320px] rounded-full overflow-hidden shadow-[0_12px_35px_rgba(0,0,0,0.9)]"
                 style={{
-                  // El disco no gira: solo se asienta (un leve zoom) cuando la tapa lo deja a la vista.
-                  transform: abierto ? 'scale(1)' : 'scale(0.94)',
+                  // Quieto mientras la tapa lo cubre; al abrirse se asienta con un cuarto de vuelta (0,65 s) y se queda recto, en su posición natural. Sin giro en reposo.
+                  transform: abierto ? 'rotate(0deg) scale(1)' : 'rotate(-75deg) scale(0.94)',
                   transition: 'transform 1.1s cubic-bezier(0.22, 1, 0.36, 1) 0.65s',
                 }}
               >

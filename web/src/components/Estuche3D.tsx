@@ -111,12 +111,13 @@ export default function Estuche3D({
         {/* ============================================================== */}
         {/* DISCO (DISCART): SALE POR LA DERECHA, DETRÁS DE LA CAJA, SIN GIRAR  */}
         {/* ============================================================== */}
-        {/* Va siempre por detrás de la caja (translateZ negativo): al salir se desliza y se queda a la derecha, sin pasar por encima de la carátula. */}
+        {/* Va siempre por detrás de la caja (translateZ negativo): al salir se desliza girando media vuelta, termina recto a la derecha y no pasa por encima de la carátula. */}
         {/* La imagen ya lleva su aro y su agujero; no se le pone nada encima (una capa de color lo teñía de lila) y la sombra sigue su silueta (drop-shadow). */}
         <div
           className="absolute top-[57px] right-1 h-[210px] w-[210px] pointer-events-none"
           style={{
-            transform: extraido ? 'translateX(var(--sal-disco)) translateZ(-4px)' : 'translateX(0px) translateZ(-4px)',
+            // Sale girando media vuelta mientras se desliza y termina recto (rotate 0). Siempre por detrás de la caja (translateZ negativo).
+            transform: extraido ? 'translateX(var(--sal-disco)) rotate(0deg) translateZ(-4px)' : 'translateX(0px) rotate(-180deg) translateZ(-4px)',
             transition: 'transform 0.55s cubic-bezier(0.2, 0, 0, 1)',
             willChange: 'transform',
             zIndex: 1,

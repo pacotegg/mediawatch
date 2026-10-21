@@ -1254,9 +1254,9 @@ body.rend-rapido .lamina img {
 }
 
 @keyframes asentarDiscoColeccionista {
-  /* Sin vueltas: solo se asienta (un leve zoom) al asomar. */
-  from { transform: scale(0.96); }
-  to { transform: scale(1); }
+  /* Giro de asiento al asomar: frena y se queda recto en su posición natural. Sin giro en reposo. */
+  from { transform: rotate(-720deg) scale(0.96); }
+  to { transform: rotate(0deg) scale(1); }
 }
 
 /*
