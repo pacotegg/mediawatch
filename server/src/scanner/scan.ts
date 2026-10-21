@@ -16,10 +16,10 @@ function idNumerico(id?: string): number | null {
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
-const VIDEO_EXT = new Set(['.mkv', '.mp4', '.avi', '.m4v', '.mov', '.wmv', '.mpg', '.mpeg', '.ts', '.webm']);
+export const VIDEO_EXT = new Set(['.mkv', '.mp4', '.avi', '.m4v', '.mov', '.wmv', '.mpg', '.mpeg', '.ts', '.webm']);
 const SUB_EXT = new Set(['.srt', '.ass', '.ssa', '.vtt', '.sub']);
-const SKIP_DIRS = new Set(['.actors', 'extrathumbs', 'extras', 'extra', 'featurettes', 'behind the scenes', 'trailers', '.trickplay']);
-const JUNK = /\b(trailer|sample|muestra|teaser)\b/i;
+export const SKIP_DIRS = new Set(['.actors', 'extrathumbs', 'extras', 'extra', 'featurettes', 'behind the scenes', 'trailers', '.trickplay']);
+export const JUNK = /\b(trailer|sample|muestra|teaser)\b/i;
 /*
  * Suelo para no tragarse basura. Estaba en 20 MB y se estaba comiendo contenido
  * de verdad: los 4 «Specials» cortos de Hotel Fawlty (10-17 MB) y dos monologos.
@@ -28,7 +28,7 @@ const JUNK = /\b(trailer|sample|muestra|teaser)\b/i;
  * que no mira el tamano-. En carpetas de CONTENIDO solo caian esos 6, ninguno
  * basura. Con 5 MB entran los seis y no aparece nada mas.
  */
-const MIN_VIDEO_BYTES = 5 * 1024 * 1024;
+export const MIN_VIDEO_BYTES = 5 * 1024 * 1024;
 
 const LANG_MAP: Record<string, string> = {
   es: 'spa', esp: 'spa', spanish: 'spa', castellano: 'spa', español: 'spa', spa: 'spa',

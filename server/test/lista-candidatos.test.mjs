@@ -5,7 +5,7 @@
  */
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { closeSync, ftruncateSync, mkdirSync, mkdtempSync, openSync, rmSync } from 'node:fs';
+import { closeSync, ftruncateSync, mkdirSync, mkdtempSync, openSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -56,4 +56,35 @@ test('por texto', () => {
 test('las fuentes con su numero de pendientes (para el selector)', () => {
   const f = fuentesConPendientes();
   assert.deepEqual(f.map((x) => [x.name, x.pendientes]), [['Entrada', 2], ['Peliculas', 1]]);
+});
+
+/* ---- lo que hay en el DISCO de la fuente y el servidor aun no ha analizado (como tMM: aparecen los ficheros al elegir la carpeta) ---- */
+
+test('sinRegistrar: carpetas con video y videos sueltos que aun no estan en la base; ignora lo que no es video, lo pequeno y las carpetas _', async () => {
+  const { sinRegistrar } = await import('../src/scanner/lote.ts');
+  video(join(entrada, 'Hellraiser (1987)_Tereyalber', 'Hellraiser.mkv'));
+  video(join(entrada, 'Suelta.2026.mkv'));
+  mkdirSync(join(entrada, 'Carpeta sin videos'), { recursive: true });
+  writeFileSync(join(entrada, 'Carpeta sin videos', 'notas.txt'), 'x');
+  mkdirSync(join(entrada, '_retirados', 'x'), { recursive: true });
+  video(join(entrada, '_retirados', 'x', 'viejo.mkv'));
+  writeFileSync(join(entrada, 'Diminuta.mkv'), 'poco');
+  const r = sinRegistrar(entrada);
+  assert.deepEqual(r.map((x) => [x.carpeta, x.tipo]).sort(), [['Hellraiser (1987)_Tereyalber', 'carpeta'], ['Suelta.2026.mkv', 'video']]);
+  // lo ya registrado no sale
+  assert.ok(!r.some((x) => /Nueva/.test(x.carpeta)));
+});
+
+test('registrarRutas: escanea la fuente y devuelve los ids de lo marcado (carpeta y video suelto)', async () => {
+  const { registrarRutas } = await import('../src/scanner/lote.ts');
+  const { scanAll } = await import('../src/scanner/scan.ts');
+  const ids = await registrarRutas([join(entrada, 'Hellraiser (1987)_Tereyalber'), join(entrada, 'Suelta.2026.mkv')], (_p, solo) => scanAll(undefined, { solo }));
+  assert.equal(ids.length, 2);
+  const filas = db.prepare(`SELECT folder FROM items WHERE id IN (${ids.join(',')}) ORDER BY folder`).all().map((r) => r.folder);
+  assert.deepEqual(filas, [join(entrada, 'Hellraiser (1987)_Tereyalber'), join(entrada, 'Suelta.2026.mkv')]);
+});
+
+test('registrarRutas rechaza una ruta que no es de ninguna fuente configurada', async () => {
+  const { registrarRutas } = await import('../src/scanner/lote.ts');
+  await assert.rejects(() => registrarRutas([join(base, 'fuera', 'algo')]), /no pertenece a ninguna fuente/i);
 });

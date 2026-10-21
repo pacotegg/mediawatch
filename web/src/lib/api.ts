@@ -426,8 +426,8 @@ export const api = {
   scraperOrganizarAplicar: (id: number, edicion: string) => post<{ movidos: number }>('/api/scraper/organizar/' + id, { confirmar: true, edicion }),
   scraperNuevos: () => request<ScraperNuevos>('/api/scraper/nuevos'),
   scraperNuevosLista: (p: { biblioteca: string; q: string; todos: boolean }) =>
-    request<{ items: Candidato[]; fuentes: { name: string; ruta: string; kind: 'movie' | 'show'; pendientes: number }[] }>('/api/scraper/nuevos/lista?' + new URLSearchParams({ biblioteca: p.biblioteca, q: p.q, todos: p.todos ? '1' : '0' })),
-  scraperNuevosBuscar: (ids: number[]) => post<{ started: boolean }>('/api/scraper/nuevos/buscar', { ids }),
+    request<{ items: Candidato[]; sinRegistrar: { carpeta: string; ruta: string; tipo: 'carpeta' | 'video'; biblioteca: string }[]; fuentes: { name: string; ruta: string; kind: 'movie' | 'show'; pendientes: number }[] }>('/api/scraper/nuevos/lista?' + new URLSearchParams({ biblioteca: p.biblioteca, q: p.q, todos: p.todos ? '1' : '0' })),
+  scraperNuevosBuscar: (ids: number[], rutas: string[]) => post<{ started: boolean }>('/api/scraper/nuevos/buscar', { ids, rutas }),
   scraperNuevosAplicar: (items: { itemId: number; tmdbId: number }[]) => post<{ started: boolean }>('/api/scraper/nuevos/aplicar', { items }),
   scraperLotePlan: (ids: number[]) => request<{ planes: { itemId: number; titulo: string; error: string | null; pasos: { tipo: 'fichero' | 'carpeta'; desde: string; final: string }[] }[] }>('/api/scraper/lote/plan?ids=' + ids.join(',')),
   scraperLoteAplicar: (ids: number[], copiarArte: boolean, escribirNfo: boolean) => post<{ started: boolean }>('/api/scraper/lote/aplicar', { ids, copiarArte, escribirNfo, confirmar: true }),
@@ -843,7 +843,7 @@ export type Candidate = {
 };
 
 export type Candidato = { id: number; titulo: string; anio: number | null; kind: 'movie' | 'show'; carpeta: string; biblioteca: string; ruta: string; alta: string | null; escrapeado: boolean };
-export type EstadoTrabajo<T> = { corriendo: boolean; hechos: number; total: number; error: string | null; resultados: T[]; terminado: string | null };
+export type EstadoTrabajo<T> = { fase?: string; corriendo: boolean; hechos: number; total: number; error: string | null; resultados: T[]; terminado: string | null };
 export type FilaNueva = {
   itemId: number; titulo: string; anio: number | null; kind: 'movie' | 'show'; biblioteca: string;
   propuesta: Proposal | null; alternativas: Proposal[]; confianza: 'segura' | 'probable' | 'dudosa' | 'ninguna';

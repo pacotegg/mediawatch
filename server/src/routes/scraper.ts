@@ -6,7 +6,7 @@ import { detallesDe, search, tmdbGet, TmdbError, type Proposal } from '../scanne
 import { interpretarBusqueda } from '../scanner/buscar-id.ts';
 import { aplicarArteCarpeta, ArteCarpetaError, planArteCarpeta } from '../scanner/arte-carpeta.ts';
 import { basename, dirname, relative } from 'node:path';
-import { aplicacion, aplicarDatos, buscarNuevos, busqueda, ejecutarLote, fuentesConPendientes, listarCandidatos, planesDeLote, renombrado, totalPendientes } from '../scanner/lote.ts';
+import { aplicacion, aplicarDatos, buscarNuevos, busqueda, ejecutarLote, fuentesConPendientes, listarCandidatos, planesDeLote, renombrado, sinRegistrar, totalPendientes } from '../scanner/lote.ts';
 import { aplicarOrganizar, OrganizarError, planOrganizar } from '../scanner/organizar.ts';
 import { aplicarNfo, NfoError, planNfo } from '../scanner/nfo-escribir.ts';
 import { envio, enviarLote, EnvioError, planEnvio } from '../scanner/enviar.ts';
@@ -174,16 +174,22 @@ export default async function scraperRoutes(app: FastifyInstance) {
   app.get('/api/scraper/nuevos/lista', async (req, reply) => {
     if (!admin(req, reply)) return;
     const q = req.query as { biblioteca?: string; q?: string; todos?: string };
-    return { items: listarCandidatos({ biblioteca: q.biblioteca || undefined, q: q.q, todos: q.todos === '1' }), fuentes: fuentesConPendientes() };
+    const texto = (q.q ?? '').trim().toLowerCase();
+    // Lo que hay en el disco de la fuente (o de todas) y el servidor aun no ha analizado: videos sueltos y carpetas con video, para marcarlos.
+    const rutas = q.biblioteca ? [q.biblioteca] : config.libraries.map((l) => l.path);
+    const nuevos = rutas.flatMap((r) => sinRegistrar(r)).filter((n) => !texto || n.carpeta.toLowerCase().includes(texto));
+    return { items: listarCandidatos({ biblioteca: q.biblioteca || undefined, q: q.q, todos: q.todos === '1' }), sinRegistrar: nuevos, fuentes: fuentesConPendientes() };
   });
 
   app.post('/api/scraper/nuevos/buscar', async (req, reply) => {
     if (!admin(req, reply)) return;
     if (busqueda.corriendo) return reply.code(409).send({ error: 'Ya hay una búsqueda en curso' });
-    const ids = ((req.body as { ids?: number[] } | null)?.ids ?? []).filter((n) => Number.isInteger(n) && n > 0).slice(0, 200);
-    if (ids.length === 0) return reply.code(400).send({ error: 'Marca primero los ficheros que quieres escrapear' });
-    void buscarNuevos(ids);
-    return { started: true, total: ids.length };
+    const cuerpo = (req.body ?? {}) as { ids?: number[]; rutas?: string[] };
+    const ids = (cuerpo.ids ?? []).filter((n) => Number.isInteger(n) && n > 0).slice(0, 200);
+    const rutas = (cuerpo.rutas ?? []).filter((r) => typeof r === 'string' && r.length > 0).slice(0, 200);
+    if (ids.length + rutas.length === 0) return reply.code(400).send({ error: 'Marca primero los ficheros que quieres escrapear' });
+    void buscarNuevos(ids, rutas);
+    return { started: true, total: ids.length + rutas.length };
   });
 
   app.post('/api/scraper/nuevos/aplicar', async (req, reply) => {

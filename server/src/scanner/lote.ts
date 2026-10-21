@@ -9,14 +9,16 @@
  *
  * Cada fase corre como un trabajo en segundo plano con progreso (`EstadoLote`) que la web consulta.
  */
-import { basename } from 'node:path';
+import { readdirSync, statSync } from 'node:fs';
+import { basename, extname, join, resolve, sep } from 'node:path';
 import { db, normalize } from '../db.ts';
-import { config } from '../config.ts';
+import { config, type LibraryConfig } from '../config.ts';
 import { applyProposal, search, TmdbError, type Proposal } from './tmdb.ts';
 import { coincidenciaSegura } from './identificar.ts';
 import { rellenarEpisodios } from './episodios-tmdb.ts';
 import { aplicarOrganizar, planOrganizar, type PlanOrganizar } from './organizar.ts';
 import { aplicarArteCarpeta } from './arte-carpeta.ts';
+import { escaneoEnCurso, JUNK, MIN_VIDEO_BYTES, scanAllEnWorker, SKIP_DIRS, VIDEO_EXT } from './scan.ts';
 import { aplicarNfo } from './nfo-escribir.ts';
 
 export type Confianza = 'segura' | 'probable' | 'dudosa' | 'ninguna';
@@ -54,6 +56,67 @@ export function listarCandidatos(o: { biblioteca?: string; q?: string; todos?: b
   }));
 }
 
+/* ---- lo que hay en el DISCO de la fuente y el servidor aun no ha analizado ---- */
+
+export type SinRegistrar = { carpeta: string; ruta: string; tipo: 'carpeta' | 'video'; biblioteca: string };
+const mismo = (a: string, b: string) => resolve(a).toLowerCase() === resolve(b).toLowerCase();
+const esVideo = (ruta: string) => VIDEO_EXT.has(extname(ruta).toLowerCase()) && !JUNK.test(basename(ruta));
+const grande = (ruta: string) => { try { return statSync(ruta).size >= MIN_VIDEO_BYTES; } catch { return false; } };
+
+/** ¿Hay algun video de tamano real en esta carpeta (en las series, tambien un nivel mas: Season N)? */
+function tieneVideos(dir: string, niveles: number): boolean {
+  let entradas;
+  try { entradas = readdirSync(dir, { withFileTypes: true }); } catch { return false; }
+  for (const e of entradas) {
+    const p = join(dir, e.name);
+    if (e.isFile() && esVideo(p) && grande(p)) return true;
+    if (e.isDirectory() && niveles > 0 && !SKIP_DIRS.has(e.name.toLowerCase()) && tieneVideos(p, niveles - 1)) return true;
+  }
+  return false;
+}
+
+/**
+ * Lo que hay en la fuente y todavia no esta en la base: carpetas con video y videos sueltos (en bibliotecas de peliculas). Mismas reglas que el
+ * escaner (ignora lo pequeno, los extras y las carpetas que empiezan por `_`), y barato: lista la raiz y mira dentro solo de lo desconocido.
+ */
+export function sinRegistrar(rutaFuente: string): SinRegistrar[] {
+  const fuente = config.libraries.find((l) => mismo(l.path, rutaFuente));
+  if (!fuente) return [];
+  const conocidos = new Set((db.prepare('SELECT i.folder FROM items i JOIN libraries l ON l.id = i.library_id WHERE LOWER(l.path) = LOWER(?)').all(fuente.path) as { folder: string }[]).map((r) => resolve(r.folder).toLowerCase()));
+  let raiz;
+  try { raiz = readdirSync(fuente.path, { withFileTypes: true }); } catch { return []; }
+  const out: SinRegistrar[] = [];
+  for (const e of raiz) {
+    const p = join(fuente.path, e.name);
+    if (conocidos.has(resolve(p).toLowerCase())) continue;
+    if (e.isDirectory()) {
+      if (e.name.startsWith('_') || e.name.startsWith('.') || SKIP_DIRS.has(e.name.toLowerCase())) continue;
+      if (tieneVideos(p, fuente.kind === 'show' ? 1 : 0)) out.push({ carpeta: e.name, ruta: p, tipo: 'carpeta', biblioteca: fuente.name });
+    } else if (fuente.kind === 'movie' && e.isFile() && esVideo(p) && grande(p)) {
+      out.push({ carpeta: e.name, ruta: p, tipo: 'video', biblioteca: fuente.name });
+    }
+  }
+  return out.sort((a, b) => a.carpeta.localeCompare(b.carpeta));
+}
+
+/** Escanea las fuentes de las rutas dadas (solo ellas) y devuelve los ids de esas carpetas/videos ya registrados. */
+export async function registrarRutas(rutas: string[], escanear: (p?: undefined, solo?: string[]) => Promise<unknown> = scanAllEnWorker): Promise<number[]> {
+  if (escaneoEnCurso()) throw new Error('Hay un escaneo de la biblioteca en curso: espera a que termine');
+  const fuentes = new Set<string>();
+  for (const r of rutas) {
+    const f: LibraryConfig | undefined = config.libraries.find((l) => resolve(r).toLowerCase().startsWith(resolve(l.path).toLowerCase() + sep));
+    if (!f) throw new Error(`${r} no pertenece a ninguna fuente configurada`);
+    fuentes.add(f.path);
+  }
+  if (fuentes.size > 0) await escanear(undefined, [...fuentes]);
+  const ids: number[] = [];
+  for (const r of rutas) {
+    const f = db.prepare('SELECT id FROM items WHERE LOWER(folder) = LOWER(?)').get(resolve(r)) as { id: number } | undefined;
+    if (f) ids.push(f.id);
+  }
+  return ids;
+}
+
 /** Las fuentes con cuantos ficheros les quedan por escrapear (para el selector). */
 export function fuentesConPendientes() {
   return db
@@ -65,13 +128,25 @@ export const totalPendientes = () => (db.prepare(`SELECT COUNT(*) AS n FROM item
 
 /* ------------------------------------------------------------------ 1. buscar */
 
-export const busqueda: EstadoLote<FilaNueva> = vacio();
+export const busqueda: EstadoLote<FilaNueva> & { fase?: string } = vacio();
 
-export async function buscarNuevos(ids: number[]): Promise<void> {
+export async function buscarNuevos(ids: number[], rutas: string[] = [], escanear?: Parameters<typeof registrarRutas>[1]): Promise<void> {
   if (busqueda.corriendo) return;
   if (!config.tmdbApiKey) { Object.assign(busqueda, vacio(), { error: 'Falta la clave de API de TMDb' }); return; }
-  const filas = ids.map((id) => db.prepare('SELECT i.id, i.title, i.year, i.kind, l.name AS biblioteca FROM items i JOIN libraries l ON l.id = i.library_id WHERE i.id = ?').get(id) as { id: number; title: string; year: number | null; kind: 'movie' | 'show'; biblioteca: string } | undefined).filter((f): f is NonNullable<typeof f> => Boolean(f));
-  Object.assign(busqueda, vacio(), { corriendo: true, total: filas.length });
+  Object.assign(busqueda, vacio(), { corriendo: true, total: ids.length + rutas.length, fase: rutas.length ? 'analizando' : 'buscando' });
+  let filas: { id: number; title: string; year: number | null; kind: 'movie' | 'show'; biblioteca: string }[] = [];
+  try {
+    // Lo marcado que el servidor aun no habia analizado: se escanea SOLO su fuente y se recogen sus ids.
+    const todos = [...ids, ...(rutas.length ? await registrarRutas(rutas, escanear) : [])];
+    filas = todos.map((id) => db.prepare('SELECT i.id, i.title, i.year, i.kind, l.name AS biblioteca FROM items i JOIN libraries l ON l.id = i.library_id WHERE i.id = ?').get(id) as (typeof filas)[number] | undefined).filter((f): f is NonNullable<typeof f> => Boolean(f));
+    busqueda.total = filas.length;
+    busqueda.fase = 'buscando';
+  } catch (err) {
+    busqueda.error = (err as Error).message;
+    busqueda.corriendo = false;
+    busqueda.terminado = new Date().toISOString();
+    return;
+  }
   try {
     for (const f of filas) {
       let resultados: Proposal[] = [];

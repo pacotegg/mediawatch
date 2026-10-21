@@ -77,13 +77,16 @@ export default function AsistenteNuevos() {
   const [texto, setTexto] = useState('');
   const [q, setQ] = useState('');
   const [todos, setTodos] = useState(false);
-  const [marcados, setMarcados] = useState<Set<number>>(new Set());
+  // Claves: `i:<id>` para lo ya registrado, `r:<ruta>` para lo que hay en el disco y el servidor aun no ha analizado.
+  const [marcados, setMarcados] = useState<Set<string>>(new Set());
   useEffect(() => { const t = setTimeout(() => setQ(texto), 250); return () => clearTimeout(t); }, [texto]);
   const lista = useQuery({ queryKey: ['scraper-nuevos-lista', fuente, q, todos], queryFn: () => api.scraperNuevosLista({ biblioteca: fuente, q, todos }), placeholderData: (p) => p });
   const items = lista.data?.items ?? [];
+  const nuevos = lista.data?.sinRegistrar ?? [];
   const fuentes = lista.data?.fuentes ?? [];
-  const alternar = (id: number) => setMarcados((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-  const visiblesMarcados = items.filter((i) => marcados.has(i.id)).length;
+  const alternar = (clave: string) => setMarcados((s) => { const n = new Set(s); if (n.has(clave)) n.delete(clave); else n.add(clave); return n; });
+  const clavesVisibles = [...nuevos.map((n) => `r:${n.ruta}`), ...items.map((i) => `i:${i.id}`)];
+  const visiblesMarcados = clavesVisibles.filter((c) => marcados.has(c)).length;
 
   // 2. El emparejado.
   const [eleccion, setEleccion] = useState<Record<number, Eleccion>>({});
@@ -106,7 +109,7 @@ export default function AsistenteNuevos() {
   const elegidas = useMemo(() => filas.filter((f) => eleccion[f.itemId]?.incluir && eleccion[f.itemId]?.tmdbId), [filas, eleccion]);
 
   const buscar = useMutation({
-    mutationFn: () => api.scraperNuevosBuscar([...marcados]),
+    mutationFn: () => api.scraperNuevosBuscar([...marcados].filter((c) => c.startsWith('i:')).map((c) => Number(c.slice(2))), [...marcados].filter((c) => c.startsWith('r:')).map((c) => c.slice(2))),
     onSuccess: () => { setEleccion({}); setExtras({}); setError(''); refrescar(); },
     onError: (e: Error) => setError(e.message),
   });
@@ -143,18 +146,29 @@ export default function AsistenteNuevos() {
             <input type="checkbox" checked={todos} onChange={(e) => setTodos(e.target.checked)} className="accent-[var(--color-accent,#7c8cff)]" />
             Mostrar también los ya escrapeados
           </label>
+          <Button variant="ghost" onClick={() => lista.refetch()} disabled={lista.isFetching}>{lista.isFetching ? 'Mirando…' : 'Actualizar lista'}</Button>
         </div>
 
         <div className="flex flex-wrap items-center gap-3 text-[12px]">
-          <span className="tabular-nums text-mist-500">{items.length} ficheros · {marcados.size} marcados</span>
-          <button className="font-medium text-accent hover:underline underline-offset-2" onClick={() => setMarcados((s) => new Set([...s, ...items.map((i) => i.id)]))}>Marcar todos los de la lista</button>
+          <span className="tabular-nums text-mist-500">{items.length + nuevos.length} ficheros · {marcados.size} marcados</span>
+          <button className="font-medium text-accent hover:underline underline-offset-2" onClick={() => setMarcados((s) => new Set([...s, ...clavesVisibles]))}>Marcar todos los de la lista</button>
           <button className="text-mist-500 hover:underline underline-offset-2" onClick={() => setMarcados(new Set())}>Quitar marcas</button>
         </div>
 
         <div className="max-h-96 space-y-1 overflow-y-auto pr-1">
+          {nuevos.map((n) => (
+            <label key={n.ruta} className={`flex cursor-pointer items-center gap-3 rounded-lg px-2.5 py-1.5 transition-colors ${marcados.has(`r:${n.ruta}`) ? 'bg-white/10' : 'hover:bg-white/5'}`}>
+              <input type="checkbox" checked={marcados.has(`r:${n.ruta}`)} onChange={() => alternar(`r:${n.ruta}`)} className="accent-[var(--color-accent,#7c8cff)]" />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[13px]">{n.carpeta}</div>
+                <div className="text-[11px] text-mist-600">{n.biblioteca} · {n.tipo === 'video' ? 'Vídeo suelto' : 'Carpeta con vídeo'} · en el disco, aún sin analizar</div>
+              </div>
+              <span className="rounded bg-sky-500/15 px-1.5 py-0.5 text-[10.5px] text-sky-300">nuevo</span>
+            </label>
+          ))}
           {items.map((i) => (
-            <label key={i.id} className={`flex cursor-pointer items-center gap-3 rounded-lg px-2.5 py-1.5 transition-colors ${marcados.has(i.id) ? 'bg-white/10' : 'hover:bg-white/5'}`}>
-              <input type="checkbox" checked={marcados.has(i.id)} onChange={() => alternar(i.id)} className="accent-[var(--color-accent,#7c8cff)]" />
+            <label key={i.id} className={`flex cursor-pointer items-center gap-3 rounded-lg px-2.5 py-1.5 transition-colors ${marcados.has(`i:${i.id}`) ? 'bg-white/10' : 'hover:bg-white/5'}`}>
+              <input type="checkbox" checked={marcados.has(`i:${i.id}`)} onChange={() => alternar(`i:${i.id}`)} className="accent-[var(--color-accent,#7c8cff)]" />
               <div className="min-w-0 flex-1">
                 <div className="truncate text-[13px]">{i.carpeta}</div>
                 <div className="text-[11px] text-mist-600">{i.biblioteca} · {i.kind === 'show' ? 'Serie' : 'Película'}{i.alta ? ` · ${fecha(i.alta)}` : ''}</div>
@@ -162,16 +176,16 @@ export default function AsistenteNuevos() {
               {i.escrapeado && <span className="rounded bg-white/8 px-1.5 py-0.5 text-[10.5px] text-mist-400">escrapeado</span>}
             </label>
           ))}
-          {!lista.isFetching && items.length === 0 && (
-            <p className="px-2 py-6 text-center text-[12.5px] text-mist-500">No hay ficheros sin escrapear{fuente ? ' en esta fuente' : ''}. Si acabas de dejar algo en la carpeta, escanéala desde Ajustes → Biblioteca («Escanear solo esta»).</p>
+          {!lista.isFetching && items.length + nuevos.length === 0 && (
+            <p className="px-2 py-6 text-center text-[12.5px] text-mist-500">No hay ficheros sin escrapear{fuente ? ' en esta fuente' : ''}.{!fuente ? ' Si acabas de dejar algo, pulsa «Actualizar lista» (Escanear solo esta en Ajustes → Biblioteca también sirve).' : ''}</p>
           )}
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
           <Button onClick={() => buscar.mutate()} disabled={marcados.size === 0 || b?.corriendo || buscar.isPending}>
-            {b?.corriendo ? `Buscando ${b.hechos}/${b.total}…` : `Escrapear los ${marcados.size} marcados`}
+            {b?.corriendo ? (b.fase === 'analizando' ? 'Analizando la carpeta…' : `Buscando ${b.hechos}/${b.total}…`) : `Escrapear los ${marcados.size} marcados`}
           </Button>
-          <span className="text-[11.5px] text-mist-600">Solo se busca en TMDb para los marcados; aún no se aplica nada.{visiblesMarcados !== marcados.size ? ' (Hay marcados fuera de este filtro.)' : ''}</span>
+          <span className="text-[11.5px] text-mist-600">Solo se busca en TMDb para los marcados (lo «nuevo» se analiza antes, solo esa fuente); aún no se aplica nada.{visiblesMarcados !== marcados.size ? ' (Hay marcados fuera de este filtro.)' : ''}</span>
         </div>
         {b?.corriendo && <Barra hechos={b.hechos} total={b.total} />}
         {b?.error && <p className="text-[12.5px] text-red-400">{b.error}</p>}
