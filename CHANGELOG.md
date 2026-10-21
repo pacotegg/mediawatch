@@ -15,6 +15,7 @@ al final, en bloques por intervalo, sin asignarlos a un número.
 ## 3.76 — 21/10/2026
 
 - Edición coleccionista: el disco ya no gira sin parar; da un giro corto al abrir la caja y se queda recto, en su sitio.
+- Fichas y caja coleccionista: el audio sale con su nombre limpio («Dolby Digital Plus Atmos 5.1», «Dolby TrueHD Atmos 7.1», «DTS-HD Master Audio»…) en lugar del identificador interno, y sin repetir pistas iguales.
 
 ## 3.75 — 21/10/2026
 
