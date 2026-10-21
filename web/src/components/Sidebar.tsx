@@ -16,6 +16,7 @@ const ICONS = {
   heart: 'M12 20.5s-7-4.4-8.7-8.4A5 5 0 0 1 12 6.8a5 5 0 0 1 8.7 5.3C19 16.1 12 20.5 12 20.5Z',
   settings: 'M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2v.2a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.6 1.7 1.7 0 0 0-1.9.4l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0-1.2-2.9h-.2a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.4-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5v-.2a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1h.2a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.6 1Z',
   stats: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
+  scraper: 'M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M8 12h8',
   download: 'M12 3v12m0 0 4.5-4.5M12 15l-4.5-4.5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2',
   collapse: 'M15 5 8 12l7 7',
   plataformas: 'M4 5h16v10H4zM9 19h6M12 15v4',
@@ -129,6 +130,7 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
         <div className="mt-auto shrink-0 space-y-0.5 border-t border-white/6 pt-2.5">
           <Item to="/plataformas" icon={ICONS.plataformas} label={t('platforms', lang)} collapsed={collapsed} />
           <Item to="/descargas" icon={ICONS.download} label={t('downloads', lang)} collapsed={collapsed} />
+          {yo?.is_admin === 1 && <Item to="/scraper" icon={ICONS.scraper} label="Scraper" collapsed={collapsed} />}
           {yo?.is_admin === 1 && <Item to="/estadisticas" icon={ICONS.stats} label={t('stats', lang)} collapsed={collapsed} />}
           <Item to="/ajustes" icon={ICONS.settings} label={t('settings', lang)} collapsed={collapsed} />
           <button
@@ -315,6 +317,7 @@ export function MobileDrawer({ open, onClose }: { open: boolean; onClose: () => 
           <div className="pt-4">
             <Item to="/plataformas" icon={ICONS.plataformas} label={t('platforms', lang)} collapsed={false} />
             <Item to="/descargas" icon={ICONS.download} label={t('downloads', lang)} collapsed={false} />
+            {yo?.is_admin === 1 && <Item to="/scraper" icon={ICONS.scraper} label="Scraper" collapsed={false} />}
             {yo?.is_admin === 1 && <Item to="/estadisticas" icon={ICONS.stats} label={t('stats', lang)} collapsed={false} />}
             <Item to="/ajustes" icon={ICONS.settings} label={t('settings', lang)} collapsed={false} />
           </div>

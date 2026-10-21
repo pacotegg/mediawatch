@@ -367,7 +367,7 @@ export const api = {
   favorite: (itemId: number, favorite: boolean) => post<{ ok: true }>(`/api/items/${itemId}/favorite`, { favorite }),
   favorites: () => request<ItemSummary[]>('/api/favorites'),
   scan: (ruta?: string) => (ruta ? post<{ started: boolean }>('/api/scan', { ruta }) : post<{ started: boolean }>('/api/scan')),
-  fuentes: () => request<{ name: string; path: string; kind: 'movie' | 'show'; activa: boolean; titulos: number }[]>('/api/system/fuentes'),
+  scraperDestinos: () => request<{ name: string; path: string; kind: 'movie' | 'show' }[]>('/api/scraper/destinos'),
   scraperFuentes: () => request<{ name: string; path: string; kind: 'movie' | 'show'; titulos: number }[]>('/api/scraper/fuentes'),
   scraperGuardarFuentes: (fuentes: { name: string; path: string; kind: 'movie' | 'show' }[]) =>
     request<{ ok: true; fuentes: { name: string; path: string; kind: 'movie' | 'show' }[] }>('/api/scraper/fuentes', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ fuentes }) }),

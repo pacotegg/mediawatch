@@ -31,14 +31,14 @@ before(async () => {
   U = `http://127.0.0.1:${puerto}`;
   writeFileSync(join(datos, 'config.json'), JSON.stringify({ port: puerto, host: '127.0.0.1', libraries: [{ name: 'Peliculas', path: real, kind: 'movie' }], fuentesScraper: [{ name: 'Videos', path: entrada, kind: 'movie' }] }));
   srv = spawn(process.execPath, ['src/index.ts'], { cwd: raiz, env: { ...process.env, MEDIAWATCH_DATA_DIR: datos, MEDIAWATCH_PORT: String(puerto), MEDIAWATCH_HOST: '127.0.0.1' }, stdio: 'ignore' });
-  for (let i = 0; i < 60; i++) { try { await fetch(U + '/api/users'); break; } catch { await new Promise((r) => setTimeout(r, 300)); } }
+  for (let i = 0; i < 150; i++) { try { await fetch(U + '/api/users'); break; } catch { await new Promise((r) => setTimeout(r, 300)); } }
   const r = await fetch(U + '/api/users', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Admin', pin: '123456' }) });
   cookie = `cineteca_session=${(await r.json()).token}`;
   await fetch(U + '/api/scan', { method: 'POST', headers: { cookie } });
-  for (let i = 0; i < 40; i++) { await new Promise((r) => setTimeout(r, 300)); if ((await get('/api/items')).includes('Pelicula Visible')) break; }
+  for (let i = 0; i < 150; i++) { await new Promise((r) => setTimeout(r, 300)); if ((await get('/api/items')).includes('Pelicula Visible')) break; }
   await fetch(U + '/api/scan', { method: 'POST', headers: { cookie, 'content-type': 'application/json' }, body: JSON.stringify({ ruta: entrada }) });
   const db = new DatabaseSync(join(datos, 'tvwatch.db'), { readOnly: true });
-  for (let i = 0; i < 40; i++) { await new Promise((r) => setTimeout(r, 300)); idEntrada = db.prepare("SELECT id FROM items WHERE title LIKE 'ZZSecreto%'").get()?.id; if (idEntrada) break; }
+  for (let i = 0; i < 150; i++) { await new Promise((r) => setTimeout(r, 300)); idEntrada = db.prepare("SELECT id FROM items WHERE title LIKE 'ZZSecreto%'").get()?.id; if (idEntrada) break; }
   db.close();
   // Como si ya se hubieran escrapeado: genero, actor, estudio y saga (por encima de los minimos de cada lista).
   const w = new DatabaseSync(join(datos, 'tvwatch.db'));

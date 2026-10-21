@@ -13,7 +13,7 @@ const FASES: Record<string, string> = { preparando: 'Preparando', copiando: 'Cop
 
 export default function EnviarTitulos({ ids, kind }: { ids: number[]; kind: 'movie' | 'show' }) {
   const qc = useQueryClient();
-  const { data: fuentes } = useQuery({ queryKey: ['fuentes'], queryFn: api.fuentes });
+  const { data: fuentes } = useQuery({ queryKey: ['scraper-destinos'], queryFn: api.scraperDestinos });
   const destinos = (fuentes ?? []).filter((f) => f.kind === kind);
   const [destino, setDestino] = useState('');
   const [conservar, setConservar] = useState(false);

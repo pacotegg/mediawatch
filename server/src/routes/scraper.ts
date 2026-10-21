@@ -179,6 +179,12 @@ export default async function scraperRoutes(app: FastifyInstance) {
    * Las fuentes del scraper (carpetas de entrada): separadas de las bibliotecas. Se gestionan aqui, no en Ajustes → Biblioteca.
    * Quitar una fuente solo olvida su indice en la base (lo escrapeado y aun no enviado); los ficheros del disco no se tocan.
    */
+  /** A donde se puede ENVIAR un titulo: solo las bibliotecas de verdad (nunca una carpeta de entrada). */
+  app.get('/api/scraper/destinos', async (req, reply) => {
+    if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'No autorizado' });
+    return config.libraries.map((l) => ({ name: l.name, path: l.path, kind: l.kind }));
+  });
+
   app.get('/api/scraper/fuentes', async (req, reply) => {
     if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'No autorizado' });
     const cuenta = db.prepare('SELECT l.path, COUNT(i.id) AS n FROM libraries l LEFT JOIN items i ON i.library_id = l.id WHERE l.entrada = 1 GROUP BY l.id').all() as { path: string; n: number }[];
