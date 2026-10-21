@@ -2192,15 +2192,18 @@ function formatoAspecto(ancho?: number | null, alto?: number | null): string {
       if (temporadas.indexOf(e.season) < 0) temporadas.push(e.season);
     });
     temporadas.sort((a, b) => a - b);
-    const inicial = ficha.nextUp ? ficha.nextUp.season : temporadas[0];
+    // La primera temporada por defecto es la 1; los especiales (0) quedan como pestaña destacada.
+    let primera = temporadas[0];
+    for (let i = 0; i < temporadas.length; i++) { if (temporadas[i] > 0) { primera = temporadas[i]; break; } }
+    const inicial = ficha.nextUp ? ficha.nextUp.season : primera;
 
     bloqueEpisodios =
       '<div class="episodios"><h3>Episodios</h3><div class="temporadas">' +
       temporadas
         .map(
           (n) =>
-            '<button class="temporada' + (n === inicial ? ' activa' : '') + '" data-nav data-temporada="' + n + '">' +
-            (n === 0 ? 'Especiales' : 'Temporada ' + n) + '</button>',
+            '<button class="temporada' + (n === inicial ? ' activa' : '') + (n === 0 ? ' especial' : '') + '" data-nav data-temporada="' + n + '">' +
+            (n === 0 ? '★ Especiales' : 'Temporada ' + n) + '</button>',
         )
         .join('') +
       '</div><div data-lista-episodios></div></div>';

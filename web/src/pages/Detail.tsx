@@ -162,7 +162,8 @@ function EpisodeList({
 }) {
   const navigate = useNavigate();
   const numbers = [...seasons.keys()].sort((a, b) => a - b);
-  const [season, setSeason] = useState(() => item.nextUp?.season ?? numbers[0] ?? 1);
+  // La temporada por defecto es la primera de verdad (la 1); los especiales (0) son una pestaña más, destacada, que se abre solo si no hay otra.
+  const [season, setSeason] = useState(() => item.nextUp?.season ?? numbers.find((n) => n > 0) ?? numbers[0] ?? 1);
   const [downloadEpId, setDownloadEpId] = useState<number | null>(null);
   const episodes = seasons.get(season) ?? [];
   const progressFor = (id: number) => item.progress.find((p) => p.episode_id === id);
@@ -175,10 +176,14 @@ function EpisodeList({
             key={n}
             onClick={() => setSeason(n)}
             className={`shrink-0 rounded-full px-4 py-1.5 text-[13px] transition-all duration-200 ${
-              n === season ? 'bg-mist-100 font-medium text-ink-950' : 'bg-white/6 text-mist-300 hover:bg-white/12'
+              n === season
+                ? 'bg-mist-100 font-medium text-ink-950'
+                : n === 0
+                  ? 'bg-amber-300/10 text-amber-200 ring-1 ring-amber-300/50 hover:bg-amber-300/20'
+                  : 'bg-white/6 text-mist-300 hover:bg-white/12'
             }`}
           >
-            {n === 0 ? 'Especiales' : `Temporada ${n}`}
+            {n === 0 ? '★ Especiales' : `Temporada ${n}`}
           </button>
         ))}
       </div>

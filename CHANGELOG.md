@@ -12,6 +12,10 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.75 — 21/10/2026
+
+- Series con especiales: la ficha se abre siempre en la Temporada 1 (antes podía abrirse en los especiales). La pestaña «★ Especiales» sigue saliendo la primera, ahora destacada en ámbar y con un aro fino.
+
 ## 3.74 — 19/10/2026
 
 - Administradores: nuevo botón «Reiniciar el servidor con aviso» en Ajustes. Avisa a todos los aparatos («Mantenimiento en curso, volvemos en un minuto») y lo reinicia, ahora o cuando nadie esté viendo nada, sin tener que estar delante del ordenador. Se puede cancelar.

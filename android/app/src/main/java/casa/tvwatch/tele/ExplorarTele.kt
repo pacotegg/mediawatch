@@ -5,6 +5,7 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -352,17 +353,18 @@ fun BibliotecaTele(libraryId: Int, nombre: String, alAbrirFicha: (Int) -> Unit, 
 
 /** Pastilla de orden o filtro: ámbar si está elegida, blanca si tiene el foco. */
 @Composable
-fun Pestana(texto: String, activa: Boolean, alPulsar: () -> Unit) {
+fun Pestana(texto: String, activa: Boolean, especial: Boolean = false, alPulsar: () -> Unit) {
   var foco by remember { mutableStateOf(false) }
   Text(
     texto,
-    color = when { foco -> Color(0xFF111114); activa -> Realce; else -> TextoSuave },
+    color = when { foco -> Color(0xFF111114); activa || especial -> Realce; else -> TextoSuave },
     fontSize = 14.sp,
     fontWeight = if (activa) FontWeight.SemiBold else FontWeight.Normal,
     modifier = Modifier
       .enfocable(RoundedCornerShape(100.dp), escala = 1.05f, aro = Color.Transparent, alFoco = { foco = it }, alPulsar = alPulsar)
       .clip(RoundedCornerShape(100.dp))
       .background(if (foco) Color.White else if (activa) Color(0x22E8B04A) else Color.Transparent)
+      .then(if (especial && !activa && !foco) Modifier.border(1.dp, Realce.copy(alpha = 0.6f), RoundedCornerShape(100.dp)) else Modifier)
       .padding(horizontal = 14.dp, vertical = 7.dp),
   )
 }

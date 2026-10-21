@@ -302,7 +302,8 @@ fun PantallaFicha(
   val reanudarEn = if (!estaVista && progresoPelicula != null && progresoPelicula.watched == 0) progresoPelicula.position else 0.0
 
   val temporadas = remember(f) { f.episodes.map { it.season }.distinct().sorted() }
-  val temporadaActiva = temporada ?: temporadas.firstOrNull()
+  // La primera temporada por defecto es la 1; los especiales (0) son una pestaña destacada.
+  val temporadaActiva = temporada ?: temporadas.firstOrNull { it > 0 } ?: temporadas.firstOrNull()
   val estadoScroll = androidx.compose.foundation.lazy.rememberLazyListState()
 
   LazyColumn(
@@ -627,12 +628,13 @@ fun PantallaFicha(
           items(temporadas) { n ->
             val activa = n == temporadaActiva
             Text(
-              if (n == 0) "Especiales" else "Temporada $n",
-              color = if (activa) Color(0xFF15100A) else Texto,
+              if (n == 0) "★ Especiales" else "Temporada $n",
+              color = if (activa) Color(0xFF15100A) else if (n == 0) Realce else Texto,
               fontSize = 13.sp,
               modifier = Modifier
                 .clip(RoundedCornerShape(18.dp))
                 .background(if (activa) Realce else FondoTarjeta)
+                .then(if (n == 0 && !activa) Modifier.border(1.dp, Realce.copy(alpha = 0.6f), RoundedCornerShape(18.dp)) else Modifier)
                 .clickable { temporada = n }
                 .padding(horizontal = 14.dp, vertical = 8.dp),
             )

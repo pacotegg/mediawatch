@@ -1595,6 +1595,12 @@ body.rend-rapido .lamina img {
   color: var(--acento-claro);
 }
 
+/* Los especiales (temporada 0) llevan un aro y el color de acento aunque no esten activos. Aro fijo, sin animar. */
+.temporada.especial {
+  color: var(--acento-claro);
+  box-shadow: inset 0 0 0 2px var(--acento-suave);
+}
+
 .temporada.enfocado {
   background: #fff;
   color: var(--fondo);

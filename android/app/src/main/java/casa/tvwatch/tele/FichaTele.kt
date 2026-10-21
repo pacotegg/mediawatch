@@ -170,7 +170,7 @@ fun FichaTele(
   val orden = remember(f) { f.episodes.filter { it.ficheroId != null }.sortedWith(compareBy({ it.season }, { it.episode })) }
   val temporadas = remember(f) { orden.map { it.season }.distinct() }
   val siguiente = remember(f) { episodioParaSeguir(f, orden) }
-  val temporadaActiva = temporada ?: siguiente?.season ?: temporadas.firstOrNull()
+  val temporadaActiva = temporada ?: siguiente?.season ?: temporadas.firstOrNull { it > 0 } ?: temporadas.firstOrNull()
 
   fun abrirTrailer(t: Trailer) {
     // La app de YouTube de la tele; si no está, el navegador.
@@ -330,7 +330,7 @@ fun FichaTele(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
           ) {
             items(temporadas) { s ->
-              Pestana(if (s == 0) "Especiales" else "Temporada $s", activa = s == temporadaActiva) { temporada = s }
+              Pestana(if (s == 0) "★ Especiales" else "Temporada $s", activa = s == temporadaActiva, especial = s == 0) { temporada = s }
             }
           }
         }
