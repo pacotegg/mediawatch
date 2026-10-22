@@ -12,6 +12,12 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.77 — 22/10/2026
+
+- Compatibilidad en tabletas: los vídeos en HEVC de 10 bits se recodifican automáticamente por hardware en aparatos sin decodificador para 10 bits, evitando tirones y desincronización de audio tras pausar o saltar.
+- Rendimiento y estabilidad: activado `largeHeap` para blindar la memoria frente a recolecciones de basura en tabletas y dispositivos con 2–3 GB de RAM durante el búfer de reproducción.
+- Detección precisa de hardware: ignorados los decodificadores software del sistema para HEVC, VP9 y AV1, garantizando que el servidor transcodifique cuando el chip no tiene aceleración física.
+
 ## 3.76 — 21/10/2026
 
 - Edición coleccionista: el disco ya no gira sin parar; da un giro corto al abrir la caja y se queda recto, en su sitio.

@@ -50,11 +50,20 @@ object Capacidades {
    */
   private val alturas: Map<String, Int> by lazy { detectarAlturas() }
 
+  private fun esHardware(info: MediaCodecInfo): Boolean {
+    return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+      info.isHardwareAccelerated
+    } else {
+      val n = info.name.lowercase()
+      !n.startsWith("omx.google.") && !n.startsWith("c2.android.")
+    }
+  }
+
   private fun detectarAlturas(): Map<String, Int> {
     val topes = mutableMapOf<String, Int>()
     try {
       for (info in MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos) {
-        if (info.isEncoder) continue
+        if (info.isEncoder || !esHardware(info)) continue
         for (tipo in info.supportedTypes) {
           val nuestro = when (tipo.lowercase()) {
             "video/avc" -> "h264"
@@ -103,7 +112,7 @@ object Capacidades {
   private fun perfilDeVideo(tipo: String, perfiles: Set<Int>): Boolean {
     try {
       for (info in MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos) {
-        if (info.isEncoder) continue
+        if (info.isEncoder || !esHardware(info)) continue
         if (info.supportedTypes.none { it.equals(tipo, ignoreCase = true) }) continue
         val caps = info.getCapabilitiesForType(tipo)
         if (caps.profileLevels.any { it.profile in perfiles }) return true
@@ -126,9 +135,9 @@ object Capacidades {
           EQUIVALENCIAS[t]?.let { encontrados += it }
           when {
             t == "video/avc" -> encontrados += "h264"
-            t == "video/hevc" -> encontrados += "hevc"
-            t == "video/x-vnd.on2.vp9" -> encontrados += "vp9"
-            t == "video/av01" -> encontrados += "av1"
+            t == "video/hevc" -> if (esHardware(info)) encontrados += "hevc"
+            t == "video/x-vnd.on2.vp9" -> if (esHardware(info)) encontrados += "vp9"
+            t == "video/av01" -> if (esHardware(info)) encontrados += "av1"
           }
         }
       }

@@ -419,7 +419,7 @@ private fun Reproduciendo(
        * fallar y arrancar otra vez.
        */
       val diezBits = i.video?.let { v ->
-        v.codec == "hevc" && (v.hdr != null || Capacidades.hevcDiezBits.not())
+        v.codec == "hevc" && (v.profile?.contains("10") == true || v.hdr != null || !Capacidades.hevcDiezBits)
       } ?: false
       if (diezBits && !Capacidades.hevcDiezBits && !sinHevc) {
         sinHevc = true

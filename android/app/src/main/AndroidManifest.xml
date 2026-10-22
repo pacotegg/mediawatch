@@ -48,6 +48,7 @@
       android:label="@string/app_nombre"
       android:banner="@drawable/banner"
       android:hardwareAccelerated="true"
+      android:largeHeap="true"
       android:networkSecurityConfig="@xml/red"
       android:supportsRtl="false"
       android:theme="@style/Tema">

@@ -850,6 +850,7 @@ data class Video(
   val codec: String? = null,
   val width: Int = 0,
   val height: Int = 0,
+  val profile: String? = null,
   val fps: Double = 0.0,
   val hdr: String? = null,
 )
