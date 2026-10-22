@@ -12,6 +12,11 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.78 — 22/10/2026
+
+- Sincronización labial en transcodificación: resuelto el desfase de casi 3 segundos de audio al pausar, reanudar o avanzar en vídeos transcodificados por hardware.
+- Arranque instantáneo: eliminada la predescarga en paralelo de todas las pistas de subtítulos incrustadas al iniciar o buscar, evitando colas de extracción en el servidor y pantallas de carga prolongadas.
+
 ## 3.77 — 22/10/2026
 
 - Compatibilidad en tabletas: los vídeos en HEVC de 10 bits se recodifican automáticamente por hardware en aparatos sin decodificador para 10 bits, evitando tirones y desincronización de audio tras pausar o saltar.

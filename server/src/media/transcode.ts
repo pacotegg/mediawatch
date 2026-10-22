@@ -218,7 +218,10 @@ function audioArgs(plan: PlaybackPlan, options: AudioOptions, delayMs = 0): stri
   const downmix = options.downmixStereo ? dialogueDownmix(options.sourceChannels, options.mode) : null;
   const needsFiltering = options.normalize || Boolean(downmix) || delayMs !== 0;
 
-  if (plan.audioAction === 'copy' && !needsFiltering) return ['-c:a', 'copy'];
+  // Si el vídeo se recodifica, copiar audio (-c:a copy) desincroniza los tiempos
+  // al buscar con -ss porque el códec de vídeo salta al fotograma clave y el de audio no.
+  // Solo se copia audio si el vídeo también va en copia directa.
+  if (plan.videoAction === 'copy' && plan.audioAction === 'copy' && !needsFiltering) return ['-c:a', 'copy'];
 
   const filters: string[] = [];
   if (downmix) filters.push(downmix);

@@ -357,7 +357,11 @@ private fun Reproduciendo(
    */
   fun elemento(url: String): MediaItem {
     val subs = (info?.subtitles ?: emptyList())
-      .filter { !videoEnCrudo || it.source == "external" }
+      // Solo subtítulos externos (ficheros .srt sueltos). Los incrustados en el MKV
+      // los lee ExoPlayer directamente del contenedor si va en crudo; si va por
+      // tubería, pedir 10+ pistas incrustadas obligaba al servidor a lanzar 10 ffmpeg
+      // simultáneos para extraerlas todas antes de poder empezar el vídeo (4 min de espera).
+      .filter { it.source == "external" }
       .map { st ->
         val desde = if (porTuberia) desdeDeLaTuberia.toInt() else 0
         MediaItem.SubtitleConfiguration.Builder(Uri.parse(Api.urlDeSubtitulo(fileId, st.id, desde, retardoSubsMs)))
