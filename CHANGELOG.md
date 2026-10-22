@@ -12,6 +12,10 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.80 — 22/10/2026
+
+- Calidad original fuera de casa: añadida la opción «Original» al selector de calidad fuera de casa (datos móviles) en los ajustes, permitiendo reproducción directa sin límite de bitrate o recodificación forzada a 1080p.
+
 ## 3.79 — 22/10/2026
 
 - Bibliotecas con pestañas «Recomendado» y «Biblioteca»: al estilo Plex en Android y Google TV / Android TV, con filas de continuar viendo en esa biblioteca, añadido recientemente y mejor valoradas.

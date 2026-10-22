@@ -182,7 +182,7 @@ fun PantallaAjustes(
         dialogoOpciones = DialogoConfig(
           titulo = "Calidad fuera de casa",
           seleccionado = calidadFuera.name,
-          opciones = Calidad.entries.filter { it != Calidad.ORIGINAL }.map { it.name to it.etiqueta },
+          opciones = Calidad.entries.map { it.name to it.etiqueta },
           alElegir = {
             val c = Calidad.deNombre(it) ?: Calidad.ALTA
             calidadFuera = c
