@@ -50,6 +50,7 @@ type AVPlay = {
   setSilentSubtitle?: (silencio: boolean) => void;
   setSubtitlePosition?: (ms: number) => void;
   setStreamingProperty?: (propiedad: string, valor: string) => void;
+  setBufferingParam?: (param: string, unit: string, size: number) => void;
   close: () => void;
   prepareAsync: (ok: () => void, err: (e: unknown) => void) => void;
   setDisplayRect: (x: number, y: number, w: number, h: number) => void;
@@ -285,6 +286,12 @@ export class Reproductor {
        */
       try {
         p.open(url);
+        if (p.setBufferingParam) {
+          try {
+            p.setBufferingParam('PLAYER_BUFFER_FOR_PLAY', 'PLAYER_BUFFER_SIZE_IN_SECOND', 4);
+            p.setBufferingParam('PLAYER_BUFFER_FOR_RESUME', 'PLAYER_BUFFER_SIZE_IN_SECOND', 4);
+          } catch {}
+        }
         p.setDisplayRect(rect.x, rect.y, rect.w, rect.h);
         try {
           p.setDisplayMethod('PLAYER_DISPLAY_MODE_FULL_SCREEN');

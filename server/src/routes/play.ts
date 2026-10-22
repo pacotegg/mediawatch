@@ -644,6 +644,7 @@ export default async function playRoutes(app: FastifyInstance) {
         '-i', row.path,
         '-map', '0:v:0', '-map', `0:${audioIndex}`, '-map', '0:s?',
         '-c', 'copy',
+        '-avoid_negative_ts', 'make_zero',
         '-max_muxing_queue_size', '4096',
         '-f', 'matroska', 'pipe:1',
       ];
@@ -658,9 +659,17 @@ export default async function playRoutes(app: FastifyInstance) {
        */
       let cerrado = false;
       const proc = spawn(config.ffmpeg, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+      proc.stdout.on('data', () => marcarActividad());
       proc.stderr.on('data', (d) => { if (!cerrado) console.error('[copia-pista]', String(d).trim()); });
       proc.on('error', (e) => console.error('[copia-pista] no arrancó ffmpeg:', e.message));
-      req.raw.on('close', () => { cerrado = true; proc.kill('SIGKILL'); });
+      const matarPista = () => {
+        if (!cerrado) {
+          cerrado = true;
+          try { proc.kill('SIGKILL'); } catch {}
+        }
+      };
+      req.raw.on('close', matarPista);
+      reply.raw.on('close', matarPista);
       return reply
         .header('Content-Type', 'video/x-matroska')
         .header('Cache-Control', 'no-store')
@@ -691,6 +700,7 @@ export default async function playRoutes(app: FastifyInstance) {
         '-i', row.path,
         '-map', '0:v:0', '-map', '0:a?', '-map', '0:s?',
         '-c', 'copy',
+        '-avoid_negative_ts', 'make_zero',
         '-max_muxing_queue_size', '4096',
         '-f', 'matroska', 'pipe:1',
       ];
@@ -705,9 +715,17 @@ export default async function playRoutes(app: FastifyInstance) {
        */
       let cerrado = false;
       const proc = spawn(config.ffmpeg, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+      proc.stdout.on('data', () => marcarActividad());
       proc.stderr.on('data', (d) => { if (!cerrado) console.error('[copia-desde]', String(d).trim()); });
       proc.on('error', (e) => console.error('[copia-desde] no arrancó ffmpeg:', e.message));
-      req.raw.on('close', () => { cerrado = true; proc.kill('SIGKILL'); });
+      const matarDesde = () => {
+        if (!cerrado) {
+          cerrado = true;
+          try { proc.kill('SIGKILL'); } catch {}
+        }
+      };
+      req.raw.on('close', matarDesde);
+      reply.raw.on('close', matarDesde);
       return reply
         .header('Content-Type', 'video/x-matroska')
         .header('Cache-Control', 'no-store')
