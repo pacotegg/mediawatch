@@ -42,7 +42,7 @@ test('resolución: también las películas panorámicas, que no llegan a 2160 de
 });
 
 test('audio y clasificación por edad', () => {
-  assert.equal(audioLabel('eac3', 6), 'Dolby Digital+ 5.1');
+  assert.equal(audioLabel('eac3', 6), 'Dolby Digital Plus 5.1');
   assert.equal(audioLabel('truehd', 8), 'Dolby TrueHD 7.1');
   assert.equal(certification('ES:16 / ES:16/fig'), '16');
 });

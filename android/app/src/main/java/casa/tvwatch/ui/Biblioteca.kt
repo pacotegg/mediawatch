@@ -110,6 +110,12 @@ fun PantallaBiblioteca(
   alAbrirFicha: (Int) -> Unit,
   alPerderSesion: () -> Unit,
 ) {
+  var pestana by remember(libraryId) { mutableStateOf("recomendado") }
+  var continuar by remember(libraryId) { mutableStateOf<List<Titulo>?>(null) }
+  var recientes by remember(libraryId) { mutableStateOf<List<Titulo>?>(null) }
+  var valoradas by remember(libraryId) { mutableStateOf<List<Titulo>?>(null) }
+  var cargandoRecomendado by remember(libraryId) { mutableStateOf(false) }
+
   var orden by remember(libraryId) { mutableStateOf("title") }
   var genero by remember(libraryId) { mutableStateOf<String?>(null) }
   var sinVer by remember(libraryId) { mutableStateOf(false) }
@@ -163,6 +169,24 @@ fun PantallaBiblioteca(
     }
   }
 
+  LaunchedEffect(libraryId, pestana) {
+    if (pestana != "recomendado" || recientes != null) return@LaunchedEffect
+    cargandoRecomendado = true
+    try {
+      val c = withContext(Dispatchers.IO) { Api.continuarBiblioteca(libraryId) }
+      val r = withContext(Dispatchers.IO) { Api.titulos(libraryId, offset = 0, limite = 20, orden = "added").items }
+      val v = withContext(Dispatchers.IO) { Api.titulos(libraryId, offset = 0, limite = 20, orden = "rating").items }
+      continuar = c
+      recientes = r
+      valoradas = v
+    } catch (e: Api.SinSesion) {
+      alPerderSesion()
+    } catch (_: Exception) {
+    } finally {
+      cargandoRecomendado = false
+    }
+  }
+
   LaunchedEffect(libraryId, filtro) {
     if (items.isEmpty()) traerMas()
     rejilla.scrollToItem(0)
@@ -188,64 +212,106 @@ fun PantallaBiblioteca(
   val hayFiltrosActivos = genero != null || sinVer || decada != null || calidad != null || duracion != null
 
   Column(Modifier.fillMaxSize().background(Fondo)) {
-    LazyRow(
-      contentPadding = PaddingValues(horizontal = Aire.borde, vertical = 8.dp),
+    Row(
+      modifier = Modifier.fillMaxWidth().padding(horizontal = Aire.borde, vertical = 6.dp),
       horizontalArrangement = Arrangement.spacedBy(8.dp),
+      verticalAlignment = Alignment.CenterVertically,
     ) {
-      items(ORDENES, key = { it.first }) { (clave, nombreOrden) ->
-        Pastilla(nombreOrden, activa = orden == clave) { orden = clave }
-      }
-      item { Pastilla(if (sinVer) "Sin ver ✓" else "Sin ver", activa = sinVer) { sinVer = !sinVer } }
-      if (generos.isNotEmpty()) {
-        item { Pastilla(genero ?: "Género ▾", activa = genero != null) { eligiendoGenero = true } }
-      }
-      item {
-        val etiquetaDecada = DECADAS.firstOrNull { it.first == decada }?.second ?: "Década ▾"
-        Pastilla(if (decada != null) etiquetaDecada else "Década ▾", activa = decada != null) { eligiendoDecada = true }
-      }
-      item {
-        val etiquetaCalidad = CALIDADES.firstOrNull { it.first == calidad }?.second ?: "Calidad ▾"
-        Pastilla(if (calidad != null) etiquetaCalidad else "Calidad ▾", activa = calidad != null) { eligiendoCalidad = true }
-      }
-      item {
-        val etiquetaDuracion = DURACIONES.firstOrNull { it.first == duracion }?.second ?: "Duración ▾"
-        Pastilla(if (duracion != null) etiquetaDuracion else "Duración ▾", activa = duracion != null) { eligiendoDuracion = true }
-      }
-      if (hayFiltrosActivos) {
-        item {
-          Pastilla("Limpiar ✕", activa = false) {
-            genero = null
-            sinVer = false
-            decada = null
-            calidad = null
-            duracion = null
+      Pastilla("Recomendado", activa = pestana == "recomendado", destacada = pestana == "recomendado") { pestana = "recomendado" }
+      Pastilla("Biblioteca", activa = pestana == "biblioteca", destacada = pestana == "biblioteca") { pestana = "biblioteca" }
+    }
+
+    if (pestana == "recomendado") {
+      when {
+        cargandoRecomendado && recientes == null -> EsqueletoDeRejilla()
+        recientes != null && recientes?.isEmpty() == true && continuar.isNullOrEmpty() -> Aviso("No hay títulos en esta biblioteca.")
+        else -> LazyColumn(
+          modifier = Modifier.fillMaxSize(),
+          contentPadding = PaddingValues(vertical = 12.dp),
+        ) {
+          continuar?.takeIf { it.isNotEmpty() }?.let { lista ->
+            item { Fila("Continuar viendo en $nombre", lista, alAbrirFicha) }
+          }
+          recientes?.takeIf { it.isNotEmpty() }?.let { lista ->
+            item { Fila("Añadido recientemente", lista, alAbrirFicha) }
+          }
+          valoradas?.takeIf { it.isNotEmpty() }?.let { lista ->
+            item { Fila("Mejor valoradas", lista, alAbrirFicha) }
+          }
+          item {
+            Box(
+              Modifier
+                .fillMaxWidth()
+                .padding(horizontal = Aire.borde, vertical = 16.dp),
+              contentAlignment = Alignment.Center,
+            ) {
+              Pastilla("Ver todos los títulos de $nombre →") {
+                pestana = "biblioteca"
+              }
+            }
           }
         }
       }
-    }
-    if (total >= 0) {
-      Text(
-        "$total títulos" + (if (hayFiltrosActivos) " con este filtro" else ""),
-        color = TextoTenue,
-        style = MaterialTheme.typography.labelSmall,
-        modifier = Modifier.padding(horizontal = Aire.borde, vertical = 2.dp),
-      )
-    }
-
-    when {
-      items.isEmpty() && fallo.isNotEmpty() -> Aviso(fallo)
-      items.isEmpty() && total == 0 -> Aviso("Nada con este filtro.")
-      items.isEmpty() -> EsqueletoDeRejilla()
-      else -> LazyVerticalGrid(
-        columns = GridCells.Adaptive(minSize = 118.dp),
-        state = rejilla,
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(Aire.entreTarjetas),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+    } else {
+      LazyRow(
+        contentPadding = PaddingValues(horizontal = Aire.borde, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
       ) {
-        items(items, key = { it.id }) { t ->
-          Cartel(t, ancho = 118, alPulsar = alAbrirFicha)
+        items(ORDENES, key = { it.first }) { (clave, nombreOrden) ->
+          Pastilla(nombreOrden, activa = orden == clave) { orden = clave }
+        }
+        item { Pastilla(if (sinVer) "Sin ver ✓" else "Sin ver", activa = sinVer) { sinVer = !sinVer } }
+        if (generos.isNotEmpty()) {
+          item { Pastilla(genero ?: "Género ▾", activa = genero != null) { eligiendoGenero = true } }
+        }
+        item {
+          val etiquetaDecada = DECADAS.firstOrNull { it.first == decada }?.second ?: "Década ▾"
+          Pastilla(if (decada != null) etiquetaDecada else "Década ▾", activa = decada != null) { eligiendoDecada = true }
+        }
+        item {
+          val etiquetaCalidad = CALIDADES.firstOrNull { it.first == calidad }?.second ?: "Calidad ▾"
+          Pastilla(if (calidad != null) etiquetaCalidad else "Calidad ▾", activa = calidad != null) { eligiendoCalidad = true }
+        }
+        item {
+          val etiquetaDuracion = DURACIONES.firstOrNull { it.first == duracion }?.second ?: "Duración ▾"
+          Pastilla(if (duracion != null) etiquetaDuracion else "Duración ▾", activa = duracion != null) { eligiendoDuracion = true }
+        }
+        if (hayFiltrosActivos) {
+          item {
+            Pastilla("Limpiar ✕", activa = false) {
+              genero = null
+              sinVer = false
+              decada = null
+              calidad = null
+              duracion = null
+            }
+          }
+        }
+      }
+      if (total >= 0) {
+        Text(
+          "$total títulos" + (if (hayFiltrosActivos) " con este filtro" else ""),
+          color = TextoTenue,
+          style = MaterialTheme.typography.labelSmall,
+          modifier = Modifier.padding(horizontal = Aire.borde, vertical = 2.dp),
+        )
+      }
+
+      when {
+        items.isEmpty() && fallo.isNotEmpty() -> Aviso(fallo)
+        items.isEmpty() && total == 0 -> Aviso("Nada con este filtro.")
+        items.isEmpty() -> EsqueletoDeRejilla()
+        else -> LazyVerticalGrid(
+          columns = GridCells.Adaptive(minSize = 100.dp),
+          state = rejilla,
+          modifier = Modifier.fillMaxSize(),
+          contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+          horizontalArrangement = Arrangement.spacedBy(Aire.entreTarjetas),
+          verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+          items(items, key = { it.id }) { t ->
+            Cartel(t, ancho = 100, alPulsar = alAbrirFicha)
+          }
         }
       }
     }

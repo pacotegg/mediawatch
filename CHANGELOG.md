@@ -12,6 +12,12 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.79 — 22/10/2026
+
+- Bibliotecas con pestañas «Recomendado» y «Biblioteca»: al estilo Plex en Android y Google TV / Android TV, con filas de continuar viendo en esa biblioteca, añadido recientemente y mejor valoradas.
+- Rejilla adaptativa perfeccionada: ajuste del tamaño mínimo de carátulas a 100 dp para garantizar 3 columnas en móviles con fuentes o pantallas aumentadas (como Pixel) sin agrandar excesivamente los pósteres.
+- Estuche 3D interactivo con discart activado por defecto en la ficha.
+
 ## 3.78 — 22/10/2026
 
 - Sincronización labial en transcodificación: resuelto el desfase de casi 3 segundos de audio al pausar, reanudar o avanzar en vídeos transcodificados por hardware.

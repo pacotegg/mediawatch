@@ -176,7 +176,7 @@ object Ajustes {
 
   /** Estuche 3D interactivo con discart extraíble. */
   var estuche3D: Boolean
-    get() = prefs.getBoolean("estuche3D", false)
+    get() = prefs.getBoolean("estuche3D", true)
     set(v) = prefs.edit().putBoolean("estuche3D", v).apply()
 
   /** Idioma de la interfaz ("en" o "es"). "en" por defecto para nuevas instalaciones, "es" para las existentes. */

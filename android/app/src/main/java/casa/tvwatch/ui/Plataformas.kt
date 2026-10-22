@@ -160,7 +160,7 @@ fun PantallaPlataformas(alAbrirFicha: (Int) -> Unit, alPerderSesion: () -> Unit)
       lote == null -> EsqueletoDeRejilla()
       lote.isEmpty() -> Aviso("Sin resultados.")
       else -> LazyVerticalGrid(
-        columns = GridCells.Adaptive(minSize = 118.dp),
+        columns = GridCells.Adaptive(minSize = 100.dp),
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(Aire.entreTarjetas),

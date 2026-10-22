@@ -212,6 +212,11 @@ object Api {
       (if (sinVer) "&unwatched=1" else ""),
   )
   fun generos(libraryId: Int): List<Genero> = pedir("/api/genres?library=$libraryId")
+  fun continuarBiblioteca(libraryId: Int): List<Titulo> = try {
+    pedir("/api/libraries/$libraryId/continuar")
+  } catch (_: Exception) {
+    emptyList()
+  }
   fun sagas(): List<Saga> = pedir("/api/collections")
   fun persona(id: Int): FichaDePersona = pedir("/api/people/$id")
   fun fotoDePersona(id: Int, ancho: Int) = "${Servidor.baseCacheada()}/api/people/$id/thumb?w=$ancho"

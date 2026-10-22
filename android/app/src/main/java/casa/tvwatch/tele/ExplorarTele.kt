@@ -272,9 +272,35 @@ private fun FilaTele(fila: FilaPortada, ultimo: String?, alEnfocar: (Titulo) -> 
 private val ORDENES = listOf("title" to "A–Z", "added" to "Recientes", "year" to "Año", "rating" to "Nota", "random" to "Al azar")
 private const val PAGINA = 70
 
-/** Una biblioteca en rejilla de siete, con el orden y «sin ver» arriba. */
+/** Una biblioteca en rejilla de siete, con el orden y «sin ver» arriba, o con filas recomendadas como en Plex. */
 @Composable
 fun BibliotecaTele(libraryId: Int, nombre: String, alAbrirFicha: (Int) -> Unit, alPerderSesion: () -> Unit) {
+  var pestana by rememberSaveable(libraryId) { mutableStateOf("recomendado") }
+  var continuar by remember(libraryId) { mutableStateOf<List<Titulo>?>(null) }
+  var recientes by remember(libraryId) { mutableStateOf<List<Titulo>?>(null) }
+  var valoradas by remember(libraryId) { mutableStateOf<List<Titulo>?>(null) }
+  var enfocado by remember(libraryId) { mutableStateOf<Titulo?>(null) }
+  var ultimoFila by rememberSaveable(libraryId) { mutableStateOf<String?>(null) }
+  var cargandoRecomendado by remember(libraryId) { mutableStateOf(false) }
+
+  LaunchedEffect(libraryId, pestana) {
+    if (pestana != "recomendado" || recientes != null) return@LaunchedEffect
+    cargandoRecomendado = true
+    try {
+      val c = withContext(Dispatchers.IO) { Api.continuarBiblioteca(libraryId) }
+      val r = withContext(Dispatchers.IO) { Api.titulos(libraryId, 0, 20, "added").items }
+      val v = withContext(Dispatchers.IO) { Api.titulos(libraryId, 0, 20, "rating").items }
+      continuar = c
+      recientes = r
+      valoradas = v
+    } catch (e: Api.SinSesion) {
+      alPerderSesion()
+    } catch (_: Exception) {
+    } finally {
+      cargandoRecomendado = false
+    }
+  }
+
   var orden by rememberSaveable(libraryId) { mutableStateOf("title") }
   var sinVer by rememberSaveable(libraryId) { mutableStateOf(false) }
   val filtro = orden to sinVer
@@ -310,41 +336,94 @@ fun BibliotecaTele(libraryId: Int, nombre: String, alAbrirFicha: (Int) -> Unit, 
     snapshotFlow { cercaDelFinal }.collect { if (it && items.isNotEmpty()) traerMas() }
   }
 
-  Column(Modifier.fillMaxSize().background(Fondo).padding(top = AireTele.arriba)) {
-    Row(Modifier.padding(horizontal = AireTele.lado), verticalAlignment = Alignment.CenterVertically) {
-      Text(nombre, color = Texto, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-      Spacer(Modifier.width(16.dp))
-      if (total >= 0) Text("$total", color = TextoTenue, fontSize = 15.sp)
-      Spacer(Modifier.weight(1f))
-      ORDENES.forEach { (clave, texto) ->
-        Pestana(texto, activa = orden == clave) { if (orden != clave) { orden = clave; ultimo = -1 } }
-        Spacer(Modifier.width(6.dp))
-      }
-      Pestana(if (sinVer) "Sin ver ✓" else "Sin ver", activa = sinVer) { sinVer = !sinVer; ultimo = -1 }
+  val filasRecomendado = remember(continuar, recientes, valoradas, nombre) {
+    val f = mutableListOf<FilaPortada>()
+    continuar?.takeIf { it.isNotEmpty() }?.let { f.add(FilaPortada("continuar-$libraryId", "Continuar viendo en $nombre", "progress", it)) }
+    recientes?.takeIf { it.isNotEmpty() }?.let { f.add(FilaPortada("recientes-$libraryId", "Añadido recientemente", "poster", it)) }
+    valoradas?.takeIf { it.isNotEmpty() }?.let { f.add(FilaPortada("valoradas-$libraryId", "Mejor valoradas", "poster", it)) }
+    f
+  }
+  val lista = rememberLazyListState()
+  val ambito = rememberCoroutineScope()
+
+  Box(Modifier.fillMaxSize()) {
+    if (pestana == "recomendado") {
+      FondoDelEnfocado(enfocado ?: filasRecomendado.firstOrNull()?.items?.firstOrNull())
     }
-    Spacer(Modifier.height(10.dp))
-    when {
-      items.isEmpty() && fallo.isNotEmpty() -> AvisoTele(fallo)
-      items.isEmpty() && total == 0 -> AvisoTele("Nada con este filtro.")
-      items.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Realce) }
-      else -> LazyVerticalGrid(
-        columns = GridCells.Fixed(7),
-        state = rejilla,
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = AireTele.lado, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(18.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-      ) {
-        itemsIndexed(items, key = { _, t -> t.id }) { i, t ->
-          val pedir = remember { FocusRequester() }
-          if (i == ultimo) LaunchedEffect(Unit) { runCatching { pedir.requestFocus() } }
-          CartelTele(
-            t,
-            ancho = null,
-            modifier = Modifier.onFocusChanged { if (it.hasFocus) ultimo = i },
-            focoModifier = Modifier.focusRequester(pedir),
-            alPulsar = alAbrirFicha,
-          )
+    Column(Modifier.fillMaxSize().background(if (pestana == "recomendado") Color.Transparent else Fondo).padding(top = AireTele.arriba)) {
+      Row(Modifier.padding(horizontal = AireTele.lado), verticalAlignment = Alignment.CenterVertically) {
+        Text(nombre, color = Texto, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.width(20.dp))
+        Pestana("Recomendado", activa = pestana == "recomendado") { pestana = "recomendado" }
+        Spacer(Modifier.width(8.dp))
+        Pestana("Biblioteca", activa = pestana == "biblioteca") { pestana = "biblioteca" }
+        if (pestana == "biblioteca") {
+          Spacer(Modifier.width(16.dp))
+          if (total >= 0) Text("$total", color = TextoTenue, fontSize = 15.sp)
+          Spacer(Modifier.weight(1f))
+          ORDENES.forEach { (clave, texto) ->
+            Pestana(texto, activa = orden == clave) { if (orden != clave) { orden = clave; ultimo = -1 } }
+            Spacer(Modifier.width(6.dp))
+          }
+          Pestana(if (sinVer) "Sin ver ✓" else "Sin ver", activa = sinVer) { sinVer = !sinVer; ultimo = -1 }
+        }
+      }
+      Spacer(Modifier.height(10.dp))
+
+      if (pestana == "recomendado") {
+        when {
+          cargandoRecomendado && recientes == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Realce) }
+          filasRecomendado.isEmpty() -> AvisoTele("No hay títulos en esta biblioteca.")
+          else -> {
+            InfoDelEnfocado(
+              enfocado ?: filasRecomendado.firstOrNull()?.items?.firstOrNull(),
+              Modifier.padding(start = AireTele.lado, top = 8.dp).height(190.dp),
+            )
+            LazyColumn(
+              state = lista,
+              modifier = Modifier.fillMaxSize(),
+              contentPadding = PaddingValues(bottom = 200.dp),
+            ) {
+              itemsIndexed(filasRecomendado, key = { _, f -> f.key }) { i, fila ->
+                FilaTele(
+                  fila = fila,
+                  ultimo = ultimoFila,
+                  alEnfocar = { t ->
+                    enfocado = t
+                    ultimoFila = fila.key + ":" + t.id
+                    ambito.launch { lista.animateScrollToItem(i) }
+                  },
+                  alPulsar = alAbrirFicha,
+                )
+              }
+            }
+          }
+        }
+      } else {
+        when {
+          items.isEmpty() && fallo.isNotEmpty() -> AvisoTele(fallo)
+          items.isEmpty() && total == 0 -> AvisoTele("Nada con este filtro.")
+          items.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Realce) }
+          else -> LazyVerticalGrid(
+            columns = GridCells.Fixed(7),
+            state = rejilla,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = AireTele.lado, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+          ) {
+            itemsIndexed(items, key = { _, t -> t.id }) { i, t ->
+              val pedir = remember { FocusRequester() }
+              if (i == ultimo) LaunchedEffect(Unit) { runCatching { pedir.requestFocus() } }
+              CartelTele(
+                t,
+                ancho = null,
+                modifier = Modifier.onFocusChanged { if (it.hasFocus) ultimo = i },
+                focoModifier = Modifier.focusRequester(pedir),
+                alPulsar = alAbrirFicha,
+              )
+            }
+          }
         }
       }
     }

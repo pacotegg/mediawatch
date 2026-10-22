@@ -50,13 +50,13 @@ fun PantallaFavoritas(alAbrirFicha: (Int) -> Unit, alPerderSesion: () -> Unit) {
     lista == null -> EsqueletoDeRejilla()
     lista.isEmpty() -> Aviso("Todavía no hay favoritas. Se marcan con la estrella de la ficha.")
     else -> LazyVerticalGrid(
-      columns = GridCells.Adaptive(minSize = 118.dp),
+      columns = GridCells.Adaptive(minSize = 100.dp),
       modifier = Modifier.fillMaxSize().background(Fondo),
       contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
       horizontalArrangement = Arrangement.spacedBy(Aire.entreTarjetas),
       verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-      items(lista, key = { it.id }) { t -> Cartel(t, ancho = 118, alPulsar = alAbrirFicha) }
+      items(lista, key = { it.id }) { t -> Cartel(t, ancho = 100, alPulsar = alAbrirFicha) }
     }
   }
 }

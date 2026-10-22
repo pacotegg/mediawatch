@@ -62,7 +62,7 @@ fun PantallaPersona(personaId: Int, alAbrirFicha: (Int) -> Unit, alPerderSesion:
     fallo.isNotEmpty() -> Aviso(fallo)
     f == null -> EsqueletoDeRejilla()
     else -> LazyVerticalGrid(
-      columns = GridCells.Adaptive(minSize = 118.dp),
+      columns = GridCells.Adaptive(minSize = 100.dp),
       modifier = Modifier.fillMaxSize().background(Fondo),
       contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
       horizontalArrangement = Arrangement.spacedBy(Aire.entreTarjetas),
