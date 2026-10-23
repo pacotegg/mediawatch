@@ -121,7 +121,7 @@ function plexAMediaWatch(plex: DatabaseSync) {
     SELECT COALESCE(f.item_id, e.show_id) AS item_id, f.episode_id, f.duration
       FROM media_files f LEFT JOIN episodes e ON e.id = f.episode_id
      WHERE f.path = ? COLLATE NOCASE`);
-  const buscarProgreso = db.prepare('SELECT updated_at FROM progress WHERE user_id = ? AND item_id = ? AND episode_id IS ?');
+  const buscarProgreso = db.prepare('SELECT updated_at, position, watched FROM progress WHERE user_id = ? AND item_id = ? AND episode_id IS ?');
 
   let actualizados = 0, sinCruzar = 0, masReciente = 0, ruido = 0;
 
@@ -130,7 +130,7 @@ function plexAMediaWatch(plex: DatabaseSync) {
     if (!fichero) { sinCruzar++; continue; }
 
     const plexActualizado = fila.updated_at * 1000;
-    const existente = buscarProgreso.get(TVWATCH_USER_ID, fichero.item_id, fichero.episode_id) as { updated_at: string } | undefined;
+    const existente = buscarProgreso.get(TVWATCH_USER_ID, fichero.item_id, fichero.episode_id) as { updated_at: string; position?: number; watched?: number } | undefined;
     if (existente && Date.parse(existente.updated_at) >= plexActualizado) { masReciente++; continue; }
 
     const duracion = fila.duration ? fila.duration / 1000 : fichero.duration;
@@ -138,6 +138,13 @@ function plexAMediaWatch(plex: DatabaseSync) {
     const posicion = enProgreso ? fila.view_offset! / 1000 : (duracion ?? 0);
     if (enProgreso && posicion <= POSICION_MINIMA_SEG) { ruido++; continue; }
     const visto = enProgreso ? 0 : 1;
+
+    // Si TvWatch tiene una reproduccion activa en curso, una marca generica de "visto"
+    // (sin view_offset) de Plex no debe machacarla ni darla por terminada.
+    if (existente && existente.watched === 0 && (existente.position ?? 0) > POSICION_MINIMA_SEG && !enProgreso) {
+      masReciente++;
+      continue;
+    }
 
     guardarProgreso(fichero.item_id, fichero.episode_id, posicion, duracion, visto, new Date(plexActualizado).toISOString());
     actualizados++;

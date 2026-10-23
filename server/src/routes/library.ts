@@ -24,6 +24,7 @@ import { toString as qrComoSvg } from 'qrcode';
 import { parsearRango } from '../media/rango.ts';
 import { etiquetasTecnicas } from '../media/etiquetas.ts';
 import { aspectoDe, huellaDe, versionClara } from '../media/logos-estudio.ts';
+import { notificarProgresoAPlex } from '../media/plex.ts';
 
 const MIME: Record<string, string> = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp' };
 
@@ -1230,6 +1231,14 @@ export default async function libraryRoutes(app: FastifyInstance) {
       subtitle !== undefined ? (subtitle !== null ? String(subtitle) : 'off') : undefined,
     );
     avanzar({ userId: user.id, itemId, episodeId: episodeId ?? null, position, duracion: duration ?? null, vista: Boolean(esVisto), sesion: sesionDe(req) });
+    if (user.id === 1) {
+      queueMicrotask(() => {
+        const filaRuta = (episodeId
+          ? db.prepare('SELECT path FROM media_files WHERE episode_id = ?').get(episodeId)
+          : db.prepare('SELECT path FROM media_files WHERE item_id = ? AND episode_id IS NULL').get(itemId)) as { path: string } | undefined;
+        if (filaRuta?.path) notificarProgresoAPlex(filaRuta.path, position, Boolean(esVisto));
+      });
+    }
     return { ok: true };
   });
 
@@ -1240,6 +1249,14 @@ export default async function libraryRoutes(app: FastifyInstance) {
     const { watched, episodeId } = (req.body ?? {}) as { watched: boolean; episodeId?: number | null };
     if (episodeId != null && !Number.isInteger(episodeId)) return reply.code(400).send({ error: 'Episodio no válido' });
     guardarProgreso(user.id, id, episodeId ?? null, 0, null, watched ? 1 : 0);
+    if (user.id === 1) {
+      queueMicrotask(() => {
+        const filaRuta = (episodeId
+          ? db.prepare('SELECT path FROM media_files WHERE episode_id = ?').get(episodeId)
+          : db.prepare('SELECT path FROM media_files WHERE item_id = ? AND episode_id IS NULL').get(id)) as { path: string } | undefined;
+        if (filaRuta?.path) notificarProgresoAPlex(filaRuta.path, 0, Boolean(watched));
+      });
+    }
     return { ok: true };
   });
 

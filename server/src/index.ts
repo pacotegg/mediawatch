@@ -12,7 +12,7 @@ import { limpiarHuerfanas as limpiarTrickplayHuerfano, reanudarLoteSiPendiente }
 import { reanudarAfinadoSiPendiente, revisarAfinadas } from './media/creditos-afinado.ts';
 import animeRoutes from './routes/anime.ts';
 import actividadRoutes from './routes/actividad.ts';
-import authRoutes, { currentUser, limpiarSesiones } from './routes/auth.ts';
+import authRoutes, { currentUser, deFuera, limpiarSesiones } from './routes/auth.ts';
 import descargaRoutes from './routes/descargas.ts';
 import enrichRoutes from './routes/enrich.ts';
 import identificarRoutes from './routes/identificar.ts';
@@ -31,6 +31,7 @@ import systemRoutes from './routes/system.ts';
 import licenciaRoutes from './routes/licencia.ts';
 import { scanAllEnWorker, type ScanProgress } from './scanner/scan.ts';
 import { ultimaVersionApp } from './media/version-app.ts';
+import { procesarWebhookPlex } from './media/plex.ts';
 
 /*
  * `server.log` y `server.err` se abren en modo añadir y no llevaban hora: un
@@ -160,6 +161,7 @@ const ABIERTAS = new Set([
   'GET /api/qr.svg', // el QR de emparejamiento se pinta en esa misma pantalla
   'GET /api/app/version', // la app avisa de versión nueva también antes de entrar
   'GET /api/salud', // el vigilante comprueba que el servidor CONTESTA, no solo que el proceso existe
+  'POST /api/plex/webhook', // webhook de Plex (solo red local)
 ]);
 
 app.addHook('onRequest', async (req, reply) => {
@@ -241,8 +243,32 @@ const CSP_WEB = [
 ].join('; ');
 
 // Los navegadores mandan el informe con estos tipos; sin analizador Fastify respondería 415.
+// Plex manda sus Webhooks en multipart/form-data con el JSON en el campo 'payload'.
+app.addContentTypeParser('multipart/form-data', { parseAs: 'buffer' }, (_req, cuerpo, hecho) => {
+  hecho(null, cuerpo);
+});
+
 app.addContentTypeParser(['application/csp-report', 'application/reports+json'], { parseAs: 'string' }, (_req, cuerpo, hecho) => {
   try { hecho(null, JSON.parse(String(cuerpo))); } catch (err) { hecho(err as Error, undefined); }
+});
+
+app.post('/api/plex/webhook', async (req, reply) => {
+  if (deFuera(req)) return reply.code(403).send({ error: 'Solo accesible desde la red local' });
+  let payload: any = null;
+  if (req.body && typeof req.body === 'object' && !Buffer.isBuffer(req.body)) {
+    payload = req.body;
+  } else {
+    const rawBody = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : String(req.body ?? '');
+    const m = /name="payload"[^\{]*(\{[\s\S]*?\})\r?\n--/i.exec(rawBody);
+    if (m) {
+      try { payload = JSON.parse(m[1]); } catch {}
+    } else {
+      try { payload = JSON.parse(rawBody); } catch {}
+    }
+  }
+  if (!payload) return reply.code(400).send({ error: 'Falta campo payload JSON' });
+  const resultado = procesarWebhookPlex(payload);
+  return reply.code(200).send(resultado);
 });
 const cspVistos = new Set<string>();
 app.post('/api/csp', async (req, reply) => {
