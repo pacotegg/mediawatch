@@ -5073,6 +5073,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     if (cerrado) return;
     cerrado = true;
     reproductorActivo = null;
+    portadaGuardada = null;
     window.clearTimeout(temporizadorReintento);
     if (capaError && capaError.parentElement) {
       capaError.parentElement.removeChild(capaError);
@@ -5082,16 +5083,20 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     window.clearTimeout(temporizadorSalto);
     window.clearTimeout(temporizadorSub);
     const t = reproductor.tiempo();
+    reproductor.cerrar();
+    const navegar = () => {
+      if (alVolver) alVolver();
+      else void pantallaFicha(ficha.id);
+    };
     if (!marcadoVisto && t > 5) {
       const trSub = subOrdinal >= 0 ? infoServidor?.subtitles.filter((s) => s.source === 'embedded')[subOrdinal] : subOrdinal <= -10 ? infoServidor?.subtitles.filter((s) => s.source === 'external')[-(subOrdinal + 10)] : null;
-      void api.progreso({
+      api.progreso({
         itemId: ficha.id, episodeId, position: t, duration: total() || undefined,
         audio: audioId, subtitle: subOrdinal === -1 ? 'off' : trSub ? trSub.id : 'off'
-      }).catch(() => undefined);
+      }).then(navegar, navegar);
+    } else {
+      navegar();
     }
-    reproductor.cerrar();
-    if (alVolver) alVolver();
-    else void pantallaFicha(ficha.id);
   };
 
   /** El siguiente episodio con fichero, en orden de temporada y número. */
@@ -5113,6 +5118,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     cerrado = true;
     reproductorActivo = null;
     marcadoVisto = true;
+    portadaGuardada = null;
     const durTerminar = total() || duracionFichero;
     if (episodeId !== null) {
       const p = ficha.progress.filter((x) => x.episode_id === episodeId)[0];

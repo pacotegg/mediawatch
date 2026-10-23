@@ -1212,6 +1212,8 @@ export default async function libraryRoutes(app: FastifyInstance) {
       const supera90 = Boolean(duracion && position > duracion * 0.90);
       if (enCreditos || supera90) {
         esVisto = 1;
+      } else if (position > 60) {
+        esVisto = 0;
       } else {
         const filaActual = db.prepare('SELECT watched FROM progress WHERE user_id = ? AND item_id = ? AND episode_id IS ?').get(user.id, itemId, episodeId ?? null) as { watched?: number } | undefined;
         esVisto = filaActual && filaActual.watched === 1 ? 1 : 0;
