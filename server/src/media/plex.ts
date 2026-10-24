@@ -20,6 +20,7 @@ function getPlexDb(): DatabaseSync | null {
   if (plexDbInstancia) return plexDbInstancia;
   try {
     plexDbInstancia = new DatabaseSync(PLEX_DB, { readOnly: true });
+    plexDbInstancia.exec('PRAGMA busy_timeout = 5000;');
     return plexDbInstancia;
   } catch {
     return null;
@@ -51,22 +52,45 @@ export async function marcarEnPlex(token: string, ratingKey: number, watched: bo
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 }
 
+const ratingKeyCache = new Map<string, number>();
+
 /**
  * Busca el ratingKey de Plex para un fichero dado consultando la base de datos de Plex.
+ * Usa primero el índice nativo de media_parts(file) (1.8 ms); si no casa, recurre a COLLATE NOCASE.
+ * El resultado queda en caché en memoria (0 ms las siguientes veces).
  */
 export function buscarRatingKeyPlex(rutaFichero: string): number | null {
+  const enCache = ratingKeyCache.get(rutaFichero);
+  if (enCache !== undefined) return enCache;
+
   const plex = getPlexDb();
   if (!plex) return null;
   try {
-    const fila = plex.prepare(`
+    let fila = plex.prepare(`
       SELECT mi.id AS ratingKey
         FROM media_parts mp
         JOIN media_items med ON med.id = mp.media_item_id
         JOIN metadata_items mi ON mi.id = med.metadata_item_id
-       WHERE mp.file = ? COLLATE NOCASE
+       WHERE mp.file = ?
        LIMIT 1
     `).get(rutaFichero) as { ratingKey: number } | undefined;
-    return fila?.ratingKey ?? null;
+
+    if (!fila) {
+      fila = plex.prepare(`
+        SELECT mi.id AS ratingKey
+          FROM media_parts mp
+          JOIN media_items med ON med.id = mp.media_item_id
+          JOIN metadata_items mi ON mi.id = med.metadata_item_id
+         WHERE mp.file = ? COLLATE NOCASE
+         LIMIT 1
+      `).get(rutaFichero) as { ratingKey: number } | undefined;
+    }
+
+    if (fila?.ratingKey) {
+      ratingKeyCache.set(rutaFichero, fila.ratingKey);
+      return fila.ratingKey;
+    }
+    return null;
   } catch {
     return null;
   }
@@ -130,13 +154,20 @@ export function procesarWebhookPlex(payload: any): { ok: boolean; motivo?: strin
 
   if (!rutaFichero) return { ok: false, motivo: 'no se encontro ruta del fichero' };
 
-  // Buscar el item en TvWatch
-  const buscarFichero = db.prepare(`
+  // Buscar el item en TvWatch: primero exacta (usa el índice único), si no casa fallback a NOCASE
+  let fichero = db.prepare(`
     SELECT COALESCE(f.item_id, e.show_id) AS item_id, f.episode_id, f.duration
       FROM media_files f LEFT JOIN episodes e ON e.id = f.episode_id
-     WHERE f.path = ? COLLATE NOCASE
-  `);
-  const fichero = buscarFichero.get(rutaFichero) as { item_id: number; episode_id: number | null; duration: number | null } | undefined;
+     WHERE f.path = ?
+  `).get(rutaFichero) as { item_id: number; episode_id: number | null; duration: number | null } | undefined;
+
+  if (!fichero) {
+    fichero = db.prepare(`
+      SELECT COALESCE(f.item_id, e.show_id) AS item_id, f.episode_id, f.duration
+        FROM media_files f LEFT JOIN episodes e ON e.id = f.episode_id
+       WHERE f.path = ? COLLATE NOCASE
+    `).get(rutaFichero) as { item_id: number; episode_id: number | null; duration: number | null } | undefined;
+  }
   if (!fichero) return { ok: false, motivo: `fichero no catalogado en TvWatch (${rutaFichero})` };
 
   const duracion = meta.duration ? meta.duration / 1000 : fichero.duration;

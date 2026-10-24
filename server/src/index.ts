@@ -510,7 +510,8 @@ async function limpiarSiToca() {
     console.error('[limpieza] fallo:', (err as Error).message);
   }
 }
-setTimeout(() => void limpiarSiToca(), 40_000).unref();
+// La limpieza de caché (recorrer >70.000 ficheros) se ejecuta periódicamente una vez por semana, nunca en el
+// arranque para no congelar el bucle de eventos ni provocar reinicios del vigilante.
 // Un lote de miniaturas que murió con el proceso se reanuda, sin prisa: primero que arranque todo.
 // (MEDIAWATCH_TRICKPLAY_REANUDAR_MS solo existe para que las pruebas no esperen tres minutos.)
 // Antes de reanudar nada: devolver a su rango original lo afinado que no sea plausible.
