@@ -257,3 +257,41 @@ async function medirFichero(fileId: number): Promise<MediaInfo & { path: string 
 
   return { ...info, path: file.path };
 }
+
+const inicioCache = new Map<string, number>();
+
+/**
+ * Segundos que el audio elegido llega después del vídeo (0 si no se puede medir).
+ *
+ * AVPlay de la QN93A no termina de preparar un MKV cuyo primer paquete de audio llega a 15 s o más del
+ * vídeo: se queda en IDLE sin error (medido el 26/10/2026: a 14 s prepara, a 15 s no). El
+ * `start_time` que da ffprobe no sirve, dice 0 aunque el primer paquete esté en el segundo 19.
+ */
+export async function retrasoDeAudio(path: string, size: number, streamIndex: number): Promise<number> {
+  const clave = `${path}:${size}:${streamIndex}`;
+  const guardado = inicioCache.get(clave);
+  if (guardado !== undefined) return guardado;
+  const primero = async (seleccion: string) => {
+    const { stdout } = await run(
+      config.ffprobe,
+      ['-v', 'error', '-select_streams', seleccion, '-read_intervals', '%+#1', '-show_entries', 'packet=pts_time', '-of', 'csv=p=0', path],
+      { timeout: 15_000, windowsHide: true },
+    );
+    const v = parseFloat(stdout.trim().split('\n')[0]);
+    return Number.isFinite(v) ? v : null;
+  };
+  let retraso = 0;
+  try {
+    const [v, a] = await Promise.all([primero('v:0'), primero(String(streamIndex))]);
+    if (v !== null && a !== null) retraso = Math.max(0, a - v);
+  } catch {
+    /* sin dato: se sirve como hasta ahora */
+  }
+  inicioCache.set(clave, retraso);
+  return retraso;
+}
+
+/** Margen bajo los 15 s en que AVPlay se cuelga; `start` es lo que ya se salta al reanudar. */
+export function audioTardio(retraso: number, start: number): boolean {
+  return retraso - start >= 12;
+}

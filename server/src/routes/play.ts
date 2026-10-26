@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { config, DATA_DIR } from '../config.ts';
 import { db, parseRatingCategoria } from '../db.ts';
-import { mediaInfo, type MediaInfo } from '../media/probe.ts';
+import { audioTardio, mediaInfo, retrasoDeAudio, type MediaInfo } from '../media/probe.ts';
 import { dialogueDownmix, planPlayback, sessions, startStream, stopSession, type AudioMode, type ClientCaps } from '../media/transcode.ts';
 import { clearOffset, isMeasuring, measure, offsetFor, saveOffset } from '../media/resync.ts';
 import { afinarPeliculas, deshacerAfinado, jobAfinado, pararAfinado, resumenAfinado } from '../media/creditos-afinado.ts';
@@ -567,8 +567,10 @@ export default async function playRoutes(app: FastifyInstance) {
     const normalizar = q.normalize === '1';
     const incompatible = Boolean(perfil && pistaElegida && !audioCompatible(perfil, pistaElegida.codec));
     const forzarRemux = q.compat === '1';
+    // AVPlay no prepara si el audio llega a 15 s o más del vídeo: se le rellena el principio con silencio.
+    const rellenarInicio = raw && !!pistaElegida && audioTardio(await retrasoDeAudio(row.path, statFichero.size, audioIndex), start);
 
-    if (raw && pistaElegida && (incompatible || modoAudio !== 'normal' || normalizar || forzarRemux)) {
+    if (raw && pistaElegida && (incompatible || modoAudio !== 'normal' || normalizar || forzarRemux || rellenarInicio)) {
       const salida = salidaDeAudio(perfil);
       const origen = pistaElegida.channels ?? 2;
       // «Voces claras» mezcla a estereo subiendo el canal central; el resto
@@ -584,18 +586,25 @@ export default async function playRoutes(app: FastifyInstance) {
       if (modoAudio === 'night') filtros.push('acompressor=threshold=-20dB:ratio=4:attack=20:release=250:makeup=2');
       if (downmix || modoAudio === 'night') filtros.push(`alimiter=limit=${modoAudio === 'night' ? '0.89' : '0.95'}:level=false`);
       if (normalizar) filtros.push('loudnorm=I=-16:TP=-1.5:LRA=11');
+      if (rellenarInicio) filtros.unshift('aresample=async=1:first_pts=0');
 
       const args = [
         '-hide_banner', '-loglevel', 'error', '-nostdin',
         ...(start > 0 ? ['-ss', String(start)] : []),
         '-i', row.path,
-        '-map', '0:v:0', '-map', `0:${audioIndex}`, '-map', '0:s?',
+        '-map', '0:v:0', '-map', `0:${audioIndex}`,
+        // Los subtítulos de un MP4 (`mov_text`, o de mapa de bits) ni se copian ni se convierten a Matroska
+        // y ffmpeg no escribe nada; la tele pide los suyos aparte por `/subtitle/`, así que se dejan fuera.
+        ...(/mp4|m4v|mov/.test(info.container) ? [] : ['-map', '0:s?']),
         '-c:v', 'copy', '-c:s', 'copy',
         '-c:a', salida.codec,
         // `pan` ya ha dejado dos canales; pedir -ac otra vez volveria a mezclar.
         ...(downmix ? [] : ['-ac', String(canales)]),
         '-b:a', canales > 2 ? salida.bitrate : '224k',
         ...(filtros.length ? ['-af', filtros.join(',')] : []),
+        // Sin tope de intercalado el vídeo sale hasta 21 s por delante del audio (medido con «Lock & Stock»)
+        // y AVPlay no prepara con 15 s o más; con 0 salen alternados (0,3 s).
+        ...(rellenarInicio ? ['-max_interleave_delta', '0'] : []),
         '-max_muxing_queue_size', '4096',
         '-f', 'matroska', 'pipe:1',
       ];
