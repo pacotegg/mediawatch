@@ -179,7 +179,10 @@ async function procesar(f: Fila) {
     return;
   }
   const puesto = Date.now();
-  copyFileSync(f.path, join(COLA, `mw${f.id}${ext}`));
+  // A `.partial` y renombrar al final: encode-watch.ps1 descarta los `.partial` y así nunca coge una copia a medias.
+  const enCola = join(COLA, `mw${f.id}${ext}`);
+  copyFileSync(f.path, enCola + '.partial');
+  renameSync(enCola + '.partial', enCola);
   decir(f, `en cola: mw${f.id}${ext}`);
   const salida = await esperarSalida(f.id, puesto);
   if (salida === 'fallido') {
@@ -245,7 +248,11 @@ while (hechosAhora < limite && candidatos.length) {
     const f = candidatos.shift()!; tanda.push(f); gb += f.size / 1e9;
   }
   console.log(`\nTanda de ${tanda.length} (${gb.toFixed(1)} GB)`);
-  // De 2 en 2: encode-watch.ps1 codifica hasta 2 a la vez ($MaxSlots), y con uno solo en cola tenía media GPU parada.
+  /*
+   * De 2 en 2: encode-watch.ps1 coge un LOTE de hasta 2 ($MaxSlots) con lo que haya en cola en ese momento y espera a que
+   * acaben los dos. Con 2 trabajadores el segundo casi nunca estaba copiado al elegir y salía de uno en uno (visto el
+   * 26/10/2026); con 4 hay 2 codificando y 2 ya esperando en cola para el lote siguiente.
+   */
   let siguiente = 0;
   const trabajador = async () => {
     while (siguiente < tanda.length && !existsSync(PARADA)) {
@@ -254,7 +261,7 @@ while (hechosAhora < limite && candidatos.length) {
       try { await procesar(f); } catch (e) { anotar({ ruta: f.path, id: f.id, resultado: 'error', motivo: (e as Error).message }); decir(f, `x error: ${(e as Error).message}`); }
     }
   };
-  await Promise.all([trabajador(), trabajador()]);
+  await Promise.all([trabajador(), trabajador(), trabajador(), trabajador()]);
   if (existsSync(PARADA)) { console.log('Parada pedida: salgo (los que estaban en marcha han terminado).'); process.exit(0); }
 }
 console.log('\nTerminado.');
