@@ -64,9 +64,32 @@ async function serveArt(reply: FastifyReply, source: string | null, width: numbe
   }
 }
 
+/*
+ * «Alfabético, pero en orden de estreno»: las películas de una misma colección van juntas, en el sitio alfabético de la
+ * PRIMERA de la saga y por año dentro de ella (Alien, Aliens, Alien³, Resurrección, Covenant, Romulus; antes: Alien, Covenant,
+ * Resurrección, Romulus, Aliens, Alien³). El abecedario cuenta cada saga bajo la letra de su primera película, no de la suya
+ * («El imperio contraataca» cuelga de la S de Star Wars). Lo que no tiene colección se ordena por su propio título.
+ */
+export const TITULO_SAGA = `COALESCE(
+  (SELECT COALESCE(p.sort_title, p.title) FROM items_biblioteca p
+    WHERE i.kind = 'movie' AND p.kind = 'movie' AND p.collection = NULLIF(i.collection, '')
+    ORDER BY COALESCE(p.year, 9999), p.id LIMIT 1),
+  COALESCE(i.sort_title, i.title))`;
+const ORDEN_TITULO = `clave_orden(${TITULO_SAGA}) COLLATE NOCASE`;
+const DENTRO_DE_SAGA = 'COALESCE(i.year, 9999) ASC, clave_orden(COALESCE(i.sort_title, i.title)) COLLATE NOCASE ASC';
+
+/*
+ * La duración de una PELÍCULA sale del fichero que se va a ver: la de la ficha puede ser de otra edición (el Señor de los
+ * Anillos extendido dura 263 min y la ficha dice 202) o estar mal (El Conjuro: 223 min en la ficha, 112 el fichero; medido el
+ * 26/10/2026). Sin fichero medido se queda la de la ficha; las series siguen con la suya (la de un episodio).
+ */
+const RUNTIME_SQL = `CASE WHEN i.kind = 'movie' THEN COALESCE(
+  (SELECT CAST(ROUND(MAX(f.duration) / 60.0) AS INTEGER) FROM media_files f WHERE f.item_id = i.id AND f.duration > 0), NULLIF(i.runtime, 0), i.runtime)
+  ELSE i.runtime END`;
+
 const SORTS: Record<string, string> = {
-  title: 'clave_orden(COALESCE(i.sort_title, i.title)) COLLATE NOCASE ASC',
-  title_desc: 'clave_orden(COALESCE(i.sort_title, i.title)) COLLATE NOCASE DESC',
+  title: `${ORDEN_TITULO} ASC, ${DENTRO_DE_SAGA}`,
+  title_desc: `${ORDEN_TITULO} DESC, ${DENTRO_DE_SAGA}`,
   added: 'i.added_at DESC',
   added_asc: 'i.added_at ASC',
   added_desc: 'i.added_at DESC',
@@ -76,16 +99,16 @@ const SORTS: Record<string, string> = {
   rating: 'i.rating DESC NULLS LAST',
   rating_asc: 'i.rating ASC NULLS LAST',
   rating_desc: 'i.rating DESC NULLS LAST',
-  runtime: 'i.runtime DESC NULLS LAST',
-  runtime_asc: 'i.runtime ASC NULLS LAST',
-  runtime_desc: 'i.runtime DESC NULLS LAST',
+  runtime: `${RUNTIME_SQL} DESC NULLS LAST`,
+  runtime_asc: `${RUNTIME_SQL} ASC NULLS LAST`,
+  runtime_desc: `${RUNTIME_SQL} DESC NULLS LAST`,
   size: '(SELECT MAX(f.size) FROM media_files f WHERE f.item_id = i.id OR f.episode_id IN (SELECT e.id FROM episodes e WHERE e.show_id = i.id)) DESC NULLS LAST',
   size_asc: '(SELECT MAX(f.size) FROM media_files f WHERE f.item_id = i.id OR f.episode_id IN (SELECT e.id FROM episodes e WHERE e.show_id = i.id)) ASC NULLS LAST',
   random: 'RANDOM()',
 };
 
 const ITEM_FIELDS = `
-  i.id, i.kind, i.title, i.year, i.rating, i.runtime, i.mpaa, i.tagline,
+  i.id, i.kind, i.title, i.year, i.rating, ${RUNTIME_SQL} AS runtime, i.mpaa, i.tagline,
   i.poster IS NOT NULL AS has_poster, i.fanart IS NOT NULL AS has_fanart,
   i.clearlogo IS NOT NULL AS has_logo, i.landscape IS NOT NULL AS has_landscape,
   i.arte_actualizado, i.library_id, l.name AS library_name`;
@@ -233,7 +256,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
      * episodios. Y la calidad se mira también en los episodios: su `media_files.item_id` es NULL y el filtro de calidad
      * daba 0 títulos en todas las bibliotecas de series (medido el 26/10/2026).
      */
-    const duracion = `COALESCE(NULLIF(i.runtime, 0), (SELECT AVG(mf.duration) FROM media_files mf WHERE mf.item_id = i.id) / 60.0,
+    const duracion = `COALESCE(NULLIF(${RUNTIME_SQL}, 0), (SELECT AVG(mf.duration) FROM media_files mf WHERE mf.item_id = i.id) / 60.0,
       (SELECT AVG(mf.duration) FROM episodes e JOIN media_files mf ON mf.episode_id = e.id WHERE e.show_id = i.id) / 60.0)`;
     if (q.runtime === 'short') where.push(`${duracion} > 0 AND ${duracion} < 90`);
     else if (q.runtime === 'medium') where.push(`${duracion} >= 90 AND ${duracion} <= 120`);
@@ -311,7 +334,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
     if (!Number(q.library)) return { total: 0, letras: [] };
     const { clause, params } = filtroDeItems(q, user);
     const filas = db
-      .prepare(`SELECT COALESCE(i.sort_title, i.title) AS k FROM items_biblioteca i ${clause} ORDER BY ${SORTS.title}`)
+      .prepare(`SELECT ${TITULO_SAGA} AS k FROM items_biblioteca i ${clause} ORDER BY ${SORTS.title}`)
       .all(...params) as { k: string }[];
     return { total: filas.length, letras: letrasDe(filas.map((f) => f.k)) };
   });
@@ -330,6 +353,10 @@ export default async function libraryRoutes(app: FastifyInstance) {
                 FROM items_biblioteca i JOIN libraries l ON l.id = i.library_id WHERE i.id = ? ${crClause}`)
       .get(id, ...cr.params) as any;
     if (!item) return reply.code(404).send({ error: 'No encontrado' });
+    if (item.kind === 'movie') {
+      const fichero = db.prepare('SELECT MAX(duration) AS d FROM media_files WHERE item_id = ? AND duration > 0').get(id) as { d: number | null };
+      if (fichero?.d) item.runtime = Math.round(fichero.d / 60);
+    }
 
     const autorizaTemas = tieneFuncionLicencia('themes');
     item.has_theme = autorizaTemas && tieneTema(id, item.folder as string | undefined) ? 1 : 0;
