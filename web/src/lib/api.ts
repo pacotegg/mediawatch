@@ -90,6 +90,12 @@ export type MovieVersion = {
   isCurrent: boolean;
 };
 
+/** Lo que se puede editar a mano de un título; `null` quita el dato. */
+export type CambiosMetadatos = Partial<{
+  title: string; original_title: string | null; sort_title: string | null; year: number | null; tagline: string | null;
+  plot: string | null; studio: string | null; mpaa: string | null; collection: string | null; genres: string[];
+}>;
+
 export type ItemDetail = ItemSummary & {
   /** El disco redondo del Blu-ray, si lo hay: gira en la pausa del reproductor. */
   has_discart?: number;
@@ -97,6 +103,8 @@ export type ItemDetail = ItemSummary & {
   has_theme?: number;
   plot: string | null;
   original_title: string | null;
+  /** Cómo se ordena en las listas; vacío = el título. */
+  sort_title?: string | null;
   premiered: string | null;
   studio: string | null;
   country: string | null;
@@ -494,6 +502,9 @@ export const api = {
     }),
 
   collections: () => request<CollectionSummary[]>('/api/collections'),
+  /** Editar a mano los datos de un título (solo administrador). Solo cambia la base de datos; se deshace con `scraperDeshacer`. */
+  editarMetadatos: (itemId: number, cambios: CambiosMetadatos) =>
+    request<{ ok: true; campos: string[] }>(`/api/items/${itemId}/metadatos`, { method: 'POST', body: JSON.stringify(cambios) }),
   /** Cambiar o quitar (`null`) la saga de un título; solo administrador. No toca el NFO de la carpeta. */
   ponerColeccion: (itemId: number, coleccion: string | null) =>
     request<{ ok: true; anterior: string | null; coleccion: string | null }>(`/api/items/${itemId}/coleccion`, { method: 'POST', body: JSON.stringify({ coleccion }) }),

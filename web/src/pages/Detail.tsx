@@ -7,6 +7,7 @@ import { AnimatePresence } from 'motion/react';
 import { CandidateRow } from '../components/MetadataReview.tsx';
 import NumeracionFixer from '../components/NumeracionFixer.tsx';
 import SelectorDeArte from '../components/SelectorDeArte.tsx';
+import EditorDatos from '../components/EditorDatos.tsx';
 import Extras from '../components/Extras.tsx';
 import Trailer from '../components/Trailer.tsx';
 import Row from '../components/Row.tsx';
@@ -34,16 +35,16 @@ function opcionesDescarga(duracionSegundos?: number | null, bytesOriginal?: numb
 function MetadataFixer({
   itemId,
   item,
-  modoInicial = 'arte',
+  modoInicial = 'datos',
   onClose,
 }: {
   itemId: number;
   item: ItemDetail;
-  modoInicial?: 'arte' | 'metadatos';
+  modoInicial?: 'datos' | 'arte' | 'metadatos';
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
-  const [pestana, setPestana] = useState<'arte' | 'metadatos'>(modoInicial);
+  const [pestana, setPestana] = useState<'datos' | 'arte' | 'metadatos'>(modoInicial);
   const { data, isLoading, error } = useQuery({ queryKey: ['enrich-item', itemId], queryFn: () => api.enrichItem(itemId), retry: false });
 
   return (
@@ -63,7 +64,16 @@ function MetadataFixer({
       >
         <div className="mb-4 flex items-start justify-between gap-4">
           <div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setPestana('datos')}
+                className={`rounded-full px-3.5 py-1.5 text-[12.5px] font-medium transition-colors ${
+                  pestana === 'datos' ? 'bg-accent font-semibold text-ink-950' : 'bg-white/8 text-mist-300 hover:bg-white/14'
+                }`}
+              >
+                ✏️ Datos
+              </button>
               <button
                 type="button"
                 onClick={() => setPestana('arte')}
@@ -71,7 +81,7 @@ function MetadataFixer({
                   pestana === 'arte' ? 'bg-accent font-semibold text-ink-950' : 'bg-white/8 text-mist-300 hover:bg-white/14'
                 }`}
               >
-                🎨 Imágenes y Discos
+                🎨 Imágenes
               </button>
               <button
                 type="button"
@@ -80,19 +90,23 @@ function MetadataFixer({
                   pestana === 'metadatos' ? 'bg-accent font-semibold text-ink-950' : 'bg-white/8 text-mist-300 hover:bg-white/14'
                 }`}
               >
-                🔍 Escrapeo / Metadatos
+                🔍 Buscar en TMDb
               </button>
             </div>
             <p className="mt-2 text-[12px] text-mist-500">
-              {pestana === 'arte'
-                ? 'Elige carátulas, fondos, logotipos y discos CD/Blu-ray oficiales o sube los tuyos.'
-                : 'Identifica o busca en TMDb para actualizar sinopsis, valoraciones, géneros y datos.'}
+              {pestana === 'datos'
+                ? 'Cambia el título, la sinopsis, los géneros, la saga y lo demás a mano.'
+                : pestana === 'arte'
+                  ? 'Elige carátulas, fondos, logotipos y discos CD/Blu-ray oficiales o sube los tuyos.'
+                  : 'Identifica o busca en TMDb para actualizar sinopsis, valoraciones, géneros y datos.'}
             </p>
           </div>
           <button onClick={onClose} className="shrink-0 rounded-full bg-white/8 px-3 py-1.5 text-[12px] hover:bg-white/14">
             Cerrar
           </button>
         </div>
+
+        {pestana === 'datos' && <EditorDatos item={item} />}
 
         {pestana === 'metadatos' && (
           <>
@@ -303,7 +317,7 @@ export default function Detail() {
   const queryClient = useQueryClient();
   const { prefs } = usePreferences();
   const [tint, setTint] = useState('40 40 60');
-  const [modalEdicion, setModalEdicion] = useState<'arte' | 'metadatos' | null>(null);
+  const [modalEdicion, setModalEdicion] = useState<'datos' | 'arte' | 'metadatos' | null>(null);
   const [plotAbierta, setPlotAbierta] = useState(false);
   const [numerando, setNumerando] = useState(false);
   const [descargando, setDescargando] = useState(false);
@@ -785,27 +799,15 @@ export default function Detail() {
               {me?.is_admin === 1 && (
                 <>
                   <button
-                    onClick={() => setModalEdicion('arte')}
-                    title="Cambiar imágenes: carátula, fondo, logo o disco (CD/Blu-ray)"
-                    className="glass flex items-center gap-1.5 rounded-full px-4 py-2.5 text-sm transition-transform duration-200 hover:scale-105 active:scale-95"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="3" y="4" width="18" height="16" rx="2" />
-                      <circle cx="9" cy="10" r="1.6" />
-                      <path d="m21 16-5-5-8 9" />
-                    </svg>
-                    <span>Imágenes</span>
-                  </button>
-                  <button
-                    onClick={() => setModalEdicion('metadatos')}
-                    title="Identificar / Escrapear metadatos en TMDb"
+                    onClick={() => setModalEdicion('datos')}
+                    title="Editar los datos, la saga y las imágenes"
                     className="glass flex items-center gap-1.5 rounded-full px-4 py-2.5 text-sm transition-transform duration-200 hover:scale-105 active:scale-95"
                   >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M12 20h9" />
                       <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
                     </svg>
-                    <span>Editar datos</span>
+                    <span>Editar</span>
                   </button>
                 </>
               )}
