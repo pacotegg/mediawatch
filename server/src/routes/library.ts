@@ -205,14 +205,12 @@ export default async function libraryRoutes(app: FastifyInstance) {
       .all(libId, libId);
   });
 
-  app.get('/api/items', async (req) => {
-    const q = req.query as Record<string, string | undefined>;
-    const user = currentUser(req);
-    // Un valor que no es número (`limit=abc`) daba NaN y la consulta fallaba con un 500.
-    const limit = Math.min(Math.max(Math.trunc(Number(q.limit ?? 60)) || 60, 1), 500);
-    const offset = Math.max(Math.trunc(Number(q.offset ?? 0)) || 0, 0);
-    const order = SORTS[q.sort ?? 'title'] ?? SORTS.title;
-
+  /*
+   * El WHERE de la rejilla, compartido con el abecedario: si no son exactamente los mismos títulos, cada letra salta a un
+   * sitio equivocado (en Películas el abecedario contaba 1.390 y la lista servía 1.388, por los duplicados; con un perfil
+   * infantil, muchos más). Medido el 26/10/2026.
+   */
+  function filtroDeItems(q: Record<string, string | undefined>, user: ReturnType<typeof currentUser>) {
     const where: string[] = [];
     const params: any[] = [];
     if (q.library) { where.push('i.library_id = ?'); params.push(Number(q.library)); }
@@ -221,13 +219,27 @@ export default async function libraryRoutes(app: FastifyInstance) {
     if (q.year) { where.push('i.year = ?'); params.push(Number(q.year)); }
     if (q.studio) { where.push('i.studio LIKE ?'); params.push(`%${q.studio}%`); }
     if (q.person) { where.push('EXISTS (SELECT 1 FROM item_people ip WHERE ip.item_id = i.id AND ip.person_id = ?)'); params.push(Number(q.person)); }
-    if (q.runtime === 'short') where.push('i.runtime > 0 AND i.runtime < 90');
-    else if (q.runtime === 'medium') where.push('i.runtime >= 90 AND i.runtime <= 120');
-    else if (q.runtime === 'long') where.push('i.runtime > 120');
-    if (q.quality === '4k') where.push('EXISTS (SELECT 1 FROM media_files mf WHERE mf.item_id = i.id AND (mf.width >= 3500 OR mf.height >= 1600))');
-    else if (q.quality === '1080p') where.push('EXISTS (SELECT 1 FROM media_files mf WHERE mf.item_id = i.id AND ((mf.width >= 1900 AND mf.width < 3500) OR (mf.height >= 800 AND mf.height < 1600)))');
-    else if (q.quality === '720p') where.push('EXISTS (SELECT 1 FROM media_files mf WHERE mf.item_id = i.id AND ((mf.width >= 1200 AND mf.width < 1900) OR (mf.height >= 700 AND mf.height < 800)))');
-    else if (q.quality === 'sd') where.push('EXISTS (SELECT 1 FROM media_files mf WHERE mf.item_id = i.id AND mf.width < 1200 AND mf.height < 700)');
+    /*
+     * Sin `runtime` en la ficha (los 106 monólogos, 23 series) se usa lo que dura el fichero; en una serie, la media de sus
+     * episodios. Y la calidad se mira también en los episodios: su `media_files.item_id` es NULL y el filtro de calidad
+     * daba 0 títulos en todas las bibliotecas de series (medido el 26/10/2026).
+     */
+    const duracion = `COALESCE(NULLIF(i.runtime, 0), (SELECT AVG(mf.duration) FROM media_files mf WHERE mf.item_id = i.id) / 60.0,
+      (SELECT AVG(mf.duration) FROM episodes e JOIN media_files mf ON mf.episode_id = e.id WHERE e.show_id = i.id) / 60.0)`;
+    if (q.runtime === 'short') where.push(`${duracion} > 0 AND ${duracion} < 90`);
+    else if (q.runtime === 'medium') where.push(`${duracion} >= 90 AND ${duracion} <= 120`);
+    else if (q.runtime === 'long') where.push(`${duracion} > 120`);
+    const calidad: Record<string, string> = {
+      '4k': '(mf.width >= 3500 OR mf.height >= 1600)',
+      '1080p': '((mf.width >= 1900 AND mf.width < 3500) OR (mf.height >= 800 AND mf.height < 1600))',
+      '720p': '((mf.width >= 1200 AND mf.width < 1900) OR (mf.height >= 700 AND mf.height < 800))',
+      sd: '(mf.width < 1200 AND mf.height < 700)',
+    };
+    const conCalidad = q.quality ? calidad[q.quality] : undefined;
+    if (conCalidad) {
+      where.push(`(EXISTS (SELECT 1 FROM media_files mf WHERE mf.item_id = i.id AND ${conCalidad})
+        OR EXISTS (SELECT 1 FROM episodes e JOIN media_files mf ON mf.episode_id = e.id WHERE e.show_id = i.id AND ${conCalidad}))`);
+    }
     // Mismo motivo que en `/api/search`: la columna está sin tildes, el texto
     // que llega no tiene por qué estarlo.
     if (q.q) { where.push('(i.search_title LIKE ? OR i.original_title LIKE ?)'); params.push(`%${normalize(q.q)}%`, `%${q.q}%`); }
@@ -239,9 +251,12 @@ export default async function libraryRoutes(app: FastifyInstance) {
     }
     // Solo lo que este perfil no ha terminado: el filtro que más se echa de
     // menos en una biblioteca de mil y pico títulos.
+    // Una serie sigue «sin ver» mientras le quede algún episodio: antes bastaba uno visto para quitarla.
     if (q.unwatched === '1' && user) {
-      where.push('NOT EXISTS (SELECT 1 FROM progress p WHERE p.user_id = ? AND p.item_id = i.id AND p.watched = 1)');
-      params.push(user.id);
+      where.push(`NOT EXISTS (SELECT 1 FROM progress p WHERE p.user_id = ? AND p.item_id = i.id AND p.episode_id IS NULL AND p.watched = 1)
+        AND (i.kind != 'show' OR EXISTS (SELECT 1 FROM episodes e WHERE e.show_id = i.id
+          AND NOT EXISTS (SELECT 1 FROM progress p WHERE p.user_id = ? AND p.episode_id = e.id AND p.watched = 1)))`);
+      params.push(user.id, user.id);
     }
     const cr = clausulaRating(user);
     if (cr.sql) {
@@ -251,7 +266,17 @@ export default async function libraryRoutes(app: FastifyInstance) {
     where.push(`(i.kind != 'movie' OR NOT EXISTS (
       SELECT 1 FROM items_biblioteca i2 WHERE i2.kind = 'movie' AND i2.tmdb_id IS NOT NULL AND i2.tmdb_id = i.tmdb_id AND i2.id < i.id
     ))`);
-    const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    return { clause: `WHERE ${where.join(' AND ')}`, params };
+  }
+
+  app.get('/api/items', async (req) => {
+    const q = req.query as Record<string, string | undefined>;
+    const user = currentUser(req);
+    // Un valor que no es número (`limit=abc`) daba NaN y la consulta fallaba con un 500.
+    const limit = Math.min(Math.max(Math.trunc(Number(q.limit ?? 60)) || 60, 1), 500);
+    const offset = Math.max(Math.trunc(Number(q.offset ?? 0)) || 0, 0);
+    const order = SORTS[q.sort ?? 'title'] ?? SORTS.title;
+    const { clause, params } = filtroDeItems(q, user);
 
     const rows = db
       .prepare(`SELECT ${ITEM_FIELDS} FROM items_biblioteca i JOIN libraries l ON l.id = i.library_id ${clause}
@@ -268,12 +293,13 @@ export default async function libraryRoutes(app: FastifyInstance) {
    * empiezan por algo que no es A-Z.
    */
   app.get('/api/items/letras', async (req) => {
-    requireUser(req);
-    const library = Number((req.query as { library?: string }).library);
-    if (!library) return { total: 0, letras: [] };
+    const user = requireUser(req);
+    const q = req.query as Record<string, string | undefined>;
+    if (!Number(q.library)) return { total: 0, letras: [] };
+    const { clause, params } = filtroDeItems(q, user);
     const filas = db
-      .prepare(`SELECT COALESCE(i.sort_title, i.title) AS k FROM items_biblioteca i WHERE i.library_id = ? ORDER BY ${SORTS.title}`)
-      .all(library) as { k: string }[];
+      .prepare(`SELECT COALESCE(i.sort_title, i.title) AS k FROM items_biblioteca i ${clause} ORDER BY ${SORTS.title}`)
+      .all(...params) as { k: string }[];
     return { total: filas.length, letras: letrasDe(filas.map((f) => f.k)) };
   });
 

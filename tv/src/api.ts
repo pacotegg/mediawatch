@@ -114,6 +114,7 @@ export type Titulo = {
   has_poster: number;
   has_fanart: number;
   has_logo: number;
+  arte_actualizado?: string | null;
   /** Solo en la ficha: el disco redondo, que gira en la pausa. */
   has_discart?: number;
   /** Si tiene sintonía o tema musical oficial local. */
@@ -245,13 +246,27 @@ export type FiltrosRejilla = {
   unwatched?: boolean;
 };
 
+function consultaDeFiltros(filtros?: FiltrosRejilla): string {
+  if (!filtros) return '';
+  let r = '';
+  if (filtros.genre) r += '&genre=' + encodeURIComponent(filtros.genre);
+  if (filtros.decade) r += '&decade=' + encodeURIComponent(filtros.decade);
+  if (filtros.quality) r += '&quality=' + encodeURIComponent(filtros.quality);
+  if (filtros.runtime) r += '&runtime=' + encodeURIComponent(filtros.runtime);
+  if (filtros.studio) r += '&studio=' + encodeURIComponent(filtros.studio);
+  if (filtros.person) r += '&person=' + encodeURIComponent(String(filtros.person));
+  if (filtros.unwatched) r += '&unwatched=1';
+  return r;
+}
+
 export const api = {
   yo: () => pedir<{ id: number; name: string; is_admin: number; kid_ratings?: string[] | null }>('/api/me'),
   bibliotecas: () => pedir<{ id: number; name: string; kind: string; count: number }[]>('/api/libraries'),
   portada: () => pedir<{ hero: Titulo[]; rows: { key: string; title: string; kind: string; items: Titulo[] }[] }>('/api/home'),
   /** Donde empieza cada letra en la lista ordenada por titulo de una biblioteca. */
-  letras: (biblioteca: number) =>
-    pedir<{ total: number; letras: { letra: string; offset: number }[] }>('/api/items/letras?library=' + biblioteca),
+  /** Con los mismos filtros que la rejilla, o cada letra salta a otro sitio. */
+  letras: (biblioteca: number, filtros?: FiltrosRejilla) =>
+    pedir<{ total: number; letras: { letra: string; offset: number }[] }>('/api/items/letras?library=' + biblioteca + consultaDeFiltros(filtros)),
   generos: (biblioteca?: number) =>
     pedir<{ id: number; name: string; count: number }[]>(biblioteca ? '/api/genres?library=' + biblioteca : '/api/genres'),
   /** Los estudios del título con logo, sin repetir y en su orden (el primero, el principal). */
@@ -266,15 +281,7 @@ export const api = {
     let ruta = `/api/items?library=${biblioteca}&limit=${limite}&offset=${offset}`;
     const sort = (filtros && filtros.sort) || 'title';
     ruta += '&sort=' + encodeURIComponent(sort);
-    if (filtros) {
-      if (filtros.genre) ruta += '&genre=' + encodeURIComponent(filtros.genre);
-      if (filtros.decade) ruta += '&decade=' + encodeURIComponent(filtros.decade);
-      if (filtros.quality) ruta += '&quality=' + encodeURIComponent(filtros.quality);
-      if (filtros.runtime) ruta += '&runtime=' + encodeURIComponent(filtros.runtime);
-      if (filtros.studio) ruta += '&studio=' + encodeURIComponent(filtros.studio);
-      if (filtros.person) ruta += '&person=' + encodeURIComponent(String(filtros.person));
-      if (filtros.unwatched) ruta += '&unwatched=1';
-    }
+    ruta += consultaDeFiltros(filtros);
     return pedir<{ total: number; items: Titulo[] }>(ruta);
   },
   ficha: (id: number) => pedir<Ficha>('/api/items/' + id),
@@ -484,26 +491,38 @@ export type FichaPlataforma = {
   enBiblioteca: number | null;
 };
 
+/*
+ * Sello de versión del arte (`arte_actualizado`). El servidor deja guardar las imágenes 30 días: sin él, la tele seguía con
+ * el cartel viejo tras cambiarlo en el editor de metadatos. Se recuerda por id, y solo el más reciente, para las pantallas
+ * que únicamente tienen el número (el vuelo del cartel) o que repintan con datos guardados de antes.
+ */
+const sellos: { [id: number]: string } = {};
+export function anotarSello(t: { id: number; arte_actualizado?: string | null }) {
+  const v = t.arte_actualizado;
+  if (v && (!sellos[t.id] || v > sellos[t.id])) sellos[t.id] = v;
+}
+const sello = (id: number) => (sellos[id] ? '&v=' + encodeURIComponent(sellos[id]) : '');
+
 export const imagen = {
-  poster: (id: number, w: number) => conToken(servidor() + '/api/items/' + id + '/poster?w=' + w),
+  poster: (id: number, w: number) => conToken(servidor() + '/api/items/' + id + '/poster?w=' + w + sello(id)),
   /** La miniatura de un episodio; `has_thumb` dice si la tiene (un 12 % no). */
   episodio: (id: number, w: number) => conToken(servidor() + '/api/episodes/' + id + '/thumb?w=' + w),
-  fondo: (id: number, w: number) => conToken(servidor() + '/api/items/' + id + '/fanart?w=' + w),
-  logo: (id: number, w: number) => conToken(servidor() + '/api/items/' + id + '/logo?w=' + w),
+  fondo: (id: number, w: number) => conToken(servidor() + '/api/items/' + id + '/fanart?w=' + w + sello(id)),
+  logo: (id: number, w: number) => conToken(servidor() + '/api/items/' + id + '/logo?w=' + w + sello(id)),
   /*
    * Caratula de una plataforma. Va por el servidor propio, NO por
    * image.tmdb.org: el `img-src` del config.xml no lleva `https:` y la tele la
    * bloquearia en silencio (la misma trampa que dejo el salvapantallas invisible).
    */
   plataforma: (ruta: string, w: number) => conToken(servidor() + '/api/plataformas/caratula/w' + w + ruta),
-  disco: (id: number, w: number) => conToken(servidor() + '/api/items/' + id + '/discart?w=' + w),
+  disco: (id: number, w: number) => conToken(servidor() + '/api/items/' + id + '/discart?w=' + w + sello(id)),
   estudio: (id: number, w: number) => conToken(servidor() + '/api/items/' + id + '/studio-logo?w=' + w),
   /**
    * El logo de un estudio en su versión para fondo oscuro (aclarado o dorado, ver media/logos-estudio.ts). `v` sube con cada
    * cambio de ese estilo: el servidor deja guardar las imágenes 30 días y la tele seguiría con la versión vieja.
    */
   estudioNombre: (nombre: string, w: number) =>
-    conToken(servidor() + '/api/studios/' + encodeURIComponent(nombre) + '/logo?claro=1&v=4&w=' + w),
+    conToken(servidor() + '/api/studios/' + encodeURIComponent(nombre) + '/logo?claro=1&v=5&w=' + w),
   tema: (id: number) => conToken(servidor() + '/api/items/' + id + '/theme'),
   persona: (id: number, w: number) => conToken(servidor() + '/api/people/' + id + '/thumb?w=' + w),
   tira: (fileId: number, hoja: number) => conToken(servidor() + '/api/play/' + fileId + '/trickplay/' + hoja),

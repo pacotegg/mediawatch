@@ -3,6 +3,7 @@ import {
   guardarServidor,
   guardarToken,
   imagen,
+  anotarSello,
   olvidarToken,
   servidor,
   token,
@@ -381,6 +382,7 @@ const MAXIMO_RESTAURADO = 480;
 function tarjeta(t: Titulo): string {
   const duracion = t.progressDuration || (t.runtime ? t.runtime * 60 : 0);
   const pct = t.position && duracion ? Math.min(100, (t.position / duracion) * 100) : 0;
+  anotarSello(t);
   return (
     '<div class="tarjeta" data-nav data-id="' + t.id + '" data-title="' + esc(t.title) + '" data-year="' + (t.year || '') + '">' +
     '<div class="lamina">' +
@@ -581,6 +583,7 @@ async function pantallaPortada(volviendo = false) {
   }
 
   const heroes = datos.hero.slice(0, 6);
+  heroes.forEach(anotarSello);
   let html = '';
 
   if (heroes.length) {
@@ -1141,10 +1144,10 @@ async function pantallaBiblioteca(id: number, nombre: string, enfocarFiltro?: st
     const base = guardado && guardado.base ? guardado.base : 0;
     const cuantos = Math.min(MAXIMO_RESTAURADO, Math.max(PAGINA, guardado ? guardado.cargados - base : 0));
     // Carga paralela: títulos y abecedario
-    const conAbecedario = f.sort === 'title' && !activos;
+    const conAbecedario = f.sort === 'title';
     const [datos, letras] = await Promise.all([
       api.titulos(id, base, cuantos, f),
-      conAbecedario ? api.letras(id).then((r) => r.letras).catch(() => [] as Letra[]) : Promise.resolve([] as Letra[]),
+      conAbecedario ? api.letras(id, f).then((r) => r.letras).catch(() => [] as Letra[]) : Promise.resolve([] as Letra[]),
     ]);
 
     const barraHtml =
@@ -1989,6 +1992,7 @@ async function pantallaFicha(id: number, volverA?: (() => void) | null, focoInic
     } else {
       ficha = await pFicha;
     }
+    anotarSello(ficha);
     if (ficha.has_theme) {
       reproducirTemaMusical(ficha.id);
     } else {
