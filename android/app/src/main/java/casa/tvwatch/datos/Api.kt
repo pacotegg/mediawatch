@@ -330,13 +330,24 @@ object Api {
    * llama desde el hilo de la interfaz por cada caratula de la rejilla, y
    * sondear ahi colgaria la pantalla.
    */
-  fun imagen(id: Int, tipo: String, ancho: Int) = "${Servidor.baseCacheada()}/api/items/$id/$tipo?w=$ancho"
+  fun imagen(id: Int, tipo: String, ancho: Int) = "${Servidor.baseCacheada()}/api/items/$id/$tipo?w=$ancho" + sello(id)
+
+  /*
+   * Sello de versión del arte (`arte_actualizado`): el servidor deja guardar las imágenes 30 días y, sin él, tras cambiar
+   * el cartel desde el editor de metadatos se seguía viendo el viejo. Se recuerda por id, y solo el más reciente.
+   */
+  private val sellos = java.util.concurrent.ConcurrentHashMap<Int, String>()
+  fun anotarSello(id: Int, v: String?) {
+    if (v != null) sellos.merge(id, v) { viejo, nuevo -> if (nuevo > viejo) nuevo else viejo }
+  }
+  fun selloDe(id: Int): String? = sellos[id]
+  private fun sello(id: Int) = sellos[id]?.let { "&v=" + java.net.URLEncoder.encode(it, "UTF-8") } ?: ""
   // claro=1: la versión que se lee sobre fondo oscuro (el servidor aclara los logos negros; uno viejo lo ignora).
   /** Los estudios de un título con logo y la proporción de cada uno (ancho / alto). */
   fun logosDeEstudios(id: Int): ListaLogos = pedir("/api/items/$id/studio-logos")
   /** El logo de un estudio por nombre, aclarado o dorado por el servidor; `v` sube con cada cambio de estilo (caché de 30 días). */
   fun logoDeEstudio(nombre: String, ancho: Int = 400) =
-    "${Servidor.baseCacheada()}/api/studios/${java.net.URLEncoder.encode(nombre, "UTF-8").replace("+", "%20")}/logo?claro=1&v=4&w=$ancho"
+    "${Servidor.baseCacheada()}/api/studios/${java.net.URLEncoder.encode(nombre, "UTF-8").replace("+", "%20")}/logo?claro=1&v=5&w=$ancho"
   fun logoEstudio(id: Int, ancho: Int = 360) = "${Servidor.baseCacheada()}/api/items/$id/studio-logo?w=$ancho&claro=1"
 
   /* ------------------------------------------------------- reproducción */
@@ -664,7 +675,10 @@ data class Titulo(
   val character: String? = null,
   val watched: Int? = null,
   val plot: String? = null,
+  @SerialName("arte_actualizado") val arteActualizado: String? = null,
 ) {
+  init { Api.anotarSello(id, arteActualizado) }
+
   /** Cuánto se lleva visto, de 0 a 1. Cero si no se ha empezado. */
   val avance: Float
     get() {
@@ -798,7 +812,10 @@ data class Ficha(
   val studio: String? = null,
   @SerialName("collectionItems") val coleccionItems: List<Titulo> = emptyList(),
   @SerialName("similar") val similares: List<Titulo> = emptyList(),
-)
+  @SerialName("arte_actualizado") val arteActualizado: String? = null,
+) {
+  init { Api.anotarSello(id, arteActualizado) }
+}
 
 @Serializable
 data class PistaAudio(

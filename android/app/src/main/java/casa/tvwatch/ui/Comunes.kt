@@ -171,7 +171,7 @@ fun Modifier.pulsable(fuente: MutableInteractionSource, alPulsar: () -> Unit): M
  */
 @Composable
 fun recordarUrl(id: Int, tipo: String, ancho: Int): String =
-  remember(id, tipo, ancho) { Api.imagen(id, tipo, ancho) }
+  remember(id, tipo, ancho, Api.selloDe(id)) { Api.imagen(id, tipo, ancho) }
 
 /**
  * Carga de imágenes con la sesión puesta.

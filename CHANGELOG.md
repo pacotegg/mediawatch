@@ -12,6 +12,12 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.81 — 26/10/2026
+
+- Las carátulas, fondos, logos y discos se actualizan al momento cuando se cambian desde el editor de metadatos (antes se seguía viendo la imagen vieja hasta un mes).
+- Los logos de estudio salen sin el margen vacío que traían muchos de ellos.
+- En las bibliotecas de series ya funciona el filtro de calidad, y «solo no vistos» deja las series a medias.
+
 ## 3.80 — 22/10/2026
 
 - Calidad original fuera de casa: añadida la opción «Original» al selector de calidad fuera de casa (datos móviles) en los ajustes, permitiendo reproducción directa sin límite de bitrate o recodificación forzada a 1080p.
