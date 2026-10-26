@@ -294,6 +294,9 @@ export const api = {
   buscarDialogo: (q: string) =>
     pedir<{ hits: DialogoHit[] }>('/api/search/dialogue?q=' + encodeURIComponent(q)),
   colecciones: () => pedir<Saga[]>('/api/collections'),
+  /** Cambiar o quitar (`null`) la saga de un título desde el editor; solo administrador. */
+  ponerColeccion: (itemId: number, coleccion: string | null) =>
+    pedir<{ ok: true; anterior: string | null; coleccion: string | null }>('/api/items/' + itemId + '/coleccion', { method: 'POST', body: JSON.stringify({ coleccion }) }),
   coleccion: (nombre: string) =>
     pedir<{ name: string; items: Titulo[]; arteItemId: number | null; arteImagen: boolean }>(
       '/api/collections/' + encodeURIComponent(nombre),

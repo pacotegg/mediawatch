@@ -12,6 +12,7 @@ import { aplicarNfo, NfoError, planNfo } from '../scanner/nfo-escribir.ts';
 import { envio, enviarLote, EnvioError, planEnvio } from '../scanner/enviar.ts';
 import { carpetaDePelicula, carpetaDeSerie } from '../scanner/nombres-tmm.ts';
 import { deshacerUltima, HistorialError, ultimaInstantanea } from '../scanner/historial.ts';
+import { ColeccionError, ponerColeccion } from '../scanner/coleccion.ts';
 
 /*
  * Pantalla «Scraper» (solo administrador): lista de titulos con lo que les falta y emparejado por
@@ -54,6 +55,20 @@ function contadores(base: string[], params: (string | number)[]): Record<string,
 export default async function scraperRoutes(app: FastifyInstance) {
   // Al arrancar, la base queda como dice la configuracion: lo que es una fuente del scraper es de ENTRADA (los clientes no lo ven).
   try { marcarEntradas(); } catch (e) { console.error('[scraper] no se pudieron marcar las entradas:', (e as Error).message); }
+
+  /** Cambiar o quitar la saga de un título (`{ coleccion: 'nombre' | null }`). Solo la base de datos; se deshace desde el historial del scraper. */
+  app.post('/api/items/:id/coleccion', async (req, reply) => {
+    if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'No autorizado' });
+    const id = Number((req.params as { id: string }).id);
+    const cuerpo = (req.body ?? {}) as { coleccion?: unknown };
+    if (!Number.isInteger(id) || !('coleccion' in cuerpo)) return reply.code(400).send({ error: 'Falta la saga (o null para quitarla)' });
+    try {
+      return { ok: true, ...ponerColeccion(id, cuerpo.coleccion) };
+    } catch (e) {
+      if (e instanceof ColeccionError) return reply.code(e.codigo).send({ error: e.message });
+      throw e;
+    }
+  });
 
   app.get('/api/scraper/titulos', async (req, reply) => {
     if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'No autorizado' });

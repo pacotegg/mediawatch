@@ -3990,6 +3990,7 @@ function menuEditarMetadatos(ficha: Ficha, alTerminar: () => void) {
   const opciones: OpcionLista[] = [
     { valor: 1, texto: '⚡ Actualizar metadatos desde TMDb', nota: 'Revisar y elegir qué datos o arte sustituir' },
     { valor: 2, texto: '🎨 Cambiar imágenes con selector visual', nota: 'Póster, fondo, logotipo, disco con miniaturas' },
+    { valor: 3, texto: '📚 Cambiar saga / colección', nota: ficha.collection ? 'Ahora: ' + ficha.collection : 'Sin saga' },
   ];
   menuLista('Editar metadatos / Arte', opciones, -1, (v) => {
     if (v === 1) {
@@ -4026,8 +4027,40 @@ function menuEditarMetadatos(ficha: Ficha, alTerminar: () => void) {
         .catch((e) => aviso((e as Error).message || 'Error al buscar en TMDb'));
     } else if (v === 2) {
       menuSeleccionarArte(ficha, alTerminar);
+    } else if (v === 3) {
+      menuCambiarSaga(ficha, alTerminar);
     }
   }, () => alTerminar());
+}
+
+/*
+ * Cambiar o quitar la saga de un título. Arriba: quitarla, la actual y las sugeridas (las que comparten una palabra con el
+ * título: «Alien - Colección» para «Alien: Romulus»); después el resto por orden alfabético. Una saga NUEVA se crea desde la
+ * web: aquí no hay teclado.
+ */
+function menuCambiarSaga(ficha: Ficha, alTerminar: () => void) {
+  aviso('Buscando sagas…');
+  api.colecciones().then((todas) => {
+    const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const actual = ficha.collection || '';
+    const palabra = (norm(ficha.title).match(/[a-z0-9]{4,}/) || [''])[0];
+    const nombres = todas.map((s) => s.name).filter((n) => n && n !== actual);
+    const sugeridas = palabra ? nombres.filter((n) => norm(n).indexOf(palabra) >= 0) : [];
+    const resto = nombres.filter((n) => sugeridas.indexOf(n) < 0).sort((a, b) => (norm(a) < norm(b) ? -1 : norm(a) > norm(b) ? 1 : 0));
+    const opciones: OpcionLista[] = [{ valor: 0, texto: '✕ Quitar de la saga', nota: actual ? 'Ahora: ' + actual : 'Ahora no tiene saga' }];
+    const elegida: string[] = ['']; // elegida[valor] = nombre de la saga; la 0 es «quitar»
+    if (actual) { opciones.push({ valor: elegida.length, texto: actual, nota: 'Actual' }); elegida.push(actual); }
+    sugeridas.forEach((n) => { opciones.push({ valor: elegida.length, texto: n, nota: 'Sugerida' }); elegida.push(n); });
+    resto.forEach((n) => { opciones.push({ valor: elegida.length, texto: n }); elegida.push(n); });
+    menuLista('Saga de «' + ficha.title + '»', opciones, actual ? 1 : 0, (v) => {
+      const nueva = v === 0 ? null : elegida[v];
+      if ((nueva || '') === actual) { menuEditarMetadatos(ficha, alTerminar); return; }
+      aviso(nueva ? 'Guardando saga…' : 'Quitando de la saga…');
+      api.ponerColeccion(ficha.id, nueva)
+        .then(() => { aviso(nueva ? 'Saga: ' + nueva : 'Ya no tiene saga'); alTerminar(); })
+        .catch((e) => aviso((e as Error).message || 'No se pudo cambiar la saga'));
+    }, () => menuEditarMetadatos(ficha, alTerminar));
+  }).catch((e) => aviso((e as Error).message || 'No se pudieron leer las sagas'));
 }
 
 function menuSeleccionarArte(ficha: Ficha, alTerminar: () => void) {

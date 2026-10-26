@@ -494,6 +494,9 @@ export const api = {
     }),
 
   collections: () => request<CollectionSummary[]>('/api/collections'),
+  /** Cambiar o quitar (`null`) la saga de un título; solo administrador. No toca el NFO de la carpeta. */
+  ponerColeccion: (itemId: number, coleccion: string | null) =>
+    request<{ ok: true; anterior: string | null; coleccion: string | null }>(`/api/items/${itemId}/coleccion`, { method: 'POST', body: JSON.stringify({ coleccion }) }),
   /** La imagen propia de una saga; solo sirve si `imagen_propia` viene a 1. */
   imagenSaga: (nombre: string, w: number) => `/api/collections/${encodeURIComponent(nombre)}/imagen?w=${w}`,
   /** El fondo propio (fanart) de una saga; solo sirve si `fondo_propio` viene a 1. */

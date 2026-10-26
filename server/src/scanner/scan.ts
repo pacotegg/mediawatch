@@ -249,7 +249,7 @@ const stmt = {
       premiered=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.premiered, items.premiered) ELSE excluded.premiered END,
       studio=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.studio, items.studio) ELSE excluded.studio END,
       country=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.country, items.country) ELSE excluded.country END,
-      collection=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.collection, items.collection) ELSE excluded.collection END,
+      collection=CASE WHEN items.coleccion_fijada = 1 THEN items.collection WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.collection, items.collection) ELSE excluded.collection END,
       trailer=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.trailer, items.trailer) ELSE excluded.trailer END,
       imdb_id=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.imdb_id, items.imdb_id) ELSE excluded.imdb_id END,
       tmdb_id=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.tmdb_id, items.tmdb_id) ELSE excluded.tmdb_id END,

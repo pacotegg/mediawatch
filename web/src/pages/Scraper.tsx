@@ -450,6 +450,52 @@ function Organizar({ id, kind }: { id: number; kind: 'movie' | 'show' }) {
  * Escribir el NFO junto al vídeo (como tMM): los datos viajan con la carpeta. Pensado para la carpeta de entrada: se prepara aquí,
  * se mueve a la biblioteca y el escaneo de allí lo recupera todo. Plan visible y confirmación; lo sustituido se aparta, no se borra.
  */
+/** Cambiar o quitar la saga (colección) del título. Una existente o un nombre nuevo; se deshace con «Deshacer». */
+function Saga({ id, actual }: { id: number; actual: string | null }) {
+  const qc = useQueryClient();
+  const [abierto, setAbierto] = useState(false);
+  const [texto, setTexto] = useState(actual ?? '');
+  const [hecho, setHecho] = useState('');
+  const sagas = useQuery({ queryKey: ['collections'], queryFn: () => api.collections(), enabled: abierto });
+  useEffect(() => { setAbierto(false); setHecho(''); }, [id]);
+  useEffect(() => { setTexto(actual ?? ''); }, [actual, id]);
+  const guardar = useMutation({
+    mutationFn: (coleccion: string | null) => api.ponerColeccion(id, coleccion),
+    onSuccess: (r) => {
+      setHecho(r.coleccion ? `Saga: «${r.coleccion}».` : 'Quitada de la saga.');
+      for (const k of ['scraper-titulo', 'scraper-lista', 'scraper-historial', 'item', 'collections', 'collection', 'home']) qc.invalidateQueries({ queryKey: [k] });
+    },
+  });
+  const limpio = texto.trim();
+  return (
+    <div className="rounded-xl bg-white/4 p-3 text-[12.5px]">
+      <button onClick={() => setAbierto((v) => !v)} className="flex w-full items-center justify-between text-left font-medium text-mist-300">
+        <span>Saga / colección{actual ? <span className="font-normal text-mist-500"> — {actual}</span> : <span className="font-normal text-mist-500"> — sin saga</span>}</span>
+        <span className="text-mist-500">{abierto ? '−' : '+'}</span>
+      </button>
+      {abierto && (
+        <div className="mt-3 space-y-2">
+          <input
+            list={`sagas-${id}`}
+            value={texto}
+            onChange={(e) => { setTexto(e.target.value); setHecho(''); }}
+            placeholder="Elige una saga o escribe un nombre nuevo"
+            className="w-full rounded-lg bg-black/25 px-3 py-2 text-[13px] outline-none ring-1 ring-white/10 focus:ring-white/25"
+          />
+          <datalist id={`sagas-${id}`}>{(sagas.data ?? []).map((s) => <option key={s.name} value={s.name} />)}</datalist>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button onClick={() => guardar.mutate(limpio)} disabled={!limpio || limpio === (actual ?? '') || guardar.isPending}>Guardar saga</Button>
+            <Button variant="ghost" onClick={() => guardar.mutate(null)} disabled={!actual || guardar.isPending}>Quitar de la saga</Button>
+            {hecho && <span className="text-emerald-300">{hecho}</span>}
+            {guardar.error && <span className="text-red-400">{(guardar.error as Error).message}</span>}
+          </div>
+          <p className="text-mist-500">Solo cambia la base de datos (no escribe en la carpeta ni en el NFO) y el escáner lo respeta. Se puede deshacer con «Deshacer» de arriba.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function NfoACarpeta({ id }: { id: number }) {
   const [abierto, setAbierto] = useState(false);
   const [hecho, setHecho] = useState('');
@@ -564,6 +610,7 @@ function Ficha({ id }: { id: number }) {
       </div>
 
       <Deshacer id={t.id} />
+      <Saga id={t.id} actual={t.collection} />
       <ArteACarpeta id={t.id} />
       <Organizar id={t.id} kind={t.kind} />
       <NfoACarpeta id={t.id} />

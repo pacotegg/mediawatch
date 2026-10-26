@@ -560,6 +560,8 @@ CREATE VIEW IF NOT EXISTS media_files_biblioteca AS SELECT * FROM media_files
 `);
 // Fecha del ultimo intento de identificar el titulo por su nombre (para no repetirlo cada dia).
 anadirColumna('items', 'ident_intento', 'TEXT');
+// 1 = la saga la puso una persona desde el editor: el escáner no la pisa desde el .nfo (tampoco si se quitó).
+anadirColumna('items', 'coleccion_fijada', 'INTEGER NOT NULL DEFAULT 0');
 anadirColumna('episodes', 'meta_origen', 'TEXT');
 
 prepararBusquedaDePersonas();

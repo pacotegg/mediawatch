@@ -15,7 +15,7 @@ import { db, normalize } from '../db.ts';
 
 const COLUMNAS = [
   'title', 'search_title', 'year', 'original_title', 'plot', 'tagline', 'runtime', 'rating', 'votes', 'mpaa', 'premiered',
-  'studio', 'country', 'collection', 'imdb_id', 'tmdb_id', 'meta_origen', 'arte_fijado', 'arte_actualizado',
+  'studio', 'country', 'collection', 'coleccion_fijada', 'imdb_id', 'tmdb_id', 'meta_origen', 'arte_fijado', 'arte_actualizado',
 ] as const;
 const ARTE = ['poster', 'fanart', 'clearlogo', 'landscape', 'discart'] as const;
 const CONSERVAR = 5;
