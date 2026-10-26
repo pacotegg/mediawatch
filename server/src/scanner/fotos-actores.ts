@@ -89,8 +89,50 @@ function esProfesionAudiovisual(desc: string): boolean {
   );
 }
 
+/*
+ * Las fotos buscadas por NOMBRE se equivocaban de persona: el 26/10/2026, de 71 de Wikipedia 28 eran de otro (el productor
+ * Sam Phillips para el actor del mismo nombre) o de una película (el cartel de Platoon o de Tiburón como foto de un actor).
+ * Una ficha de Wikidata solo vale si es una persona y sus ids de TMDb/IMDb no contradicen a los nuestros.
+ */
+export type FichaWikidata = { humano: boolean; tmdb: string[]; imdb: string[] };
+export type VeredictoFicha = 'confirmada' | 'contradice' | 'no-persona' | 'sin-ids';
+
+export function juzgarFichaWikidata(f: FichaWikidata, tmdbId: number | null, imdbId: string | null): VeredictoFicha {
+  if (!f.humano) return 'no-persona';
+  if ((tmdbId && f.tmdb.includes(String(tmdbId))) || (imdbId && f.imdb.includes(imdbId))) return 'confirmada';
+  if ((tmdbId && f.tmdb.length > 0) || (imdbId && f.imdb.length > 0)) return 'contradice';
+  return 'sin-ids';
+}
+
+/** Mismo nombre sin tildes, mayúsculas ni paréntesis de desambiguación («Richard Alexander (actor)»). */
+export function mismoNombre(a: string, b: string): boolean {
+  const limpia = (x: string) => normalize(x.replace(/\s*\([^)]*\)\s*/g, ' ')).replace(/\s+/g, ' ').trim();
+  return limpia(a) === limpia(b);
+}
+
+function fichaDeClaims(claims: any): FichaWikidata {
+  const val = (pr: string): any[] => (claims?.[pr] ?? []).map((x: any) => x?.mainsnak?.datavalue?.value).filter((v: unknown) => v !== undefined && v !== null);
+  return { humano: val('P31').some((v) => v?.id === 'Q5'), tmdb: val('P4985').map(String), imdb: val('P345').map(String) };
+}
+
+/** Sin ids en la ficha, solo se acepta si el nombre coincide exactamente (queda el riesgo de un homónimo del mismo oficio). */
+function aceptable(v: VeredictoFicha, tituloFicha: string, nombre: string): boolean {
+  return v === 'confirmada' || (v === 'sin-ids' && mismoNombre(tituloFicha, nombre));
+}
+
 /** 1. Buscar fotos en TMDb (imágenes alternativas de la persona o búsqueda de huérfanos) */
-async function buscarFotoEnTmdb(tmdbId: number | null, nombre: string): Promise<{ url: string; tmdbId: number } | null> {
+async function salenEnNuestraBiblioteca(tmdbPersonaId: number, titulosNuestros: Set<string>): Promise<boolean> {
+  if (titulosNuestros.size === 0) return false;
+  const res = await fetch(`${TMDB_API}/person/${tmdbPersonaId}/combined_credits?api_key=${config.tmdbApiKey}`, {
+    headers: { accept: 'application/json' },
+    signal: AbortSignal.timeout(6_000),
+  });
+  if (!res.ok) return false;
+  const d = (await res.json()) as { cast?: Array<{ media_type: string; id: number }>; crew?: Array<{ media_type: string; id: number }> };
+  return [...(d.cast ?? []), ...(d.crew ?? [])].some((c) => titulosNuestros.has(`${c.media_type}:${c.id}`));
+}
+
+async function buscarFotoEnTmdb(tmdbId: number | null, nombre: string, titulosNuestros: Set<string>): Promise<{ url: string; tmdbId: number } | null> {
   if (!config.tmdbApiKey) return null;
 
   try {
@@ -120,7 +162,8 @@ async function buscarFotoEnTmdb(tmdbId: number | null, nombre: string): Promise<
         const data = (await res.json()) as { results?: Array<{ id: number; name: string; profile_path?: string | null; popularity?: number }> };
         const normTarget = normalize(nombre);
         for (const p of data.results || []) {
-          if (normalize(p.name) === normTarget && p.profile_path) {
+          // El primer homónimo con foto no vale: tiene que salir en el reparto de algún título de la biblioteca.
+          if (normalize(p.name) === normTarget && p.profile_path && (await salenEnNuestraBiblioteca(p.id, titulosNuestros))) {
             return { url: `${TMDB_IMAGES}${p.profile_path}`, tmdbId: p.id };
           }
         }
@@ -134,7 +177,7 @@ async function buscarFotoEnTmdb(tmdbId: number | null, nombre: string): Promise<
 }
 
 /** 2. Buscar fotos en Wikipedia REST API (español e inglés) */
-async function buscarFotoEnWikipedia(nombre: string): Promise<{ url: string; titulo: string; lang: string } | null> {
+async function buscarFotoEnWikipedia(nombre: string, valida: (q: string | undefined, titulo: string) => Promise<boolean>): Promise<{ url: string; titulo: string; lang: string } | null> {
   const variantes = [
     nombre.replace(/ /g, '_'),
     `${nombre.replace(/ /g, '_')}_(actor)`,
@@ -156,6 +199,7 @@ async function buscarFotoEnWikipedia(nombre: string): Promise<{ url: string; tit
           type?: string;
           title?: string;
           description?: string;
+          wikibase_item?: string;
           thumbnail?: { source: string };
           originalimage?: { source: string };
         };
@@ -170,6 +214,7 @@ async function buscarFotoEnWikipedia(nombre: string): Promise<{ url: string; tit
         }
 
         if (data.thumbnail?.source) {
+          if (!(await valida(data.wikibase_item, data.title || nombre))) continue;
           const imgUrl = data.originalimage?.source || data.thumbnail.source;
           return { url: imgUrl, titulo: data.title || nombre, lang };
         }
@@ -224,7 +269,7 @@ async function buscarFotoEnWikidataPorId(tmdbId: number | null, imdbId: string |
 }
 
 /** 3b. Buscar fotos en Wikidata JSON (búsqueda de entidad + claim P18 imagen) */
-async function buscarFotoEnWikidata(nombre: string): Promise<{ url: string; id: string } | null> {
+async function buscarFotoEnWikidata(nombre: string, tmdbId: number | null, imdbId: string | null): Promise<{ url: string; id: string } | null> {
   try {
     await turnoWikidata();
     const qUrl = `https://www.wikidata.org/w/api.php?action=wbsearchentities&search=${encodeURIComponent(nombre)}&language=es&format=json&type=item&limit=3`;
@@ -248,8 +293,10 @@ async function buscarFotoEnWikidata(nombre: string): Promise<{ url: string; id: 
         if (!cRes.ok) continue;
 
         const cData = (await cRes.json()) as any;
-        const p18 = cData.entities?.[item.id]?.claims?.P18?.[0]?.mainsnak?.datavalue?.value;
+        const claims = cData.entities?.[item.id]?.claims;
+        const p18 = claims?.P18?.[0]?.mainsnak?.datavalue?.value;
         if (p18 && typeof p18 === 'string') {
+          if (!aceptable(juzgarFichaWikidata(fichaDeClaims(claims), tmdbId, imdbId), item.label || '', nombre)) continue;
           const imgUrl = `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(p18)}?width=600`;
           return { url: imgUrl, id: item.id };
         }
@@ -327,6 +374,9 @@ export async function enriquecerFotosActores(opciones: OpcionesEnriquecer = {}):
   });
 
   const ponerFoto = db.prepare('UPDATE people SET thumb = ? WHERE id = ?');
+  const titulosDe = db.prepare('SELECT DISTINCT i.kind, i.tmdb_id FROM item_people ip JOIN items i ON i.id = ip.item_id WHERE ip.person_id = ? AND i.tmdb_id IS NOT NULL');
+  const titulosNuestros = (personaId: number) =>
+    new Set((titulosDe.all(personaId) as Array<{ kind: string; tmdb_id: number | string }>).map((t) => `${t.kind === 'show' ? 'tv' : 'movie'}:${t.tmdb_id}`));
   const apuntarDetalle = db.prepare(`
     INSERT INTO people_details (person_id, tmdb_id, profile, fetched_at)
     VALUES (?, ?, ?, ?)
@@ -384,7 +434,7 @@ export async function enriquecerFotosActores(opciones: OpcionesEnriquecer = {}):
 
       try {
         // 1. Probar en TMDb (imágenes adicionales o búsqueda de nombre)
-        const resTmdb = await buscarFotoEnTmdb(persona.tmdb_id, persona.name);
+        const resTmdb = await buscarFotoEnTmdb(persona.tmdb_id, persona.name, titulosNuestros(persona.id));
         if (resTmdb) {
           fotoUrl = resTmdb.url;
           fuente = 'tmdb';
@@ -402,7 +452,12 @@ export async function enriquecerFotosActores(opciones: OpcionesEnriquecer = {}):
 
         // 3. Si no, buscar en Wikipedia
         if (!fotoUrl) {
-          const resWiki = await buscarFotoEnWikipedia(persona.name);
+          const resWiki = await buscarFotoEnWikipedia(persona.name, async (q, titulo) => {
+            if (!q) return false; // sin ficha de Wikidata no hay nada con qué comprobar que es la misma persona
+            const e = await jsonDeWikidata(`https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${q}&props=claims&format=json`);
+            const v = juzgarFichaWikidata(fichaDeClaims(e?.entities?.[q]?.claims), nuevoTmdbId, persona.imdb_id);
+            return aceptable(v, titulo, persona.name);
+          });
           if (resWiki) {
             fotoUrl = resWiki.url;
             fuente = 'wikipedia';
@@ -411,7 +466,7 @@ export async function enriquecerFotosActores(opciones: OpcionesEnriquecer = {}):
 
         // 3. Si no hay en Wikipedia, buscar en Wikidata
         if (!fotoUrl) {
-          const resWd = await buscarFotoEnWikidata(persona.name);
+          const resWd = await buscarFotoEnWikidata(persona.name, nuevoTmdbId, persona.imdb_id);
           if (resWd) {
             fotoUrl = resWd.url;
             fuente = 'wikidata';
