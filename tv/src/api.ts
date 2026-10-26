@@ -518,7 +518,8 @@ export const imagen = {
   estudioNombre: (nombre: string, w: number) =>
     conToken(servidor() + '/api/studios/' + encodeURIComponent(nombre) + '/logo?claro=1&v=5&w=' + w),
   tema: (id: number) => conToken(servidor() + '/api/items/' + id + '/theme'),
-  persona: (id: number, w: number) => conToken(servidor() + '/api/people/' + id + '/thumb?w=' + w),
+  // `v` sube cuando se rehacen las fotos (26/10/2026: de 300 a 632 px): el servidor deja guardarlas 30 días en el aparato.
+  persona: (id: number, w: number) => conToken(servidor() + '/api/people/' + id + '/thumb?w=' + w + '&v=2'),
   tira: (fileId: number, hoja: number) => conToken(servidor() + '/api/play/' + fileId + '/trickplay/' + hoja),
   /** La imagen propia de una saga, la que se eligió del buzón. */
   saga: (nombre: string, w: number) =>
