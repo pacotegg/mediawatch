@@ -35,8 +35,60 @@ export function lumaVisible(rgba: Uint8Array): number {
 }
 
 // v4 (19/10/2026): dorado para los que no tienen color; aclarado que conserva el color para los oscuros con color.
-// Las carpetas de versiones anteriores quedan sin usar.
-const DIR_CLARO = join(DATA_DIR, 'artwork', 'studios-claro-v4');
+// v5 (26/10/2026): se hace sobre el logo ya recortado. Las carpetas de versiones anteriores quedan sin usar.
+const DIR_CLARO = join(DATA_DIR, 'artwork', 'studios-claro-v5');
+const DIR_RECORTE = join(DATA_DIR, 'artwork', 'studios-recorte-v1');
+
+/**
+ * Caja de lo que se ve (alfa > 16) con 2 px de aire, o null si no hay margen que quitar (ningún lado pasa del 3 %).
+ * Medido el 26/10/2026 sobre los 806 logos: 51 traen más de un 5 % de lienzo vacío en algún lado y 11 usan menos de la
+ * mitad (Intermedia, el 22 %). Ese vacío salía en las fichas como un margen raro alrededor del logo.
+ */
+export function cajaVisible(rgba: Uint8Array, w: number, h: number): { x: number; y: number; w: number; h: number } | null {
+  let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (rgba[(y * w + x) * 4 + 3] <= 16) continue;
+      if (x < x0) x0 = x;
+      if (x > x1) x1 = x;
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
+    }
+  }
+  if (x1 < 0) return null;
+  const sobra = Math.max(x0, w - 1 - x1) / w > 0.03 || Math.max(y0, h - 1 - y1) / h > 0.03;
+  if (!sobra) return null;
+  const x = Math.max(0, x0 - 2), y = Math.max(0, y0 - 2);
+  return { x, y, w: Math.min(w, x1 + 3) - x, h: Math.min(h, y1 + 3) - y };
+}
+
+/** El logo sin el lienzo vacío de alrededor. Se decide una vez y se recuerda; el original no se toca. */
+export async function sinMargen(ruta: string): Promise<string> {
+  const base = basename(ruta, extname(ruta));
+  const recortado = join(DIR_RECORTE, base + '.webp');
+  const talCual = join(DIR_RECORTE, base + '.tal-cual');
+  if (existsSync(recortado)) return recortado;
+  if (existsSync(talCual)) return ruta;
+  mkdirSync(DIR_RECORTE, { recursive: true });
+  try {
+    const { stdout: dim } = await ejecutar(config.ffprobe, ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', ruta],
+      { timeout: 15_000, windowsHide: true });
+    const [w, h] = String(dim).trim().split(',').map(Number);
+    if (!(w > 0 && h > 0)) return ruta;
+    const { stdout } = await ejecutar(config.ffmpeg, ['-v', 'error', '-i', ruta, '-f', 'rawvideo', '-pix_fmt', 'rgba', '-'],
+      { encoding: 'buffer', maxBuffer: w * h * 4 + 1024, timeout: 20_000, windowsHide: true });
+    const caja = cajaVisible(stdout, w, h);
+    if (!caja) {
+      writeFileSync(talCual, '');
+      return ruta;
+    }
+    await ejecutar(config.ffmpeg, ['-v', 'error', '-y', '-i', ruta, '-vf', `crop=${caja.w}:${caja.h}:${caja.x}:${caja.y}`, '-c:v', 'libwebp', '-q:v', '90', recortado],
+      { timeout: 60_000, windowsHide: true });
+    return existsSync(recortado) ? recortado : ruta;
+  } catch {
+    return ruta;
+  }
+}
 
 /** Saturación media (0-1) de lo que se ve: por debajo de 0,15 el logo no tiene color propio (blanco, negro o gris). */
 export function saturacionVisible(rgba: Uint8Array): number {

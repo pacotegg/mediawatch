@@ -1,6 +1,22 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { lumaVisible, UMBRAL_OSCURO } from '../src/media/logos-estudio.ts';
+import { cajaVisible, lumaVisible, UMBRAL_OSCURO } from '../src/media/logos-estudio.ts';
+
+/** TMDb trae logos con mucho lienzo vacío (Intermedia usa el 22 %): la caja de lo visible es lo que se recorta. */
+test('cajaVisible encuentra lo que se ve, deja 2 px de aire y no recorta un logo sin margen', () => {
+  const lienzo = (w, h, pintar) => {
+    const b = new Uint8Array(w * h * 4);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (pintar(x, y)) b[(y * w + x) * 4 + 3] = 255;
+    return b;
+  };
+  // 100x50 con contenido en x 30..69, y 20..29.
+  const caja = cajaVisible(lienzo(100, 50, (x, y) => x >= 30 && x < 70 && y >= 20 && y < 30), 100, 50);
+  assert.deepEqual(caja, { x: 28, y: 18, w: 44, h: 14 });
+  // Sin margen apreciable: null (se sirve tal cual).
+  assert.equal(cajaVisible(lienzo(100, 50, (x, y) => x >= 1 && x < 99 && y >= 1 && y < 49), 100, 50), null);
+  // Todo transparente: null.
+  assert.equal(cajaVisible(lienzo(10, 10, () => false), 10, 10), null);
+});
 
 /**
  * La tele pintaba todos los logos como silueta blanca; ahora el servidor solo aclara los que son oscuros. Lo que decide es

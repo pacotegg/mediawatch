@@ -23,7 +23,7 @@ import { paginaTrailer, trailerDe } from '../media/trailers.ts';
 import { toString as qrComoSvg } from 'qrcode';
 import { parsearRango } from '../media/rango.ts';
 import { etiquetasTecnicas } from '../media/etiquetas.ts';
-import { aspectoDe, huellaDe, versionClara } from '../media/logos-estudio.ts';
+import { aspectoDe, huellaDe, sinMargen, versionClara } from '../media/logos-estudio.ts';
 import { notificarProgresoAPlex } from '../media/plex.ts';
 
 const MIME: Record<string, string> = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp' };
@@ -1093,7 +1093,8 @@ export default async function libraryRoutes(app: FastifyInstance) {
     const logo = await resolverLogoEstudio(row.studio);
     if (!logo) return reply.code(404).send({ error: 'Sin logo para este estudio' });
     // `claro=1` (app Android desde la 3.73): como en /api/studios/:nombre/logo.
-    return serveArt(reply, (req.query as { claro?: string }).claro === '1' ? await versionClara(logo) : logo, width);
+    const limpio = await sinMargen(logo);
+    return serveArt(reply, (req.query as { claro?: string }).claro === '1' ? await versionClara(limpio) : limpio, width);
   });
 
   /** Los estudios del título que tienen logo, sin repetir logo, en su orden: la tele los pone uno debajo de otro. */
@@ -1104,7 +1105,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
     if (!row?.studio) return { estudios: [] };
     const ls = await logosDeEstudios(row.studio);
     // `estudios` lo usan la tele y la web; `logos` (con la proporción de cada uno) lo usa Android.
-    return { estudios: ls.map((l) => l.nombre), logos: await Promise.all(ls.map(async (l) => ({ nombre: l.nombre, aspecto: await aspectoDe(l.ruta) }))) };
+    return { estudios: ls.map((l) => l.nombre), logos: await Promise.all(ls.map(async (l) => ({ nombre: l.nombre, aspecto: await aspectoDe(await sinMargen(l.ruta)) }))) };
   });
 
   // `claro=1`: la versión que se lee sobre fondo oscuro (ver media/logos-estudio.ts).
@@ -1114,7 +1115,8 @@ export default async function libraryRoutes(app: FastifyInstance) {
     const width = q.w ? Number(q.w) : undefined;
     const logo = await resolverLogoEstudio(nombre);
     if (!logo) return reply.code(404).send({ error: 'Sin logo para este estudio' });
-    return serveArt(reply, q.claro === '1' ? await versionClara(logo) : logo, width);
+    const limpio = await sinMargen(logo);
+    return serveArt(reply, q.claro === '1' ? await versionClara(limpio) : limpio, width);
   });
 
   /*
