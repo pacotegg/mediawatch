@@ -13,6 +13,7 @@ import { existsSync, readdirSync, statSync } from 'node:fs';
 import { basename, extname, join, resolve, sep } from 'node:path';
 import { db, normalize } from '../db.ts';
 import { config, type LibraryConfig } from '../config.ts';
+import { hayAlguienViendoEn } from '../media/ocupado.ts';
 import { applyProposal, search, TmdbError, type Proposal } from './tmdb.ts';
 import { coincidenciaSegura } from './identificar.ts';
 import { rellenarEpisodios } from './episodios-tmdb.ts';
@@ -110,6 +111,7 @@ export async function registrarRutas(rutas: string[], escanear: (p?: undefined, 
     if (!f) throw new Error(`${r} no pertenece a ninguna fuente configurada`);
     fuentes.add(f.path);
   }
+  if ([...fuentes].some(hayAlguienViendoEn)) throw new Error('Alguien está viendo algo: espera a que termine para analizar ficheros de la biblioteca');
   if (fuentes.size > 0) await escanear(undefined, [...fuentes]);
   const ids: number[] = [];
   for (const r of rutas) {

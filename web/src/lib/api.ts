@@ -857,7 +857,7 @@ export type EstadoEnvio = {
   corriendo: boolean; hechos: number; total: number; actual: string; fase: string; bytesHechos: number; bytesTotal: number; archivo: string;
   resultados: { itemId: number; titulo: string; ok: boolean; error?: string; destino?: string; copiado?: boolean }[]; terminado: string | null;
 };
-export type ScraperFila = { id: number; title: string; year: number | null; kind: 'movie' | 'show'; biblioteca: string; tmdb_id: string | null; imdb_id: string | null; origen: string | null; poster: number; fanart: number; logo: number; sinopsis: number; edad: number };
+export type ScraperFila = { id: number; title: string; year: number | null; kind: 'movie' | 'show'; biblioteca: string; tmdb_id: string | null; imdb_id: string | null; origen: string | null; arte_actualizado: string | null; poster: number; fanart: number; logo: number; sinopsis: number; edad: number };
 export type ScraperLista = { total: number; offset: number; pagina: number; items: ScraperFila[]; cuenta: Record<string, number> };
 export type ScraperTitulo = {
   id: number; title: string; original_title: string | null; year: number | null; kind: 'movie' | 'show'; biblioteca: string;

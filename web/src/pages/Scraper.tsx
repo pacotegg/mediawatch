@@ -49,7 +49,7 @@ function Fila({ f, activa, onClick }: { f: ScraperFila; activa: boolean; onClick
       className={`flex w-full items-center gap-3 rounded-xl px-2 py-1.5 text-left transition-colors ${activa ? 'bg-white/12' : 'hover:bg-white/6'}`}
     >
       <div className="h-12 w-8 shrink-0 overflow-hidden rounded bg-ink-800">
-        {f.poster ? <img src={img.poster(f.id, 80)} alt="" loading="lazy" className="h-full w-full object-cover" /> : null}
+        {f.poster ? <img src={img.poster(f.id, 80, f.arte_actualizado)} alt="" loading="lazy" className="h-full w-full object-cover" /> : null}
       </div>
       <div className="min-w-0 flex-1">
         <div className="truncate text-[13px] font-medium">{f.title}</div>
@@ -96,6 +96,11 @@ function Lista({ seleccion, onSelect }: { seleccion: number | null; onSelect: (f
     setAcumuladas((prev) => (offset === 0 ? data.items : [...prev, ...data.items.filter((n) => !prev.some((p) => p.id === n.id))]));
   }, [data, offset]);
 
+  // La fila elegida se pinta con la ficha (misma consulta, sin pedir nada): al cambiarle el arte o los datos se ve al momento.
+  const { data: elegida } = useQuery({ queryKey: ['scraper-titulo', seleccion], queryFn: () => api.scraperTitulo(seleccion!), enabled: seleccion != null });
+  const aldia = (f: ScraperFila): ScraperFila =>
+    elegida && elegida.id === f.id ? { ...f, title: elegida.title, year: elegida.year, poster: elegida.poster, fanart: elegida.fanart, logo: elegida.logo, arte_actualizado: elegida.arte_actualizado } : f;
+
   const total = data?.total ?? 0;
   return (
     <div className="flex min-h-0 flex-col gap-3">
@@ -119,7 +124,7 @@ function Lista({ seleccion, onSelect }: { seleccion: number | null; onSelect: (f
         <span className="ml-auto self-center tabular-nums text-mist-600">{total} títulos</span>
       </div>
       <div className="max-h-[calc(100vh-18rem)] min-h-64 space-y-0.5 overflow-y-auto pr-1">
-        {acumuladas.map((f) => <Fila key={f.id} f={f} activa={f.id === seleccion} onClick={() => onSelect(f)} />)}
+        {acumuladas.map((f) => <Fila key={f.id} f={aldia(f)}activa={f.id === seleccion} onClick={() => onSelect(f)} />)}
         {!isFetching && acumuladas.length === 0 && <p className="px-2 py-6 text-center text-[12.5px] text-mist-500">Nada con ese filtro.</p>}
         {acumuladas.length < total && (
           <div className="py-2 text-center">
@@ -602,7 +607,13 @@ export default function Scraper() {
       {modo === 'fuentes' && <FuentesScraper />}
       {modo === 'ajustes' && <AjustesScraper />}
       <div className={modo === 'biblioteca' ? 'grid gap-6 lg:grid-cols-[20rem_1fr]' : 'hidden'}>
-        <Lista seleccion={id} onSelect={(f) => { setId(f.id); setTimeout(() => detalle.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50); }} />
+        <div className="lg:sticky lg:top-4 lg:self-start">
+          <Lista seleccion={id} onSelect={(f) => {
+            setId(f.id);
+            // En pantalla ancha la ficha ya está al lado: bajar la página sacaba la lista de la vista.
+            if (!window.matchMedia('(min-width: 1024px)').matches) setTimeout(() => detalle.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+          }} />
+        </div>
         <div ref={detalle} className="glass min-h-64 rounded-[var(--radius-panel)] p-5">
           {id ? <Ficha id={id} /> : <p className="py-16 text-center text-[13px] text-mist-500">Elige un título de la lista para ver qué le falta y qué propone TMDb.</p>}
         </div>

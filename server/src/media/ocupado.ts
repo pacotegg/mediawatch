@@ -15,8 +15,8 @@
  */
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { DATA_DIR } from '../config.ts';
+import { join, resolve, sep } from 'node:path';
+import { config, DATA_DIR } from '../config.ts';
 
 /** Cuánto se considera «todavía viendo» desde la última señal. */
 const MARGEN_MS = 5 * 60_000;
@@ -47,6 +47,16 @@ export function hayAlguienViendo(): boolean {
     }
   } catch {}
   return Date.now() - senal < MARGEN_MS;
+}
+
+/** Solo frena lo que cae dentro de una biblioteca: las carpetas de entrada del scraper no son el disco que se está leyendo. */
+export function hayAlguienViendoEn(ruta: string): boolean {
+  const r = resolve(ruta).toLowerCase();
+  const enBiblioteca = config.libraries.some((l) => {
+    const p = resolve(l.path).toLowerCase();
+    return r === p || r.startsWith(p + sep);
+  });
+  return enBiblioteca && hayAlguienViendo();
 }
 
 /**

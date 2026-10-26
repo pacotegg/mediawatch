@@ -68,7 +68,7 @@ export default async function scraperRoutes(app: FastifyInstance) {
 
     const base = donde.slice(1);
     if (q.filtro === 'sinorganizar') {
-      const todas = db.prepare(`SELECT i.id, i.title, i.year, i.kind, i.folder, l.name AS biblioteca, i.tmdb_id, i.imdb_id, i.meta_origen AS origen,
+      const todas = db.prepare(`SELECT i.id, i.title, i.year, i.kind, i.folder, l.name AS biblioteca, i.tmdb_id, i.imdb_id, i.meta_origen AS origen, i.arte_actualizado,
                        i.poster IS NOT NULL AS poster, i.fanart IS NOT NULL AS fanart, i.clearlogo IS NOT NULL AS logo,
                        (i.plot IS NOT NULL AND i.plot <> '') AS sinopsis, (i.mpaa IS NOT NULL AND i.mpaa <> '') AS edad
                 FROM items i JOIN libraries l ON l.id = i.library_id WHERE ${donde.slice(1).concat('1').join(' AND ')}
@@ -78,7 +78,7 @@ export default async function scraperRoutes(app: FastifyInstance) {
     }
     const total = (db.prepare(`SELECT COUNT(*) AS n FROM items i WHERE ${donde.join(' AND ')}`).get(...params) as { n: number }).n;
     const items = db
-      .prepare(`SELECT i.id, i.title, i.year, i.kind, l.name AS biblioteca, i.tmdb_id, i.imdb_id, i.meta_origen AS origen,
+      .prepare(`SELECT i.id, i.title, i.year, i.kind, l.name AS biblioteca, i.tmdb_id, i.imdb_id, i.meta_origen AS origen, i.arte_actualizado,
                        i.poster IS NOT NULL AS poster, i.fanart IS NOT NULL AS fanart, i.clearlogo IS NOT NULL AS logo,
                        (i.plot IS NOT NULL AND i.plot <> '') AS sinopsis, (i.mpaa IS NOT NULL AND i.mpaa <> '') AS edad
                 FROM items i JOIN libraries l ON l.id = i.library_id

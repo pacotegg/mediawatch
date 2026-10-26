@@ -14,7 +14,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join, relative } from 'node:path';
 import { db } from '../db.ts';
-import { hayAlguienViendo } from '../media/ocupado.ts';
+import { hayAlguienViendoEn } from '../media/ocupado.ts';
 
 export type PasoNfo = { tipo: 'pelicula' | 'serie' | 'episodio'; hacia: string; retira: string | null; xml: string };
 export class NfoError extends Error {}
@@ -136,9 +136,9 @@ export function planNfo(itemId: number): PasoNfo[] {
 }
 
 export function aplicarNfo(itemId: number): { escritos: string[]; retirados: string[] } {
-  if (hayAlguienViendo()) throw new NfoError('Alguien está viendo algo: espera a que termine para escribir en la biblioteca');
-  const plan = planNfo(itemId);
   const raiz = (db.prepare('SELECT l.path FROM items i JOIN libraries l ON l.id = i.library_id WHERE i.id = ?').get(itemId) as { path: string }).path;
+  if (hayAlguienViendoEn(raiz)) throw new NfoError('Alguien está viendo algo: espera a que termine para escribir en la biblioteca');
+  const plan = planNfo(itemId);
   const dia = new Date().toISOString().slice(0, 10);
   const escritos: string[] = [];
   const retirados: string[] = [];

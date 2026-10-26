@@ -16,7 +16,7 @@
 import { existsSync, mkdirSync, readdirSync, renameSync, statSync } from 'node:fs';
 import { basename, dirname, extname, join, sep } from 'node:path';
 import { db } from '../db.ts';
-import { hayAlguienViendo } from '../media/ocupado.ts';
+import { hayAlguienViendoEn } from '../media/ocupado.ts';
 import { mediaInfo } from '../media/probe.ts';
 import { escaneoEnCurso } from './scan.ts';
 import { carpetaDePelicula, carpetaDeSerie, carpetaDeTemporada, codecDeAudio, ficheroDeEpisodio, ficheroDePelicula, formatoDeVideo } from './nombres-tmm.ts';
@@ -155,9 +155,9 @@ function trasCarpetas(ruta: string, carpetas: Paso[]): string {
 }
 
 export function aplicarOrganizar(itemId: number, opciones: { edicion?: string | null } = {}): { movidos: number } {
-  if (hayAlguienViendo()) throw new OrganizarError('Alguien está viendo algo: espera a que termine para mover ficheros de la biblioteca');
   if (escaneoEnCurso()) throw new OrganizarError('Hay un escaneo de la biblioteca en curso: espera a que termine');
   const it = itemDe(itemId);
+  if (hayAlguienViendoEn(it.folder)) throw new OrganizarError('Alguien está viendo algo: espera a que termine para mover ficheros de la biblioteca');
   const plan = planOrganizar(itemId, opciones);
   if (plan.pasos.length === 0) return { movidos: 0 };
 
