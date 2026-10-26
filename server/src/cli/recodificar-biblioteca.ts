@@ -24,6 +24,7 @@
  * Uso (desde server/):
  *   node src/cli/recodificar-biblioteca.ts --limite 3                 prueba: codifica y verifica, no toca E:
  *   node src/cli/recodificar-biblioteca.ts --aplicar --tanda-gb 150   lote real, por tandas de 150 GB
+ *   ... --reintentar-atascados                                         vuelve a probar los que no salieron en 6 h
  */
 import { execFile } from 'node:child_process';
 import { appendFileSync, copyFileSync, existsSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, utimesSync } from 'node:fs';
@@ -40,6 +41,7 @@ const aplicar = args.includes('--aplicar');
 const valor = (n: string, def: number) => { const i = args.indexOf(n); return i >= 0 && args[i + 1] ? Number(args[i + 1]) : def; };
 const limite = valor('--limite', Infinity);
 const tandaGb = valor('--tanda-gb', 150);
+const reintentarAtascados = args.includes('--reintentar-atascados');
 
 const COLA = 'C:\\Media\\encode_queue';
 const SALIDA = 'C:\\Media\\encoded';
@@ -59,7 +61,7 @@ const anotar = (o: object) => appendFileSync(REGISTRO, JSON.stringify({ cuando: 
 const hechos = new Set<string>();
 if (existsSync(REGISTRO)) {
   for (const l of readFileSync(REGISTRO, 'utf8').split('\n')) {
-    try { const o = JSON.parse(l); if (o.ruta && (o.resultado === 'sustituido' || (o.resultado === 'rechazado' && !esFalloDePistas(String(o.motivo ?? ''))) || o.resultado === 'fallido' || o.resultado === 'atascado')) hechos.add(o.ruta); } catch { /* línea a medias */ }
+    try { const o = JSON.parse(l); if (o.ruta && (o.resultado === 'sustituido' || (o.resultado === 'rechazado' && !esFalloDePistas(String(o.motivo ?? ''))) || o.resultado === 'fallido' || (o.resultado === 'atascado' && !reintentarAtascados))) hechos.add(o.ruta); } catch { /* línea a medias */ }
   }
 }
 
@@ -182,8 +184,8 @@ async function procesar(f: Fila) {
   const salida = await esperarSalida(f.id, puesto);
   if (salida === 'fallido') {
     try { unlinkSync(join(EN_CURSO, `mw${f.id}${ext}`)); } catch { /* ya no estaba */ }
-    anotar({ ruta: f.path, id: f.id, resultado: 'fallido', motivo: 'ffmpeg abandonó el encode (Conversion failed!)' });
-    decir(f, 'x el encode falló (ffmpeg: Conversion failed!); original intacto, no se reintenta');
+    anotar({ ruta: f.path, id: f.id, resultado: 'fallido', motivo: 'el pipeline no lo codificó (fuente dañada o ffmpeg abandonó; ver encode_logs)' });
+    decir(f, 'x el pipeline no lo codificó (fuente dañada o ffmpeg abandonó; ver encode_logs); original intacto, no se reintenta');
     return;
   }
   if (!salida) { anotar({ ruta: f.path, id: f.id, resultado: 'atascado' }); decir(f, 'x no salió en 6 h'); return; }

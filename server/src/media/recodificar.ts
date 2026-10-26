@@ -116,7 +116,8 @@ export function argumentosRescate(salidaPipeline: string, original: string, dest
 
 /** El registro de un encode de encode.ps1 acaba en «Conversion failed!» cuando ffmpeg lo abandona (p. ej. QSV -40 con ciertos MP4). */
 export function encodeFallido(registro: string): boolean {
-  return /Conversion failed!/.test(registro);
+  // También cuando encode.ps1 rechaza la fuente sin llegar a ffmpeg (dañada o truncada) o la copia ya no está.
+  return /Conversion failed!|No se encoda\.|Error opening input files?:/.test(registro);
 }
 
 /**

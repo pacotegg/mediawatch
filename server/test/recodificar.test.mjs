@@ -117,6 +117,10 @@ test('encodeFallido reconoce el registro de un encode que ffmpeg abandono (20/10
   assert.equal(encodeFallido(malo), true);
   assert.equal(encodeFallido('frame= 100 fps=120\nvideo:52KiB audio:62KiB\n'), false);
   assert.equal(encodeFallido(''), false);
+  // El pipeline rechaza una fuente dañada sin llamar a ffmpeg: el lote esperaba 6 h por cada una (5 casos, 21-23/10/2026).
+  assert.equal(encodeFallido('Verificando la fuente (fast)...\nERROR: la fuente NO supera la verificacion (final del fichero (truncado?)). No se encoda.\n'), true);
+  // Y si la copia de la fuente desaparece antes de empezar (Titane, 21/10/2026).
+  assert.equal(encodeFallido('Error opening input file C:\\Media\\encode_running\\mw1243.mkv.\nError opening input files: No such file or directory\n'), true);
 });
 
 test('esFalloDePistas separa lo que arregla el rescate de lo que no', () => {
