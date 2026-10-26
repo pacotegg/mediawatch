@@ -11,6 +11,7 @@ import { tieneFuncionLicencia } from '../media/licencia.ts';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { db, normalize } from '../db.ts';
 import { thumbnail } from '../media/images.ts';
+import { hermanaDeArte } from '../media/arte-hermana.ts';
 import { clearDialogue, dialogueStats, ftsQuery, indexarEnSegundoPlano, searchDialogue } from '../scanner/dialogue.ts';
 import { detallePersona } from '../scanner/people.ts';
 import { currentUser, deFuera, requireUser, sesionDe } from './auth.ts';
@@ -35,7 +36,15 @@ async function sendImage(reply: FastifyReply, path: string) {
   try {
     stat = await statAsync(path);
   } catch {
-    return reply.code(404).send({ error: 'Imagen no disponible' });
+    // Ruta anterior a la conversión a WebP (o al revés): se sirve la hermana si existe.
+    const hermana = await hermanaDeArte(path);
+    if (!hermana) return reply.code(404).send({ error: 'Imagen no disponible' });
+    path = hermana;
+    try {
+      stat = await statAsync(path);
+    } catch {
+      return reply.code(404).send({ error: 'Imagen no disponible' });
+    }
   }
   return reply
     .header('Content-Type', MIME[extname(path).toLowerCase()] ?? 'image/jpeg')

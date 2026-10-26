@@ -5,6 +5,7 @@ import { access, stat as statAsync, utimes } from 'node:fs/promises';
 import { join, relative, isAbsolute } from 'node:path';
 import { DATA_DIR, config } from '../config.ts';
 import { db } from '../db.ts';
+import { hermanaDeArte } from './arte-hermana.ts';
 
 const CACHE_DIR = join(DATA_DIR, 'cache', 'images');
 mkdirSync(CACHE_DIR, { recursive: true });
@@ -87,7 +88,10 @@ export async function thumbnail(source: string, width: number): Promise<string> 
   try {
     stat = await selloDe(source);
   } catch {
-    throw new Error('imagen no encontrada');
+    // La fila puede ser de antes de pasar el arte a WebP: se prueba la hermana (.webp, .jpg, .png).
+    const hermana = await hermanaDeArte(source);
+    if (!hermana) throw new Error('imagen no encontrada');
+    return thumbnail(hermana, width);
   }
 
   const key = createHash('sha1').update(`${source}|${stat.mtimeMs}|${stat.size}|${width}`).digest('hex');

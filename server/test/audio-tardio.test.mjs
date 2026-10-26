@@ -10,7 +10,10 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { audioTardio, retrasoDeAudio } from '../src/media/probe.ts';
+
+// probe.ts abre la base al importarse: carpeta de datos temporal, nunca la real.
+process.env.MEDIAWATCH_DATA_DIR = mkdtempSync(join(tmpdir(), 'audio-tardio-datos-'));
+const { audioTardio, retrasoDeAudio } = await import('../src/media/probe.ts');
 
 const hayFfmpeg = spawnSync('ffmpeg', ['-version'], { stdio: 'ignore' }).status === 0;
 let dir, tarde, normal;
