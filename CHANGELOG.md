@@ -12,6 +12,12 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.82 — 26/10/2026
+
+- Los administradores pueden editar los datos de una película desde su ficha (Editar → Editar datos): título, sinopsis, géneros, saga, año, estudio y más. El escáner respeta lo que cambies y se puede deshacer.
+- Las películas de una misma saga salen juntas y por año de estreno en las listas ordenadas por título (Alien, Aliens, Alien³…).
+- La duración de cada película sale de su fichero (El Conjuro dejó de poner 3h 43m).
+
 ## 3.81 — 26/10/2026
 
 - Las carátulas, fondos, logos y discos se actualizan al momento cuando se cambian desde el editor de metadatos (antes se seguía viendo la imagen vieja hasta un mes).

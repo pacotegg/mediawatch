@@ -134,6 +134,7 @@ fun PantallaFicha(
   var sinopsisAbierta by remember(itemId) { mutableStateOf(false) }
   var dialogoBorrar by remember(itemId) { mutableStateOf(false) }
   var dialogoEditar by remember(itemId) { mutableStateOf(false) }
+  var dialogoDatos by remember(itemId) { mutableStateOf(false) }
   var mostrarColeccionista by remember(itemId) { mutableStateOf(false) }
   var borrando by remember(itemId) { mutableStateOf(false) }
   /*
@@ -872,10 +873,27 @@ fun PantallaFicha(
       containerColor = Color(0xFF14141A),
       shape = RoundedCornerShape(24.dp),
       title = {
-        Text("Editar metadatos / Arte", color = Texto, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        Text("Editar", color = Texto, fontWeight = FontWeight.Bold, fontSize = 18.sp)
       },
       text = {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+          Box(
+            Modifier
+              .fillMaxWidth()
+              .clip(RoundedCornerShape(12.dp))
+              .background(Color(0x0AFFFFFF))
+              .clickable {
+                dialogoEditar = false
+                dialogoDatos = true
+              }
+              .padding(horizontal = 14.dp, vertical = 12.dp)
+          ) {
+            Column {
+              Text("Editar datos", color = Texto, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+              Text("Título, sinopsis, géneros, saga y más", color = TextoSuave, fontSize = 12.sp)
+            }
+          }
+
           Box(
             Modifier
               .fillMaxWidth()
@@ -934,6 +952,10 @@ fun PantallaFicha(
         }
       }
     )
+  }
+
+  if (dialogoDatos) {
+    EditorDatos(f, alCerrar = { dialogoDatos = false }, alGuardado = { intento++ })
   }
 
   if (dialogoBorrar) {

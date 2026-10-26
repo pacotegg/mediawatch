@@ -227,6 +227,17 @@ object Api {
   } catch (_: Exception) {
     null
   }
+  /** Editar a mano los datos de un título (solo administrador); `cambios` lleva solo lo que cambia (`null` quita el dato). */
+  fun editarMetadatos(itemId: Int, cambios: kotlinx.serialization.json.JsonObject) {
+    texto("/api/items/$itemId/metadatos", cambios.toString())
+  }
+
+  /** Deshace el último cambio hecho desde el editor o el scraper; devuelve de qué era. */
+  fun deshacerUltimoCambio(itemId: Int): String {
+    val r = texto("/api/scraper/deshacer/$itemId", "{}")
+    return json.parseToJsonElement(r).jsonObject["etiqueta"]?.jsonPrimitive?.contentOrNull ?: "último cambio"
+  }
+
   fun saga(nombre: String): ContenidoDeSaga = pedir("/api/collections/" + java.net.URLEncoder.encode(nombre, "UTF-8").replace("+", "%20"))
   fun ficha(id: Int): Ficha = pedir("/api/items/$id")
   /** La última versión publicada de la app (la del APK más alto en la web) y sus novedades. */
@@ -810,6 +821,8 @@ data class Ficha(
   @SerialName("has_theme") val tieneTema: Int = 0,
   val collection: String? = null,
   val studio: String? = null,
+  @SerialName("original_title") val tituloOriginal: String? = null,
+  @SerialName("sort_title") val tituloOrden: String? = null,
   @SerialName("collectionItems") val coleccionItems: List<Titulo> = emptyList(),
   @SerialName("similar") val similares: List<Titulo> = emptyList(),
   @SerialName("arte_actualizado") val arteActualizado: String? = null,
