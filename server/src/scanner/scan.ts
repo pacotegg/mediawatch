@@ -296,10 +296,16 @@ const stmt = {
           THEN media_files.duration
         ELSE COALESCE(NULLIF(excluded.duration, 0), media_files.duration)
       END,
-      video_codec=COALESCE(excluded.video_codec, media_files.video_codec),
-      width=COALESCE(NULLIF(excluded.width, 0), media_files.width),
-      height=COALESCE(NULLIF(excluded.height, 0), media_files.height),
-      hdr=COALESCE(excluded.hdr, media_files.hdr),
+      -- Lo mismo con el video: el .nfo sigue diciendo h264 despues de recodificar a HEVC y cada escaneo devolvia el codec
+      -- viejo (25 ficheros el 26/10/2026: las estadisticas y el lote de recodificar los contaban como H.264).
+      video_codec=CASE WHEN media_files.probed = 1 AND excluded.size = media_files.size AND media_files.video_codec IS NOT NULL
+        THEN media_files.video_codec ELSE COALESCE(excluded.video_codec, media_files.video_codec) END,
+      width=CASE WHEN media_files.probed = 1 AND excluded.size = media_files.size AND media_files.width > 0
+        THEN media_files.width ELSE COALESCE(NULLIF(excluded.width, 0), media_files.width) END,
+      height=CASE WHEN media_files.probed = 1 AND excluded.size = media_files.size AND media_files.height > 0
+        THEN media_files.height ELSE COALESCE(NULLIF(excluded.height, 0), media_files.height) END,
+      hdr=CASE WHEN media_files.probed = 1 AND excluded.size = media_files.size
+        THEN media_files.hdr ELSE COALESCE(excluded.hdr, media_files.hdr) END,
       -- Si el fichero ha cambiado de tamano es otro fichero: probed=0 obliga a medirlo
     -- de nuevo (la columna es NOT NULL; con NULL el escaneo entero se deshacia).
       probed=CASE WHEN excluded.size <> media_files.size THEN 0 ELSE media_files.probed END

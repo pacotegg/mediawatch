@@ -55,6 +55,24 @@ test('lo mismo con los subtitulos incrustados medidos: se conservan, y un .srt d
   assert.equal(subs.filter((x) => x.external !== null).length, 1, 'el .srt de al lado se registra');
 });
 
+/*
+ * Igual con el vídeo: el .nfo de tinyMediaManager sigue diciendo «h264» después de recodificar a HEVC y cada escaneo
+ * devolvía el códec viejo a la base (25 ficheros el 26/10/2026: el lote los daba por pendientes y las estadísticas
+ * los contaban como H.264).
+ */
+test('el códec y la resolución medidos no los pisa el .nfo', async () => {
+  const id = db.prepare('SELECT id FROM media_files').get().id;
+  const ruta = db.prepare('SELECT path FROM media_files WHERE id = ?').get(id).path;
+  writeFileSync(ruta.replace(/\.mkv$/, '.nfo'), '<?xml version="1.0" encoding="UTF-8"?><movie><title>Pelicula Medida</title><year>2000</year>' +
+    '<fileinfo><streamdetails><video><codec>h264</codec><width>1920</width><height>1080</height></video></streamdetails></fileinfo></movie>');
+  await scanLibrary(lib);
+  assert.equal(db.prepare('SELECT video_codec FROM media_files WHERE id = ?').get(id).video_codec, 'h264', 'sin medir manda el .nfo');
+  db.prepare("UPDATE media_files SET video_codec = 'hevc', width = 1920, height = 800, hdr = 'HDR10', probed = 1 WHERE id = ?").run(id);
+  await scanLibrary(lib);
+  const f = db.prepare('SELECT video_codec, width, height, hdr FROM media_files WHERE id = ?').get(id);
+  assert.deepEqual({ ...f }, { video_codec: 'hevc', width: 1920, height: 800, hdr: 'HDR10' });
+});
+
 test('un fichero que cambia de tamano (otro fichero) vuelve a depender del .nfo', async () => {
   const id = db.prepare('SELECT id FROM media_files').get().id;
   const ruta = db.prepare('SELECT path FROM media_files WHERE id = ?').get(id).path;
