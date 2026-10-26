@@ -224,6 +224,9 @@ function parseTitleYear(folderName: string): { title: string; year?: number } {
   return limpiarNombre(folderName);
 }
 
+/** `campos_fijados` es una lista «,plot,genres,»: lo que una persona editó a mano; el escáner no lo pisa desde el .nfo. */
+const fijado = (campo: string) => `instr(',' || COALESCE(items.campos_fijados, '') || ',', ',${campo},') > 0`;
+
 const stmt = {
   upsertItem: db.prepare(`
     INSERT INTO items (library_id, kind, folder, title, search_title, sort_title, original_title, year, plot,
@@ -235,21 +238,21 @@ const stmt = {
       -- Con meta_origen = 'tmdb' el titulo, el ano y todo lo que puso TMDb se quedan:
       -- sin .nfo el escaneo traia NULL en todos y lo borraba cada 24 h. Los items
       -- con .nfo no tienen meta_origen, y para ellos nada cambia.
-      title=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN items.title ELSE excluded.title END,
-      search_title=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN items.search_title ELSE excluded.search_title END,
-      year=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN items.year ELSE excluded.year END,
-      sort_title=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.sort_title, items.sort_title) ELSE excluded.sort_title END,
-      original_title=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.original_title, items.original_title) ELSE excluded.original_title END,
-      plot=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.plot, items.plot) ELSE excluded.plot END,
-      tagline=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.tagline, items.tagline) ELSE excluded.tagline END,
+      title=CASE WHEN ${fijado('title')} THEN items.title WHEN items.meta_origen IN ('tmdb', 'servidor') THEN items.title ELSE excluded.title END,
+      search_title=CASE WHEN ${fijado('title')} THEN items.search_title WHEN items.meta_origen IN ('tmdb', 'servidor') THEN items.search_title ELSE excluded.search_title END,
+      year=CASE WHEN ${fijado('year')} THEN items.year WHEN items.meta_origen IN ('tmdb', 'servidor') THEN items.year ELSE excluded.year END,
+      sort_title=CASE WHEN ${fijado('sort_title')} THEN items.sort_title WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.sort_title, items.sort_title) ELSE excluded.sort_title END,
+      original_title=CASE WHEN ${fijado('original_title')} THEN items.original_title WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.original_title, items.original_title) ELSE excluded.original_title END,
+      plot=CASE WHEN ${fijado('plot')} THEN items.plot WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.plot, items.plot) ELSE excluded.plot END,
+      tagline=CASE WHEN ${fijado('tagline')} THEN items.tagline WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.tagline, items.tagline) ELSE excluded.tagline END,
       runtime=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.runtime, items.runtime) ELSE excluded.runtime END,
       rating=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.rating, items.rating) ELSE excluded.rating END,
       votes=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.votes, items.votes) ELSE excluded.votes END,
-      mpaa=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.mpaa, items.mpaa) ELSE excluded.mpaa END,
+      mpaa=CASE WHEN ${fijado('mpaa')} THEN items.mpaa WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.mpaa, items.mpaa) ELSE excluded.mpaa END,
       premiered=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.premiered, items.premiered) ELSE excluded.premiered END,
-      studio=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.studio, items.studio) ELSE excluded.studio END,
+      studio=CASE WHEN ${fijado('studio')} THEN items.studio WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.studio, items.studio) ELSE excluded.studio END,
       country=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.country, items.country) ELSE excluded.country END,
-      collection=CASE WHEN items.coleccion_fijada = 1 THEN items.collection WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.collection, items.collection) ELSE excluded.collection END,
+      collection=CASE WHEN ${fijado('collection')} THEN items.collection WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.collection, items.collection) ELSE excluded.collection END,
       trailer=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.trailer, items.trailer) ELSE excluded.trailer END,
       imdb_id=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.imdb_id, items.imdb_id) ELSE excluded.imdb_id END,
       tmdb_id=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.tmdb_id, items.tmdb_id) ELSE excluded.tmdb_id END,
@@ -320,6 +323,7 @@ const stmt = {
   genre: db.prepare('INSERT INTO genres (name) VALUES (?) ON CONFLICT(name) DO UPDATE SET name=excluded.name RETURNING id'),
   linkGenre: db.prepare('INSERT OR IGNORE INTO item_genres (item_id, genre_id) VALUES (?,?)'),
   clearGenres: db.prepare('DELETE FROM item_genres WHERE item_id = ?'),
+  camposFijados: db.prepare('SELECT campos_fijados FROM items WHERE id = ?'),
   episodioTmdb: db.prepare("SELECT id FROM episodes WHERE show_id = ? AND season = ? AND episode = ? AND meta_origen IN ('tmdb', 'servidor')"),
   metaOrigen: db.prepare('SELECT meta_origen FROM items WHERE id = ?'),
   imdbGeneros: db.prepare('SELECT generos FROM imdb_generos WHERE imdb_id = ?'),
@@ -416,7 +420,9 @@ function saveGenresAndPeople(itemId: number, nfo: NfoData | null, thumbs: Map<st
   // Identificado desde TMDb y sin .nfo: generos y reparto vienen de TMDb, no se borran.
   const origen = (stmt.metaOrigen.get(itemId) as { meta_origen: string | null } | undefined)?.meta_origen;
   if (!nfo && (origen === 'tmdb' || origen === 'servidor')) return;
-  stmt.clearGenres.run(itemId);
+  // Los géneros editados a mano (`campos_fijados` con «genres») no se reescriben desde el .nfo.
+  const generosFijados = String((stmt.camposFijados.get(itemId) as { campos_fijados: string | null } | undefined)?.campos_fijados ?? '').includes(',genres,');
+  if (!generosFijados) stmt.clearGenres.run(itemId);
   stmt.clearPeople.run(itemId);
   if (!nfo) return;
   /*
@@ -433,9 +439,11 @@ function saveGenresAndPeople(itemId: number, nfo: NfoData | null, thumbs: Map<st
     ? ((stmt.imdbGeneros.get(nfo.imdbId) as { generos: string } | undefined)?.generos ?? '')
         .split('|').filter(Boolean)
     : [];
-  for (const g of deImdb.length > 0 ? deImdb : nfo.genres) {
-    const row = stmt.genre.get(g) as { id: number };
-    stmt.linkGenre.run(itemId, row.id);
+  if (!generosFijados) {
+    for (const g of deImdb.length > 0 ? deImdb : nfo.genres) {
+      const row = stmt.genre.get(g) as { id: number };
+      stmt.linkGenre.run(itemId, row.id);
+    }
   }
   const seen = new Set<string>();
   for (const p of nfo.people) {

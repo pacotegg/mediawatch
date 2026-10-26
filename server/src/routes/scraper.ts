@@ -12,7 +12,7 @@ import { aplicarNfo, NfoError, planNfo } from '../scanner/nfo-escribir.ts';
 import { envio, enviarLote, EnvioError, planEnvio } from '../scanner/enviar.ts';
 import { carpetaDePelicula, carpetaDeSerie } from '../scanner/nombres-tmm.ts';
 import { deshacerUltima, HistorialError, ultimaInstantanea } from '../scanner/historial.ts';
-import { ColeccionError, ponerColeccion } from '../scanner/coleccion.ts';
+import { editarMetadatos, MetadatosError } from '../scanner/metadatos.ts';
 
 /*
  * Pantalla «Scraper» (solo administrador): lista de titulos con lo que les falta y emparejado por
@@ -56,18 +56,31 @@ export default async function scraperRoutes(app: FastifyInstance) {
   // Al arrancar, la base queda como dice la configuracion: lo que es una fuente del scraper es de ENTRADA (los clientes no lo ven).
   try { marcarEntradas(); } catch (e) { console.error('[scraper] no se pudieron marcar las entradas:', (e as Error).message); }
 
-  /** Cambiar o quitar la saga de un título (`{ coleccion: 'nombre' | null }`). Solo la base de datos; se deshace desde el historial del scraper. */
-  app.post('/api/items/:id/coleccion', async (req, reply) => {
+  /*
+   * Editar a mano los datos de un título: `{ title, sort_title, original_title, year, tagline, plot, studio, mpaa, collection, genres }`
+   * (los que vengan; `null` o '' quita el dato). Solo administrador. Solo la base de datos: se deshace desde el historial del scraper
+   * y el escáner respeta lo editado (`campos_fijados`).
+   */
+  const editarDatos = async (req: any, reply: any, cuerpo: unknown) => {
     if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'No autorizado' });
     const id = Number((req.params as { id: string }).id);
-    const cuerpo = (req.body ?? {}) as { coleccion?: unknown };
-    if (!Number.isInteger(id) || !('coleccion' in cuerpo)) return reply.code(400).send({ error: 'Falta la saga (o null para quitarla)' });
+    if (!Number.isInteger(id)) return reply.code(400).send({ error: 'Título no válido' });
     try {
-      return { ok: true, ...ponerColeccion(id, cuerpo.coleccion) };
+      return { ok: true, ...editarMetadatos(id, cuerpo) };
     } catch (e) {
-      if (e instanceof ColeccionError) return reply.code(e.codigo).send({ error: e.message });
+      if (e instanceof MetadatosError) return reply.code(e.codigo).send({ error: e.message });
       throw e;
     }
+  };
+  app.post('/api/items/:id/metadatos', async (req, reply) => editarDatos(req, reply, req.body));
+  // La tele y la web ya usan este para la saga (`{ coleccion: 'nombre' | null }`): se mantiene como atajo del anterior.
+  app.post('/api/items/:id/coleccion', async (req, reply) => {
+    const cuerpo = (req.body ?? {}) as { coleccion?: unknown };
+    if (!('coleccion' in cuerpo)) return reply.code(400).send({ error: 'Falta la saga (o null para quitarla)' });
+    // Para quitar la saga se manda `null`: un nombre en blanco aquí es un descuido, no «quitar».
+    if (typeof cuerpo.coleccion === 'string' && !cuerpo.coleccion.trim()) return reply.code(400).send({ error: 'Falta el nombre de la saga' });
+    const r = await editarDatos(req, reply, { collection: cuerpo.coleccion });
+    return r && typeof r === 'object' && 'campos' in r ? { ok: true, coleccion: cuerpo.coleccion ?? null } : r;
   });
 
   app.get('/api/scraper/titulos', async (req, reply) => {

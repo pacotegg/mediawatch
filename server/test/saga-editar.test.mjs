@@ -1,6 +1,6 @@
 /*
  * Cambiar o quitar la saga (colección) de una película desde el editor. El escáner pisa `collection` desde el .nfo en cada
- * pasada, así que «quitar» no se sostenía: hace falta una marca propia (`coleccion_fijada`). Solo el administrador, y se
+ * pasada, así que «quitar» no se sostenía: hace falta una marca propia (`campos_fijados`). Solo el administrador, y se
  * puede deshacer con la instantánea del scraper. Servidor real en modo portable con datos temporales.
  */
 import { after, before, test } from 'node:test';
@@ -29,7 +29,7 @@ const pedir = (metodo, ruta, { cuerpo, galleta } = {}) => fetch(base + ruta, {
   signal: AbortSignal.timeout(8000),
 });
 const galletaDe = (res) => (res.headers.get('set-cookie') ?? '').split(';')[0];
-const coleccion = () => { const d = new DatabaseSync(join(datos, 'tvwatch.db'), { readOnly: true }); try { return d.prepare('SELECT collection, coleccion_fijada FROM items WHERE id = ?').get(id); } finally { d.close(); } };
+const coleccion = () => { const d = new DatabaseSync(join(datos, 'tvwatch.db'), { readOnly: true }); try { return d.prepare('SELECT collection, campos_fijados FROM items WHERE id = ?').get(id); } finally { d.close(); } };
 
 before(async () => {
   datos = mkdtempSync(join(tmpdir(), 'mediawatch-test-'));
@@ -68,7 +68,7 @@ test('un perfil normal no puede cambiar la saga', async () => {
 test('el administrador asigna la saga y queda fijada', async () => {
   const r = await pedir('POST', `/api/items/${id}/coleccion`, { galleta: galletaAdmin, cuerpo: { coleccion: '  Alien - Colección  ' } });
   assert.equal(r.status, 200, await r.text());
-  assert.deepEqual({ ...coleccion() }, { collection: 'Alien - Colección', coleccion_fijada: 1 });
+  assert.deepEqual({ ...coleccion() }, { collection: 'Alien - Colección', campos_fijados: ',collection,' });
   const ficha = await (await pedir('GET', `/api/items/${id}`, { galleta: galletaAdmin })).json();
   assert.equal(ficha.collection, 'Alien - Colección');
 });
@@ -76,7 +76,7 @@ test('el administrador asigna la saga y queda fijada', async () => {
 test('quitar la saga la deja en null y sigue fijada', async () => {
   const r = await pedir('POST', `/api/items/${id}/coleccion`, { galleta: galletaAdmin, cuerpo: { coleccion: null } });
   assert.equal(r.status, 200);
-  assert.deepEqual({ ...coleccion() }, { collection: null, coleccion_fijada: 1 });
+  assert.deepEqual({ ...coleccion() }, { collection: null, campos_fijados: ',collection,' });
 });
 
 test('un nombre vacío, con caracteres de control o larguísimo se rechaza', async () => {

@@ -561,7 +561,11 @@ CREATE VIEW IF NOT EXISTS media_files_biblioteca AS SELECT * FROM media_files
 // Fecha del ultimo intento de identificar el titulo por su nombre (para no repetirlo cada dia).
 anadirColumna('items', 'ident_intento', 'TEXT');
 // 1 = la saga la puso una persona desde el editor: el escáner no la pisa desde el .nfo (tampoco si se quitó).
+// Sustituida por `campos_fijados` (más general); la columna se deja y se migra una sola vez, ver abajo.
 anadirColumna('items', 'coleccion_fijada', 'INTEGER NOT NULL DEFAULT 0');
+// Lista «,plot,genres,»: los datos que una persona editó a mano y que el escáner no pisa desde el .nfo.
+anadirColumna('items', 'campos_fijados', 'TEXT');
+db.exec("UPDATE items SET campos_fijados = ',collection,' WHERE coleccion_fijada = 1 AND campos_fijados IS NULL");
 anadirColumna('episodes', 'meta_origen', 'TEXT');
 
 prepararBusquedaDePersonas();
