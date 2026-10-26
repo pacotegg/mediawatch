@@ -243,28 +243,38 @@ const CSP_WEB = [
 ].join('; ');
 
 // Los navegadores mandan el informe con estos tipos; sin analizador Fastify respondería 415.
-// Plex manda sus Webhooks en multipart/form-data con el JSON en el campo 'payload'.
-app.addContentTypeParser('multipart/form-data', { parseAs: 'buffer' }, (_req, cuerpo, hecho) => {
-  hecho(null, cuerpo);
-});
-
 app.addContentTypeParser(['application/csp-report', 'application/reports+json'], { parseAs: 'string' }, (_req, cuerpo, hecho) => {
   try { hecho(null, JSON.parse(String(cuerpo))); } catch (err) { hecho(err as Error, undefined); }
 });
 
-app.post('/api/plex/webhook', async (req, reply) => {
+app.post('/api/plex/webhook', {
+  config: { rawBody: true },
+  onRequest: async (req, reply) => {
+    // Registrar el parser multipart solo para esta ruta: Plex manda form-data.
+    // No se puede hacer addContentTypeParser dentro de onRequest porque Fastify
+    // ya lo ha resuelto, así que se usa preParsing para capturar el cuerpo crudo.
+  },
+  preParsing: async (req, _reply, payload) => {
+    const ct = req.headers['content-type'] || '';
+    if (!ct.startsWith('multipart/form-data')) return payload;
+    const partes: Buffer[] = [];
+    for await (const trozo of payload) partes.push(typeof trozo === 'string' ? Buffer.from(trozo) : trozo);
+    const crudo = Buffer.concat(partes).toString('utf8');
+    const m = /name="payload"[^\{]*(\{[\s\S]*?\})\r?\n--/i.exec(crudo);
+    if (m) {
+      req.headers['content-type'] = 'application/json';
+      const { Readable } = await import('node:stream');
+      return Readable.from([m[1]]);
+    }
+    return payload;
+  },
+}, async (req, reply) => {
   if (deFuera(req)) return reply.code(403).send({ error: 'Solo accesible desde la red local' });
   let payload: any = null;
-  if (req.body && typeof req.body === 'object' && !Buffer.isBuffer(req.body)) {
+  if (req.body && typeof req.body === 'object') {
     payload = req.body;
   } else {
-    const rawBody = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : String(req.body ?? '');
-    const m = /name="payload"[^\{]*(\{[\s\S]*?\})\r?\n--/i.exec(rawBody);
-    if (m) {
-      try { payload = JSON.parse(m[1]); } catch {}
-    } else {
-      try { payload = JSON.parse(rawBody); } catch {}
-    }
+    try { payload = JSON.parse(String(req.body ?? '')); } catch {}
   }
   if (!payload) return reply.code(400).send({ error: 'Falta campo payload JSON' });
   const resultado = procesarWebhookPlex(payload);

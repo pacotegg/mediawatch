@@ -78,6 +78,14 @@ export type AppConfig = {
    * Escribe en E:, asi que NO esta puesto por defecto: 'retirar' deja el original en <raiz>/_retirados/<fecha>/ y 'borrar' lo borra.
    */
   imagenesAWebp?: 'retirar' | 'borrar';
+  /** Ruta de la BD de Plex (solo lectura). Vacía o ausente desactiva la integración. */
+  plexDb?: string;
+  /** Fichero con el token de administrador local de Plex. */
+  plexTokenFile?: string;
+  /** URL base del servidor de Plex. Por defecto http://127.0.0.1:32400 */
+  plexBaseUrl?: string;
+  /** Id del usuario de TvWatch al que van los eventos del webhook de Plex. Por defecto 1. */
+  plexUserId?: number;
 };
 
 const DEFAULT_LIBRARIES: LibraryConfig[] = [

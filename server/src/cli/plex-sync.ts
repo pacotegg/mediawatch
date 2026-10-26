@@ -39,13 +39,15 @@
 import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { db } from '../db.ts';
+import { config } from '../config.ts';
 
-const PLEX_DB =
-  'C:/Users/HTPC/AppData/Local/Plex Media Server/Plug-in Support/Databases/com.plexapp.plugins.library.db';
-const PLEX_TOKEN_FILE = 'C:/Users/HTPC/AppData/Local/Plex Media Server/.LocalAdminToken';
-const PLEX_BASE_URL = 'http://127.0.0.1:32400';
+const PLEX_DB = config.plexDb || '';
+const PLEX_TOKEN_FILE = config.plexTokenFile || '';
+const PLEX_BASE_URL = config.plexBaseUrl || 'http://127.0.0.1:32400';
 const PLEX_OWNER_ACCOUNT_ID = 1;
-const TVWATCH_USER_ID = 1;
+const TVWATCH_USER_ID = config.plexUserId ?? 1;
+
+if (!PLEX_DB) { console.error('plexDb no configurado en data/config.json'); process.exit(1); }
 /*
  * Abrir el reproductor y cerrarlo a los dos segundos también deja un
  * `updated_at` fresquísimo con posición casi cero. Sin este suelo, esa
