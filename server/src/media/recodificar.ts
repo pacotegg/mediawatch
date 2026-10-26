@@ -40,7 +40,8 @@ export function pistasQueFaltan(original: Pick<MediaInfo, 'audio' | 'subs'>, nue
  * Motivo para NO sustituir el original por la salida, o null si se puede: duración del contenedor y de la pista de
  * vídeo (vOrig/vNuevo; NaN si no se pudo leer), HEVC, misma resolución, paridad pista a pista y ahorro >= 15 %.
  */
-export function verificarRecodificado(orig: Pick<MediaInfo, 'duration' | 'video' | 'audio' | 'subs'>, nuevo: Pick<MediaInfo, 'duration' | 'video' | 'audio' | 'subs'>,
+type Comparable = Pick<MediaInfo, 'duration' | 'video' | 'audio' | 'subs'> & { chapters?: MediaInfo['chapters'] };
+export function verificarRecodificado(orig: Comparable, nuevo: Comparable,
   tamOrig: number, tamNuevo: number, vOrig: number, vNuevo: number): string | null {
   const dif = Math.abs(orig.duration - nuevo.duration);
   if (dif > Math.max(3, orig.duration * 0.01)) return `duración ${orig.duration.toFixed(1)} -> ${nuevo.duration.toFixed(1)} s`;
@@ -85,6 +86,10 @@ export function verificarRecodificado(orig: Pick<MediaInfo, 'duration' | 'video'
   const idiomasDe = (l: { language?: string }[]) => l.map((x) => norm(x.language)).join(',');
   if (!enOrden(orig.audio, nuevo.audio)) return `audio en otro orden: ${idiomasDe(orig.audio)} -> ${idiomasDe(nuevo.audio)}`;
   if (!enOrden(orig.subs, nuevo.subs)) return `subtítulos en otro orden: ${idiomasDe(orig.subs)} -> ${idiomasDe(nuevo.subs)}`;
+  // 710 MKV llevan capítulos inyectados desde ChapterDB: el pipeline no tiene por qué conservarlos.
+  const capOrig = orig.chapters ? orig.chapters.length : 0;
+  const capNuevo = nuevo.chapters ? nuevo.chapters.length : 0;
+  if (capNuevo < capOrig) return `capítulos perdidos: ${capOrig} -> ${capNuevo}`;
   if (tamNuevo > tamOrig * 0.85) return `ahorra menos del 15 % (${(tamOrig / 1e6).toFixed(0)} -> ${(tamNuevo / 1e6).toFixed(0)} MB)`;
   return null;
 }
@@ -95,7 +100,7 @@ export function verificarRecodificado(orig: Pick<MediaInfo, 'duration' | 'video'
  * El rechazo tras un rescate lleva el prefijo «tras rescate:» y NO coincide, para no reintentar en bucle.
  */
 export function esFalloDePistas(motivo: string): boolean {
-  return /^(subtítulo perdido|pista de audio perdida|subtítulos en otro orden|audio en otro orden|duración \d)/.test(motivo);
+  return /^(subtítulo perdido|pista de audio perdida|subtítulos en otro orden|audio en otro orden|capítulos perdidos|duración \d)/.test(motivo);
 }
 
 /**

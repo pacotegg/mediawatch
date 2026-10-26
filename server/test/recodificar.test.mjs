@@ -99,6 +99,12 @@ test('verificarRecodificado exige paridad pista a pista y la duración del víde
   const conSubs = (subs) => ({ ...base([a('spa', 2)], subs), video: igual.video });
   assert.match(verificarRecodificado(base([a('spa', 2)], [sb('spa'), sb('eng'), sb('cat')]), conSubs([sb('eng'), sb('spa'), sb('cat')]), 1000, 500, 6000, 6000), /subtítulos en otro orden: spa,eng,cat -> eng,spa,cat/);
   assert.match(verificarRecodificado(base([a('spa', 2), a('eng', 2)]), { ...base([a('eng', 2), a('spa', 2)]), video: igual.video }, 1000, 500, 6000, 6000), /audio en otro orden/);
+  // Capítulos (710 MKV los llevan inyectados desde ChapterDB): perderlos también es perder, y lo arregla el rescate.
+  const cap = (n) => Array.from({ length: n }, (_, i) => ({ start: i * 600, end: i * 600 + 600, title: 'C' + i }));
+  const conCap = { ...orig, chapters: cap(12) };
+  assert.match(verificarRecodificado(conCap, { ...igual, chapters: [] }, 1000, 500, 6000, 6000), /capítulos perdidos: 12 -> 0/);
+  assert.ok(esFalloDePistas(verificarRecodificado(conCap, { ...igual, chapters: [] }, 1000, 500, 6000, 6000)));
+  assert.equal(verificarRecodificado(conCap, { ...igual, chapters: cap(12) }, 1000, 500, 6000, 6000), null);
   // Ganar una pista al final o en medio sin reordenar lo anterior no es reordenar.
   assert.equal(verificarRecodificado(base([a('spa', 2)], [sb('spa')]), conSubs([sb('spa'), sb('eng')]), 1000, 500, 6000, 6000), null);
   assert.equal(verificarRecodificado(base([a('spa', 2)], []), conSubs([sb('eng')]), 1000, 500, 6000, 6000), null);

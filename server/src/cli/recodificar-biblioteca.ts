@@ -18,7 +18,8 @@
  *      (no se borra: eso es a mano) y la nueva ocupa su sitio con extensión .mkv.
  *
  * Reanudable: `data/recodificar-biblioteca.jsonl` guarda una línea por fichero con su RUTA (los ids cambian al
- * reescanear). Pausa entre ficheros si alguien está viendo algo. Parada limpia: crear `data/recodificar-biblioteca.stop`.
+ * reescanear). Pausa si alguien está viendo algo (al empezar cada fichero y antes de escribir en E:). Dos ficheros a la vez,
+ * como los dos huecos del pipeline. Parada limpia: crear `data/recodificar-biblioteca.stop`.
  *
  * Uso (desde server/):
  *   node src/cli/recodificar-biblioteca.ts --limite 3                 prueba: codifica y verifica, no toca E:
@@ -51,6 +52,8 @@ const TOPE_ESPERA_MS = 6 * 3600_000; // un fichero que no sale en 6 h se da por 
 
 type Fila = { id: number; path: string; size: number };
 const espera = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** Con dos ficheros a la vez las líneas se mezclan: cada una lleva el nombre con que va por el pipeline. */
+const decir = (f: { id: number }, m: string) => console.log(`  [mw${f.id}] ${m}`);
 const anotar = (o: object) => appendFileSync(REGISTRO, JSON.stringify({ cuando: new Date().toISOString(), ...o }) + '\n');
 
 const hechos = new Set<string>();
@@ -152,38 +155,38 @@ async function inicioVideo(ruta: string): Promise<number> {
 async function rescatar(f: Fila, salida: string): Promise<string | null> {
   const destino = join(SALIDA, `mw${f.id}_rescate.mkv`);
   const desfaseMs = ((await inicioVideo(f.path)) - (await inicioVideo(salida))) * 1000;
-  if (Math.abs(desfaseMs) > 2000) { console.log(`  rescate descartado: el vídeo de la salida empieza ${desfaseMs.toFixed(0)} ms desfasado`); return null; }
+  if (Math.abs(desfaseMs) > 2000) { decir(f, `rescate descartado: el vídeo de la salida empieza ${desfaseMs.toFixed(0)} ms desfasado`); return null; }
   try {
     await promisify(execFile)('C:\\Program Files\\MKVToolNix\\mkvmerge.exe', argumentosRescate(salida, f.path, destino, Math.abs(desfaseMs) >= 20 ? desfaseMs : 0),
       { timeout: 3600_000, windowsHide: true, maxBuffer: 64 * 1024 * 1024 });
   } catch (e) {
-    if ((e as { code?: number }).code !== 1) { console.log(`  rescate: mkvmerge falló (${String((e as Error).message).slice(0, 200)})`); try { unlinkSync(destino); } catch { /* no llegó a crearse */ } return null; }
+    if ((e as { code?: number }).code !== 1) { decir(f, `rescate: mkvmerge falló (${String((e as Error).message).slice(0, 200)})`); try { unlinkSync(destino); } catch { /* no llegó a crearse */ } return null; }
   }
   return existsSync(destino) ? destino : null;
 }
 
 async function procesar(f: Fila) {
-  while (hayAlguienViendo()) { console.log('  alguien está viendo algo: espero 2 min'); await espera(120_000); }
+  while (hayAlguienViendo()) { decir(f, 'alguien está viendo algo: espero 2 min'); await espera(120_000); }
   const ext = extname(f.path);
   const orig = await probeFile(f.path);
   const vOrig = await duracionVideo(f.path);
   // La base de datos puede ir por detrás del disco (otros trabajos sustituyen ficheros de E: sin reescanear): solo se recodifica lo que HOY es H.264.
   if (!orig.video || orig.video.codec !== 'h264') {
     anotar({ ruta: f.path, id: f.id, resultado: 'omitido', motivo: `ya no es H.264 (${orig.video?.codec ?? '?'})` });
-    console.log(`  omitido: el fichero ya no es H.264 (${orig.video?.codec ?? '?'}); la base de datos iba por detrás`);
+    decir(f, `omitido: el fichero ya no es H.264 (${orig.video?.codec ?? '?'}); la base de datos iba por detrás`);
     return;
   }
   const puesto = Date.now();
   copyFileSync(f.path, join(COLA, `mw${f.id}${ext}`));
-  console.log(`  en cola: mw${f.id}${ext}`);
+  decir(f, `en cola: mw${f.id}${ext}`);
   const salida = await esperarSalida(f.id, puesto);
   if (salida === 'fallido') {
     try { unlinkSync(join(EN_CURSO, `mw${f.id}${ext}`)); } catch { /* ya no estaba */ }
     anotar({ ruta: f.path, id: f.id, resultado: 'fallido', motivo: 'ffmpeg abandonó el encode (Conversion failed!)' });
-    console.log('  x el encode falló (ffmpeg: Conversion failed!); original intacto, no se reintenta');
+    decir(f, 'x el encode falló (ffmpeg: Conversion failed!); original intacto, no se reintenta');
     return;
   }
-  if (!salida) { anotar({ ruta: f.path, id: f.id, resultado: 'atascado' }); console.log('  x no salió en 6 h'); return; }
+  if (!salida) { anotar({ ruta: f.path, id: f.id, resultado: 'atascado' }); decir(f, 'x no salió en 6 h'); return; }
   // La copia de la fuente es nuestra: fuera en cuanto el pipeline la ha usado, que son GB en C:.
   try { unlinkSync(join(EN_CURSO, `mw${f.id}${ext}`)); } catch { /* ya no estaba */ }
   let salidaFinal = salida;
@@ -192,13 +195,13 @@ async function procesar(f: Fila) {
   const vNuevo = await duracionVideo(salida);
   let fallo = verificarRecodificado(orig, nuevo, f.size, tamNuevo, vOrig, vNuevo);
   if (fallo && esFalloDePistas(fallo)) {
-    console.log(`  ${fallo}: pruebo el rescate (vídeo de la salida + pistas del original)`);
+    decir(f, `${fallo}: pruebo el rescate (vídeo de la salida + pistas del original)`);
     const rescate = await rescatar(f, salida);
     if (rescate) {
       const nuevo2 = await probeFile(rescate);
       const tam2 = statSync(rescate).size;
       const fallo2 = verificarRecodificado(orig, nuevo2, f.size, tam2, vOrig, vNuevo);
-      if (!fallo2) { unlinkSync(salida); salidaFinal = rescate; nuevo = nuevo2; tamNuevo = tam2; fallo = null; console.log('  rescate verificado'); }
+      if (!fallo2) { unlinkSync(salida); salidaFinal = rescate; nuevo = nuevo2; tamNuevo = tam2; fallo = null; decir(f, 'rescate verificado'); }
       else { unlinkSync(rescate); fallo = `tras rescate: ${fallo2}`; }
     } else fallo = `tras rescate: ${fallo}`;
   }
@@ -206,11 +209,13 @@ async function procesar(f: Fila) {
   if (fallo) {
     anotar({ ruta: f.path, id: f.id, resultado: 'rechazado', motivo: fallo, resumen });
     unlinkSync(salidaFinal);
-    console.log(`  x RECHAZADO (${fallo}); original intacto`);
+    decir(f, `x RECHAZADO (${fallo}); original intacto`);
     return;
   }
-  if (!aplicar) { anotar({ ruta: f.path, id: f.id, resultado: 'verificado', resumen }); unlinkSync(salidaFinal); console.log(`  ok verificado (${resumen}); sin --aplicar no se toca E:`); return; }
+  if (!aplicar) { anotar({ ruta: f.path, id: f.id, resultado: 'verificado', resumen }); unlinkSync(salidaFinal); decir(f, `ok verificado (${resumen}); sin --aplicar no se toca E:`); return; }
 
+  // Escribir 5-7 GB en E: es leer y escribir el disco que se está viendo: también aquí se espera, no solo al empezar.
+  while (hayAlguienViendo()) { decir(f, 'alguien está viendo algo: espero 2 min antes de escribir en E:'); await espera(120_000); }
   const destino = join(dirname(f.path), basename(f.path, ext) + '.mkv');
   const temporal = destino + '.new';
   copyFileSync(salidaFinal, temporal);
@@ -225,7 +230,7 @@ async function procesar(f: Fila) {
   db.prepare('UPDATE media_files SET path = ?, size = ?, probed = 0 WHERE id = ?').run(destino, tamNuevo, f.id);
   await mediaInfo(f.id).catch(() => null);
   anotar({ ruta: f.path, id: f.id, resultado: 'sustituido', destino, retirado, resumen });
-  console.log(`  ok SUSTITUIDO (${resumen}); original en ${retirado}`);
+  decir(f, `ok SUSTITUIDO (${resumen}); original en ${retirado}`);
 }
 
 console.log(`${candidatos.length} vídeos H.264 pendientes (${(candidatos.reduce((s, f) => s + f.size, 0) / 1e9).toFixed(0)} GB). ${aplicar ? 'CON --aplicar: se sustituye en E:' : 'Prueba: no se toca E:'}`);
@@ -238,10 +243,16 @@ while (hechosAhora < limite && candidatos.length) {
     const f = candidatos.shift()!; tanda.push(f); gb += f.size / 1e9;
   }
   console.log(`\nTanda de ${tanda.length} (${gb.toFixed(1)} GB)`);
-  for (const f of tanda) {
-    if (existsSync(PARADA)) { console.log('Parada pedida: salgo.'); process.exit(0); }
-    console.log(`[${++hechosAhora}] ${f.path}`);
-    try { await procesar(f); } catch (e) { anotar({ ruta: f.path, id: f.id, resultado: 'error', motivo: (e as Error).message }); console.log(`  x error: ${(e as Error).message}`); }
-  }
+  // De 2 en 2: encode-watch.ps1 codifica hasta 2 a la vez ($MaxSlots), y con uno solo en cola tenía media GPU parada.
+  let siguiente = 0;
+  const trabajador = async () => {
+    while (siguiente < tanda.length && !existsSync(PARADA)) {
+      const f = tanda[siguiente++];
+      console.log(`[${++hechosAhora}] mw${f.id} ${f.path}`);
+      try { await procesar(f); } catch (e) { anotar({ ruta: f.path, id: f.id, resultado: 'error', motivo: (e as Error).message }); decir(f, `x error: ${(e as Error).message}`); }
+    }
+  };
+  await Promise.all([trabajador(), trabajador()]);
+  if (existsSync(PARADA)) { console.log('Parada pedida: salgo (los que estaban en marcha han terminado).'); process.exit(0); }
 }
 console.log('\nTerminado.');
