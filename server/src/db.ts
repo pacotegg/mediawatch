@@ -30,6 +30,15 @@ export function parseRatingCategoria(mpaa: string | null, libraryId: number): st
 
 db.function('rating_categoria', parseRatingCategoria as (...args: any[]) => string);
 
+function claveOrden(titulo: string | null): string {
+  if (!titulo) return '';
+  let t = titulo.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  t = t.replace(/^(el|la|los|las|un|una|unos|unas|the|a|an)\s+/i, '');
+  t = t.replace(/^[^a-z0-9]+/, '');
+  return t;
+}
+db.function('clave_orden', claveOrden as (...args: any[]) => string);
+
 db.exec(`
 PRAGMA journal_mode = WAL;
 PRAGMA synchronous = NORMAL;

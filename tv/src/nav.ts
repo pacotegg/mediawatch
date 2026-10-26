@@ -350,6 +350,9 @@ export function enfocar(el: HTMLElement | null | undefined) {
   const menu = el.closest('[data-menu]') as HTMLElement | null;
   if (menu) desplazarMenu(menu, el);
 
+  const panelFiltro = el.closest('.panel-filtro') as HTMLElement | null;
+  if (panelFiltro) el.scrollIntoView({ block: 'nearest' });
+
   desplazarVertical(el, nodo);
 }
 

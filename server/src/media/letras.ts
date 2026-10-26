@@ -18,7 +18,9 @@ const ORDEN = ['#', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'];
 
 /** «Ñu» -> N, «(500) dias» -> #, «¡Rompe!» -> R: la primera letra o cifra que hay. */
 export function inicialDe(titulo: string): string {
-  const limpio = titulo.normalize('NFD').replace(/[̀-ͯ]/g, '');
+  let limpio = titulo.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  limpio = limpio.replace(/^(el|la|los|las|un|una|unos|unas|the|a|an)\s+/i, '');
+  limpio = limpio.replace(/^[^a-z0-9]+/, '');
   const m = /[A-Za-z0-9]/.exec(limpio);
   if (!m) return '#';
   const c = m[0].toUpperCase();

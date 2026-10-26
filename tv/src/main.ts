@@ -1033,6 +1033,8 @@ const ETIQUETAS_SORT: Record<string, string> = {
   added_asc: 'Añadidas antiguamente',
   runtime_desc: 'Duración (más largas)',
   runtime_asc: 'Duración (más cortas)',
+  size: 'Tamaño (mayor)',
+  size_asc: 'Tamaño (menor)',
   random: 'Aleatorio',
 };
 
@@ -4998,6 +5000,31 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
   // y esta es la única instancia viva mientras dura la película.
   reproductorActivo = reproductor;
 
+  // AVPlay pierde el decodificador cuando la app pasa a segundo plano (cambiar
+  // de app en la tele). Al volver, dispara onerror y sale "Error de reproducción".
+  // Pausar al irse y reabrir al volver lo evita.
+  var posAlSuspender = -1;
+  var suspendido = false;
+  var manejarVisibilidad = function () {
+    if (cerrado) return;
+    if (document.visibilityState === 'hidden') {
+      var est = reproductor.estado();
+      if (est === 'PLAYING' || est === 'PAUSED') {
+        posAlSuspender = reproductor.tiempo();
+        try { reproductor.pausar(); } catch (e) { /* ya parado */ }
+        suspendido = true;
+      }
+    } else if (suspendido) {
+      suspendido = false;
+      var pos = posAlSuspender > 0 ? posAlSuspender : desde;
+      window.setTimeout(function () {
+        if (cerrado) return;
+        abrirFlujo(pos);
+      }, 300);
+    }
+  };
+  document.addEventListener('visibilitychange', manejarVisibilidad);
+
   /* --------------------------------------------------------------- saltos */
 
   const aplicarSalto = () => {
@@ -5072,6 +5099,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
   const salir = () => {
     if (cerrado) return;
     cerrado = true;
+    document.removeEventListener('visibilitychange', manejarVisibilidad);
     reproductorActivo = null;
     portadaGuardada = null;
     window.clearTimeout(temporizadorReintento);
@@ -5090,10 +5118,13 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     };
     if (!marcadoVisto && t > 5) {
       const trSub = subOrdinal >= 0 ? infoServidor?.subtitles.filter((s) => s.source === 'embedded')[subOrdinal] : subOrdinal <= -10 ? infoServidor?.subtitles.filter((s) => s.source === 'external')[-(subOrdinal + 10)] : null;
+      let navegado = false;
+      const irUnaVez = () => { if (!navegado) { navegado = true; navegar(); } };
+      window.setTimeout(irUnaVez, 3000);
       api.progreso({
         itemId: ficha.id, episodeId, position: t, duration: total() || undefined,
         audio: audioId, subtitle: subOrdinal === -1 ? 'off' : trSub ? trSub.id : 'off'
-      }).then(navegar, navegar);
+      }).then(irUnaVez, irUnaVez);
     } else {
       navegar();
     }
@@ -5113,9 +5144,8 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
    * en los foros de Plex y Jellyfin, y con cuenta atrás para poder pararla.
    */
   const alTerminar = (directo = false) => {
-    // Se acabó: que no siga preguntando por la tira de miniaturas cada medio
-    // minuto durante los diez minutos siguientes con la pantalla ya cambiada.
     cerrado = true;
+    document.removeEventListener('visibilitychange', manejarVisibilidad);
     reproductorActivo = null;
     marcadoVisto = true;
     portadaGuardada = null;

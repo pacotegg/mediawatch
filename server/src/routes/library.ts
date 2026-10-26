@@ -56,16 +56,22 @@ async function serveArt(reply: FastifyReply, source: string | null, width: numbe
 }
 
 const SORTS: Record<string, string> = {
-  title: 'COALESCE(i.sort_title, i.title) COLLATE NOCASE ASC',
-  title_desc: 'COALESCE(i.sort_title, i.title) COLLATE NOCASE DESC',
+  title: 'clave_orden(COALESCE(i.sort_title, i.title)) COLLATE NOCASE ASC',
+  title_desc: 'clave_orden(COALESCE(i.sort_title, i.title)) COLLATE NOCASE DESC',
   added: 'i.added_at DESC',
   added_asc: 'i.added_at ASC',
+  added_desc: 'i.added_at DESC',
   year: 'i.year DESC, i.title ASC',
   year_asc: 'i.year ASC, i.title ASC',
+  year_desc: 'i.year DESC, i.title ASC',
   rating: 'i.rating DESC NULLS LAST',
   rating_asc: 'i.rating ASC NULLS LAST',
+  rating_desc: 'i.rating DESC NULLS LAST',
   runtime: 'i.runtime DESC NULLS LAST',
   runtime_asc: 'i.runtime ASC NULLS LAST',
+  runtime_desc: 'i.runtime DESC NULLS LAST',
+  size: '(SELECT MAX(f.size) FROM media_files f WHERE f.item_id = i.id OR f.episode_id IN (SELECT e.id FROM episodes e WHERE e.show_id = i.id)) DESC NULLS LAST',
+  size_asc: '(SELECT MAX(f.size) FROM media_files f WHERE f.item_id = i.id OR f.episode_id IN (SELECT e.id FROM episodes e WHERE e.show_id = i.id)) ASC NULLS LAST',
   random: 'RANDOM()',
 };
 
@@ -1213,8 +1219,6 @@ export default async function libraryRoutes(app: FastifyInstance) {
       const supera90 = Boolean(duracion && position > duracion * 0.90);
       if (enCreditos || supera90) {
         esVisto = 1;
-      } else if (position > 60) {
-        esVisto = 0;
       } else {
         const filaActual = db.prepare('SELECT watched FROM progress WHERE user_id = ? AND item_id = ? AND episode_id IS ?').get(user.id, itemId, episodeId ?? null) as { watched?: number } | undefined;
         esVisto = filaActual && filaActual.watched === 1 ? 1 : 0;
