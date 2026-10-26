@@ -181,9 +181,52 @@ async function buscarFotoEnWikipedia(nombre: string): Promise<{ url: string; tit
   return null;
 }
 
-/** 3. Buscar fotos en Wikidata JSON (búsqueda de entidad + claim P18 imagen) */
+/*
+ * Wikidata limita las peticiones: con 3 trabajadores a la vez respondía «You are making too many requests» (texto, no
+ * JSON) y el error se tragaba en silencio, así que la pasada del 18/10/2026 dio 0 fotos de Wikidata en 25.000 personas.
+ * Un turno de 1,1 s entre peticiones, compartido por todos los trabajadores.
+ */
+let siguienteTurnoWikidata = 0;
+async function turnoWikidata(): Promise<void> {
+  const ahora = Date.now();
+  const mio = Math.max(ahora, siguienteTurnoWikidata);
+  siguienteTurnoWikidata = mio + 1100;
+  if (mio > ahora) await new Promise((r) => setTimeout(r, mio - ahora));
+}
+
+async function jsonDeWikidata(url: string): Promise<any | null> {
+  await turnoWikidata();
+  const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(10_000) });
+  if (!res.ok) return null;
+  try { return await res.json(); } catch { return null; }
+}
+
+/*
+ * 3a. Wikidata por id EXACTO (TMDb P4985, si no IMDb P345): la búsqueda por nombre casi nunca acierta con actores poco
+ * conocidos. Medido el 26/10/2026 con 30 del reparto principal sin foto: 8 en Wikidata, 3 con imagen.
+ */
+async function buscarFotoEnWikidataPorId(tmdbId: number | null, imdbId: string | null): Promise<{ url: string; id: string } | null> {
+  try {
+    for (const [prop, valor] of [['P4985', tmdbId], ['P345', imdbId]] as const) {
+      if (!valor) continue;
+      const s = await jsonDeWikidata(`https://www.wikidata.org/w/api.php?action=query&list=search&format=json&srsearch=${encodeURIComponent(`haswbstatement:${prop}=${valor}`)}`);
+      const q = s?.query?.search?.[0]?.title as string | undefined;
+      if (!q) continue;
+      const e = await jsonDeWikidata(`https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${q}&props=claims&format=json`);
+      const p18 = e?.entities?.[q]?.claims?.P18?.[0]?.mainsnak?.datavalue?.value;
+      if (p18 && typeof p18 === 'string') return { url: `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(p18)}?width=600`, id: q };
+      return null;
+    }
+  } catch {
+    // Wikidata caída o lenta: se sigue con las demás fuentes
+  }
+  return null;
+}
+
+/** 3b. Buscar fotos en Wikidata JSON (búsqueda de entidad + claim P18 imagen) */
 async function buscarFotoEnWikidata(nombre: string): Promise<{ url: string; id: string } | null> {
   try {
+    await turnoWikidata();
     const qUrl = `https://www.wikidata.org/w/api.php?action=wbsearchentities&search=${encodeURIComponent(nombre)}&language=es&format=json&type=item&limit=3`;
     const res = await fetch(qUrl, {
       headers: { 'User-Agent': USER_AGENT },
@@ -197,6 +240,7 @@ async function buscarFotoEnWikidata(nombre: string): Promise<{ url: string; id: 
       if (esProfesionAudiovisual(desc)) {
         // Consultar claims para la entidad
         const cUrl = `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${item.id}&props=claims&format=json`;
+        await turnoWikidata();
         const cRes = await fetch(cUrl, {
           headers: { 'User-Agent': USER_AGENT },
           signal: AbortSignal.timeout(6_000),
@@ -239,7 +283,7 @@ export async function enriquecerFotosActores(opciones: OpcionesEnriquecer = {}):
   // Seleccionar personas sin foto (p.thumb IS NULL y sin archivo local preexistente)
   const sql = soloPrincipales
     ? `
-      SELECT p.id, p.name, pd.tmdb_id, pd.profile, COUNT(ip.item_id) as apariciones, MIN(ip.ord) as orden_min
+      SELECT p.id, p.name, pd.tmdb_id, pd.imdb_id, pd.profile, COUNT(ip.item_id) as apariciones, MIN(ip.ord) as orden_min
       FROM people p
       LEFT JOIN people_details pd ON pd.person_id = p.id
       JOIN item_people ip ON ip.person_id = p.id
@@ -249,7 +293,7 @@ export async function enriquecerFotosActores(opciones: OpcionesEnriquecer = {}):
       LIMIT ?
     `
     : `
-      SELECT p.id, p.name, pd.tmdb_id, pd.profile, COUNT(ip.item_id) as apariciones, MIN(ip.ord) as orden_min
+      SELECT p.id, p.name, pd.tmdb_id, pd.imdb_id, pd.profile, COUNT(ip.item_id) as apariciones, MIN(ip.ord) as orden_min
       FROM people p
       LEFT JOIN people_details pd ON pd.person_id = p.id
       JOIN item_people ip ON ip.person_id = p.id
@@ -263,6 +307,7 @@ export async function enriquecerFotosActores(opciones: OpcionesEnriquecer = {}):
     id: number;
     name: string;
     tmdb_id: number | null;
+    imdb_id: string | null;
     profile: string | null;
     apariciones: number;
     orden_min: number | null;
@@ -346,7 +391,16 @@ export async function enriquecerFotosActores(opciones: OpcionesEnriquecer = {}):
           nuevoTmdbId = resTmdb.tmdbId;
         }
 
-        // 2. Si no hay en TMDb, buscar en Wikipedia
+        // 2. Wikidata por id exacto, antes que nada por nombre
+        if (!fotoUrl) {
+          const resId = await buscarFotoEnWikidataPorId(nuevoTmdbId, persona.imdb_id);
+          if (resId) {
+            fotoUrl = resId.url;
+            fuente = 'wikidata';
+          }
+        }
+
+        // 3. Si no, buscar en Wikipedia
         if (!fotoUrl) {
           const resWiki = await buscarFotoEnWikipedia(persona.name);
           if (resWiki) {
