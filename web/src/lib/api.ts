@@ -901,7 +901,7 @@ export const img = {
   discart: (id: number, w = 600, stamp?: string | null) => `/api/items/${id}/discart?w=${w}${v(stamp)}`,
   episode: (id: number, w = 420) => `/api/episodes/${id}/thumb?w=${w}`,
   // `v` sube cuando se rehacen las fotos (26/10/2026: de 300 a 632 px): el servidor deja guardarlas 30 días en el aparato.
-  person: (id: number, w = 160) => `/api/people/${id}/thumb?w=${w}&v=2`,
+  person: (id: number, w = 160) => `/api/people/${id}/thumb?w=${w}&v=3`,
   studio: (id: number, w = 360) => `/api/items/${id}/studio-logo?w=${w}`,
   /** El logo de un estudio por nombre, ya aclarado o dorado por el servidor. `v` sube con cada cambio de estilo (caché de 30 días). */
   estudio: (nombre: string, w = 400) => `/api/studios/${encodeURIComponent(nombre)}/logo?claro=1&v=4&w=${w}`,
