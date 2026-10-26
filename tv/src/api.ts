@@ -97,6 +97,8 @@ async function pedir<T>(ruta: string, opciones?: RequestInit, tope = 12000): Pro
       return (await res.json()) as T;
     } catch (e) {
       if (reloj) window.clearTimeout(reloj);
+      // Un 401, 403 o 404 lo ha decidido el servidor: repetirlo no cambia la respuesta y retrasaba el aviso 2,4 s.
+      if ((e as { status?: number }).status) throw e;
       ultimoError = e as Error;
       if (intento < maxIntentos) await new Promise((r) => window.setTimeout(r, 1200));
     }
@@ -244,6 +246,8 @@ export type FiltrosRejilla = {
   studio?: string;
   person?: number;
   unwatched?: boolean;
+  /** Para «Aleatorio»: la misma mezcla en todas las páginas. */
+  seed?: number;
 };
 
 function consultaDeFiltros(filtros?: FiltrosRejilla): string {
@@ -281,6 +285,7 @@ export const api = {
     let ruta = `/api/items?library=${biblioteca}&limit=${limite}&offset=${offset}`;
     const sort = (filtros && filtros.sort) || 'title';
     ruta += '&sort=' + encodeURIComponent(sort);
+    if (sort === 'random' && filtros && filtros.seed) ruta += '&seed=' + filtros.seed;
     ruta += consultaDeFiltros(filtros);
     return pedir<{ total: number; items: Titulo[] }>(ruta);
   },
@@ -293,18 +298,6 @@ export const api = {
     pedir<{ name: string; items: Titulo[]; arteItemId: number | null; arteImagen: boolean }>(
       '/api/collections/' + encodeURIComponent(nombre),
     ),
-  /** Qué película presta la imagen de la saga; `null` vuelve a la automática. */
-  fijarArteSaga: (nombre: string, itemId: number | null) =>
-    pedir<{ name: string; arteItemId: number | null }>('/api/collections/' + encodeURIComponent(nombre) + '/arte', {
-      method: 'POST',
-      body: JSON.stringify({ itemId }),
-    }),
-  /** Una imagen del buzón (data/arte-entrada) como imagen de la saga. */
-  arteSagaDelBuzon: (nombre: string, buzon: string) =>
-    pedir<{ name: string; arteImagen: boolean }>('/api/collections/' + encodeURIComponent(nombre) + '/arte', {
-      method: 'POST',
-      body: JSON.stringify({ buzon }),
-    }),
   /** Lo que hay en el buzón, para poder elegirlo con el mando. */
   buzonArte: () => pedir<{ carpeta: string; imagenes: { nombre: string; bytes: number }[] }>('/api/enrich/arte/buzon'),
   /** Búsqueda de alternativas en TMDb para escrapeo. */
@@ -349,7 +342,6 @@ export const api = {
       '/api/plataformas/' + clave + '/catalogo?kind=' + kind + '&orden=' + orden + '&pagina=' + pagina,
     ),
   favoritos: () => pedir<Titulo[]>('/api/favorites'),
-  continuarEn: (biblioteca: number) => pedir<Titulo[]>('/api/libraries/' + biblioteca + '/continuar'),
   borrar: (itemId: number, confirmar: string) =>
     pedir<{ borrado: true; titulo: string; ficheros: number }>('/api/items/' + itemId, { method: 'DELETE', body: JSON.stringify({ confirmar }) }),
   escanear: () => pedir<{ started: boolean; reason?: string }>('/api/scan', { method: 'POST' }),
@@ -382,9 +374,6 @@ export const api = {
       /** Tecla del mando enviada desde el movil (se entrega una sola vez). */
       tecla: 'arriba' | 'abajo' | 'izquierda' | 'derecha' | 'ok' | 'atras' | 'play_pause' | null;
     }>('/api/mando?tele=1'),
-  /** Solo los avisos del administrador, sin llevarse las órdenes del móvil (para dentro del reproductor). */
-  avisos: () => pedir<{ mensaje: string | null; parar: boolean }>('/api/mando'),
-
   // El secreto lo inventa esta tele y solo ella lo conoce: sin él, quien adivinara el código en la red de casa podía
   // recoger el token antes que la tele. Va en el cuerpo al empezar y en una cabecera al sondear (no en la URL).
   iniciarEmparejado: (secreto: string) =>
@@ -417,11 +406,6 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ offsetMs }),
     }),
-  buscarSubtitulos: (fileId: number) =>
-    pedir<{ ok: boolean; exitCode: number | null; outcome?: string; title?: string }>('/api/subtitles/fetch', {
-      method: 'POST',
-      body: JSON.stringify({ fileId, languages: 'es,en', wait: true }),
-    }, 21 * 60_000),
   buscarCandidatosSubtitulos: (fileId: number, languages = 'es,en') =>
     pedir<{ ok: boolean; candidates: CandidatoSubtitulo[] }>('/api/subtitles/search', {
       method: 'POST',
@@ -515,6 +499,16 @@ export const imagen = {
    * bloquearia en silencio (la misma trampa que dejo el salvapantallas invisible).
    */
   plataforma: (ruta: string, w: number) => conToken(servidor() + '/api/plataformas/caratula/w' + w + ruta),
+  /**
+   * Una imagen de TMDb o fanart.tv pasada por el servidor: la tele no carga imágenes https (`img-src` del config.xml) y
+   * el selector de arte salía en blanco. Las de TMDb van por el proxy de carátulas, que además las guarda en disco.
+   */
+  externa: (url: string) => {
+    const m = /^https:\/\/image\.tmdb\.org\/t\/p\/(w\d{3,4}|original)\/([A-Za-z0-9_-]+\.(?:jpg|png|webp))$/.exec(url);
+    // `original` son varios MB para una miniatura: se pide la de 500 px.
+    if (m) return conToken(servidor() + '/api/plataformas/caratula/' + (m[1] === 'original' ? 'w500' : m[1]) + '/' + m[2]);
+    return conToken(servidor() + '/api/enrich/arte/vista?u=' + encodeURIComponent(url));
+  },
   disco: (id: number, w: number) => conToken(servidor() + '/api/items/' + id + '/discart?w=' + w + sello(id)),
   estudio: (id: number, w: number) => conToken(servidor() + '/api/items/' + id + '/studio-logo?w=' + w),
   /**

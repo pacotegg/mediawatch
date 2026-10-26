@@ -275,7 +275,11 @@ export default async function libraryRoutes(app: FastifyInstance) {
     // Un valor que no es número (`limit=abc`) daba NaN y la consulta fallaba con un 500.
     const limit = Math.min(Math.max(Math.trunc(Number(q.limit ?? 60)) || 60, 1), 500);
     const offset = Math.max(Math.trunc(Number(q.offset ?? 0)) || 0, 0);
-    const order = SORTS[q.sort ?? 'title'] ?? SORTS.title;
+    let order = SORTS[q.sort ?? 'title'] ?? SORTS.title;
+    // «Aleatorio» por páginas: con RANDOM() cada página barajaba de nuevo y al bajar se repetían o faltaban títulos.
+    // Con semilla, la misma mezcla en todas las páginas de esa pantalla. Es un entero validado, no texto del cliente.
+    const semilla = Math.trunc(Number(q.seed));
+    if (q.sort === 'random' && Number.isFinite(semilla) && semilla > 0) order = `(i.id * 1103515245 + ${semilla % 2147483647}) % 2147483647`;
     const { clause, params } = filtroDeItems(q, user);
 
     const rows = db

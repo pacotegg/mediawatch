@@ -2,7 +2,7 @@ import { ajustes } from './ajustes.ts';
 
 export type Idioma = 'en' | 'es';
 
-export const TEXTOS = {
+const TEXTOS = {
   en: {
     home: 'Home',
     search: 'Search',

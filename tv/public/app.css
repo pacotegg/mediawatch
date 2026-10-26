@@ -742,7 +742,7 @@ body.rend-rapido .lamina img {
 
 .estuche-brillo-tv {
   position: absolute;
-  inset: 0;
+  top: 0; right: 0; bottom: 0; left: 0;
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.28) 0%, rgba(255, 255, 255, 0.04) 45%, transparent 60%, rgba(0, 0, 0, 0.35) 100%);
   pointer-events: none;
   z-index: 6;
@@ -750,7 +750,7 @@ body.rend-rapido .lamina img {
 
 .estuche-haz-luz-tv {
   position: absolute;
-  inset: -60%;
+  top: -60%; right: -60%; bottom: -60%; left: -60%;
   background: linear-gradient(115deg, transparent 40%, rgba(255, 255, 255, 0.4) 50%, transparent 60%);
   transform: rotate(25deg) translateX(-180%);
   animation: barridoLuzEstuche 8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
@@ -1080,7 +1080,6 @@ body.rend-rapido .lamina img {
 
 .libreto-fila {
   display: flex;
-  gap: 10px;
   margin-top: 5px;
   font-size: 17px;
   line-height: 1.35;
@@ -1315,7 +1314,6 @@ body.rend-rapido .lamina img {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
   margin-bottom: 14px;
 }
 
@@ -2508,19 +2506,19 @@ body.rend-rapido .lamina img {
 }
 
 .miniatura-arte.poster {
-  aspect-ratio: 2 / 3;
+  height: 276px;
   object-fit: cover;
 }
 
 .miniatura-arte.fanart,
 .miniatura-arte.landscape,
 .miniatura-arte.clearlogo {
-  aspect-ratio: 16 / 9;
+  height: 131px;
   object-fit: cover;
 }
 
 .miniatura-arte.discart {
-  aspect-ratio: 1;
+  height: 220px;
   object-fit: contain;
   padding: 6px;
 }
@@ -2542,7 +2540,6 @@ body.rend-rapido .lamina img {
 .campos-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
   margin: 14px 0;
 }
 
@@ -2576,7 +2573,6 @@ body.rend-rapido .lamina img {
 /* Propuesta TMDb en revisión de metadatos */
 .propuesta-tmdb {
   display: flex;
-  gap: 16px;
   padding: 16px;
   margin: 12px 0;
   border-radius: 12px;
@@ -2962,7 +2958,6 @@ body.rend-medio .tarjeta.enfocado .lamina {
 .perfiles {
   display: flex;
   flex-wrap: wrap;
-  gap: 14px;
   justify-content: center;
   margin: 22px 0;
 }
@@ -3507,7 +3502,6 @@ body.viendo-extra .marco * {
   white-space: nowrap;
   display: flex;
   align-items: baseline;
-  gap: 16px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -3554,7 +3548,6 @@ body.viendo-extra .marco * {
 .barra-filtros {
   display: flex;
   align-items: center;
-  gap: 12px;
   padding: 16px 90px 16px 150px;
   overflow-x: auto;
   white-space: nowrap;
@@ -3567,7 +3560,6 @@ body.viendo-extra .marco * {
 .chip-filtro {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
   padding: 11px 22px;
   border-radius: 24px;
   background: rgba(255, 255, 255, 0.08);
@@ -4046,7 +4038,6 @@ body.viendo-extra .marco * {
 .lista-dialogos {
   display: flex;
   flex-direction: column;
-  gap: 12px;
 }
 
 .linea-dialogo {
@@ -4185,7 +4176,6 @@ body.viendo-extra .marco * {
 /* Interfaz Grab & Drop para personalizar orden del menú */
 .reordenar-contenedor {
   display: flex;
-  gap: 40px;
   align-items: flex-start;
   max-width: 1200px;
 }
@@ -4304,7 +4294,6 @@ body.viendo-extra .marco * {
 
 .reordenar-panel-ayuda .ayuda-item {
   display: flex;
-  gap: 12px;
   align-items: center;
   margin-bottom: 14px;
   font-size: 16px;
@@ -4327,7 +4316,6 @@ body.viendo-extra .marco * {
 .reordenar-acciones-pie {
   margin-top: 24px;
   display: flex;
-  gap: 14px;
 }
 
 /* ---------------------------------------------------- carrusel de capítulos TV */
@@ -4360,7 +4348,6 @@ body.viendo-extra .marco * {
 .tit-seccion-cap {
   display: flex;
   align-items: baseline;
-  gap: 16px;
 }
 
 .cabecera-capitulos h3 {
@@ -4379,7 +4366,6 @@ body.viendo-extra .marco * {
 
 .ayuda-capitulos {
   display: flex;
-  gap: 10px;
 }
 
 .ayuda-capitulos span {
@@ -4393,7 +4379,6 @@ body.viendo-extra .marco * {
 
 .carrusel-capitulos {
   display: flex;
-  gap: 24px;
   overflow-x: hidden;
   padding: 16px 8px 20px;
   scroll-behavior: smooth;
@@ -4634,7 +4619,6 @@ body.viendo-extra .marco * {
 .aviso-edad-textos {
   display: flex;
   flex-direction: column;
-  gap: 3px;
 }
 
 .aviso-edad-textos span {
@@ -4665,4 +4649,23 @@ body.viendo-extra .marco * {
   }
 }
 
-
+/*
+ * `gap` en flex no existe en Chrome 76 (Tizen 6.0) y se ignoraba: estos elementos salían pegados en la tele.
+ * Mismo hueco con márgenes entre hijos (26/10/2026).
+ */
+.libreto-fila > * + * { margin-left: 10px; }
+.coleccionista-chips > * + * { margin-left: 10px; }
+.propuesta-tmdb > * + * { margin-left: 16px; }
+.cabecera.compacta > * + * { margin-left: 16px; }
+.barra-filtros > * + * { margin-left: 12px; }
+.chip-filtro > * + * { margin-left: 8px; }
+.reordenar-contenedor > * + * { margin-left: 40px; }
+.reordenar-panel-ayuda .ayuda-item > * + * { margin-left: 12px; }
+.reordenar-acciones-pie > * + * { margin-left: 14px; }
+.tit-seccion-cap > * + * { margin-left: 16px; }
+.ayuda-capitulos > * + * { margin-left: 10px; }
+.carrusel-capitulos > * + * { margin-left: 24px; }
+.lista-dialogos > * + * { margin-top: 12px; }
+.aviso-edad-textos > * + * { margin-top: 3px; }
+.campos-meta > * { margin: 0 8px 8px 0; }
+.perfiles > * { margin: 0 7px 14px; }

@@ -77,6 +77,22 @@ for (const [nombre, lo] of rutas) {
   });
 }
 
+/*
+ * Vista previa del selector de arte servida por el servidor (la tele solo carga imágenes por http): solo administrador y
+ * solo de los orígenes de arte, para que no sirva para pedir cualquier dirección desde el servidor.
+ */
+test('la vista previa de arte externa es solo de administrador', async () => {
+  const r = await pedir('GET', '/api/enrich/arte/vista?u=' + encodeURIComponent('https://image.tmdb.org/t/p/w342/x.jpg'), { galleta: galletaNormal });
+  assert.equal(r.status, 403);
+});
+
+test('la vista previa de arte externa rechaza un origen que no es de arte', async () => {
+  for (const u of ['http://127.0.0.1:8730/api/salud', 'https://ejemplo.invalid/x.jpg', 'file:///C:/Windows/win.ini', 'https://user:pw@image.tmdb.org/x.jpg']) {
+    const r = await pedir('GET', '/api/enrich/arte/vista?u=' + encodeURIComponent(u), { galleta: galletaAdmin });
+    assert.equal(r.status, 400, u);
+  }
+});
+
 test('el administrador si puede guardar el desfase', async () => {
   const r = await pedir('POST', `/api/play/${fileId}/offsets/embedded-0`, { galleta: galletaAdmin, cuerpo: { offsetMs: 500 } });
   assert.equal(r.status, 200);

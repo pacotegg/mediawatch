@@ -19,7 +19,6 @@ import {
   type Titulo,
   type DialogoHit,
   type CandidatoSubtitulo,
-  type FiltrosRejilla,
 } from './api.ts';
 import { ajustes, cargarAjustes, guardarAjustes, ordenar, type Rendimiento } from './ajustes.ts';
 import { t, tr } from './i18n.ts';
@@ -1005,6 +1004,7 @@ type EstadoFiltrosBiblioteca = {
   person: number;
   personName: string;
   unwatched: boolean;
+  seed?: number;
 };
 
 const FILTROS_DEFECTO: EstadoFiltrosBiblioteca = {
@@ -1209,6 +1209,8 @@ async function pantallaBiblioteca(id: number, nombre: string, enfocarFiltro?: st
               const ops = Object.entries(ETIQUETAS_SORT).map(([clave, etiqueta]) => ({ clave, etiqueta }));
               abrirDialogoFiltro('Ordenar por', ops, f.sort, (clave) => {
                 f.sort = String(clave);
+                // Elegir «Aleatorio» otra vez vuelve a barajar.
+                if (f.sort === 'random') f.seed = 1 + Math.floor(Math.random() * 2000000000);
                 reanudar('sort');
               });
               return;
@@ -2552,7 +2554,6 @@ function formatoAspecto(ancho?: number | null, alto?: number | null): string {
 
       caja.querySelectorAll<HTMLElement>('.episodio').forEach((el) => {
         const epId = Number(el.getAttribute('data-ep'));
-        const fileId = Number(el.getAttribute('data-file'));
         const epObj = ficha.episodes?.find((x) => x.id === epId);
 
         el.addEventListener('abrir-detalle', () => {
@@ -3201,7 +3202,10 @@ async function pantallaPersona(id: number, volverA?: number | (() => void) | nul
 
   // La foto de TMDb suele ser más reciente que la que quedó guardada al
   // scrapear la película, que es de la que se queja todo el mundo en Plex.
-  const foto = d && d.profile ? d.profile : persona.has_thumb ? imagen.persona(id, 600) : '';
+  // La de TMDb, por el servidor: la tele no carga https y la ficha de 37.000 actores salía sin foto. Las de Wikimedia
+  // (unas 30) se quedan con la guardada, que el proxy de arte es solo para administradores.
+  const deTmdb = d && d.profile && /^https:\/\/image\.tmdb\.org\//.test(d.profile) ? imagen.externa(d.profile) : '';
+  const foto = deTmdb || (persona.has_thumb ? imagen.persona(id, 600) : '');
 
   const cuerpo =
     '<div class="persona-ficha" data-bloque>' +
@@ -3721,7 +3725,7 @@ function dialogoRevisarMetadatos(
     '<div class="panel" style="width:800px;margin-left:-400px">' +
     '<h3>Revisar y aplicar metadatos</h3>' +
     '<div class="propuesta-tmdb">' +
-    (propuesta.posterUrl ? '<img src="' + esc(propuesta.posterUrl) + '" alt="" />' : '') +
+    (propuesta.posterUrl ? '<img src="' + esc(imagen.externa(propuesta.posterUrl)) + '" alt="" />' : '') +
     '<div class="info">' +
     '<div class="titulo-propuesta">' + esc(propuesta.title) + (propuesta.year ? ' (' + propuesta.year + ')' : '') + '</div>' +
     (propuesta.overview ? '<div class="sinopsis-propuesta">' + esc(propuesta.overview) + '</div>' : '') +
@@ -3893,7 +3897,7 @@ function selectorVisualArte(
       const lang = item.idioma ? '[' + item.idioma + ']' : '';
       htmlCards +=
         '<div class="tarjeta-arte" data-idx="' + idx + '">' +
-        '<img src="' + esc(item.vista || item.url) + '" class="miniatura-arte ' + papel.papel + '" alt="" loading="lazy" />' +
+        '<img src="' + esc(imagen.externa(item.vista || item.url)) + '" class="miniatura-arte ' + papel.papel + '" alt="" />' +
         '<div class="pie-arte">' + esc([lang, dim].filter(Boolean).join(' ') || 'TMDb') + '</div>' +
         '</div>';
     } else {
@@ -5082,27 +5086,16 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
 
   /* ------------------------------------------------------------- pantalla */
 
-  /*
-   * Avisos del administrador mientras se ve algo: un mensaje en pantalla, o
-   * «para», que devuelve a la ficha. Cada cinco segundos; el sondeo general de
-   * fuera del reproductor no entra aquí (mira `viendo`), así que este es el
-   * único que hay mientras dura la película.
-   */
-  const temporizadorAvisos = window.setInterval(() => {
-    if (cerrado) { window.clearInterval(temporizadorAvisos); return; }
-    api
-      .avisos()
-      .then((r) => {
-        if (r.mensaje) aviso('Mensaje: ' + r.mensaje);
-        // Con motivo (p. ej. «Se ha acabado el tiempo de hoy»), ese; si no, la parada del administrador.
-        if (r.parar) { aviso(r.mensaje || 'El administrador ha parado la reproducción'); salir(); }
-      })
-      .catch(() => undefined);
-  }, 5000);
+  // «Para» del administrador o del límite diario: lo recoge el sondeo general (escucharAlMovil) y llama aquí.
+  alPararDesdeAviso = (motivo) => {
+    aviso(motivo || 'El administrador ha parado la reproducción');
+    salir();
+  };
 
   const salir = () => {
     if (cerrado) return;
     cerrado = true;
+    alPararDesdeAviso = null;
     document.removeEventListener('visibilitychange', manejarVisibilidad);
     reproductorActivo = null;
     portadaGuardada = null;
@@ -5111,7 +5104,6 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
       capaError.parentElement.removeChild(capaError);
       capaError = null;
     }
-    window.clearInterval(temporizadorAvisos);
     window.clearTimeout(temporizadorSalto);
     window.clearTimeout(temporizadorSub);
     const t = reproductor.tiempo();
@@ -6984,12 +6976,28 @@ function despacharTeclaVirtual(tecla: string) {
   document.dispatchEvent(evt);
 }
 
+/*
+ * El servidor entrega cada aviso UNA vez a quien pregunte. Había un segundo sondeo dentro del reproductor y este se los
+ * llevaba sin enseñarlos (mensajes, «para» y el aviso de reinicio casi nunca se veían): ahora solo pregunta este.
+ */
+let alPararDesdeAviso: ((motivo: string | null) => void) | null = null;
+
 function escucharAlMovil() {
+  let enVuelo = false;
   window.setInterval(() => {
-    if (!token()) return;
+    // Sin esperar a la anterior, con el servidor caído se amontonaban peticiones de hasta 3 intentos de 12 s.
+    if (!token() || enVuelo) return;
+    enVuelo = true;
     api
       .mando()
       .then((r) => {
+        // Con el límite diario agotado el servidor manda «parar» en CADA consulta: fuera del reproductor no hay nada que
+        // parar, y enseñarlo repetiría el aviso cada 1,2 s.
+        if (r.parar) {
+          if (alPararDesdeAviso) alPararDesdeAviso(r.mensaje);
+        } else if (r.mensaje) {
+          aviso('Mensaje: ' + r.mensaje);
+        }
         if (r.tecla) {
           despacharTeclaVirtual(r.tecla);
           return;
@@ -7009,7 +7017,8 @@ function escucharAlMovil() {
           pantallaBuscar(r.buscar);
         }
       })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .then(() => { enVuelo = false; });
   }, 1200);
 }
 

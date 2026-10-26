@@ -185,6 +185,31 @@ export default async function enrichRoutes(app: FastifyInstance) {
     return reply.type(ext === 'jpg' ? 'image/jpeg' : 'image/' + ext).send(datos);
   });
 
+  /*
+   * Vista previa de una imagen de TMDb o fanart.tv servida desde aquí. La app de la tele solo carga imágenes por http
+   * (`img-src` de su config.xml) y dejaba en blanco, sin avisar, todo el selector de arte del editor de metadatos.
+   * Solo orígenes de arte (`urlDeArteValida`) y sin seguir redirecciones: no sirve para pedir cualquier dirección.
+   */
+  app.get('/api/enrich/arte/vista', async (req, reply) => {
+    const user = requireUser(req);
+    if (!user.is_admin) return reply.code(403).send({ error: 'No autorizado' });
+    const url = (req.query as { u?: string }).u;
+    if (!urlDeArteValida(url)) return reply.code(400).send({ error: 'Origen de imagen no permitido' });
+    let datos: Buffer;
+    try {
+      const r = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(20_000) });
+      if (!r.ok) return reply.code(502).send({ error: 'El origen respondió ' + r.status });
+      if (Number(r.headers.get('content-length') ?? 0) > 15_000_000) return reply.code(413).send({ error: 'Imagen demasiado grande' });
+      datos = Buffer.from(await r.arrayBuffer());
+    } catch (err) {
+      return reply.code(502).send({ error: (err as Error).message });
+    }
+    if (datos.length > 15_000_000) return reply.code(413).send({ error: 'Imagen demasiado grande' });
+    const ext = formatoDeImagen(datos);
+    if (!ext) return reply.code(415).send({ error: 'Eso no es una imagen' });
+    return reply.header('Cache-Control', 'private, max-age=86400').type(ext === 'jpg' ? 'image/jpeg' : 'image/' + ext).send(datos);
+  });
+
   /** Poner como arte una imagen del buzon. El fichero del buzon no se toca. */
   app.post('/api/enrich/arte/buzon', async (req, reply) => {
     const user = requireUser(req);
