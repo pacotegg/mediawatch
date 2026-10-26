@@ -1,5 +1,6 @@
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { Worker } from 'node:worker_threads';
 import Fastify from 'fastify';
 import cookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
@@ -408,6 +409,19 @@ app.addHook('onResponse', async (req) => {
       atendidasAntes = atendidas;
     }
   }, PERIODO).unref();
+}
+
+// Hilo vigia: si el principal se queda mas de 3 s sin latir, apunta su pila en latido.log (ver vigia-bucle.ts).
+{
+  const compartido = new SharedArrayBuffer(8);
+  const marca = new Float64Array(compartido);
+  marca[0] = Date.now();
+  setInterval(() => { marca[0] = Date.now(); }, 250).unref();
+  try {
+    new Worker(new URL('./vigia-bucle.ts', import.meta.url), { workerData: { compartido, dir: DATA_DIR } }).unref();
+  } catch (e) {
+    console.error('[vigia-bucle]', (e as Error).message);
+  }
 }
 
 // Las sesiones abandonadas se retiran al arrancar y una vez al dia.
