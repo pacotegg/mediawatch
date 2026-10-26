@@ -263,6 +263,9 @@ app.post('/api/plex/webhook', {
     const m = /name="payload"[^\{]*(\{[\s\S]*?\})\r?\n--/i.exec(crudo);
     if (m) {
       req.headers['content-type'] = 'application/json';
+      // El cuerpo nuevo es solo el JSON: con el Content-Length del multipart original Fastify respondía 400
+      // («Request body size did not match Content-Length») a TODAS las entregas de Plex.
+      delete req.headers['content-length'];
       const { Readable } = await import('node:stream');
       return Readable.from([m[1]]);
     }
