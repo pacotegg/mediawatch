@@ -62,6 +62,28 @@ export class TmdbError extends Error {}
 export const tmdbGet = <T>(path: string, params: Record<string, string> = {}) => tmdb<T>(path, params);
 export { details as detallesDe, IMAGES as TMDB_IMAGENES, ARTWORK_DIR as DIR_ARTE };
 
+/**
+ * `fetch` con tope de tiempo y reintentos ante un fallo de RED pasajero (`fetch failed`: conexion reseteada, DNS, tiempo agotado). Antes un
+ * solo fallo de red tiraba abajo una aplicacion entera («✗ Viernes 13 — fetch failed») y no decia por que. Solo se reintenta lo que pudo
+ * ser la red (nunca una respuesta HTTP, que ya llego), y al rendirse el mensaje lleva el codigo de la causa (ECONNRESET, ENOTFOUND…).
+ */
+export async function pedir(url: string | URL, ms: number, headers?: Record<string, string>, intentos = 3): Promise<Response> {
+  for (let i = 1; ; i++) {
+    try {
+      return await fetch(url, { signal: AbortSignal.timeout(ms), ...(headers ? { headers } : {}) });
+    } catch (e) {
+      const err = e as Error & { cause?: { code?: string } };
+      const pasajero = err instanceof TypeError || err.name === 'TimeoutError';
+      if (!pasajero || i >= intentos) {
+        const causa = err.cause?.code ?? (err.name === 'TimeoutError' ? 'tiempo agotado' : '');
+        if (causa && !err.message.includes(causa)) err.message += ` (${causa})`;
+        throw err;
+      }
+      await new Promise((ok) => setTimeout(ok, 400 * i));
+    }
+  }
+}
+
 async function tmdb<T>(path: string, params: Record<string, string> = {}): Promise<T> {
   if (!config.tmdbApiKey) throw new TmdbError('Falta la clave de API de TMDb');
   const url = new URL(API + path);
@@ -70,7 +92,7 @@ async function tmdb<T>(path: string, params: Record<string, string> = {}): Promi
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
 
   for (let attempt = 0; attempt < 3; attempt++) {
-    const res = await fetch(url, { signal: AbortSignal.timeout(15_000), headers: { accept: 'application/json' } });
+    const res = await pedir(url, 15_000, { accept: 'application/json' });
     if (res.status === 429) {
       const wait = Number(res.headers.get('retry-after') ?? 1) * 1000;
       await new Promise((r) => setTimeout(r, wait + 250));
@@ -315,7 +337,7 @@ export async function temporadasDeSerie(tmdbId: number): Promise<{ temporada: nu
 /** Compartida con el agente de AniList: baja una imagen al disco y devuelve su ruta. */
 const MAX_IMAGEN = 25 * 1024 * 1024;
 export async function descargar(url: string, destination: string): Promise<string> {
-  const res = await fetch(url, { signal: AbortSignal.timeout(60_000) });
+  const res = await pedir(url, 60_000);
   if (!res.ok || !res.body) throw new Error(`No se pudo descargar la imagen (${res.status})`);
   // Ni más de 25 MB (una respuesta enorme llenaba el disco) ni algo que no sea una imagen (una página de error
   // guardada como .jpg dejaba una carátula rota para siempre). Se baja a un temporal y solo entonces se coloca.
