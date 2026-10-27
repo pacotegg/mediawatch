@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { readdirSync, statSync } from 'node:fs';
-import { basename, dirname, extname, join } from 'node:path';
+import { basename, dirname, extname, join, resolve } from 'node:path';
 import { Worker } from 'node:worker_threads';
 import { db, normalize } from '../db.ts';
 import { config, DATA_DIR, type LibraryConfig } from '../config.ts';
@@ -830,6 +830,11 @@ export type OpcionesEscaneo = {
   forzar?: boolean;
   /** Solo estas bibliotecas (por ruta), activas o no. Sin esto se escanean las activas. */
   solo?: string[];
+  /**
+   * Escaneo PARCIAL: dentro de esas bibliotecas, solo estas carpetas (o videos sueltos de la raiz), por ruta completa. No relee el resto
+   * ni retira nada: sin el recorrido completo no se sabe que falta de verdad. Es lo que necesita analizar 2 ficheros sin pagar minutos.
+   */
+  carpetas?: string[];
 };
 
 /** Una fuente del scraper (carpeta de entrada) frente a una biblioteca de verdad. */
@@ -848,7 +853,9 @@ export async function scanLibrary(lib: LibraryConfig, onProgress?: (p: ScanProgr
   }
   const titulosAntes = (db.prepare('SELECT COUNT(*) AS n FROM items WHERE library_id = ?').get(row.id) as { n: number }).n;
   const todo = listDir(lib.path);
-  const entries = todo.filter((e) => e.isDir && !SKIP_DIRS.has(e.name.toLowerCase()) && !e.name.startsWith('_'));
+  const quiere = opciones.carpetas?.length ? new Set(opciones.carpetas.map((c) => resolve(c).toLowerCase())) : null;
+  const pedida = (e: Entry) => !quiere || quiere.has(resolve(e.path).toLowerCase());
+  const entries = todo.filter((e) => e.isDir && !SKIP_DIRS.has(e.name.toLowerCase()) && !e.name.startsWith('_') && pedida(e));
 
   let count = await escanearCarpetas(lib, row, entries, now, onProgress);
 
@@ -859,7 +866,7 @@ export async function scanLibrary(lib: LibraryConfig, onProgress?: (p: ScanProgr
    * unico con carpeta propia.
    */
   if (lib.kind === 'movie') {
-    const sueltos = videoFiles(todo);
+    const sueltos = videoFiles(todo).filter(pedida);
     for (let inicio = 0; inicio < sueltos.length; inicio += LOTE) {
       const lote = sueltos.slice(inicio, inicio + LOTE);
       db.exec('BEGIN');
@@ -873,6 +880,12 @@ export async function scanLibrary(lib: LibraryConfig, onProgress?: (p: ScanProgr
       if (inicio + LOTE < sueltos.length) await cederElHilo();
     }
     if (sueltos.length > 0) console.log(`[escaneo] ${lib.name}: ${sueltos.length} videos sueltos en la raiz`);
+  }
+
+  // Un escaneo parcial no ha visto toda la biblioteca: lo que no tocó no esta «ausente», solo no se miro.
+  if (quiere) {
+    onProgress?.({ library: lib.name, done: entries.length, total: entries.length, current: '' });
+    return count;
   }
 
   const viejos = stmt.staleItems.all(row.id, now) as { id: number }[];
@@ -977,10 +990,10 @@ let escaneosEnCurso = 0;
 /** ¿Hay un escaneo corriendo en su hilo? Lo mira `organizar`, que no debe mover ficheros mientras se escanea. */
 export const escaneoEnCurso = () => escaneosEnCurso > 0;
 
-export function scanAllEnWorker(onProgress?: (p: ScanProgress) => void, solo?: string[]): Promise<{ name: string; count: number }[]> {
+export function scanAllEnWorker(onProgress?: (p: ScanProgress) => void, solo?: string[], carpetas?: string[]): Promise<{ name: string; count: number }[]> {
   escaneosEnCurso++;
   return new Promise((resolve, reject) => {
-    const worker = new Worker(new URL('./scan-worker.ts', import.meta.url), { workerData: { solo } });
+    const worker = new Worker(new URL('./scan-worker.ts', import.meta.url), { workerData: { solo, carpetas } });
     let asentado = false;
     worker.on('message', (msg: { type: string; progress?: ScanProgress; results?: { name: string; count: number }[]; message?: string }) => {
       if (msg.type === 'progress' && msg.progress) {

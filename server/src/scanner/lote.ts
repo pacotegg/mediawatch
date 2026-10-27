@@ -108,7 +108,7 @@ export function sinRegistrar(rutaFuente: string): SinRegistrar[] {
 }
 
 /** Escanea las fuentes de las rutas dadas (solo ellas) y devuelve los ids de esas carpetas/videos ya registrados. */
-export async function registrarRutas(rutas: string[], escanear: (p?: undefined, solo?: string[]) => Promise<unknown> = scanAllEnWorker): Promise<number[]> {
+export async function registrarRutas(rutas: string[], escanear: (p?: undefined, solo?: string[], carpetas?: string[]) => Promise<unknown> = scanAllEnWorker): Promise<number[]> {
   if (escaneoEnCurso()) throw new Error('Hay un escaneo de la biblioteca en curso: espera a que termine');
   const fuentes = new Set<string>();
   for (const r of rutas) {
@@ -117,7 +117,8 @@ export async function registrarRutas(rutas: string[], escanear: (p?: undefined, 
     fuentes.add(f.path);
   }
   if ([...fuentes].some(hayAlguienViendoEn)) throw new Error('Alguien está viendo algo: espera a que termine para analizar ficheros de la biblioteca');
-  if (fuentes.size > 0) await escanear(undefined, [...fuentes]);
+  // Solo las carpetas marcadas, no la biblioteca entera (E:\Peliculas tarda minutos en releerse).
+  if (fuentes.size > 0) await escanear(undefined, [...fuentes], rutas);
   const ids: number[] = [];
   for (const r of rutas) {
     const f = db.prepare('SELECT id FROM items WHERE LOWER(folder) = LOWER(?)').get(resolve(r)) as { id: number } | undefined;

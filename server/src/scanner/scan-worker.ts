@@ -22,8 +22,8 @@ import { scanAll, type ScanProgress } from './scan.ts';
 
 async function main() {
   try {
-    const solo = (workerData as { solo?: string[] } | null)?.solo;
-    const results = await scanAll((p: ScanProgress) => parentPort?.postMessage({ type: 'progress', progress: p }), solo ? { solo } : {});
+    const { solo, carpetas } = (workerData as { solo?: string[]; carpetas?: string[] } | null) ?? {};
+    const results = await scanAll((p: ScanProgress) => parentPort?.postMessage({ type: 'progress', progress: p }), solo ? { solo, carpetas } : {});
     parentPort?.postMessage({ type: 'done', results });
   } catch (err) {
     parentPort?.postMessage({ type: 'error', message: (err as Error).message });
