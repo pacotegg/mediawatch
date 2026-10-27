@@ -12,7 +12,7 @@ import { aplicarNfo, NfoError, planNfo } from '../scanner/nfo-escribir.ts';
 import { envio, enviarLote, EnvioError, planEnvio } from '../scanner/enviar.ts';
 import { carpetaDePelicula, carpetaDeSerie } from '../scanner/nombres-tmm.ts';
 import { deshacerUltima, HistorialError, ultimaInstantanea } from '../scanner/historial.ts';
-import { editarMetadatos, MetadatosError } from '../scanner/metadatos.ts';
+import { editarMetadatos, MetadatosError, validarCambios } from '../scanner/metadatos.ts';
 
 /*
  * Pantalla «Scraper» (solo administrador): lista de titulos con lo que les falta y emparejado por
@@ -81,6 +81,33 @@ export default async function scraperRoutes(app: FastifyInstance) {
     if (typeof cuerpo.coleccion === 'string' && !cuerpo.coleccion.trim()) return reply.code(400).send({ error: 'Falta el nombre de la saga' });
     const r = await editarDatos(req, reply, { collection: cuerpo.coleccion });
     return r && typeof r === 'object' && 'campos' in r ? { ok: true, coleccion: cuerpo.coleccion ?? null } : r;
+  });
+
+  /*
+   * Lo mismo que editar a mano, pero sobre varios títulos: `{ ids: number[], cambios: { studio?, mpaa?, collection? } }`.
+   * Solo esos tres campos (título, sinopsis y géneros no tienen sentido iguales para todos). Se valida TODO antes de tocar nada; cada
+   * título deja su propia instantánea, así que se deshace uno a uno desde su ficha. Se cede el hilo entre títulos.
+   */
+  app.post('/api/scraper/lote-datos', async (req, reply) => {
+    if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'No autorizado' });
+    const { ids, cambios } = (req.body ?? {}) as { ids?: unknown; cambios?: unknown };
+    if (!Array.isArray(ids) || ids.length === 0 || ids.length > 300 || !ids.every((n) => Number.isInteger(n))) return reply.code(400).send({ error: 'Elige entre 1 y 300 títulos' });
+    const claves = cambios && typeof cambios === 'object' && !Array.isArray(cambios) ? Object.keys(cambios) : [];
+    if (claves.length === 0 || claves.some((k) => !['studio', 'mpaa', 'collection'].includes(k))) return reply.code(400).send({ error: 'Solo se pueden cambiar a la vez el estudio, la edad y la saga' });
+    try { validarCambios(cambios); } catch (e) {
+      if (e instanceof MetadatosError) return reply.code(400).send({ error: e.message });
+      throw e;
+    }
+    let hechos = 0;
+    const fallos: { id: number; error: string }[] = [];
+    for (const id of new Set(ids as number[])) {
+      try { editarMetadatos(id, cambios); hechos++; } catch (e) {
+        if (!(e instanceof MetadatosError)) throw e;
+        fallos.push({ id, error: e.message });
+      }
+      await new Promise((r) => setImmediate(r));
+    }
+    return { ok: true, hechos, fallos };
   });
 
   app.get('/api/scraper/titulos', async (req, reply) => {

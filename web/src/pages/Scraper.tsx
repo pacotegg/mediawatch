@@ -57,13 +57,16 @@ function IconoBuscar() {
   );
 }
 
-function Fila({ f, activa, onClick }: { f: ScraperFila; activa: boolean; onClick: () => void }) {
+function Fila({ f, activa, onClick, marcada }: { f: ScraperFila; activa: boolean; onClick: () => void; marcada?: boolean }) {
+  const seleccionando = marcada !== undefined;
+  const resaltada = seleccionando ? marcada : activa;
   return (
     <button
       onClick={onClick}
-      className={`group relative flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left transition-colors duration-200 ${activa ? 'bg-gradient-to-r from-accent/16 via-accent/5 to-transparent ring-1 ring-accent/25' : 'hover:bg-white/6'}`}
+      className={`group relative flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left transition-colors duration-200 ${resaltada ? 'bg-gradient-to-r from-accent/16 via-accent/5 to-transparent ring-1 ring-accent/25' : 'hover:bg-white/6'}`}
     >
-      {activa && <span className="absolute top-2 bottom-2 left-0 w-[3px] rounded-r-full bg-accent shadow-[0_0_12px_rgb(240_165_74/0.7)]" />}
+      {seleccionando && <Casilla marcada={marcada} onChange={() => {}} />}
+      {!seleccionando && activa && <span className="absolute top-2 bottom-2 left-0 w-[3px] rounded-r-full bg-accent shadow-[0_0_12px_rgb(240_165_74/0.7)]" />}
       <div className="h-[66px] w-11 shrink-0 overflow-hidden rounded-md bg-ink-800 shadow-[0_6px_14px_-4px_rgb(0_0_0/0.8)] ring-1 ring-white/10 transition-transform duration-200 group-hover:scale-[1.04]">
         {f.poster ? <img src={img.poster(f.id, 120, f.arte_actualizado)} alt="" loading="lazy" className="h-full w-full object-cover" /> : null}
       </div>
@@ -83,6 +86,45 @@ function Fila({ f, activa, onClick }: { f: ScraperFila; activa: boolean; onClick
   );
 }
 
+const CAMPOS_LOTE = [['studio', 'Estudio', 'Paramount Pictures'], ['mpaa', 'Edad recomendada', '12'], ['collection', 'Saga', 'Nombre de la saga']] as const;
+
+/** Mismo dato (estudio, edad o saga) para todos los títulos marcados. Solo la base de datos; cada uno se deshace desde su ficha. */
+function BarraLote({ ids, alTerminar }: { ids: number[]; alTerminar: () => void }) {
+  const qc = useQueryClient();
+  const [campo, setCampo] = useState<(typeof CAMPOS_LOTE)[number][0]>('mpaa');
+  const [valor, setValor] = useState('');
+  const [quitar, setQuitar] = useState(false);
+  const [aviso, setAviso] = useState('');
+  const etiqueta = CAMPOS_LOTE.find((c) => c[0] === campo)![1];
+  const aplicar = useMutation({
+    mutationFn: () => api.editarLote(ids, { [campo]: quitar ? null : valor.trim() }),
+    onSuccess: (r) => {
+      setAviso(r.fallos.length ? `Hecho en ${r.hechos}; fallaron ${r.fallos.length}: ${r.fallos[0].error}` : `Hecho en ${r.hechos} títulos.`);
+      for (const k of ['scraper-lista', 'scraper-titulo', 'item', 'home']) qc.invalidateQueries({ queryKey: [k] });
+      if (!r.fallos.length) alTerminar();
+    },
+    onError: (e: Error) => setAviso(e.message),
+  });
+  const listo = ids.length > 0 && (quitar || valor.trim() !== '');
+  return (
+    <div className="space-y-2.5 rounded-2xl bg-black/25 p-3 ring-1 ring-accent/25">
+      <div className="text-[12px] font-medium text-accent-soft">{ids.length} marcados · el mismo dato para todos</div>
+      <div className="flex flex-wrap gap-1.5">
+        {CAMPOS_LOTE.map(([k, e]) => (
+          <button key={k} onClick={() => setCampo(k)} className={`rounded-full px-3 py-1 text-[11.5px] font-medium transition-colors ${campo === k ? 'bg-accent/18 text-accent-soft ring-1 ring-accent/40' : 'bg-white/5 text-mist-400 hover:bg-white/10'}`}>{e}</button>
+        ))}
+      </div>
+      <TextInput value={valor} onChange={setValor} placeholder={CAMPOS_LOTE.find((c) => c[0] === campo)![2]} className="w-full rounded-full" />
+      <label className="flex cursor-pointer items-center gap-2 text-[11.5px] text-mist-400"><Casilla marcada={quitar} onChange={setQuitar} />Quitar este dato en todos</label>
+      <Button onClick={() => aplicar.mutate()} disabled={!listo || aplicar.isPending}>
+        {aplicar.isPending ? 'Aplicando…' : quitar ? `Quitar ${etiqueta.toLowerCase()} en ${ids.length}` : `Poner ${etiqueta.toLowerCase()} «${valor.trim() || '…'}» en ${ids.length}`}
+      </Button>
+      {aviso && <p className="text-[11.5px] text-mist-400">{aviso}</p>}
+      <p className="text-[11px] text-mist-600">Solo cambia la base de datos, no la biblioteca. Se deshace título a título desde su ficha.</p>
+    </div>
+  );
+}
+
 function Lista({ seleccion, onSelect }: { seleccion: number | null; onSelect: (f: ScraperFila) => void }) {
   const [filtro, setFiltro] = useState<string>('huecos');
   const [kind, setKind] = useState<'' | 'movie' | 'show'>('');
@@ -90,6 +132,10 @@ function Lista({ seleccion, onSelect }: { seleccion: number | null; onSelect: (f
   const [q, setQ] = useState('');
   const [offset, setOffset] = useState(0);
   const [acumuladas, setAcumuladas] = useState<ScraperFila[]>([]);
+  const [lote, setLote] = useState(false);
+  const [marcados, setMarcados] = useState<Set<number>>(new Set());
+  const alternar = (id: number) => setMarcados((m) => { const n = new Set(m); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const terminarLote = () => { setLote(false); setMarcados(new Set()); };
 
   // Esperar a que se deje de teclear antes de preguntar al servidor.
   useEffect(() => {
@@ -144,9 +190,16 @@ function Lista({ seleccion, onSelect }: { seleccion: number | null; onSelect: (f
           <button key={k} onClick={() => setKind(k)} className={`rounded-full px-2.5 py-1 transition-colors ${kind === k ? 'bg-white/12 text-mist-100' : 'text-mist-500 hover:text-mist-200'}`}>{e}</button>
         ))}
         <span className="ml-auto tabular-nums text-mist-600">{total} títulos</span>
+        <button onClick={() => (lote ? terminarLote() : setLote(true))} className={`rounded-full px-2.5 py-1 font-medium transition-colors ${lote ? 'bg-accent/18 text-accent-soft ring-1 ring-accent/40' : 'text-mist-400 hover:text-mist-100'}`}>{lote ? 'Salir' : 'Seleccionar'}</button>
       </div>
+      {lote && (
+        <div className="flex items-center gap-3 text-[11.5px]">
+          <button className="font-medium text-accent hover:underline underline-offset-2" onClick={() => setMarcados((m) => new Set([...m, ...acumuladas.map((x) => x.id)]))}>Marcar los {acumuladas.length} de la lista</button>
+          <button className="text-mist-500 hover:underline underline-offset-2" onClick={() => setMarcados(new Set())}>Quitar marcas</button>
+        </div>
+      )}
       <div className="max-h-[calc(100vh-22rem)] min-h-64 space-y-0.5 overflow-y-auto pr-1">
-        {acumuladas.map((f) => <Fila key={f.id} f={aldia(f)} activa={f.id === seleccion} onClick={() => onSelect(f)} />)}
+        {acumuladas.map((f) => <Fila key={f.id} f={aldia(f)} activa={f.id === seleccion} marcada={lote ? marcados.has(f.id) : undefined} onClick={() => (lote ? alternar(f.id) : onSelect(f))} />)}
         {!isFetching && acumuladas.length === 0 && <p className="px-2 py-10 text-center text-[12.5px] text-mist-500">Nada con ese filtro.</p>}
         {acumuladas.length < total && (
           <div className="py-2 text-center">
@@ -154,6 +207,7 @@ function Lista({ seleccion, onSelect }: { seleccion: number | null; onSelect: (f
           </div>
         )}
       </div>
+      {lote && marcados.size > 0 && <BarraLote ids={[...marcados]} alTerminar={terminarLote} />}
     </div>
   );
 }

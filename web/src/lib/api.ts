@@ -505,6 +505,9 @@ export const api = {
   /** Editar a mano los datos de un título (solo administrador). Solo cambia la base de datos; se deshace con `scraperDeshacer`. */
   editarMetadatos: (itemId: number, cambios: CambiosMetadatos) =>
     request<{ ok: true; campos: string[] }>(`/api/items/${itemId}/metadatos`, { method: 'POST', body: JSON.stringify(cambios) }),
+  /** El mismo dato (estudio, edad o saga) para varios títulos a la vez; solo administrador. Cada uno se deshace desde su ficha. */
+  editarLote: (ids: number[], cambios: { studio?: string | null; mpaa?: string | null; collection?: string | null }) =>
+    request<{ ok: true; hechos: number; fallos: { id: number; error: string }[] }>('/api/scraper/lote-datos', { method: 'POST', body: JSON.stringify({ ids, cambios }) }),
   /** Cambiar o quitar (`null`) la saga de un título; solo administrador. No toca el NFO de la carpeta. */
   ponerColeccion: (itemId: number, coleccion: string | null) =>
     request<{ ok: true; anterior: string | null; coleccion: string | null }>(`/api/items/${itemId}/coleccion`, { method: 'POST', body: JSON.stringify({ coleccion }) }),
