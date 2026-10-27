@@ -14,6 +14,7 @@ import { carpetaDePelicula, carpetaDeSerie } from '../scanner/nombres-tmm.ts';
 import { deshacerUltima, HistorialError, ultimaInstantanea } from '../scanner/historial.ts';
 import { editarMetadatos, MetadatosError, validarCambios } from '../scanner/metadatos.ts';
 import { aplicarOmdb, buscarOmdb, detallesOmdb, OmdbError } from '../scanner/omdb-ficha.ts';
+import { aplicarMezcla, CAMPOS_MEZCLA, consultarFuentes, FuentesError } from '../scanner/fuentes-datos.ts';
 
 /*
  * Pantalla «Scraper» (solo administrador): lista de titulos con lo que les falta y emparejado por
@@ -442,6 +443,42 @@ export default async function scraperRoutes(app: FastifyInstance) {
     try {
       return await aplicarOmdb({ itemId: b.itemId!, imdbId: b.imdbId!, kind: b.kind, fields: b.fields as never, overwrite: b.overwrite === true });
     } catch (err) {
+      return reply.code(502).send({ error: (err as Error).message });
+    }
+  });
+
+  /*
+   * Todas las fuentes de un titulo a la vez (TMDb, TVDB, OMDb y, en series, TVmaze), cada dato con su procedencia, y aplicar eligiendo
+   * de cual toma cada uno. Se parte de un id de TMDb o de IMDb y las demas se enlazan por ellos, sin adivinar por el nombre.
+   */
+  const ids = (b: { tmdbId?: unknown; imdbId?: unknown }) => ({
+    tmdbId: Number.isInteger(b.tmdbId) && (b.tmdbId as number) > 0 ? (b.tmdbId as number) : null,
+    imdbId: typeof b.imdbId === 'string' && /^tt\d{6,10}$/.test(b.imdbId) ? b.imdbId : null,
+  });
+  app.post('/api/scraper/fuentes-ficha', async (req, reply) => {
+    if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'No autorizado' });
+    const b = (req.body ?? {}) as { kind?: string; tmdbId?: unknown; imdbId?: unknown };
+    const conocidos = ids(b);
+    if ((b.kind !== 'movie' && b.kind !== 'show') || (!conocidos.tmdbId && !conocidos.imdbId)) return reply.code(400).send({ error: 'Falta el id de TMDb o de IMDb' });
+    try {
+      return await consultarFuentes(b.kind, conocidos);
+    } catch (err) {
+      return reply.code(502).send({ error: (err as Error).message });
+    }
+  });
+
+  app.post('/api/scraper/aplicar-mezcla', async (req, reply) => {
+    if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'No autorizado' });
+    const b = (req.body ?? {}) as { itemId?: unknown; kind?: string; tmdbId?: unknown; imdbId?: unknown; elecciones?: Record<string, unknown> };
+    const conocidos = ids(b);
+    const el = b.elecciones && typeof b.elecciones === 'object' && !Array.isArray(b.elecciones) ? b.elecciones : null;
+    const fuentes = ['tmdb', 'tvdb', 'omdb', 'tvmaze'];
+    if (!Number.isInteger(b.itemId) || (b.kind !== 'movie' && b.kind !== 'show') || (!conocidos.tmdbId && !conocidos.imdbId)) return reply.code(400).send({ error: 'Faltan datos de la propuesta' });
+    if (!el || Object.keys(el).length === 0 || Object.entries(el).some(([k, v]) => !(CAMPOS_MEZCLA as readonly string[]).includes(k) || !fuentes.includes(String(v)))) return reply.code(400).send({ error: 'Elección no válida' });
+    try {
+      return { ok: true, ...(await aplicarMezcla(b.itemId as number, b.kind, conocidos, el as never)) };
+    } catch (err) {
+      if (err instanceof FuentesError) return reply.code(err.codigo).send({ error: err.message });
       return reply.code(502).send({ error: (err as Error).message });
     }
   });

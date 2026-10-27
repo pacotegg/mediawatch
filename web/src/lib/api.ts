@@ -456,6 +456,12 @@ export const api = {
   /** Lo mismo con OMDb (título o id de IMDb). Su sinopsis y su título vienen en inglés; no tiene fondo ni logo. */
   scraperResolverOmdb: (entrada: string, kind: 'movie' | 'show', year?: number | null) =>
     post<{ propuestas: Proposal[]; aviso?: string }>('/api/scraper/resolver-omdb', { entrada, kind, year }),
+  /** Todas las fuentes de un título a la vez, enlazadas por sus ids (TMDb o IMDb). */
+  fuentesFicha: (kind: 'movie' | 'show', ids: { tmdbId?: number; imdbId?: string }) =>
+    post<{ ids: { tmdbId: number | null; imdbId: string | null; tvdbId: number | null }; fichas: FichaFuente[]; avisos: string[] }>('/api/scraper/fuentes-ficha', { kind, ...ids }),
+  /** Aplicar eligiendo de qué fuente sale cada dato (`{ plot: 'tvdb', rating: 'omdb' }`). */
+  aplicarMezcla: (b: { itemId: number; kind: 'movie' | 'show'; tmdbId?: number; imdbId?: string; elecciones: Record<string, FuenteDatos> }) =>
+    post<{ ok: true; aplicado: { campo: string; fuente: FuenteDatos }[] }>('/api/scraper/aplicar-mezcla', b),
   scraperAplicarOmdb: (b: { itemId: number; imdbId: string; kind: 'movie' | 'show'; fields: ('poster' | 'plot' | 'rating' | 'genres')[]; overwrite?: boolean }) =>
     post<{ applied: string[]; title: string }>('/api/scraper/aplicar-omdb', b),
 
@@ -855,6 +861,15 @@ export type Proposal = {
   guionistas?: string[];
   estudios?: string[];
   paises?: string[];
+};
+
+/** Una fuente de datos de un título (TMDb, TVDB, OMDb, TVmaze), con el idioma en que vienen su título, sinopsis y géneros. */
+export type FuenteDatos = 'tmdb' | 'tvdb' | 'omdb' | 'tvmaze';
+export type FichaFuente = {
+  fuente: FuenteDatos; id: string; enlace: string | null; idioma: 'es' | 'en';
+  title: string | null; year: number | null; overview: string | null; rating: number | null; votos: number | null;
+  genres: string[]; certificacion: string | null; runtime: number | null;
+  posterUrl: string | null; backdropUrl: string | null; logoUrl: string | null;
 };
 
 export type Candidate = {

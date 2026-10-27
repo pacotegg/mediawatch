@@ -113,3 +113,52 @@ export async function biografiaPersonaTvdb(tvdbId: number): Promise<{ biografia:
   return { biografia: bios[0].biography.trim(), idioma: bios[0].language };
 }
 
+
+export type FichaTvdb = {
+  id: number;
+  title: string | null;
+  year: number | null;
+  overview: string | null;
+  /** Idioma de la sinopsis: `es` si TVDB tiene la traduccion al espanol; si no, la original (casi siempre ingles). */
+  idioma: 'es' | 'en';
+  genres: string[];
+  certificacion: string | null;
+  runtime: number | null;
+  posterUrl: string | null;
+  imdbId: string | null;
+};
+
+/**
+ * Los datos de un titulo en TVDB, con la traduccion al espanol de titulo y sinopsis (que TMDb a veces no tiene). El id sale de
+ * `tvdbId` (series, por los ids externos de TMDb) o del IMDb. OJO: la `score` de TVDB es popularidad, no una nota: no se usa.
+ */
+export async function fichaTvdb(kind: 'movie' | 'show', ids: { tvdbId?: number | null; imdbId?: string | null }): Promise<FichaTvdb | null> {
+  if (!config.tvdbApiKey) return null;
+  let id = ids.tvdbId ?? null;
+  if (!id && ids.imdbId) {
+    const r = await tvdb<{ movie?: { id: number }; series?: { id: number } }[]>(`/search/remoteid/${encodeURIComponent(ids.imdbId)}`);
+    id = (kind === 'show' ? r?.find((x) => x.series)?.series?.id : r?.find((x) => x.movie)?.movie?.id) ?? null;
+  }
+  if (!id) return null;
+  const ruta = kind === 'show' ? 'series' : 'movies';
+  const ext = await tvdb<{
+    name?: string; overview?: string; year?: string; image?: string; runtime?: number; averageRuntime?: number;
+    genres?: { name: string }[]; contentRatings?: { name: string; country: string }[]; remoteIds?: { id: string; sourceName: string }[];
+  }>(`/${ruta}/${id}/extended?short=true`);
+  if (!ext) return null;
+  const es = await tvdb<{ name?: string; overview?: string }>(`/${ruta}/${id}/translations/spa`).catch(() => null);
+  const sinopsis = (es?.overview ?? '').trim() || (ext.overview ?? '').trim() || null;
+  const minutos = ext.runtime ?? ext.averageRuntime ?? null;
+  return {
+    id,
+    title: (es?.name ?? '').trim() || ext.name?.trim() || null,
+    year: Number(ext.year) || null,
+    overview: sinopsis,
+    idioma: (es?.overview ?? '').trim() ? 'es' : 'en',
+    genres: (ext.genres ?? []).map((g) => g.name).filter(Boolean),
+    certificacion: ext.contentRatings?.find((c) => c.country === 'esp')?.name ?? null,
+    runtime: minutos && minutos > 0 ? minutos : null,
+    posterUrl: ext.image && !/\/missing\//.test(ext.image) ? ext.image : null,
+    imdbId: ext.remoteIds?.find((r) => r.sourceName === 'IMDB')?.id ?? null,
+  };
+}
