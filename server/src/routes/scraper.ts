@@ -13,6 +13,7 @@ import { envio, enviarLote, EnvioError, planEnvio } from '../scanner/enviar.ts';
 import { carpetaDePelicula, carpetaDeSerie } from '../scanner/nombres-tmm.ts';
 import { deshacerUltima, HistorialError, ultimaInstantanea } from '../scanner/historial.ts';
 import { editarMetadatos, MetadatosError, validarCambios } from '../scanner/metadatos.ts';
+import { aplicarOmdb, buscarOmdb, detallesOmdb, OmdbError } from '../scanner/omdb-ficha.ts';
 
 /*
  * Pantalla «Scraper» (solo administrador): lista de titulos con lo que les falta y emparejado por
@@ -409,6 +410,38 @@ export default async function scraperRoutes(app: FastifyInstance) {
       return { propuestas };
     } catch (err) {
       if (err instanceof TmdbError && /No encontrado/.test(err.message)) return { propuestas: [], aviso: 'TMDb no tiene ese id' };
+      return reply.code(502).send({ error: (err as Error).message });
+    }
+  });
+
+  /*
+   * OMDb como segunda fuente, equivalente a TMDb en el emparejado: mismas propuestas (con `fuente: 'omdb'`) y su propio aplicar.
+   * Acepta un titulo o un id de IMDb; un id de TMDb no le sirve.
+   */
+  app.post('/api/scraper/resolver-omdb', async (req, reply) => {
+    if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'No autorizado' });
+    const { entrada, kind, year } = (req.body ?? {}) as { entrada?: string; kind?: string; year?: number | null };
+    if (!entrada?.trim() || (kind !== 'movie' && kind !== 'show')) return reply.code(400).send({ error: 'Escribe un título o un id de IMDb' });
+    const b = interpretarBusqueda(entrada);
+    if (b.tipo === 'tmdb') return { propuestas: [], aviso: 'OMDb no entiende ids de TMDb: escribe el título o el id de IMDb (tt…)' };
+    try {
+      const propuestas = b.tipo === 'imdb' ? [await detallesOmdb(b.id, kind)] : await buscarOmdb(b.texto, kind, year);
+      return { propuestas, aviso: propuestas.length ? undefined : 'OMDb no encuentra nada con eso' };
+    } catch (err) {
+      if (err instanceof OmdbError && /not found|incorrect imdb/i.test(err.message)) return { propuestas: [], aviso: 'OMDb no encuentra nada con eso' };
+      return reply.code(502).send({ error: (err as Error).message });
+    }
+  });
+
+  app.post('/api/scraper/aplicar-omdb', async (req, reply) => {
+    if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'No autorizado' });
+    const b = (req.body ?? {}) as { itemId?: number; imdbId?: string; kind?: string; fields?: unknown; overwrite?: boolean };
+    const validos = ['poster', 'plot', 'rating', 'genres'];
+    if (!Number.isInteger(b.itemId) || !/^tt\d{6,10}$/.test(b.imdbId ?? '') || (b.kind !== 'movie' && b.kind !== 'show')) return reply.code(400).send({ error: 'Faltan datos de la propuesta' });
+    if (!Array.isArray(b.fields) || b.fields.length === 0 || b.fields.some((c) => !validos.includes(String(c)))) return reply.code(400).send({ error: 'Solo se pueden aplicar póster, sinopsis, valoración y géneros' });
+    try {
+      return await aplicarOmdb({ itemId: b.itemId!, imdbId: b.imdbId!, kind: b.kind, fields: b.fields as never, overwrite: b.overwrite === true });
+    } catch (err) {
       return reply.code(502).send({ error: (err as Error).message });
     }
   });

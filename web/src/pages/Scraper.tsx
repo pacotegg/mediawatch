@@ -220,7 +220,7 @@ function Tarjeta({ p, elegida, onClick }: { p: Proposal; elegida: boolean; onCli
       </div>
       <div className="min-w-0">
         <div className="line-clamp-2 text-[11.5px] font-medium leading-tight">{p.title}</div>
-        <div className="text-[10.5px] text-mist-600">{p.year ?? 's/f'} · TMDb {p.tmdbId}</div>
+        <div className="text-[10.5px] text-mist-600">{p.year ?? 's/f'} · {p.fuente === 'omdb' ? p.imdbId : `TMDb ${p.tmdbId}`}</div>
       </div>
     </button>
   );
@@ -232,22 +232,22 @@ function Comparar({ titulo, p, campos, setCampos }: { titulo: ScraperTitulo; p: 
     {
       c: 'poster', hay: !!p.posterUrl,
       actual: titulo.poster ? <img src={img.poster(titulo.id, 400, titulo.arte_actualizado)} alt="" className="h-48 rounded-lg shadow-[0_10px_22px_-8px_rgb(0_0_0/0.85)] ring-1 ring-white/12" /> : <span className="text-mist-600">—</span>,
-      nuevo: p.posterUrl ? <img src={pequena(p.posterUrl, 'w500')!} alt="" className="h-48 rounded-lg shadow-[0_10px_22px_-8px_rgb(0_0_0/0.85)] ring-1 ring-accent/30" /> : <span className="text-mist-600">TMDb no tiene</span>,
+      nuevo: p.posterUrl ? <img src={pequena(p.posterUrl, 'w500')!} alt="" className="h-48 rounded-lg shadow-[0_10px_22px_-8px_rgb(0_0_0/0.85)] ring-1 ring-accent/30" /> : <span className="text-mist-600">{p.fuente === 'omdb' ? 'OMDb' : 'TMDb'} no tiene</span>,
     },
     {
       c: 'fanart', hay: !!p.backdropUrl,
       actual: titulo.fanart ? <img src={img.fanart(titulo.id, 800, titulo.arte_actualizado)} alt="" className="h-36 rounded-lg" /> : <span className="text-mist-600">—</span>,
-      nuevo: p.backdropUrl ? <img src={pequena(p.backdropUrl, 'w780')!} alt="" className="h-36 rounded-lg" /> : <span className="text-mist-600">TMDb no tiene</span>,
+      nuevo: p.backdropUrl ? <img src={pequena(p.backdropUrl, 'w780')!} alt="" className="h-36 rounded-lg" /> : <span className="text-mist-600">{p.fuente === 'omdb' ? 'OMDb' : 'TMDb'} no tiene</span>,
     },
     {
       c: 'logo', hay: !!p.logoUrl,
       actual: titulo.logo ? <img src={img.logo(titulo.id, 500, titulo.arte_actualizado)} alt="" className="h-20 object-contain" /> : <span className="text-mist-600">—</span>,
-      nuevo: p.logoUrl ? <img src={pequena(p.logoUrl, 'w500')!} alt="" className="h-20 object-contain" /> : <span className="text-mist-600">TMDb no tiene</span>,
+      nuevo: p.logoUrl ? <img src={pequena(p.logoUrl, 'w500')!} alt="" className="h-20 object-contain" /> : <span className="text-mist-600">{p.fuente === 'omdb' ? 'OMDb' : 'TMDb'} no tiene</span>,
     },
     {
       c: 'plot', hay: !!p.overview,
       actual: <p className="line-clamp-4 text-[12px] leading-relaxed text-mist-400">{titulo.plot || <span className="text-mist-600">—</span>}</p>,
-      nuevo: <p className="line-clamp-4 text-[12px] leading-relaxed text-mist-300">{p.overview || <span className="text-mist-600">TMDb no tiene</span>}</p>,
+      nuevo: <p className="line-clamp-4 text-[12px] leading-relaxed text-mist-300">{p.overview || <span className="text-mist-600">{p.fuente === 'omdb' ? 'OMDb' : 'TMDb'} no tiene</span>}</p>,
     },
     {
       c: 'rating', hay: p.rating != null,
@@ -272,7 +272,8 @@ function Comparar({ titulo, p, campos, setCampos }: { titulo: ScraperTitulo; p: 
   return (
     <div className="space-y-3">
       <div className="rounded-2xl bg-gradient-to-r from-accent/12 to-transparent p-4 ring-1 ring-accent/20">
-        <div className="text-[10.5px] font-medium tracking-[0.16em] text-accent/80 uppercase">Propuesta de TMDb</div>
+        <div className="text-[10.5px] font-medium tracking-[0.16em] text-accent/80 uppercase">Propuesta de {p.fuente === 'omdb' ? 'OMDb' : 'TMDb'}</div>
+        {p.fuente === 'omdb' && <div className="mt-1 text-[11.5px] text-amber-200/90">OMDb da el título y la sinopsis en inglés y no tiene fondo ni logo: suele servir para la nota, la edad, los géneros y un cartel de reserva.</div>}
         <div className="mt-1 text-[17px] font-semibold tracking-tight">{p.title} <span className="font-normal text-mist-400">({p.year ?? 's/f'})</span></div>
         {p.originalTitle && p.originalTitle !== p.title && <div className="text-[11.5px] text-mist-500">Título original: {p.originalTitle}</div>}
       </div>
@@ -283,7 +284,7 @@ function Comparar({ titulo, p, campos, setCampos }: { titulo: ScraperTitulo; p: 
       </div>
       <div className="divide-y divide-white/6 overflow-hidden rounded-2xl bg-black/20 ring-1 ring-white/6">
         <div className="grid grid-cols-[1.5rem_5rem_1fr_1fr] items-center gap-3 bg-white/4 px-3 py-2 text-[10.5px] font-medium tracking-[0.12em] text-mist-500 uppercase">
-          <span /><span>Campo</span><span>Actual</span><span>Propuesta de TMDb</span>
+          <span /><span>Campo</span><span>Actual</span><span>Propuesta de {p.fuente === 'omdb' ? 'OMDb' : 'TMDb'}</span>
         </div>
         {filas.map((f) => (
           <label key={f.c} className={`grid grid-cols-[1.5rem_5rem_1fr_1fr] items-center gap-3 px-3 py-2.5 transition-colors ${f.hay ? 'cursor-pointer hover:bg-white/5' : 'opacity-50'} ${campos.includes(f.c) ? 'bg-accent/6' : ''}`}>
@@ -323,9 +324,14 @@ function Emparejar({ titulo }: { titulo: ScraperTitulo }) {
   // Titulo, ano y datos de identidad: por defecto solo si el titulo aun no esta emparejado (es lo que despues usa «Organizar» para el nombre).
   const [identidad, setIdentidad] = useState(false);
   const lanzada = useRef<number | null>(null);
+  // De dónde salen las propuestas. OMDb solo entiende títulos e ids de IMDb: si el título ya tiene el suyo, se parte de él.
+  const [fuente, setFuente] = useState<'tmdb' | 'omdb'>('tmdb');
+  const inicialDe = (fu: 'tmdb' | 'omdb') => (fu === 'omdb' ? titulo.imdb_id || titulo.title : inicial);
 
   const buscar = useMutation({
-    mutationFn: (texto: string) => api.scraperResolver(texto, titulo.kind, titulo.tmdb_id ? null : titulo.year),
+    mutationFn: ({ texto, fu }: { texto: string; fu: 'tmdb' | 'omdb' }) => (fu === 'omdb'
+      ? api.scraperResolverOmdb(texto, titulo.kind, titulo.year)
+      : api.scraperResolver(texto, titulo.kind, titulo.tmdb_id ? null : titulo.year)),
     onSuccess: (r) => {
       setPropuestas(r.propuestas);
       setAviso(r.aviso ?? (r.propuestas.length === 0 ? 'Sin resultados. Prueba con otro título, un id de TMDb o la dirección de su página.' : ''));
@@ -338,9 +344,10 @@ function Emparejar({ titulo }: { titulo: ScraperTitulo }) {
 
   // Al elegir otro título de la lista se parte de cero y se lanza la primera búsqueda sola.
   useEffect(() => {
+    setFuente('tmdb');
     setEntrada(inicial);
     setPropuestas([]); setElegida(null); setCampos([]); setAviso(''); setError(''); setHecho(''); setIdentidad(!titulo.tmdb_id);
-    if (lanzada.current !== titulo.id) { lanzada.current = titulo.id; buscar.mutate(inicial); }
+    if (lanzada.current !== titulo.id) { lanzada.current = titulo.id; buscar.mutate({ texto: inicial, fu: 'tmdb' }); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [titulo.id]);
 
@@ -353,7 +360,9 @@ function Emparejar({ titulo }: { titulo: ScraperTitulo }) {
   }, [elegida, titulo]);
 
   const aplicar = useMutation({
-    mutationFn: () => api.enrichApply({ itemId: titulo.id, tmdbId: elegida!.tmdbId, kind: titulo.kind, fields: campos.flatMap((c) => (c === 'ficha' ? ['cast', 'studio', 'ratings'] : [c])), overwrite: true, identidad }),
+    mutationFn: () => (elegida!.fuente === 'omdb'
+      ? api.scraperAplicarOmdb({ itemId: titulo.id, imdbId: elegida!.imdbId!, kind: titulo.kind, fields: campos.filter((c): c is 'poster' | 'plot' | 'rating' | 'genres' => ['poster', 'plot', 'rating', 'genres'].includes(c)), overwrite: true })
+      : api.enrichApply({ itemId: titulo.id, tmdbId: elegida!.tmdbId, kind: titulo.kind, fields: campos.flatMap((c) => (c === 'ficha' ? ['cast', 'studio', 'ratings'] : [c])), overwrite: true, identidad })),
     onSuccess: (r) => {
       setHecho(`Guardado en «${r.title}»: ${r.applied.join(', ')}.`);
       setError('');
@@ -367,24 +376,39 @@ function Emparejar({ titulo }: { titulo: ScraperTitulo }) {
 
   return (
     <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <div className="flex gap-1 rounded-full bg-black/25 p-1 ring-1 ring-white/6">
+          {([['tmdb', 'TMDb'], ['omdb', 'OMDb']] as const).map(([k, e]) => (
+            <button key={k} type="button" disabled={buscar.isPending}
+              onClick={() => {
+                if (k === fuente) return;
+                setFuente(k); setPropuestas([]); setElegida(null); setCampos([]); setAviso(''); setError(''); setHecho('');
+                const texto = inicialDe(k); setEntrada(texto);
+                buscar.mutate({ texto, fu: k });
+              }}
+              className={`rounded-full px-4 py-1 text-[12.5px] font-medium transition-all ${fuente === k ? 'bg-white/14 text-mist-100 shadow-[inset_0_1px_0_rgb(255_255_255/0.1)]' : 'text-mist-500 hover:text-mist-200'}`}>{e}</button>
+          ))}
+        </div>
+        <span className="text-[11.5px] text-mist-600">{fuente === 'omdb' ? 'Sin fondo ni logo; título y sinopsis en inglés.' : 'La fuente principal: todo el arte y los datos en español.'}</span>
+      </div>
       <form
         className="flex gap-2"
-        onSubmit={(e) => { e.preventDefault(); if (entrada.trim()) buscar.mutate(entrada); }}
+        onSubmit={(e) => { e.preventDefault(); if (entrada.trim()) buscar.mutate({ texto: entrada, fu: fuente }); }}
       >
         <TextInput value={entrada} onChange={setEntrada} placeholder="Título, id de TMDb, id de IMDb (tt…) o dirección de su página" className="flex-1 rounded-full" />
-        <Button onClick={() => entrada.trim() && buscar.mutate(entrada)} disabled={buscar.isPending}>{buscar.isPending ? 'Buscando…' : 'Buscar'}</Button>
+        <Button onClick={() => entrada.trim() && buscar.mutate({ texto: entrada, fu: fuente })} disabled={buscar.isPending}>{buscar.isPending ? 'Buscando…' : 'Buscar'}</Button>
       </form>
       {aviso && <p className="text-[12.5px] text-mist-500">{aviso}</p>}
 
       {propuestas.length > 1 && (
         <div className="no-scrollbar flex gap-1 overflow-x-auto pb-1">
-          {propuestas.map((p) => <Tarjeta key={p.tmdbId} p={p} elegida={elegida?.tmdbId === p.tmdbId} onClick={() => setElegida(p)} />)}
+          {propuestas.map((p) => { const clave = p.imdbId ?? p.tmdbId; return <Tarjeta key={clave} p={p} elegida={(elegida?.imdbId ?? elegida?.tmdbId) === clave} onClick={() => setElegida(p)} />; })}
         </div>
       )}
 
       {elegida && <Comparar titulo={titulo} p={elegida} campos={campos} setCampos={setCampos} />}
 
-      {elegida && (
+      {elegida && elegida.fuente !== 'omdb' && (
         <label className="flex cursor-pointer items-start gap-2.5 text-[12.5px] text-mist-300">
           <Casilla marcada={identidad} onChange={setIdentidad} />
           <span>Poner también el título, el año y la clasificación de TMDb <span className="text-mist-500">({elegida.title}{elegida.year ? ` · ${elegida.year}` : ''}). Es lo que usa «Organizar» para el nombre de la carpeta y del fichero.</span></span>

@@ -453,6 +453,11 @@ export const api = {
   scraperTitulo: (id: number) => request<ScraperTitulo>('/api/scraper/titulo/' + id),
   scraperResolver: (entrada: string, kind: 'movie' | 'show', year?: number | null) =>
     post<{ propuestas: Proposal[]; aviso?: string }>('/api/scraper/resolver', { entrada, kind, year }),
+  /** Lo mismo con OMDb (título o id de IMDb). Su sinopsis y su título vienen en inglés; no tiene fondo ni logo. */
+  scraperResolverOmdb: (entrada: string, kind: 'movie' | 'show', year?: number | null) =>
+    post<{ propuestas: Proposal[]; aviso?: string }>('/api/scraper/resolver-omdb', { entrada, kind, year }),
+  scraperAplicarOmdb: (b: { itemId: number; imdbId: string; kind: 'movie' | 'show'; fields: ('poster' | 'plot' | 'rating' | 'genres')[]; overwrite?: boolean }) =>
+    post<{ applied: string[]; title: string }>('/api/scraper/aplicar-omdb', b),
 
   // Actividad (solo administrador): quién ve qué, mensajes y parar.
   actividad: () => request<Aparato[]>('/api/actividad'),
@@ -831,6 +836,9 @@ export type ServerSettings = {
 };
 
 export type Proposal = {
+  /** De dónde sale: TMDb si falta. Las de OMDb llevan `tmdbId: 0` y se identifican por `imdbId`. */
+  fuente?: 'tmdb' | 'omdb';
+  imdbId?: string | null;
   tmdbId: number;
   kind: 'movie' | 'show';
   title: string;
