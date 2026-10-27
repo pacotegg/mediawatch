@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button, TextInput } from '../components/Controls.tsx';
+import { Button, Casilla, TextInput } from '../components/Controls.tsx';
 import SelectorDeArte from '../components/SelectorDeArte.tsx';
 import EditorDatos from '../components/EditorDatos.tsx';
 import AsistenteNuevos from '../components/AsistenteNuevos.tsx';
@@ -160,8 +160,8 @@ function Lista({ seleccion, onSelect }: { seleccion: number | null; onSelect: (f
 
 function Tarjeta({ p, elegida, onClick }: { p: Proposal; elegida: boolean; onClick: () => void }) {
   return (
-    <button onClick={onClick} className={`flex w-32 shrink-0 flex-col gap-1.5 rounded-xl p-1.5 text-left transition-colors hover:bg-white/8 ${elegida ? 'bg-white/10 ring-1 ring-accent/50' : ''}`}>
-      <div className="aspect-2/3 w-full overflow-hidden rounded-lg bg-ink-800">
+    <button onClick={onClick} className={`flex w-32 shrink-0 flex-col gap-2 rounded-2xl p-2 text-left transition-all duration-200 hover:bg-white/8 ${elegida ? 'bg-gradient-to-b from-accent/16 to-accent/4 ring-1 ring-accent/45 shadow-[0_0_24px_-6px_rgb(240_165_74/0.45)]' : 'opacity-80 hover:opacity-100'}`}>
+      <div className="aspect-2/3 w-full overflow-hidden rounded-lg bg-ink-800 shadow-[0_12px_24px_-8px_rgb(0_0_0/0.85)] ring-1 ring-white/12">
         {p.posterUrl ? <img src={pequena(p.posterUrl, 'w342')!} alt="" loading="lazy" className="h-full w-full object-cover" /> : <div className="grid h-full place-items-center text-[10.5px] text-mist-600">Sin póster</div>}
       </div>
       <div className="min-w-0">
@@ -177,8 +177,8 @@ function Comparar({ titulo, p, campos, setCampos }: { titulo: ScraperTitulo; p: 
   const filas: { c: Campo; actual: React.ReactNode; nuevo: React.ReactNode; hay: boolean }[] = [
     {
       c: 'poster', hay: !!p.posterUrl,
-      actual: titulo.poster ? <img src={img.poster(titulo.id, 400, titulo.arte_actualizado)} alt="" className="h-48 rounded-lg" /> : <span className="text-mist-600">—</span>,
-      nuevo: p.posterUrl ? <img src={pequena(p.posterUrl, 'w500')!} alt="" className="h-48 rounded-lg" /> : <span className="text-mist-600">TMDb no tiene</span>,
+      actual: titulo.poster ? <img src={img.poster(titulo.id, 400, titulo.arte_actualizado)} alt="" className="h-48 rounded-lg shadow-[0_10px_22px_-8px_rgb(0_0_0/0.85)] ring-1 ring-white/12" /> : <span className="text-mist-600">—</span>,
+      nuevo: p.posterUrl ? <img src={pequena(p.posterUrl, 'w500')!} alt="" className="h-48 rounded-lg shadow-[0_10px_22px_-8px_rgb(0_0_0/0.85)] ring-1 ring-accent/30" /> : <span className="text-mist-600">TMDb no tiene</span>,
     },
     {
       c: 'fanart', hay: !!p.backdropUrl,
@@ -217,8 +217,9 @@ function Comparar({ titulo, p, campos, setCampos }: { titulo: ScraperTitulo; p: 
 
   return (
     <div className="space-y-3">
-      <div className="rounded-xl bg-black/20 p-3 text-[12.5px]">
-        <div className="font-semibold">{p.title} <span className="font-normal text-mist-500">({p.year ?? 's/f'})</span></div>
+      <div className="rounded-2xl bg-gradient-to-r from-accent/12 to-transparent p-4 ring-1 ring-accent/20">
+        <div className="text-[10.5px] font-medium tracking-[0.16em] text-accent/80 uppercase">Propuesta de TMDb</div>
+        <div className="mt-1 text-[17px] font-semibold tracking-tight">{p.title} <span className="font-normal text-mist-400">({p.year ?? 's/f'})</span></div>
         {p.originalTitle && p.originalTitle !== p.title && <div className="text-[11.5px] text-mist-500">Título original: {p.originalTitle}</div>}
       </div>
       <div className="flex gap-2 text-[11.5px]">
@@ -226,13 +227,13 @@ function Comparar({ titulo, p, campos, setCampos }: { titulo: ScraperTitulo; p: 
         <button className="text-mist-500 hover:underline underline-offset-2" onClick={() => setCampos(filas.filter((f) => f.hay && f.c !== 'genres' && f.c !== 'ficha' && !tiene(titulo, f.c)).map((f) => f.c))}>Solo huecos</button>
         <button className="text-mist-500 hover:underline underline-offset-2" onClick={() => setCampos([])}>Ninguno</button>
       </div>
-      <div className="divide-y divide-white/6 rounded-xl bg-white/4">
-        <div className="grid grid-cols-[1.5rem_5rem_1fr_1fr] items-center gap-3 px-3 py-1.5 text-[10.5px] uppercase tracking-wide text-mist-600">
+      <div className="divide-y divide-white/6 overflow-hidden rounded-2xl bg-black/20 ring-1 ring-white/6">
+        <div className="grid grid-cols-[1.5rem_5rem_1fr_1fr] items-center gap-3 bg-white/4 px-3 py-2 text-[10.5px] font-medium tracking-[0.12em] text-mist-500 uppercase">
           <span /><span>Campo</span><span>Actual</span><span>Propuesta de TMDb</span>
         </div>
         {filas.map((f) => (
-          <label key={f.c} className={`grid grid-cols-[1.5rem_5rem_1fr_1fr] items-center gap-3 px-3 py-2 ${f.hay ? 'cursor-pointer hover:bg-white/4' : 'opacity-50'}`}>
-            <input type="checkbox" disabled={!f.hay} checked={campos.includes(f.c)} onChange={() => alternar(f.c)} className="accent-[var(--color-accent,#7c8cff)]" />
+          <label key={f.c} className={`grid grid-cols-[1.5rem_5rem_1fr_1fr] items-center gap-3 px-3 py-2.5 transition-colors ${f.hay ? 'cursor-pointer hover:bg-white/5' : 'opacity-50'} ${campos.includes(f.c) ? 'bg-accent/6' : ''}`}>
+            <Casilla disabled={!f.hay} marcada={campos.includes(f.c)} onChange={() => alternar(f.c)} />
             <span className="text-[12.5px] font-medium">{CAMPOS.find((x) => x.clave === f.c)!.etiqueta}</span>
             <div className="min-w-0 text-[12.5px]">{f.actual}</div>
             <div className="min-w-0 text-[12.5px]">{f.nuevo}</div>
@@ -316,7 +317,7 @@ function Emparejar({ titulo }: { titulo: ScraperTitulo }) {
         className="flex gap-2"
         onSubmit={(e) => { e.preventDefault(); if (entrada.trim()) buscar.mutate(entrada); }}
       >
-        <TextInput value={entrada} onChange={setEntrada} placeholder="Título, id de TMDb, id de IMDb (tt…) o dirección de su página" className="flex-1" />
+        <TextInput value={entrada} onChange={setEntrada} placeholder="Título, id de TMDb, id de IMDb (tt…) o dirección de su página" className="flex-1 rounded-full" />
         <Button onClick={() => entrada.trim() && buscar.mutate(entrada)} disabled={buscar.isPending}>{buscar.isPending ? 'Buscando…' : 'Buscar'}</Button>
       </form>
       {aviso && <p className="text-[12.5px] text-mist-500">{aviso}</p>}
@@ -330,8 +331,8 @@ function Emparejar({ titulo }: { titulo: ScraperTitulo }) {
       {elegida && <Comparar titulo={titulo} p={elegida} campos={campos} setCampos={setCampos} />}
 
       {elegida && (
-        <label className="flex items-start gap-2 text-[12.5px] text-mist-300">
-          <input type="checkbox" checked={identidad} onChange={(e) => setIdentidad(e.target.checked)} className="mt-0.5 accent-[var(--color-accent,#7c8cff)]" />
+        <label className="flex cursor-pointer items-start gap-2.5 text-[12.5px] text-mist-300">
+          <Casilla marcada={identidad} onChange={setIdentidad} />
           <span>Poner también el título, el año y la clasificación de TMDb <span className="text-mist-500">({elegida.title}{elegida.year ? ` · ${elegida.year}` : ''}). Es lo que usa «Organizar» para el nombre de la carpeta y del fichero.</span></span>
         </label>
       )}
@@ -694,7 +695,7 @@ export default function Scraper() {
           <h1 className="mt-1.5 text-[34px] leading-none font-semibold tracking-tight">Scraper</h1>
           <p className="mt-2 hidden max-w-md text-[13px] text-mist-500 sm:block">Empareja con TMDb, completa los datos y el arte, y envía a la biblioteca.</p>
         </div>
-        <nav className="glass flex max-w-full gap-0.5 overflow-x-auto rounded-full p-1">
+        <nav className="glass no-scrollbar flex max-w-full gap-0.5 overflow-x-auto rounded-full p-1">
           {MODOS.map(([k, e]) => (
             <button key={k} onClick={() => setModo(k)} className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-medium transition-all duration-200 sm:gap-2 sm:px-4 ${modo === k ? 'bg-white/14 text-mist-100 shadow-[inset_0_1px_0_rgb(255_255_255/0.1)]' : 'text-mist-500 hover:text-mist-200'}`}>
               {e}

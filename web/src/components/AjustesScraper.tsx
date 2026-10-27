@@ -22,9 +22,9 @@ export default function AjustesScraper() {
   return (
     <div className="space-y-5">
       <Panel title="Proveedores de datos" subtitle="Títulos, sinopsis, reparto, estudios, valoraciones y arte salen de TMDb; el arte extra, de fanart.tv y TheTVDB.">
-        <div className="flex items-center gap-2 text-[13px]">
-          <span className={`h-2 w-2 rounded-full ${estado?.configured ? 'bg-emerald-400' : 'bg-red-400'}`} />
-          <span>{estado?.configured ? 'TMDb configurado' : 'Falta la clave de TMDb: sin ella el scraper no puede buscar'}</span>
+        <div className={`flex items-center gap-3 rounded-2xl px-4 py-3 text-[13.5px] ring-1 ${estado?.configured ? 'bg-emerald-400/8 text-emerald-200 ring-emerald-400/20' : 'bg-red-400/8 text-red-200 ring-red-400/25'}`}>
+          <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${estado?.configured ? 'bg-emerald-400 shadow-[0_0_10px_rgb(52_211_153/0.8)]' : 'bg-red-400 shadow-[0_0_10px_rgb(248_113_113/0.8)]'}`} />
+          <span className="font-medium">{estado?.configured ? 'TMDb configurado' : 'Falta la clave de TMDb: sin ella el scraper no puede buscar'}</span>
         </div>
         <Field label={estado?.configured ? 'Cambiar la clave de API de TMDb' : 'Clave de API de TMDb'} hint="Gratuita en themoviedb.org. Solo se usa cuando escrapeas; no se muestra ni se registra en ningún sitio.">
           <div className="flex gap-2">

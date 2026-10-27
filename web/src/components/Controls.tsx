@@ -149,3 +149,13 @@ export function TextInput({
     />
   );
 }
+
+/** Casilla propia: la nativa desentona con el resto. El input real queda debajo, invisible, para teclado y lectores. */
+export function Casilla({ marcada, onChange, disabled }: { marcada: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+  return (
+    <span className={`relative grid h-[18px] w-[18px] shrink-0 place-items-center rounded-md ring-1 transition-colors ${marcada ? 'bg-accent text-ink-950 ring-accent' : 'bg-black/30 ring-white/20'} ${disabled ? 'opacity-40' : ''}`}>
+      <input type="checkbox" checked={marcada} disabled={disabled} onChange={(e) => onChange(e.target.checked)} className="absolute inset-0 cursor-pointer opacity-0 disabled:cursor-default" />
+      {marcada && <svg viewBox="0 0 12 12" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m2.5 6.4 2.3 2.3 4.7-5" /></svg>}
+    </span>
+  );
+}

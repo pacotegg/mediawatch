@@ -116,13 +116,13 @@ export default function SelectorDeArte({
   return (
     <div className="mt-2">
       {/* ----- BARRA FIJA: todo lo que se usa, siempre a la vista ----- */}
-      <div className="sticky top-2 z-20 space-y-3 rounded-2xl bg-ink-900/95 p-3 ring-1 ring-white/12 backdrop-blur">
+      <div className="sticky top-2 z-20 space-y-3 rounded-2xl bg-ink-900/90 p-3.5 shadow-[0_18px_40px_-16px_rgb(0_0_0/0.9)] ring-1 ring-white/12 backdrop-blur-xl">
         <div className="flex flex-wrap gap-1.5">
           {PAPELES.map((p) => (
             <button
               key={p.clave}
               onClick={() => setPapel(p.clave)}
-              className={`rounded-full px-3.5 py-1.5 text-[13px] ${papel === p.clave ? 'bg-mist-100 font-medium text-ink-950' : 'bg-white/6 text-mist-300 hover:bg-white/12'}`}
+              className={`rounded-full px-3.5 py-1.5 text-[13px] ${papel === p.clave ? 'bg-accent/18 font-medium text-accent-soft ring-1 ring-accent/40' : 'bg-white/6 text-mist-300 hover:bg-white/12'}`}
             >
               {p.etiqueta}
               {imagenes?.[p.clave] ? <span className="ml-1.5 opacity-60">{imagenes[p.clave].length}</span> : null}
@@ -133,13 +133,13 @@ export default function SelectorDeArte({
         <div className="flex flex-wrap items-end gap-4">
           <div>
             <div className="mb-1 text-[11.5px] font-medium text-mist-500">Actual</div>
-            <div className={`h-44 shrink-0 overflow-hidden rounded-xl bg-ink-800 ring-1 ring-white/10 ${forma}`}>
+            <div className={`h-44 shrink-0 overflow-hidden rounded-xl bg-ink-800 shadow-[0_14px_28px_-8px_rgb(0_0_0/0.85)] ring-1 ring-white/12 ${forma}`}>
               <img src={imgs[papel === 'clearlogo' ? 'logo' : papel](itemId, 700, version)} alt="" className={`h-full w-full ${contiene ? 'object-contain p-2' : 'object-cover'}`} onError={(e) => (e.currentTarget.style.opacity = '0')} />
             </div>
           </div>
           <div>
             <div className={`mb-1 text-[11.5px] font-medium ${previa ? 'text-accent' : 'text-mist-600'}`}>La que vas a poner</div>
-            <div className={`grid h-44 shrink-0 place-items-center overflow-hidden rounded-xl bg-ink-800 ${forma} ${previa ? 'ring-2 ring-accent/70' : 'ring-1 ring-dashed ring-white/10'}`}>
+            <div className={`grid h-44 shrink-0 place-items-center overflow-hidden rounded-xl bg-ink-800 ${forma} ${previa ? 'shadow-[0_0_28px_-6px_rgb(240_165_74/0.5)] ring-2 ring-accent/70' : 'ring-1 ring-dashed ring-white/10'}`}>
               {previa
                 ? <img src={grande(previa)} alt="" className={`h-full w-full ${contiene ? 'object-contain p-2' : 'object-cover'}`} />
                 : <span className="px-3 text-center text-[11.5px] text-mist-600">Pulsa una de abajo</span>}
@@ -151,7 +151,7 @@ export default function SelectorDeArte({
             <button
               onClick={() => previa && poner.mutate(previa.url)}
               disabled={!previa || ocupado}
-              className="rounded-full bg-accent px-5 py-2.5 text-[14px] font-semibold text-ink-950 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-35"
+              className="rounded-full bg-gradient-to-b from-accent-soft to-accent px-5 py-2.5 text-[14px] font-semibold text-ink-950 shadow-[0_8px_22px_-8px_rgb(240_165_74/0.6)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-35 disabled:shadow-none"
             >
               {poner.isPending ? 'Guardando…' : 'Usar esta imagen'}
             </button>
@@ -195,7 +195,7 @@ export default function SelectorDeArte({
                   onClick={() => setPrevia(i)}
                   disabled={ocupado}
                   title={`${i.ancho > 0 ? `${i.ancho}×${i.alto} · ` : ''}${i.idioma || 'sin texto'}`}
-                  className={`group relative overflow-hidden rounded-xl bg-ink-800 ring-1 transition-all hover:ring-white/50 disabled:opacity-50 ${previa?.url === i.url ? 'ring-2 ring-accent' : 'ring-white/10'} ${forma}`}
+                  className={`group relative overflow-hidden rounded-xl bg-ink-800 ring-1 transition-all hover:ring-white/50 disabled:opacity-50 ${previa?.url === i.url ? 'ring-2 ring-accent shadow-[0_0_22px_-6px_rgb(240_165_74/0.55)]' : 'ring-white/10 shadow-[0_8px_18px_-8px_rgb(0_0_0/0.8)]'} ${forma}`}
                 >
                   <img src={i.vista} alt="" loading="lazy" className={`h-full w-full ${contiene ? 'object-contain p-2' : 'object-cover'}`} />
                   <span className="absolute inset-x-0 bottom-0 bg-black/70 px-1.5 py-1 text-[10.5px] text-mist-200 opacity-0 transition-opacity group-hover:opacity-100">

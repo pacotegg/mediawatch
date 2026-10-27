@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button, TextInput } from './Controls.tsx';
+import { Button, Casilla, TextInput } from './Controls.tsx';
 import { api, img, type FilaNueva, type Proposal } from '../lib/api.ts';
 import SelectorDeArte from './SelectorDeArte.tsx';
 import EnviarTitulos from './EnviarTitulos.tsx';
@@ -28,16 +28,19 @@ const fecha = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('e
 
 function Barra({ hechos, total }: { hechos: number; total: number }) {
   return (
-    <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/8">
-      <div className="h-full bg-accent transition-all" style={{ width: `${total ? Math.round((100 * hechos) / total) : 0}%` }} />
+    <div className="h-1.5 w-full overflow-hidden rounded-full bg-black/30 ring-1 ring-white/6">
+      <div className="h-full rounded-full bg-gradient-to-r from-accent to-accent-soft shadow-[0_0_10px_rgb(240_165_74/0.6)] transition-all duration-500" style={{ width: `${total ? Math.round((100 * hechos) / total) : 0}%` }} />
     </div>
   );
 }
 
 function Paso({ n, titulo, children }: { n: number; titulo: string; children: React.ReactNode }) {
   return (
-    <section className="glass space-y-3 rounded-[var(--radius-panel)] p-5">
-      <h3 className="flex items-center gap-2 text-[14px] font-semibold"><span className="grid h-5 w-5 place-items-center rounded-full bg-white/12 text-[11px]">{n}</span>{titulo}</h3>
+    <section className="glass space-y-4 rounded-[var(--radius-panel)] p-5 sm:p-6">
+      <h3 className="flex items-center gap-3 text-[16px] font-semibold tracking-tight">
+        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-gradient-to-br from-accent-soft to-accent text-[12px] font-bold text-ink-950 shadow-[0_0_14px_rgb(240_165_74/0.45)]">{n}</span>
+        {titulo}
+      </h3>
       {children}
     </section>
   );
@@ -70,10 +73,10 @@ function FilaArte({ id, titulo, kind }: { id: number; titulo: string; kind: 'mov
   const { data: t } = useQuery({ queryKey: ['scraper-titulo', id], queryFn: () => api.scraperTitulo(id) });
   const [abierto, setAbierto] = useState(false);
   return (
-    <div className="rounded-xl bg-white/4 p-3">
+    <div className="rounded-2xl bg-white/4 p-4 ring-1 ring-white/6">
       <div className="flex flex-wrap items-start gap-4">
         <div className="flex flex-wrap gap-3">
-          <div className="h-60 w-40 overflow-hidden rounded-xl bg-ink-800 ring-1 ring-white/10">{t?.poster ? <img src={img.poster(id, 400, t.arte_actualizado)} alt="" className="h-full w-full object-cover" /> : <div className="grid h-full place-items-center text-[12px] text-mist-600">Sin cartel</div>}</div>
+          <div className="h-60 w-40 overflow-hidden rounded-xl bg-ink-800 shadow-[0_14px_28px_-8px_rgb(0_0_0/0.85)] ring-1 ring-white/12">{t?.poster ? <img src={img.poster(id, 400, t.arte_actualizado)} alt="" className="h-full w-full object-cover" /> : <div className="grid h-full place-items-center text-[12px] text-mist-600">Sin cartel</div>}</div>
           <div className="h-60 w-[26rem] max-w-full overflow-hidden rounded-xl bg-ink-800 ring-1 ring-white/10">{t?.fanart ? <img src={img.fanart(id, 800, t.arte_actualizado)} alt="" className="h-full w-full object-cover" /> : <div className="grid h-full place-items-center text-[12px] text-mist-600">Sin fondo</div>}</div>
           <div className="grid h-60 w-56 place-items-center overflow-hidden rounded-xl bg-ink-800 p-3 ring-1 ring-white/10">{t?.logo ? <img src={img.logo(id, 500, t.arte_actualizado)} alt="" className="max-h-full max-w-full object-contain" /> : <span className="text-[12px] text-mist-600">Sin logo</span>}</div>
         </div>
@@ -166,13 +169,13 @@ export default function AsistenteNuevos() {
     <div className="space-y-5">
       <Paso n={1} titulo="Elige qué ficheros escrapear">
         <div className="flex flex-wrap items-center gap-2">
-          <select value={fuente} onChange={(e) => setFuente(e.target.value)} className="rounded-xl border border-white/8 bg-white/6 px-3 py-2 text-[13px]">
+          <select value={fuente} onChange={(e) => setFuente(e.target.value)} className="rounded-full border border-white/8 bg-black/25 px-4 py-2 text-[13px] outline-none transition-colors focus:border-accent/40">
             <option value="" className="bg-ink-900">Todas las fuentes</option>
             {fuentes.map((f) => <option key={f.ruta} value={f.ruta} className="bg-ink-900">{f.name} ({f.pendientes} sin escrapear)</option>)}
           </select>
           <TextInput value={texto} onChange={setTexto} placeholder="Buscar en la lista…" className="w-56" />
-          <label className="flex items-center gap-2 text-[12.5px] text-mist-400">
-            <input type="checkbox" checked={todos} onChange={(e) => setTodos(e.target.checked)} className="accent-[var(--color-accent,#7c8cff)]" />
+          <label className="flex cursor-pointer items-center gap-2 text-[12.5px] text-mist-400">
+            <Casilla marcada={todos} onChange={setTodos} />
             Mostrar también los ya escrapeados
           </label>
           <Button variant="ghost" onClick={() => lista.refetch()} disabled={lista.isFetching}>{lista.isFetching ? 'Mirando…' : 'Actualizar lista'}</Button>
@@ -184,25 +187,25 @@ export default function AsistenteNuevos() {
           <button className="text-mist-500 hover:underline underline-offset-2" onClick={() => setMarcados(new Set())}>Quitar marcas</button>
         </div>
 
-        <div className="max-h-96 space-y-1 overflow-y-auto pr-1">
+        <div className="max-h-96 space-y-1 overflow-y-auto rounded-2xl bg-black/20 p-1.5 ring-1 ring-white/6">
           {nuevos.map((n) => (
-            <label key={n.ruta} className={`flex cursor-pointer items-center gap-3 rounded-lg px-2.5 py-1.5 transition-colors ${marcados.has(`r:${n.ruta}`) ? 'bg-white/10' : 'hover:bg-white/5'}`}>
-              <input type="checkbox" checked={marcados.has(`r:${n.ruta}`)} onChange={() => alternar(`r:${n.ruta}`)} className="accent-[var(--color-accent,#7c8cff)]" />
+            <label key={n.ruta} className={`flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2 transition-colors ${marcados.has(`r:${n.ruta}`) ? 'bg-gradient-to-r from-accent/16 via-accent/6 to-transparent ring-1 ring-accent/25' : 'hover:bg-white/6'}`}>
+              <Casilla marcada={marcados.has(`r:${n.ruta}`)} onChange={() => alternar(`r:${n.ruta}`)} />
               <div className="min-w-0 flex-1">
-                <div className="truncate text-[13px]">{n.carpeta}</div>
+                <div className="truncate text-[13.5px] font-medium">{n.carpeta}</div>
                 <div className="text-[11px] text-mist-600">{n.biblioteca} · {n.tipo === 'video' ? 'Vídeo suelto' : 'Carpeta con vídeo'} · en el disco, aún sin analizar</div>
               </div>
-              <span className="rounded bg-sky-500/15 px-1.5 py-0.5 text-[10.5px] text-sky-300">nuevo</span>
+              <span className="rounded-full bg-sky-400/15 px-2 py-0.5 text-[10.5px] font-medium text-sky-300">nuevo</span>
             </label>
           ))}
           {items.map((i) => (
-            <label key={i.id} className={`flex cursor-pointer items-center gap-3 rounded-lg px-2.5 py-1.5 transition-colors ${marcados.has(`i:${i.id}`) ? 'bg-white/10' : 'hover:bg-white/5'}`}>
-              <input type="checkbox" checked={marcados.has(`i:${i.id}`)} onChange={() => alternar(`i:${i.id}`)} className="accent-[var(--color-accent,#7c8cff)]" />
+            <label key={i.id} className={`flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2 transition-colors ${marcados.has(`i:${i.id}`) ? 'bg-gradient-to-r from-accent/16 via-accent/6 to-transparent ring-1 ring-accent/25' : 'hover:bg-white/6'}`}>
+              <Casilla marcada={marcados.has(`i:${i.id}`)} onChange={() => alternar(`i:${i.id}`)} />
               <div className="min-w-0 flex-1">
-                <div className="truncate text-[13px]">{i.carpeta}</div>
+                <div className="truncate text-[13.5px] font-medium">{i.carpeta}</div>
                 <div className="text-[11px] text-mist-600">{i.biblioteca} · {i.kind === 'show' ? 'Serie' : 'Película'}{i.alta ? ` · ${fecha(i.alta)}` : ''}</div>
               </div>
-              {i.escrapeado && <span className="rounded bg-white/8 px-1.5 py-0.5 text-[10.5px] text-mist-400">escrapeado</span>}
+              {i.escrapeado && <span className="rounded-full bg-emerald-400/12 px-2 py-0.5 text-[10.5px] font-medium text-emerald-300">escrapeado</span>}
             </label>
           ))}
           {!lista.isFetching && items.length + nuevos.length === 0 && (
@@ -230,18 +233,20 @@ export default function AsistenteNuevos() {
               const actual = opciones.find((o) => o.tmdbId === e?.tmdbId) ?? f.propuesta;
               const [etiqueta, tono] = CONFIANZA[f.confianza];
               return (
-                <div key={f.itemId} className={`flex gap-3 rounded-xl p-2.5 ${e?.incluir ? 'bg-white/6' : 'bg-white/3 opacity-70'}`}>
-                  <input type="checkbox" className="mt-1 accent-[var(--color-accent,#7c8cff)]" disabled={!actual} checked={Boolean(e?.incluir && actual)}
-                    onChange={(ev) => setEleccion((p) => ({ ...p, [f.itemId]: { tmdbId: p[f.itemId]?.tmdbId ?? actual?.tmdbId ?? null, incluir: ev.target.checked } }))} />
-                  <div className="h-48 w-32 shrink-0 overflow-hidden rounded-lg bg-ink-800 ring-1 ring-white/10">{actual?.posterUrl && <img src={pequena(actual.posterUrl)!} alt="" className="h-full w-full object-cover" />}</div>
+                <div key={f.itemId} className={`flex gap-4 rounded-2xl p-3 transition-all ${e?.incluir ? 'bg-white/6 ring-1 ring-accent/25' : 'bg-white/3 opacity-60 ring-1 ring-white/6'}`}>
+                  <div className="pt-1">
+                    <Casilla disabled={!actual} marcada={Boolean(e?.incluir && actual)}
+                      onChange={(v) => setEleccion((p) => ({ ...p, [f.itemId]: { tmdbId: p[f.itemId]?.tmdbId ?? actual?.tmdbId ?? null, incluir: v } }))} />
+                  </div>
+                  <div className="h-40 w-[6.7rem] shrink-0 overflow-hidden rounded-lg bg-ink-800 shadow-[0_14px_28px_-8px_rgb(0_0_0/0.85)] ring-1 ring-white/12">{actual?.posterUrl && <img src={pequena(actual.posterUrl)!} alt="" className="h-full w-full object-cover" />}</div>
                   <div className="min-w-0 flex-1 text-[14px]">
                     <div className="truncate text-mist-500">{f.titulo}{f.anio ? ` (${f.anio})` : ''} · {f.biblioteca}</div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-medium">{actual ? `${actual.title} (${actual.year ?? 's/f'})` : 'Sin propuesta'}</span>
-                      <span className={`rounded-md px-1.5 py-0.5 text-[10.5px] ring-1 ${tono}`}>{etiqueta}</span>
+                      <span className="text-[15px] font-semibold">{actual ? `${actual.title} (${actual.year ?? 's/f'})` : 'Sin propuesta'}</span>
+                      <span className={`rounded-full px-2 py-0.5 text-[10.5px] font-medium ring-1 ${tono}`}>{etiqueta}</span>
                     </div>
                     {opciones.length > 1 && (
-                      <select value={actual?.tmdbId ?? ''} onChange={(ev) => setEleccion((p) => ({ ...p, [f.itemId]: { tmdbId: Number(ev.target.value), incluir: true } }))} className="mt-1 max-w-full rounded-lg border border-white/8 bg-white/6 px-2 py-1 text-[11.5px]">
+                      <select value={actual?.tmdbId ?? ''} onChange={(ev) => setEleccion((p) => ({ ...p, [f.itemId]: { tmdbId: Number(ev.target.value), incluir: true } }))} className="mt-1.5 max-w-full rounded-full border border-white/8 bg-black/25 px-3 py-1 text-[11.5px] outline-none focus:border-accent/40">
                         {opciones.map((o) => <option key={o.tmdbId} value={o.tmdbId} className="bg-ink-900">{o.title} ({o.year ?? 's/f'}) · TMDb {o.tmdbId}</option>)}
                       </select>
                     )}
@@ -304,12 +309,12 @@ export default function AsistenteNuevos() {
                   </details>
                 ))}
               </div>
-              <label className="flex items-center gap-2 text-[12.5px] text-mist-300">
-                <input type="checkbox" checked={copiarArte} onChange={(e) => setCopiarArte(e.target.checked)} className="accent-[var(--color-accent,#7c8cff)]" />
+              <label className="flex cursor-pointer items-center gap-2.5 text-[12.5px] text-mist-300">
+                <Casilla marcada={copiarArte} onChange={setCopiarArte} />
                 Copiar también el arte a la carpeta de cada título (para Plex y otros programas)
               </label>
-              <label className="flex items-start gap-2 text-[12.5px] text-mist-300">
-                <input type="checkbox" checked={escribirNfo} onChange={(e) => setEscribirNfo(e.target.checked)} className="mt-0.5 accent-[var(--color-accent,#7c8cff)]" />
+              <label className="flex cursor-pointer items-start gap-2.5 text-[12.5px] text-mist-300">
+                <Casilla marcada={escribirNfo} onChange={setEscribirNfo} />
                 <span>Escribir también el NFO en cada carpeta <span className="text-mist-500">(como tMM: así los datos viajan con la carpeta cuando la muevas a la biblioteca y el escaneo de allí los recupera)</span></span>
               </label>
               <div className="flex flex-wrap items-center gap-3">
