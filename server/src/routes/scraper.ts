@@ -6,7 +6,7 @@ import { detallesDe, search, tmdbGet, TmdbError, type Proposal } from '../scanne
 import { interpretarBusqueda } from '../scanner/buscar-id.ts';
 import { aplicarArteCarpeta, ArteCarpetaError, planArteCarpeta } from '../scanner/arte-carpeta.ts';
 import { basename, dirname, relative } from 'node:path';
-import { aplicacion, aplicarDatos, buscarNuevos, busqueda, ejecutarLote, fuentesConPendientes, listarCandidatos, marcarEntradas, planesDeLoteMedidos, renombrado, sinRegistrar, totalPendientes, validarFuentes } from '../scanner/lote.ts';
+import { aplicacion, aplicarDatos, buscarNuevos, busqueda, ejecutarLote, fuentesConPendientes, listarCandidatos, marcarEntradas, planesDeLoteMedidos, renombrado, SIN_IGNORADAS, sinRegistrar, totalPendientes, validarFuentes } from '../scanner/lote.ts';
 import { aplicarOrganizar, asegurarMedidos, OrganizarError, planOrganizar } from '../scanner/organizar.ts';
 import { aplicarNfo, NfoError, planNfo } from '../scanner/nfo-escribir.ts';
 import { envio, enviarLote, EnvioError, planEnvio } from '../scanner/enviar.ts';
@@ -87,7 +87,7 @@ export default async function scraperRoutes(app: FastifyInstance) {
     if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'No autorizado' });
     const q = req.query as { filtro?: string; q?: string; kind?: string; offset?: string };
     const filtro = FILTROS[q.filtro ?? 'todos'] ?? FILTROS.todos;
-    const donde = [filtro];
+    const donde = [filtro, SIN_IGNORADAS];
     const params: (string | number)[] = [];
     if (q.kind === 'movie' || q.kind === 'show') { donde.push('i.kind = ?'); params.push(q.kind); }
     const texto = normalize(q.q ?? '');

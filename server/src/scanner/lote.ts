@@ -35,6 +35,11 @@ const pausa = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const SIN_ESCRAPEAR = "(i.tmdb_id IS NULL OR i.tmdb_id = '') AND i.meta_origen IS NULL";
 
+/** Bibliotecas que el scraper no enseña: los monólogos no tienen datos que buscar (ni los tendrán) y llenaban las listas. */
+const IGNORADAS = ['Monólogos'];
+const ignorada = (nombre: string) => IGNORADAS.some((n) => n.toLowerCase() === nombre.toLowerCase());
+export const SIN_IGNORADAS = `i.library_id NOT IN (SELECT id FROM libraries WHERE name IN (${IGNORADAS.map((n) => `'${n}'`).join(',')}))`;
+
 export type Candidato = { id: number; titulo: string; anio: number | null; kind: 'movie' | 'show'; carpeta: string; biblioteca: string; ruta: string; alta: string | null; escrapeado: boolean };
 
 /**
@@ -42,7 +47,7 @@ export type Candidato = { id: number; titulo: string; anio: number | null; kind:
  * llega nuevo, sin .nfo); con `todos`, tambien los ya escrapeados (marcados). `carpeta` es el nombre que tiene en disco, que es lo que el usuario reconoce.
  */
 export function listarCandidatos(o: { biblioteca?: string; q?: string; todos?: boolean; limite?: number }): Candidato[] {
-  const donde: string[] = [o.todos ? '1' : SIN_ESCRAPEAR];
+  const donde: string[] = [o.todos ? '1' : SIN_ESCRAPEAR, SIN_IGNORADAS];
   const params: (string | number)[] = [];
   if (o.biblioteca) { donde.push('l.path = ?'); params.push(o.biblioteca); }
   const q = normalize(o.q ?? '');
@@ -84,7 +89,7 @@ function tieneVideos(dir: string, niveles: number): boolean {
  */
 export function sinRegistrar(rutaFuente: string): SinRegistrar[] {
   const fuente = todasLasFuentes().find((l) => mismo(l.path, rutaFuente));
-  if (!fuente) return [];
+  if (!fuente || ignorada(fuente.name)) return [];
   const conocidos = new Set((db.prepare('SELECT i.folder FROM items i JOIN libraries l ON l.id = i.library_id WHERE LOWER(l.path) = LOWER(?)').all(fuente.path) as { folder: string }[]).map((r) => resolve(r.folder).toLowerCase()));
   let raiz;
   try { raiz = readdirSync(fuente.path, { withFileTypes: true }); } catch { return []; }
@@ -125,7 +130,7 @@ export async function registrarRutas(rutas: string[], escanear: (p?: undefined, 
 export function fuentesConPendientes() {
   const contar = db.prepare(`SELECT COUNT(i.id) AS n FROM libraries l JOIN items i ON i.library_id = l.id AND ${SIN_ESCRAPEAR} WHERE LOWER(l.path) = LOWER(?)`);
   const marca = (l: LibraryConfig, entrada: boolean) => ({ name: l.name, ruta: l.path, kind: l.kind, entrada, pendientes: (contar.get(l.path) as { n: number }).n });
-  return [...config.libraries.map((l) => marca(l, false)), ...config.fuentesScraper.map((l) => marca(l, true))];
+  return [...config.libraries.filter((l) => !ignorada(l.name)).map((l) => marca(l, false)), ...config.fuentesScraper.map((l) => marca(l, true))];
 }
 
 /**
@@ -167,7 +172,7 @@ export function marcarEntradas(): void {
     throw e;
   }
 }
-export const totalPendientes = () => (db.prepare(`SELECT COUNT(*) AS n FROM items i WHERE ${SIN_ESCRAPEAR}`).get() as { n: number }).n;
+export const totalPendientes = () => (db.prepare(`SELECT COUNT(*) AS n FROM items i WHERE ${SIN_ESCRAPEAR} AND ${SIN_IGNORADAS}`).get() as { n: number }).n;
 
 /* ------------------------------------------------------------------ 1. buscar */
 
