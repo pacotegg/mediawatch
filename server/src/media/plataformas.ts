@@ -398,13 +398,14 @@ export function refrescarPlataformas(dias = 7): number {
         jobPlataformas.hechos++;
         await new Promise((r) => setTimeout(r, 60));
       }
-    } catch (err) {
-      jobPlataformas.error = (err as Error).message;
       // Un refresco completo y sin cortes deja anotado que `item_plataformas` ya conoce todo el catálogo actual.
-      if (dias === 0 && !jobPlataformas.parando && !jobPlataformas.error) {
+      // (Estaba dentro del `catch`, donde `error` ya vale algo: nunca se anotaba y la pasada de ~1.900 títulos se repetía en cada arranque.)
+      if (dias === 0 && !jobPlataformas.parando) {
         db.prepare(`INSERT INTO plataformas_meta (clave, valor) VALUES ('catalogo', ?)
                     ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor`).run(CATALOGO_VERSION);
       }
+    } catch (err) {
+      jobPlataformas.error = (err as Error).message;
     } finally {
       jobPlataformas.running = false;
       jobPlataformas.parando = false;
