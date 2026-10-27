@@ -78,7 +78,9 @@ test('lo de una biblioteca de verdad lo ven los dos', async () => {
   assert.equal((await pedir('GET', `/api/items/${idBiblioteca}/poster`, { galleta: galletaNormal })).status, 200);
 });
 
-test('la ficha de datos de un título de entrada también la ve solo el administrador (la pestaña Datos del Scraper)', async () => {
-  assert.equal((await pedir('GET', `/api/items/${idEntrada}`, { galleta: galletaAdmin })).status, 200);
-  assert.equal((await pedir('GET', `/api/items/${idEntrada}`, { galleta: galletaNormal })).status, 404);
+test('la ficha de datos de un título de entrada solo se sirve a un administrador y solo si la pide la pestaña Datos del Scraper (?entrada=1)', async () => {
+  assert.equal((await pedir('GET', `/api/items/${idEntrada}`, { galleta: galletaAdmin })).status, 404, 'sin la marca, ni el administrador');
+  assert.equal((await pedir('GET', `/api/items/${idEntrada}?entrada=1`, { galleta: galletaAdmin })).status, 200);
+  assert.equal((await pedir('GET', `/api/items/${idEntrada}?entrada=1`, { galleta: galletaNormal })).status, 404, 'un perfil normal nunca');
+  assert.equal((await pedir('GET', `/api/items/${idBiblioteca}?entrada=1`, { galleta: galletaNormal })).status, 200, 'y la marca no estorba en una biblioteca real');
 });

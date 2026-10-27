@@ -338,6 +338,8 @@ export const api = {
     return request<{ total: number; items: ItemSummary[] }>(`/api/items?${qs}`);
   },
   item: (id: number) => request<ItemDetail>(`/api/items/${id}`),
+  /** Lo mismo para la pestaña Datos del Scraper: el servidor solo lo sirve así (y a un administrador) si el título es de una carpeta de entrada. */
+  itemScraper: (id: number) => request<ItemDetail>(`/api/items/${id}?entrada=1`),
   deleteItem: (id: number, confirmar: string) =>
     request<{ borrado: true; titulo: string; ficheros: number }>(`/api/items/${id}`, {
       method: 'DELETE',

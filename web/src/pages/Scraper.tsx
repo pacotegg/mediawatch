@@ -652,7 +652,7 @@ function Deshacer({ id }: { id: number }) {
 
 /** Los datos del título se editan a mano con el mismo editor de la ficha de la web (incluye saga y deshacer). */
 function Datos({ id }: { id: number }) {
-  const { data: item } = useQuery({ queryKey: ['item', id], queryFn: () => api.item(id) });
+  const { data: item } = useQuery({ queryKey: ['item', id], queryFn: () => api.itemScraper(id) });
   if (!item) return <p className="p-4 text-[13px] text-mist-500">Cargando…</p>;
   return <EditorDatos item={item} />;
 }

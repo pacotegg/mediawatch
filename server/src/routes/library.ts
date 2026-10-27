@@ -342,8 +342,8 @@ export default async function libraryRoutes(app: FastifyInstance) {
   app.get('/api/items/:id', async (req, reply) => {
     const id = Number((req.params as { id: string }).id);
     const user = currentUser(req);
-    // El administrador ve tambien lo de las carpetas de ENTRADA del scraper (lo necesita su pestaña Datos); el resto, nunca.
-    const admin = Boolean(user?.is_admin);
+    // Lo de las carpetas de ENTRADA del scraper no se sirve a ningun cliente; solo la pestaña Datos del Scraper lo pide expresamente (`?entrada=1`) y solo con un administrador.
+    const admin = Boolean(user?.is_admin) && (req.query as { entrada?: string }).entrada === '1';
     const cr = admin ? { sql: '', params: [] as string[] } : clausulaRating(user);
     const crClause = cr.sql ? `AND ${cr.sql}` : '';
     const item = db
@@ -352,7 +352,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
                   i.clearlogo IS NOT NULL AS has_logo, i.landscape IS NOT NULL AS has_landscape,
                   i.discart IS NOT NULL AS has_discart,
                   (SELECT COUNT(*) FROM extras WHERE item_id = i.id) AS extras_count
-                FROM ${user?.is_admin ? 'items' : 'items_biblioteca'} i JOIN libraries l ON l.id = i.library_id WHERE i.id = ? ${crClause}`)
+                FROM ${admin ? 'items' : 'items_biblioteca'} i JOIN libraries l ON l.id = i.library_id WHERE i.id = ? ${crClause}`)
       .get(id, ...cr.params) as any;
     if (!item) return reply.code(404).send({ error: 'No encontrado' });
     if (item.kind === 'movie') {
