@@ -342,7 +342,9 @@ export default async function libraryRoutes(app: FastifyInstance) {
   app.get('/api/items/:id', async (req, reply) => {
     const id = Number((req.params as { id: string }).id);
     const user = currentUser(req);
-    const cr = clausulaRating(user);
+    // El administrador ve tambien lo de las carpetas de ENTRADA del scraper (lo necesita su pestaña Datos); el resto, nunca.
+    const admin = Boolean(user?.is_admin);
+    const cr = admin ? { sql: '', params: [] as string[] } : clausulaRating(user);
     const crClause = cr.sql ? `AND ${cr.sql}` : '';
     const item = db
       .prepare(`SELECT i.*, l.name AS library_name, l.kind AS library_kind,
@@ -350,7 +352,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
                   i.clearlogo IS NOT NULL AS has_logo, i.landscape IS NOT NULL AS has_landscape,
                   i.discart IS NOT NULL AS has_discart,
                   (SELECT COUNT(*) FROM extras WHERE item_id = i.id) AS extras_count
-                FROM items_biblioteca i JOIN libraries l ON l.id = i.library_id WHERE i.id = ? ${crClause}`)
+                FROM ${user?.is_admin ? 'items' : 'items_biblioteca'} i JOIN libraries l ON l.id = i.library_id WHERE i.id = ? ${crClause}`)
       .get(id, ...cr.params) as any;
     if (!item) return reply.code(404).send({ error: 'No encontrado' });
     if (item.kind === 'movie') {
@@ -982,7 +984,9 @@ export default async function libraryRoutes(app: FastifyInstance) {
       const width = (req.query as { w?: string }).w ? Number((req.query as { w: string }).w) : undefined;
       // Un perfil infantil no recibe las imágenes de un título que no puede ver, aunque sepa su número.
       if (!itemPermitido(id, currentUser(req))) return reply.code(404).send({ error: 'Sin imagen' });
-      const row = db.prepare(`SELECT ${column} AS src FROM items_biblioteca WHERE id = ?`).get(id) as { src: string | null } | undefined;
+      // Lo de una carpeta de ENTRADA del scraper solo lo ve el administrador (el Asistente y la Biblioteca del Scraper lo pintan); para el resto no existe.
+      const tabla = currentUser(req)?.is_admin ? 'items' : 'items_biblioteca';
+      const row = db.prepare(`SELECT ${column} AS src FROM ${tabla} WHERE id = ?`).get(id) as { src: string | null } | undefined;
       return serveArt(reply, row?.src ?? null, width);
     });
   }
