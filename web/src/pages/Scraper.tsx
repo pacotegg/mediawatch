@@ -39,32 +39,45 @@ type Campo = (typeof CAMPOS)[number]['clave'];
 /** Las URLs de TMDb vienen en tamaño original; para previsualizar basta una pequeña. */
 const pequena = (url: string | null, w: string) => (url ? url.replace('/original/', `/${w}/`) : null);
 
-function Punto({ ok, titulo }: { ok: boolean; titulo: string }) {
-  return <span title={`${titulo}: ${ok ? 'sí' : 'falta'}`} className={`h-1.5 w-1.5 rounded-full ${ok ? 'bg-emerald-400/70' : 'bg-red-400/80'}`} />;
+/** Cuatro rayitas por título: póster, fondo, logo y sinopsis. Encendida = lo tiene; apagada = falta. */
+function Avance({ f }: { f: ScraperFila }) {
+  const partes: [string, boolean][] = [['Póster', !!f.poster], ['Fondo', !!f.fanart], ['Logo', !!f.logo], ['Sinopsis', !!f.sinopsis]];
+  return (
+    <div className="flex gap-[3px]" title={partes.map(([n, ok]) => `${n}: ${ok ? 'sí' : 'falta'}`).join(' · ')}>
+      {partes.map(([n, ok]) => <span key={n} className={`h-[3px] w-4 rounded-full ${ok ? 'bg-accent/85' : 'bg-white/12'}`} />)}
+    </div>
+  );
+}
+
+function IconoBuscar() {
+  return (
+    <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true">
+      <circle cx="9" cy="9" r="5.5" /><path d="m13.2 13.2 3.6 3.6" />
+    </svg>
+  );
 }
 
 function Fila({ f, activa, onClick }: { f: ScraperFila; activa: boolean; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className={`flex w-full items-center gap-3 rounded-xl px-2 py-1.5 text-left transition-colors ${activa ? 'bg-white/12' : 'hover:bg-white/6'}`}
+      className={`group relative flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left transition-colors duration-200 ${activa ? 'bg-gradient-to-r from-accent/16 via-accent/5 to-transparent ring-1 ring-accent/25' : 'hover:bg-white/6'}`}
     >
-      <div className="h-12 w-8 shrink-0 overflow-hidden rounded bg-ink-800">
-        {f.poster ? <img src={img.poster(f.id, 80, f.arte_actualizado)} alt="" loading="lazy" className="h-full w-full object-cover" /> : null}
+      {activa && <span className="absolute top-2 bottom-2 left-0 w-[3px] rounded-r-full bg-accent shadow-[0_0_12px_rgb(240_165_74/0.7)]" />}
+      <div className="h-[66px] w-11 shrink-0 overflow-hidden rounded-md bg-ink-800 shadow-[0_6px_14px_-4px_rgb(0_0_0/0.8)] ring-1 ring-white/10 transition-transform duration-200 group-hover:scale-[1.04]">
+        {f.poster ? <img src={img.poster(f.id, 120, f.arte_actualizado)} alt="" loading="lazy" className="h-full w-full object-cover" /> : null}
       </div>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[13px] font-medium">{f.title}</div>
-        <div className="flex items-center gap-2 text-[11px] text-mist-600">
-          <span>{f.year ?? 's/f'}</span>
+        <div className="truncate text-[13.5px] font-medium leading-tight text-mist-100">{f.title}</div>
+        <div className="mt-0.5 flex items-center gap-1.5 text-[11.5px] text-mist-500">
+          <span className="tabular-nums">{f.year ?? 's/f'}</span>
+          <span className="text-mist-600">·</span>
           <span>{f.kind === 'show' ? 'Serie' : 'Película'}</span>
-          {!f.tmdb_id && <span className="text-amber-400/90">sin emparejar</span>}
         </div>
-      </div>
-      <div className="flex shrink-0 gap-1">
-        <Punto ok={!!f.poster} titulo="Póster" />
-        <Punto ok={!!f.fanart} titulo="Fondo" />
-        <Punto ok={!!f.logo} titulo="Logo" />
-        <Punto ok={!!f.sinopsis} titulo="Sinopsis" />
+        <div className="mt-1.5 flex items-center gap-2">
+          <Avance f={f} />
+          {!f.tmdb_id && <span className="rounded-full bg-amber-400/12 px-1.5 py-px text-[10px] font-medium tracking-wide text-amber-300">SIN EMPAREJAR</span>}
+        </div>
       </div>
     </button>
   );
@@ -104,29 +117,37 @@ function Lista({ seleccion, onSelect }: { seleccion: number | null; onSelect: (f
 
   const total = data?.total ?? 0;
   return (
-    <div className="flex min-h-0 flex-col gap-3">
-      <TextInput value={texto} onChange={setTexto} placeholder="Buscar en la biblioteca…" className="w-full" />
+    <div className="glass flex min-h-0 flex-col gap-3 rounded-[var(--radius-panel)] p-3">
+      <label className="relative block">
+        <span className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-mist-500"><IconoBuscar /></span>
+        <input
+          value={texto}
+          onChange={(e) => setTexto(e.target.value)}
+          placeholder="Buscar en la biblioteca…"
+          className="w-full rounded-full border border-white/8 bg-black/25 py-2.5 pr-4 pl-10 text-[13px] outline-none transition-colors placeholder:text-mist-600 focus:border-accent/40 focus:bg-black/35"
+        />
+      </label>
       <div className="flex flex-wrap gap-1.5">
         {FILTROS.map((f) => (
           <button
             key={f.clave}
             onClick={() => setFiltro(f.clave)}
-            className={`rounded-full px-2.5 py-1 text-[11.5px] transition-colors ${filtro === f.clave ? 'bg-accent/20 text-accent-soft ring-1 ring-accent/40' : 'bg-white/6 text-mist-400 hover:bg-white/12'}`}
+            className={`rounded-full px-3 py-1 text-[11.5px] font-medium transition-colors duration-200 ${filtro === f.clave ? 'bg-accent/18 text-accent-soft ring-1 ring-accent/40' : 'bg-white/5 text-mist-400 hover:bg-white/10 hover:text-mist-200'}`}
           >
             {f.etiqueta}
-            {data?.cuenta[f.clave] != null && <span className="ml-1 tabular-nums text-mist-600">{data.cuenta[f.clave]}</span>}
+            {data?.cuenta[f.clave] != null && <span className={`ml-1.5 tabular-nums ${filtro === f.clave ? 'text-accent/70' : 'text-mist-600'}`}>{data.cuenta[f.clave]}</span>}
           </button>
         ))}
       </div>
-      <div className="flex gap-1.5 text-[11.5px]">
+      <div className="flex items-center gap-1 border-t border-white/6 pt-2.5 text-[11.5px]">
         {([['', 'Todo'], ['movie', 'Películas'], ['show', 'Series']] as const).map(([k, e]) => (
-          <button key={k} onClick={() => setKind(k)} className={`rounded-full px-2.5 py-1 ${kind === k ? 'bg-white/14 text-mist-100' : 'text-mist-500 hover:text-mist-200'}`}>{e}</button>
+          <button key={k} onClick={() => setKind(k)} className={`rounded-full px-2.5 py-1 transition-colors ${kind === k ? 'bg-white/12 text-mist-100' : 'text-mist-500 hover:text-mist-200'}`}>{e}</button>
         ))}
-        <span className="ml-auto self-center tabular-nums text-mist-600">{total} títulos</span>
+        <span className="ml-auto tabular-nums text-mist-600">{total} títulos</span>
       </div>
-      <div className="max-h-[calc(100vh-18rem)] min-h-64 space-y-0.5 overflow-y-auto pr-1">
-        {acumuladas.map((f) => <Fila key={f.id} f={aldia(f)}activa={f.id === seleccion} onClick={() => onSelect(f)} />)}
-        {!isFetching && acumuladas.length === 0 && <p className="px-2 py-6 text-center text-[12.5px] text-mist-500">Nada con ese filtro.</p>}
+      <div className="max-h-[calc(100vh-22rem)] min-h-64 space-y-0.5 overflow-y-auto pr-1">
+        {acumuladas.map((f) => <Fila key={f.id} f={aldia(f)} activa={f.id === seleccion} onClick={() => onSelect(f)} />)}
+        {!isFetching && acumuladas.length === 0 && <p className="px-2 py-10 text-center text-[12.5px] text-mist-500">Nada con ese filtro.</p>}
         {acumuladas.length < total && (
           <div className="py-2 text-center">
             <Button variant="ghost" onClick={() => setOffset(acumuladas.length)} disabled={isFetching}>{isFetching ? 'Cargando…' : `Cargar más (${total - acumuladas.length})`}</Button>
@@ -551,6 +572,20 @@ const PESTANAS: ReadonlyArray<readonly [Pestana, string]> = [
   ['archivos', 'Archivos'],
 ];
 
+/** Anillo con el porcentaje de lo que ya tiene el título (póster, fondo, logo, sinopsis, edad y emparejado). */
+function Anillo({ hechos, total }: { hechos: number; total: number }) {
+  const r = 22, c = 2 * Math.PI * r, pct = Math.round((hechos / total) * 100);
+  return (
+    <div className="relative h-14 w-14 shrink-0" title={`${hechos} de ${total} datos completos`}>
+      <svg viewBox="0 0 56 56" className="h-full w-full -rotate-90" aria-hidden="true">
+        <circle cx="28" cy="28" r={r} fill="none" stroke="rgb(255 255 255 / 0.1)" strokeWidth="4" />
+        <circle cx="28" cy="28" r={r} fill="none" stroke="var(--color-accent)" strokeWidth="4" strokeLinecap="round" strokeDasharray={`${(c * hechos) / total} ${c}`} style={{ filter: 'drop-shadow(0 0 6px rgb(240 165 74 / 0.55))' }} />
+      </svg>
+      <span className="absolute inset-0 flex items-center justify-center whitespace-nowrap text-[13px] leading-none font-semibold tabular-nums">{pct}<span className="ml-px text-[8px] font-normal text-mist-500">%</span></span>
+    </div>
+  );
+}
+
 function Ficha({ id }: { id: number }) {
   const [pestana, setPestana] = useState<Pestana>('datos');
   const { data: t } = useQuery({ queryKey: ['scraper-titulo', id], queryFn: () => api.scraperTitulo(id) });
@@ -558,82 +593,120 @@ function Ficha({ id }: { id: number }) {
   const cargada = t != null;
   const tmdb = t?.tmdb_id ?? null;
   useEffect(() => { if (cargada) setPestana(tmdb ? 'datos' : 'emparejar'); }, [id, cargada, tmdb]);
-  if (!t) return <p className="p-6 text-[13px] text-mist-500">Cargando…</p>;
+  if (!t) return <p className="p-8 text-[13px] text-mist-500">Cargando…</p>;
   const enlaceTmdb = t.tmdb_id ? `https://www.themoviedb.org/${t.kind === 'show' ? 'tv' : 'movie'}/${t.tmdb_id}` : null;
+  const estado: [string, boolean][] = [
+    ['Póster', !!t.poster], ['Fondo', !!t.fanart], ['Logo', !!t.logo], ['Sinopsis', !!t.plot], ['Edad', !!t.mpaa], ['TMDb', !!t.tmdb_id],
+  ];
+  const hechos = estado.filter(([, ok]) => ok).length;
   return (
-    <div className="space-y-5">
-      <div className="flex gap-4">
-        <div className="w-32 shrink-0 overflow-hidden rounded-xl bg-ink-800 ring-1 ring-white/10">
-          <div className="aspect-2/3">{t.poster ? <img src={img.poster(t.id, 500, t.arte_actualizado)} alt="" className="h-full w-full object-cover" /> : null}</div>
-        </div>
-        <div className="min-w-0 flex-1">
-          <h2 className="text-2xl font-semibold leading-tight">{t.title} <span className="text-[14px] font-normal text-mist-500">{t.year ?? ''}</span></h2>
-          {t.original_title && t.original_title !== t.title && <div className="text-[12px] text-mist-500">{t.original_title}</div>}
-          <div className="mt-1.5 flex flex-wrap gap-1.5 text-[11px] text-mist-400">
-            <span className="rounded bg-white/8 px-1.5 py-0.5">{t.biblioteca}</span>
-            {t.mpaa && <span className="rounded bg-white/8 px-1.5 py-0.5">{t.mpaa}</span>}
-            {enlaceTmdb
-              ? <a href={enlaceTmdb} target="_blank" rel="noreferrer" className="rounded bg-white/8 px-1.5 py-0.5 hover:bg-white/14">TMDb {t.tmdb_id}</a>
-              : <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-amber-300">Sin emparejar</span>}
-            {t.imdb_id && <a href={`https://www.imdb.com/title/${t.imdb_id}/`} target="_blank" rel="noreferrer" className="rounded bg-white/8 px-1.5 py-0.5 hover:bg-white/14">{t.imdb_id}</a>}
-            {t.origen === 'tmdb' && <span className="rounded bg-white/8 px-1.5 py-0.5">datos de TMDb</span>}
+    <div>
+      <div className="relative isolate overflow-hidden">
+        {t.fanart
+          ? <img src={img.fanart(t.id, 1280, t.arte_actualizado)} alt="" className="absolute inset-0 -z-20 h-full w-full scale-105 object-cover opacity-55" />
+          : t.poster ? <img src={img.poster(t.id, 300, t.arte_actualizado)} alt="" className="absolute inset-0 -z-20 h-full w-full scale-150 object-cover opacity-30 blur-3xl" /> : null}
+        <div className="absolute inset-0 -z-10 bg-gradient-to-t from-ink-900 via-ink-900/75 to-ink-900/20" />
+        <div className="absolute inset-0 -z-10 bg-gradient-to-r from-ink-900/90 via-ink-900/40 to-transparent" />
+        <div className="flex flex-col gap-5 px-6 pt-7 pb-6 sm:flex-row sm:gap-7">
+          <div className="w-32 shrink-0 self-start overflow-hidden rounded-xl bg-ink-800 shadow-[0_24px_50px_-12px_rgb(0_0_0/0.9)] ring-1 ring-white/15 sm:w-44">
+            <div className="aspect-2/3">{t.poster ? <img src={img.poster(t.id, 500, t.arte_actualizado)} alt="" className="h-full w-full object-cover" /> : null}</div>
           </div>
-          {t.plot && <p className="mt-2 line-clamp-3 text-[12.5px] leading-relaxed text-mist-500">{t.plot}</p>}
+          <div className="flex min-w-0 flex-1 flex-col">
+            <div className="flex items-center gap-2 text-[11px] font-medium tracking-[0.16em] text-accent/85 uppercase">
+              <span>{t.kind === 'show' ? 'Serie' : 'Película'}</span><span className="text-mist-600">·</span><span className="text-mist-400">{t.biblioteca}</span>
+              {t.mpaa && <span className="rounded border border-white/20 px-1.5 py-px text-[10px] tracking-normal text-mist-300">{t.mpaa}</span>}
+            </div>
+            {t.logo
+              ? <img src={img.logo(t.id, 520, t.arte_actualizado)} alt={t.title} className="mt-3 max-h-20 w-auto max-w-[min(420px,80%)] self-start object-contain object-left drop-shadow-[0_6px_24px_rgba(0,0,0,0.85)]" />
+              : <h2 className="mt-2 text-[34px] leading-[1.05] font-semibold tracking-tight">{t.title}</h2>}
+            <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[13px] text-mist-400">
+              {t.logo ? <span className="font-medium text-mist-200">{t.title}</span> : null}
+              {t.year && <span className="tabular-nums">{t.year}</span>}
+              {t.original_title && t.original_title !== t.title && <span className="text-mist-500 italic">{t.original_title}</span>}
+              {t.collection && <span className="rounded-full bg-white/8 px-2 py-0.5 text-[11px] text-mist-300">{t.collection}</span>}
+            </div>
+            {t.tagline && <p className="mt-2 text-[13px] text-mist-300 italic">«{t.tagline}»</p>}
+            {t.plot && <p className="mt-2 line-clamp-2 max-w-2xl text-[12.5px] leading-relaxed text-mist-500">{t.plot}</p>}
+            <div className="mt-auto flex flex-wrap items-center gap-x-5 gap-y-3 pt-4">
+              <Anillo hechos={hechos} total={estado.length} />
+              <div className="flex flex-wrap gap-1.5">
+                {estado.map(([n, ok]) => (
+                  <span key={n} className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium ${ok ? 'bg-emerald-400/12 text-emerald-300' : 'bg-red-400/12 text-red-300'}`}>
+                    <span className={`h-1.5 w-1.5 rounded-full ${ok ? 'bg-emerald-400' : 'bg-red-400'}`} />{n}
+                  </span>
+                ))}
+              </div>
+              <div className="ml-auto flex gap-1.5 text-[11px]">
+                {enlaceTmdb && <a href={enlaceTmdb} target="_blank" rel="noreferrer" className="rounded-full bg-white/8 px-3 py-1 text-mist-300 transition-colors hover:bg-white/15">TMDb {t.tmdb_id} ↗</a>}
+                {t.imdb_id && <a href={`https://www.imdb.com/title/${t.imdb_id}/`} target="_blank" rel="noreferrer" className="rounded-full bg-white/8 px-3 py-1 text-mist-300 transition-colors hover:bg-white/15">IMDb ↗</a>}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      <Deshacer id={t.id} />
+      <div className="space-y-5 p-6 pt-4">
+        <Deshacer id={t.id} />
 
-      <div className="flex gap-1 overflow-x-auto border-b border-white/8">
-        {PESTANAS.map(([k, e]) => (
-          <button key={k} onClick={() => setPestana(k)} className={`-mb-px shrink-0 border-b-2 px-3 py-2 text-[13px] transition-colors ${pestana === k ? 'border-accent text-mist-100' : 'border-transparent text-mist-500 hover:text-mist-200'}`}>{e}</button>
-        ))}
-      </div>
-
-      {pestana === 'datos' && <Datos id={t.id} />}
-      {pestana === 'emparejar' && <Emparejar titulo={t} />}
-      {pestana === 'imagenes' && (
-        <SelectorDeArte itemId={t.id} kind={t.kind} titulo={t.title} anio={t.year} tmdbId={t.tmdb_id ? Number(t.tmdb_id) : null} />
-      )}
-      {pestana === 'archivos' && (
-        <div className="space-y-3">
-          <p className="text-[12.5px] leading-relaxed text-mist-500">
-            Lo de aquí toca la carpeta del título en la biblioteca. Cada acción enseña antes qué va a crear, renombrar o apartar, y no hace nada hasta que lo confirmes; nada se borra.
-          </p>
-          <ArteACarpeta id={t.id} />
-          <Organizar id={t.id} kind={t.kind} />
-          <NfoACarpeta id={t.id} />
-          <Enviar id={t.id} kind={t.kind} />
+        <div className="flex gap-1 overflow-x-auto rounded-full bg-black/25 p-1 ring-1 ring-white/6 sm:w-fit">
+          {PESTANAS.map(([k, e]) => (
+            <button key={k} onClick={() => setPestana(k)} className={`shrink-0 rounded-full px-4 py-1.5 text-[12.5px] font-medium transition-all duration-200 ${pestana === k ? 'bg-white/14 text-mist-100 shadow-[inset_0_1px_0_rgb(255_255_255/0.1),0_2px_8px_-2px_rgb(0_0_0/0.6)]' : 'text-mist-500 hover:text-mist-200'}`}>{e}</button>
+          ))}
         </div>
-      )}
+
+        {pestana === 'datos' && <Datos id={t.id} />}
+        {pestana === 'emparejar' && <Emparejar titulo={t} />}
+        {pestana === 'imagenes' && (
+          <SelectorDeArte itemId={t.id} kind={t.kind} titulo={t.title} anio={t.year} tmdbId={t.tmdb_id ? Number(t.tmdb_id) : null} />
+        )}
+        {pestana === 'archivos' && (
+          <div className="space-y-3">
+            <p className="text-[12.5px] leading-relaxed text-mist-500">
+              Lo de aquí toca la carpeta del título en la biblioteca. Cada acción enseña antes qué va a crear, renombrar o apartar, y no hace nada hasta que lo confirmes; nada se borra.
+            </p>
+            <ArteACarpeta id={t.id} />
+            <Organizar id={t.id} kind={t.kind} />
+            <NfoACarpeta id={t.id} />
+            <Enviar id={t.id} kind={t.kind} />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
+const MODOS = [['asistente', 'Asistente'], ['biblioteca', 'Biblioteca'], ['fuentes', 'Fuentes'], ['ajustes', 'Ajustes']] as const;
+
 export default function Scraper() {
   const { data: yo } = useQuery({ queryKey: ['me'], queryFn: api.me, staleTime: Infinity });
   const [id, setId] = useState<number | null>(null);
-  const [modo, setModo] = useState<'asistente' | 'biblioteca' | 'fuentes' | 'ajustes'>('asistente');
+  const [modo, setModo] = useState<(typeof MODOS)[number][0]>('asistente');
   const detalle = useRef<HTMLDivElement>(null);
   const { data: nuevos } = useQuery({ queryKey: ['scraper-nuevos'], queryFn: api.scraperNuevos, enabled: yo?.is_admin === 1 });
 
   if (yo && yo.is_admin !== 1) return <p className="mx-auto max-w-3xl px-4 page-pt text-[13px] text-mist-500">Solo un administrador puede usar el Scraper.</p>;
 
   return (
-    <div className="mx-auto max-w-[88rem] px-4 page-pt page-pb sm:px-8">
-      <div className="mb-5 flex items-baseline justify-between gap-4">
-        <h1 className="text-2xl font-semibold tracking-tight">Scraper</h1>
-        <p className="hidden text-[12.5px] text-mist-500 sm:block">Elige qué escrapear, empareja con TMDb, renombra y envía a la biblioteca.</p>
-      </div>
-      <div className="mb-5 flex gap-1 border-b border-white/8">
-        {([['asistente', `Asistente${nuevos?.pendientes ? ` (${nuevos.pendientes})` : ''}`], ['biblioteca', 'Biblioteca'], ['fuentes', 'Fuentes'], ['ajustes', 'Ajustes']] as const).map(([k, e]) => (
-          <button key={k} onClick={() => setModo(k)} className={`-mb-px border-b-2 px-3 py-2 text-[13px] transition-colors ${modo === k ? 'border-accent text-mist-100' : 'border-transparent text-mist-500 hover:text-mist-200'}`}>{e}</button>
-        ))}
-      </div>
+    <div className="mx-auto max-w-[96rem] px-4 page-pt page-pb sm:px-8">
+      <header className="mb-7 flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
+        <div>
+          <div className="text-[11px] font-medium tracking-[0.2em] text-accent/80 uppercase">Administración</div>
+          <h1 className="mt-1.5 text-[34px] leading-none font-semibold tracking-tight">Scraper</h1>
+          <p className="mt-2 hidden max-w-md text-[13px] text-mist-500 sm:block">Empareja con TMDb, completa los datos y el arte, y envía a la biblioteca.</p>
+        </div>
+        <nav className="glass flex max-w-full gap-0.5 overflow-x-auto rounded-full p-1">
+          {MODOS.map(([k, e]) => (
+            <button key={k} onClick={() => setModo(k)} className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-medium transition-all duration-200 sm:gap-2 sm:px-4 ${modo === k ? 'bg-white/14 text-mist-100 shadow-[inset_0_1px_0_rgb(255_255_255/0.1)]' : 'text-mist-500 hover:text-mist-200'}`}>
+              {e}
+              {k === 'asistente' && nuevos?.pendientes ? <span className="rounded-full bg-accent px-1.5 py-px text-[10.5px] font-semibold text-ink-950 tabular-nums">{nuevos.pendientes}</span> : null}
+            </button>
+          ))}
+        </nav>
+      </header>
       {modo === 'asistente' && <AsistenteNuevos />}
       {modo === 'fuentes' && <FuentesScraper />}
       {modo === 'ajustes' && <AjustesScraper />}
-      <div className={modo === 'biblioteca' ? 'grid gap-6 lg:grid-cols-[20rem_1fr]' : 'hidden'}>
+      <div className={modo === 'biblioteca' ? 'grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[22rem_minmax(0,1fr)]' : 'hidden'}>
         <div className="lg:sticky lg:top-4 lg:self-start">
           <Lista seleccion={id} onSelect={(f) => {
             setId(f.id);
@@ -641,8 +714,18 @@ export default function Scraper() {
             if (!window.matchMedia('(min-width: 1024px)').matches) setTimeout(() => detalle.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
           }} />
         </div>
-        <div ref={detalle} className="glass min-h-64 rounded-[var(--radius-panel)] p-5">
-          {id ? <Ficha id={id} /> : <p className="py-16 text-center text-[13px] text-mist-500">Elige un título de la lista para ver qué le falta y qué propone TMDb.</p>}
+        <div ref={detalle} className="glass min-h-64 overflow-hidden rounded-[var(--radius-panel)]">
+          {id
+            ? <Ficha id={id} />
+            : (
+              <div className="grid min-h-[28rem] place-items-center px-8 text-center">
+                <div>
+                  <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-white/6 text-mist-500 ring-1 ring-white/8"><IconoBuscar /></div>
+                  <p className="text-[15px] font-medium text-mist-200">Elige un título</p>
+                  <p className="mx-auto mt-1.5 max-w-xs text-[12.5px] leading-relaxed text-mist-500">Verás qué le falta, lo que propone TMDb y podrás editar sus datos a mano.</p>
+                </div>
+              </div>
+            )}
         </div>
       </div>
     </div>
