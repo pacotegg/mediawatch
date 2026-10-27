@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, TextInput } from '../components/Controls.tsx';
 import SelectorDeArte from '../components/SelectorDeArte.tsx';
+import EditorDatos from '../components/EditorDatos.tsx';
 import AsistenteNuevos from '../components/AsistenteNuevos.tsx';
 import EnviarTitulos from '../components/EnviarTitulos.tsx';
 import FuentesScraper from '../components/FuentesScraper.tsx';
@@ -450,52 +451,6 @@ function Organizar({ id, kind }: { id: number; kind: 'movie' | 'show' }) {
  * Escribir el NFO junto al vídeo (como tMM): los datos viajan con la carpeta. Pensado para la carpeta de entrada: se prepara aquí,
  * se mueve a la biblioteca y el escaneo de allí lo recupera todo. Plan visible y confirmación; lo sustituido se aparta, no se borra.
  */
-/** Cambiar o quitar la saga (colección) del título. Una existente o un nombre nuevo; se deshace con «Deshacer». */
-function Saga({ id, actual }: { id: number; actual: string | null }) {
-  const qc = useQueryClient();
-  const [abierto, setAbierto] = useState(false);
-  const [texto, setTexto] = useState(actual ?? '');
-  const [hecho, setHecho] = useState('');
-  const sagas = useQuery({ queryKey: ['collections'], queryFn: () => api.collections(), enabled: abierto });
-  useEffect(() => { setAbierto(false); setHecho(''); }, [id]);
-  useEffect(() => { setTexto(actual ?? ''); }, [actual, id]);
-  const guardar = useMutation({
-    mutationFn: (coleccion: string | null) => api.ponerColeccion(id, coleccion),
-    onSuccess: (r) => {
-      setHecho(r.coleccion ? `Saga: «${r.coleccion}».` : 'Quitada de la saga.');
-      for (const k of ['scraper-titulo', 'scraper-lista', 'scraper-historial', 'item', 'collections', 'collection', 'home']) qc.invalidateQueries({ queryKey: [k] });
-    },
-  });
-  const limpio = texto.trim();
-  return (
-    <div className="rounded-xl bg-white/4 p-3 text-[12.5px]">
-      <button onClick={() => setAbierto((v) => !v)} className="flex w-full items-center justify-between text-left font-medium text-mist-300">
-        <span>Saga / colección{actual ? <span className="font-normal text-mist-500"> — {actual}</span> : <span className="font-normal text-mist-500"> — sin saga</span>}</span>
-        <span className="text-mist-500">{abierto ? '−' : '+'}</span>
-      </button>
-      {abierto && (
-        <div className="mt-3 space-y-2">
-          <input
-            list={`sagas-${id}`}
-            value={texto}
-            onChange={(e) => { setTexto(e.target.value); setHecho(''); }}
-            placeholder="Elige una saga o escribe un nombre nuevo"
-            className="w-full rounded-lg bg-black/25 px-3 py-2 text-[13px] outline-none ring-1 ring-white/10 focus:ring-white/25"
-          />
-          <datalist id={`sagas-${id}`}>{(sagas.data ?? []).map((s) => <option key={s.name} value={s.name} />)}</datalist>
-          <div className="flex flex-wrap items-center gap-3">
-            <Button onClick={() => guardar.mutate(limpio)} disabled={!limpio || limpio === (actual ?? '') || guardar.isPending}>Guardar saga</Button>
-            <Button variant="ghost" onClick={() => guardar.mutate(null)} disabled={!actual || guardar.isPending}>Quitar de la saga</Button>
-            {hecho && <span className="text-emerald-300">{hecho}</span>}
-            {guardar.error && <span className="text-red-400">{(guardar.error as Error).message}</span>}
-          </div>
-          <p className="text-mist-500">Solo cambia la base de datos (no escribe en la carpeta ni en el NFO) y el escáner lo respeta. Se puede deshacer con «Deshacer» de arriba.</p>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function NfoACarpeta({ id }: { id: number }) {
   const [abierto, setAbierto] = useState(false);
   const [hecho, setHecho] = useState('');
@@ -581,16 +536,34 @@ function Deshacer({ id }: { id: number }) {
   );
 }
 
+/** Los datos del título se editan a mano con el mismo editor de la ficha de la web (incluye saga y deshacer). */
+function Datos({ id }: { id: number }) {
+  const { data: item } = useQuery({ queryKey: ['item', id], queryFn: () => api.item(id) });
+  if (!item) return <p className="p-4 text-[13px] text-mist-500">Cargando…</p>;
+  return <EditorDatos item={item} />;
+}
+
+type Pestana = 'datos' | 'emparejar' | 'imagenes' | 'archivos';
+const PESTANAS: ReadonlyArray<readonly [Pestana, string]> = [
+  ['datos', 'Datos'],
+  ['emparejar', 'Emparejar con TMDb'],
+  ['imagenes', 'Imágenes'],
+  ['archivos', 'Archivos'],
+];
+
 function Ficha({ id }: { id: number }) {
-  const [pestana, setPestana] = useState<'emparejar' | 'imagenes'>('emparejar');
+  const [pestana, setPestana] = useState<Pestana>('datos');
   const { data: t } = useQuery({ queryKey: ['scraper-titulo', id], queryFn: () => api.scraperTitulo(id) });
-  useEffect(() => setPestana('emparejar'), [id]);
+  // Al cambiar de título: sin emparejar lo primero es emparejarlo; emparejado, revisar los datos.
+  const cargada = t != null;
+  const tmdb = t?.tmdb_id ?? null;
+  useEffect(() => { if (cargada) setPestana(tmdb ? 'datos' : 'emparejar'); }, [id, cargada, tmdb]);
   if (!t) return <p className="p-6 text-[13px] text-mist-500">Cargando…</p>;
   const enlaceTmdb = t.tmdb_id ? `https://www.themoviedb.org/${t.kind === 'show' ? 'tv' : 'movie'}/${t.tmdb_id}` : null;
   return (
     <div className="space-y-5">
       <div className="flex gap-4">
-        <div className="w-44 shrink-0 overflow-hidden rounded-xl bg-ink-800 ring-1 ring-white/10">
+        <div className="w-32 shrink-0 overflow-hidden rounded-xl bg-ink-800 ring-1 ring-white/10">
           <div className="aspect-2/3">{t.poster ? <img src={img.poster(t.id, 500, t.arte_actualizado)} alt="" className="h-full w-full object-cover" /> : null}</div>
         </div>
         <div className="min-w-0 flex-1">
@@ -610,21 +583,28 @@ function Ficha({ id }: { id: number }) {
       </div>
 
       <Deshacer id={t.id} />
-      <Saga id={t.id} actual={t.collection} />
-      <ArteACarpeta id={t.id} />
-      <Organizar id={t.id} kind={t.kind} />
-      <NfoACarpeta id={t.id} />
-      <Enviar id={t.id} kind={t.kind} />
 
-      <div className="flex gap-1 border-b border-white/8">
-        {([['emparejar', 'Emparejar y completar'], ['imagenes', 'Imágenes']] as const).map(([k, e]) => (
-          <button key={k} onClick={() => setPestana(k)} className={`-mb-px border-b-2 px-3 py-2 text-[13px] transition-colors ${pestana === k ? 'border-accent text-mist-100' : 'border-transparent text-mist-500 hover:text-mist-200'}`}>{e}</button>
+      <div className="flex gap-1 overflow-x-auto border-b border-white/8">
+        {PESTANAS.map(([k, e]) => (
+          <button key={k} onClick={() => setPestana(k)} className={`-mb-px shrink-0 border-b-2 px-3 py-2 text-[13px] transition-colors ${pestana === k ? 'border-accent text-mist-100' : 'border-transparent text-mist-500 hover:text-mist-200'}`}>{e}</button>
         ))}
       </div>
 
+      {pestana === 'datos' && <Datos id={t.id} />}
       {pestana === 'emparejar' && <Emparejar titulo={t} />}
       {pestana === 'imagenes' && (
         <SelectorDeArte itemId={t.id} kind={t.kind} titulo={t.title} anio={t.year} tmdbId={t.tmdb_id ? Number(t.tmdb_id) : null} />
+      )}
+      {pestana === 'archivos' && (
+        <div className="space-y-3">
+          <p className="text-[12.5px] leading-relaxed text-mist-500">
+            Lo de aquí toca la carpeta del título en la biblioteca. Cada acción enseña antes qué va a crear, renombrar o apartar, y no hace nada hasta que lo confirmes; nada se borra.
+          </p>
+          <ArteACarpeta id={t.id} />
+          <Organizar id={t.id} kind={t.kind} />
+          <NfoACarpeta id={t.id} />
+          <Enviar id={t.id} kind={t.kind} />
+        </div>
       )}
     </div>
   );
