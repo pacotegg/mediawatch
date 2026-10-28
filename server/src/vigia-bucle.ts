@@ -2,7 +2,7 @@
  * Dice DÓNDE se atasca el hilo principal, no solo cuánto.
  *
  * El latido de `index.ts` apunta el retraso cuando el bucle por fin vuelve, y con el servidor muerto 60 s no apunta nada. Aquí un
- * hilo aparte mira un contador que el principal sube cada 250 ms; si lleva más de 3 s sin moverse, se engancha al hilo principal
+ * hilo aparte mira un contador que el principal sube cada 250 ms; si lleva más de 1,5 s sin moverse (con 3 s se escapaban los atascos de ~2 s de madrugada), se engancha al hilo principal
  * con el inspector, le pide una pausa y apunta la pila en `data/latido.log` (una vez por atasco). Una llamada nativa que espera
  * (un `node:sqlite` esperando un bloqueo) no se interrumpe: la pausa salta al volver a JS, que es justo la línea que esperó.
  */
@@ -19,7 +19,7 @@ const apuntar = (t: string) => { try { appendFileSync(registro, `${new Date().to
 let apuntado = false;
 setInterval(() => {
   const parado = Date.now() - marca[0];
-  if (parado < 3000) { apuntado = false; return; }
+  if (parado < 1500) { apuntado = false; return; }
   if (apuntado) return;
   apuntado = true;
   const s = new Session();
@@ -35,4 +35,4 @@ setInterval(() => {
   } catch (e) {
     apuntar(`[pila] no se pudo mirar el hilo principal: ${(e as Error).message}`);
   }
-}, 1000);
+}, 250);

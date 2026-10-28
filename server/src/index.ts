@@ -412,7 +412,7 @@ app.addHook('onResponse', async (req) => {
   }, PERIODO).unref();
 }
 
-// Hilo vigia: si el principal se queda mas de 3 s sin latir, apunta su pila en latido.log (ver vigia-bucle.ts).
+// Hilo vigia: si el principal se queda mas de 1,5 s sin latir, apunta su pila en latido.log (ver vigia-bucle.ts).
 {
   const compartido = new SharedArrayBuffer(8);
   const marca = new Float64Array(compartido);

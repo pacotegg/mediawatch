@@ -248,8 +248,19 @@ function lanzar(id: number, origen: string, duracion: number, perfil: Exclude<Pe
   // para no saturar SQLite con escrituras en cada chunk de stdout.
   let ultimoProgreso = -1;
   let ultimoGuardado = 0;
+  // Vigía: un ffmpeg que deja de avanzar (disco que no responde, fichero roto) atascaba la cola entera. Si el
+  // tiempo codificado no se mueve en 5 min, se corta y la descarga queda en error con el motivo.
+  let ultimoTiempo = '';
+  let ultimoAvance = Date.now();
+  const vigia = setInterval(() => {
+    if (Date.now() - ultimoAvance < 5 * 60_000) return;
+    errores = 'ffmpeg sin avanzar en 5 minutos: cortado. ' + errores;
+    proc.kill();
+  }, 30_000);
+  proc.on('close', () => clearInterval(vigia));
   proc.stdout.on('data', (d) => {
     const m = /out_time_ms=(\d+)/.exec(d.toString());
+    if (m && m[1] !== ultimoTiempo) { ultimoTiempo = m[1]; ultimoAvance = Date.now(); }
     if (m && duracion > 0) {
       const ahora = Date.now();
       const progreso = Math.min(99, Math.round((Number(m[1]) / 1e6 / duracion) * 100));

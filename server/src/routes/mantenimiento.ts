@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { readdirSync, statfsSync, statSync } from 'node:fs';
+import { appendFileSync, readdirSync, statfsSync, statSync } from 'node:fs';
 import { access } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
@@ -186,6 +186,8 @@ export default async function mantenimientoRoutes(app: FastifyInstance) {
     enviarMensaje,
     salir: () => {
       app.log.warn('reinicio con aviso: saliendo; lo levanta el vigilante');
+      // app.log no llega a ningún fichero: sin esta línea, una salida por el botón no se distinguía de otra cualquiera.
+      try { appendFileSync(join(DATA_DIR, 'latido.log'), `${new Date().toISOString()}  [servidor] reinicio pedido por un administrador\n`); } catch { /* nada */ }
       // Cerrar sin esperar a nadie más de 3 s: un streaming abierto no debe impedir la salida.
       const forzar = setTimeout(() => process.exit(0), 3000);
       void app.close().finally(() => { clearTimeout(forzar); process.exit(0); });
