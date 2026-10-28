@@ -8,6 +8,12 @@
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
   <uses-permission android:name="android.permission.WAKE_LOCK" />
+  <!--
+    Instalar la versión nueva desde la propia app: en Google TV no hay navegador
+    y «Instalar» no podía abrir instalar.html. La primera vez Android pide además
+    permitir instalar aplicaciones desde Media Watch.
+  -->
+  <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
   <!--
     Que la aplicación valga también en una tele o en un aparato sin pantalla
@@ -52,6 +58,17 @@
       android:networkSecurityConfig="@xml/red"
       android:supportsRtl="false"
       android:theme="@style/Tema">
+
+    <!-- Le pasa el APK descargado al instalador del sistema sin exponer la caché. -->
+    <provider
+        android:name="androidx.core.content.FileProvider"
+        android:authorities="${applicationId}.archivos"
+        android:exported="false"
+        android:grantUriPermissions="true">
+      <meta-data
+          android:name="android.support.FILE_PROVIDER_PATHS"
+          android:resource="@xml/rutas_apk" />
+    </provider>
 
     <activity
         android:name=".Principal"

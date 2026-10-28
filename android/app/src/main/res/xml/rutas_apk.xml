@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Solo la carpeta donde se baja el APK de una versión nueva (Novedades.kt). -->
+<paths>
+  <cache-path name="apk" path="apk/" />
+</paths>

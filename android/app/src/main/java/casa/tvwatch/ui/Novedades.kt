@@ -26,6 +26,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
 
 /*
  * Ventana de novedades: la primera vez que se abre una versión nueva (también
@@ -237,6 +239,111 @@ internal fun esMasNueva(remota: String, local: String): Boolean {
   return false
 }
 
+/** Una descarga de APK en curso o acabada: el porcentaje (null si el servidor no dice el tamaño) o el fichero listo. */
+private sealed class Bajada {
+  data class EnCurso(val porcentaje: Int?) : Bajada()
+  data class Lista(val fichero: java.io.File) : Bajada()
+  data class Fallo(val motivo: String) : Bajada()
+}
+
+/** Tope de tiempo de la descarga: ninguna espera sin límite. */
+private val clienteApk: okhttp3.OkHttpClient by lazy {
+  casa.tvwatch.datos.Api.http.newBuilder()
+    .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+    .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+    .callTimeout(10, java.util.concurrent.TimeUnit.MINUTES)
+    .build()
+}
+
+/**
+ * Baja `MediaWatch-<versión>.apk` del servidor a `cacheDir/apk/`.
+ *
+ * Primero a `.part` y solo se renombra si han llegado los bytes que dijo
+ * `Content-Length`: un APK cortado nunca llega al instalador. Si ya está bajado
+ * entero (se vuelve de dar el permiso), no se baja otra vez.
+ */
+private suspend fun bajarApk(contexto: Context, version: String, alAvanzar: (Int?) -> Unit): java.io.File =
+  kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+    val carpeta = java.io.File(contexto.cacheDir, "apk").apply { mkdirs() }
+    val nombre = "MediaWatch-$version.apk"
+    val destino = java.io.File(carpeta, nombre)
+    if (destino.length() > 0) return@withContext destino
+    // Solo esta carpeta: APK de versiones anteriores y descargas a medias.
+    carpeta.listFiles()?.forEach { if (it.name != nombre) it.delete() }
+    val parcial = java.io.File(carpeta, "$nombre.part")
+    val url = casa.tvwatch.datos.Servidor.base().trimEnd('/') + "/" + nombre
+    val llamada = clienteApk.newCall(okhttp3.Request.Builder().url(url).build())
+    // Cancelar la corrutina corta también la conexión, no solo el bucle.
+    coroutineContext[kotlinx.coroutines.Job]?.invokeOnCompletion { if (it != null) llamada.cancel() }
+    llamada.execute().use { r ->
+      if (!r.isSuccessful) throw java.io.IOException("El servidor respondió ${r.code}")
+      val cuerpo = r.body ?: throw java.io.IOException("Respuesta vacía")
+      val total = cuerpo.contentLength()
+      var leidos = 0L
+      var ultimo: Int? = -1
+      cuerpo.byteStream().use { entrada ->
+        parcial.outputStream().use { salida ->
+          val bufer = ByteArray(64 * 1024)
+          while (true) {
+            ensureActive()
+            val n = entrada.read(bufer)
+            if (n < 0) break
+            salida.write(bufer, 0, n)
+            leidos += n
+            val pct = if (total > 0) (leidos * 100 / total).toInt() else null
+            if (pct != ultimo) { ultimo = pct; alAvanzar(pct) }
+          }
+        }
+      }
+      if (leidos == 0L) throw java.io.IOException("Descarga vacía")
+      if (total > 0 && leidos != total) throw java.io.IOException("Descarga incompleta ($leidos de $total bytes)")
+    }
+    if (!parcial.renameTo(destino)) throw java.io.IOException("No se pudo guardar el APK")
+    destino
+  }
+
+/**
+ * Le pasa el APK al instalador del sistema. Si Android aún no deja instalar
+ * desde Media Watch, abre esa pantalla de ajustes y devuelve false: al volver
+ * se pulsa otra vez «Instalar» y el APK ya está bajado.
+ */
+private fun lanzarInstalador(contexto: Context, apk: java.io.File): Boolean {
+  if (!contexto.packageManager.canRequestPackageInstalls()) {
+    contexto.startActivity(
+      android.content.Intent(
+        android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+        android.net.Uri.parse("package:" + contexto.packageName),
+      ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+    )
+    return false
+  }
+  val uri = androidx.core.content.FileProvider.getUriForFile(contexto, contexto.packageName + ".archivos", apk)
+  contexto.startActivity(
+    android.content.Intent(android.content.Intent.ACTION_VIEW)
+      .setDataAndType(uri, "application/vnd.android.package-archive")
+      .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+  )
+  return true
+}
+
+/** Lo de antes, como último recurso: instalar.html en el navegador, o la dirección a la vista. */
+private fun abrirPaginaDeInstalar(contexto: Context) {
+  val url = casa.tvwatch.datos.Servidor.baseCacheada().trimEnd('/') + "/instalar.html"
+  try {
+    contexto.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+  } catch (_: Exception) {
+    android.widget.Toast.makeText(contexto, "Abre $url en el navegador", android.widget.Toast.LENGTH_LONG).show()
+  }
+}
+
+/**
+ * «Instalar» baja el APK aquí mismo y abre el instalador del sistema. Antes
+ * abría instalar.html, y en Google TV no hay navegador.
+ *
+ * Mientras baja, el botón principal enseña el porcentaje y no hace nada, pero
+ * no se desactiva: uno desactivado pierde el foco y con el mando de la tele
+ * no habría dónde estar. El otro pasa a «Cancelar».
+ */
 @Composable
 fun DialogoActualizacion(
   versionNueva: casa.tvwatch.datos.VersionApp,
@@ -246,31 +353,93 @@ fun DialogoActualizacion(
 ) {
   val contexto = LocalContext.current
   val remota = versionNueva.version ?: return
+  val ambito = androidx.compose.runtime.rememberCoroutineScope()
+  var bajada by remember { mutableStateOf<Bajada?>(null) }
+  var tarea by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+  /** Se ha mandado a dar el permiso: el texto lo recuerda al volver. */
+  var faltabaPermiso by remember { mutableStateOf(false) }
+
+  fun cancelar() { tarea?.cancel(); tarea = null; bajada = null }
+
+  fun instalar() {
+    val b = bajada
+    if (b is Bajada.EnCurso) return
+    if (b is Bajada.Lista) {
+      try {
+        if (lanzarInstalador(contexto, b.fichero)) alCerrar() else faltabaPermiso = true
+      } catch (e: Exception) {
+        bajada = Bajada.Fallo(e.message ?: "No se pudo abrir el instalador")
+      }
+      return
+    }
+    bajada = Bajada.EnCurso(null)
+    tarea = ambito.launch {
+      try {
+        val apk = bajarApk(contexto, remota) { pct -> bajada = Bajada.EnCurso(pct) }
+        bajada = Bajada.Lista(apk)
+        if (lanzarInstalador(contexto, apk)) alCerrar() else faltabaPermiso = true
+      } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+      } catch (e: Exception) {
+        android.util.Log.w("MediaWatch", "Descarga del APK $remota", e)
+        bajada = Bajada.Fallo(e.message ?: "No se pudo descargar")
+      }
+    }
+  }
+
   AlertDialog(
-    onDismissRequest = alCerrar,
+    // Atrás o tocar fuera durante la descarga la corta, como «Cancelar».
+    onDismissRequest = { cancelar(); alCerrar() },
     title = { Text("Hay una versión nueva: $remota") },
     text = {
       Column(Modifier.verticalScroll(rememberScrollState())) {
         Text("Tienes la $versionLocal.", Modifier.padding(bottom = 8.dp))
-        versionNueva.novedades.forEach { Text("• $it", Modifier.padding(vertical = 4.dp)) }
+        when (val b = bajada) {
+          is Bajada.EnCurso -> {
+            Text(if (b.porcentaje != null) "Descargando… ${b.porcentaje} %" else "Descargando…", Modifier.padding(bottom = 6.dp))
+            val pct = b.porcentaje
+            if (pct != null) {
+              androidx.compose.material3.LinearProgressIndicator(progress = { pct / 100f }, modifier = Modifier.fillMaxWidth())
+            } else {
+              androidx.compose.material3.LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
+          }
+          is Bajada.Lista -> if (faltabaPermiso) {
+            Text("Activa «Permitir de esta fuente» para Media Watch, vuelve y pulsa Instalar otra vez.")
+          }
+          is Bajada.Fallo -> Text("No se pudo: ${b.motivo}", color = MaterialTheme.colorScheme.error)
+          null -> versionNueva.novedades.forEach { Text("• $it", Modifier.padding(vertical = 4.dp)) }
+        }
       }
     },
     confirmButton = {
+      val b = bajada
       TextButton(onClick = {
-        alCerrar()
-        val url = casa.tvwatch.datos.Servidor.baseCacheada().trimEnd('/') + "/instalar.html"
-        try {
-          contexto.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)))
-        } catch (_: Exception) {
-          android.widget.Toast.makeText(contexto, "Abre $url en el navegador", android.widget.Toast.LENGTH_LONG).show()
-        }
-      }) { Text("Instalar") }
+        if (b is Bajada.Fallo) { alCerrar(); abrirPaginaDeInstalar(contexto) } else instalar()
+      }) {
+        Text(
+          when (b) {
+            is Bajada.EnCurso -> if (b.porcentaje != null) "Descargando ${b.porcentaje} %" else "Descargando…"
+            is Bajada.Fallo -> "Abrir la página"
+            else -> "Instalar"
+          },
+        )
+      }
     },
     dismissButton = {
       TextButton(onClick = {
+        if (bajada is Bajada.EnCurso) { cancelar(); return@TextButton }
         alDescartar?.invoke()
         alCerrar()
-      }) { Text(if (alDescartar != null) "Más tarde" else "Cerrar") }
+      }) {
+        Text(
+          when {
+            bajada is Bajada.EnCurso -> "Cancelar"
+            alDescartar != null -> "Más tarde"
+            else -> "Cerrar"
+          },
+        )
+      }
     },
   )
 }

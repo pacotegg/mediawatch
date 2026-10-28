@@ -72,6 +72,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -344,6 +345,8 @@ fun PantallaFicha(
             .padding(bottom = 6.dp),
           verticalAlignment = Alignment.Bottom,
         ) {
+          // Con estuche, el título y el eslogan dejan sitio a la derecha: el estuche sube hasta su altura (ver abajo).
+          val anchoTexto = if (Ajustes.estuche3D && f.tienePoster == 1) 0.62f else 1f
           Column(Modifier.fillMaxWidth()) {
             if (f.tieneLogo == 1) {
               Imagen(
@@ -354,13 +357,13 @@ fun PantallaFicha(
                 alineacion = Alignment.BottomStart,
               )
               Spacer(Modifier.height(6.dp))
-              Text(f.title, color = Texto, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+              Text(f.title, color = Texto, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth(anchoTexto))
             } else {
-              Text(f.title, color = Texto, style = MaterialTheme.typography.headlineMedium)
+              Text(f.title, color = Texto, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.fillMaxWidth(anchoTexto))
             }
             f.tagline?.takeIf { it.isNotBlank() }?.let {
               Spacer(Modifier.height(8.dp))
-              Text(it, color = TextoSuave, style = MaterialTheme.typography.bodyMedium)
+              Text(it, color = TextoSuave, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.fillMaxWidth(anchoTexto))
             }
           }
         }
@@ -442,7 +445,19 @@ fun PantallaFicha(
 
           if (mostrarEstuche) {
             Spacer(Modifier.width(10.dp))
+            /*
+             * Sube hasta la altura del título (28/10/2026): empezaba en la línea del año y a la derecha del título quedaba
+             * un hueco. 44 dp sin eslogan, 72 con él. Se recoloca y además se descuenta de su alto, para no dejar debajo el
+             * mismo hueco que se quita arriba (un `offset` a secas lo dejaría).
+             */
+            val subida = with(androidx.compose.ui.platform.LocalDensity.current) {
+              (if (f.tagline.isNullOrBlank()) 44.dp else 72.dp).roundToPx()
+            }
             Column(
+              modifier = Modifier.layout { medible, limites ->
+                val p = medible.measure(limites)
+                layout(p.width, (p.height - subida).coerceAtLeast(0)) { p.place(0, -subida) }
+              },
               horizontalAlignment = Alignment.CenterHorizontally,
             ) {
               Estuche3DAndroid(
@@ -452,12 +467,17 @@ fun PantallaFicha(
                 alAbrirColeccionista = { mostrarColeccionista = true },
                 modifier = Modifier.padding(top = 2.dp),
               )
-              if (!f.studio.isNullOrBlank()) {
-                Spacer(Modifier.height(14.dp))
-                LogosDeEstudios(f.id)
-              }
             }
           }
+        }
+
+        // A todo el ancho y centrados, no en la columna del estuche: ahí iban apilados y dejaban un hueco vacío a la
+        // izquierda (28/10/2026). También sin estuche, como en la tele.
+        if (!f.studio.isNullOrBlank()) {
+          // Menos aire arriba que abajo: con los 12 de la sinopsis quedan 12 encima y 20 debajo, que a la vista cuadra.
+          Spacer(Modifier.height(12.dp))
+          LogosDeEstudios(f.id, Modifier.fillMaxWidth())
+          Spacer(Modifier.height(8.dp))
         }
 
         f.plot?.let { sinopsis ->

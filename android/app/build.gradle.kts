@@ -24,8 +24,8 @@ android {
      * `versionCode` sube siempre en uno: es lo que Android mira para instalar
      * encima. El nombre se ve al pie del menú lateral.
      */
-    versionCode = 87
-    versionName = "3.84"
+    versionCode = 88
+    versionName = "3.85"
   }
 
   buildFeatures { compose = true }
@@ -37,7 +37,14 @@ android {
       ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") }
     }
     release {
-      isMinifyEnabled = false
+      /*
+       * R8 desde la 3.85: sin él, el código iba entero (31 MB de dex sin comprimir, APK de 16,5 MB). Reglas propias en
+       * proguard-rules.pro; las de Media3, ffmpeg, OkHttp y kotlinx-serialization vienen en sus bibliotecas. Ojo: la
+       * 3.71 se cerraba en cada ficha por un fallo que solo salía en release; probar SIEMPRE el APK de publicación.
+       */
+      isMinifyEnabled = true
+      isShrinkResources = true
+      proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       /*
        * Firmada con la clave de depuración a propósito: esto no va a ninguna
        * tienda, se instala a mano, y la clave es estable en este equipo, así

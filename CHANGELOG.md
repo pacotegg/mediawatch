@@ -12,6 +12,14 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.85 — 28/10/2026
+
+- «Instalar» en el aviso de versión nueva descarga la versión y abre el instalador desde la propia app, también en Google TV, que no tiene navegador. La primera vez Android pide permitir instalar desde Media Watch.
+- El texto que se manda a la tele desde el mando ya no falla si lleva una barra invertida o un salto de línea. Con la tele actualizada, las teclas del mando llegan al momento y ya no se pierde ninguna al pulsar seguido.
+- En la ficha, «Producida por» va centrado y los logos de los estudios uno al lado de otro a todo el ancho, también sin el estuche 3D.
+- El estuche 3D de la ficha sube hasta la altura del título, sin dejar hueco a su lado.
+- La app ocupa la mitad: de 16,5 a 7,5 MB.
+
 ## 3.84 — 28/10/2026
 
 - «Actualizar biblioteca» enseña por dónde va el escaneo («Escaneando Películas: 340 de 1400») y avisa al terminar con cuántos títulos ha visto; también si lo lanzó otro aparato.

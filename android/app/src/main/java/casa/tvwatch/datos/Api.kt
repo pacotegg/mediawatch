@@ -354,7 +354,8 @@ object Api {
 
   /** Manda el texto a la television, que lo recoge en su pantalla de buscar. */
   fun enviarALaTele(texto: String) {
-    texto("/api/mando/buscar", "{\"texto\":\"" + texto.replace("\"", "") + "\"}")
+    // Con JsonObject, como el resto: armándolo a mano, una `\` o un salto de línea en el texto rompía el JSON (400).
+    texto("/api/mando/buscar", kotlinx.serialization.json.JsonObject(mapOf("texto" to kotlinx.serialization.json.JsonPrimitive(texto))).toString())
   }
 
   /** Manda una pulsación del mando virtual a la televisión. */
