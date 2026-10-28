@@ -72,29 +72,66 @@ export function recogerBusqueda(userId: number): string | null {
 
 export type TeclaMando = 'arriba' | 'abajo' | 'izquierda' | 'derecha' | 'ok' | 'atras' | 'play_pause';
 const TECLAS: string[] = ['arriba', 'abajo', 'izquierda', 'derecha', 'ok', 'atras', 'play_pause'];
-const teclas = new Map<number, { tecla: TeclaMando; enviado: number }>();
+/*
+ * Cola, no una sola tecla: con una, dos pulsaciones seguidas en el móvil se pisaban y la tele recibía solo la última.
+ * Tope de 20 por si nadie recoge.
+ */
+const teclas = new Map<number, { tecla: TeclaMando; enviado: number }[]>();
 
 export function enviarTecla(userId: number, tecla: TeclaMando) {
-  teclas.set(userId, { tecla, enviado: Date.now() });
+  const cola = teclas.get(userId) ?? [];
+  cola.push({ tecla, enviado: Date.now() });
+  teclas.set(userId, cola.slice(-20));
 }
 
-export function recogerTecla(userId: number): TeclaMando | null {
-  const orden = teclas.get(userId);
-  if (!orden) return null;
-  teclas.delete(userId);
-  return Date.now() - orden.enviado < 10_000 ? orden.tecla : null;
+/** Las teclas vigentes, en orden. `una`: solo la primera (teles antiguas, que leen una por consulta). */
+export function recogerTeclas(userId: number, una = false): TeclaMando[] {
+  const cola = (teclas.get(userId) ?? []).filter((o) => Date.now() - o.enviado < 10_000);
+  const sale = una ? cola.slice(0, 1) : cola;
+  const queda = cola.slice(sale.length);
+  if (queda.length) teclas.set(userId, queda);
+  else teclas.delete(userId);
+  return sale.map((o) => o.tecla);
 }
+
+/** Una tecla, como antes (la usan las pruebas y quien solo quiera la siguiente). */
+export function recogerTecla(userId: number): TeclaMando | null {
+  return recogerTeclas(userId, true)[0] ?? null;
+}
+
+/** Lo que una consulta de la tele puede llevarse ya, sin sacarlo. */
+function hayParaLaTele(userId: number): boolean {
+  return pendientes.has(userId) || reproducciones.has(userId) || (teclas.get(userId)?.length ?? 0) > 0;
+}
+
+/** Cuánto se sostiene como mucho una consulta con `espera=1` antes de contestar vacía. */
+const ESPERA_MAX_MS = 8_000;
 
 export default async function mandoRoutes(app: FastifyInstance) {
   /** La televisión pregunta si hay algo que escribir o pulsar. */
-  app.get('/api/mando', async (req) => {
+  app.get('/api/mando', async (req, reply) => {
     const user = requireUser(req);
     // Las órdenes de buscar, reproducir y teclas son para la televisión (`?tele=1`):
     // si las recogiera el navegador o el móvil, que también preguntan por los
     // avisos, se las llevarían sin que nadie las viera.
-    const tele = (req.query as { tele?: string }).tele === '1';
-    // Y los avisos del administrador para este aparato: mensaje y «para».
-    const avisos = recogerAvisos(sesionDe(req) ?? '');
+    const q = req.query as { tele?: string; espera?: string };
+    const tele = q.tele === '1';
+    const sesion = sesionDe(req) ?? '';
+    /*
+     * `espera=1` (tele desde el 28/10/2026): si no hay nada, la consulta se sostiene hasta 8 s y contesta en cuanto
+     * llega algo. Con la consulta cada 1,2 s, una tecla del mando del móvil tardaba hasta 1,2 s en notarse.
+     */
+    let avisos = recogerAvisos(sesion);
+    if (tele && q.espera === '1') {
+      const hasta = Date.now() + ESPERA_MAX_MS;
+      let cerrada = false;
+      // La respuesta, no la petición: en un GET la petición «se cierra» en cuanto se ha leído.
+      reply.raw.on('close', () => { cerrada = true; });
+      while (!cerrada && Date.now() < hasta && !avisos.mensaje && !avisos.parar && !hayParaLaTele(user.id) && !estadoLimite(user.id)?.agotado) {
+        await new Promise((r) => setTimeout(r, 100));
+        avisos = recogerAvisos(sesion);
+      }
+    }
     // Un perfil con el tiempo de hoy agotado: lo que esté viendo se para, en cualquier aparato.
     if (estadoLimite(user.id)?.agotado) {
       avisos.parar = true;
@@ -103,7 +140,10 @@ export default async function mandoRoutes(app: FastifyInstance) {
     return {
       buscar: tele ? recogerBusqueda(user.id) : null,
       reproducir: tele ? recogerReproduccion(user.id) : null,
-      tecla: tele ? recogerTecla(user.id) : null,
+      // `tecla` para las teles antiguas (una por consulta); `teclas`, todas, para las que esperan.
+      ...(tele && q.espera === '1'
+        ? (() => { const ts = recogerTeclas(user.id); return { tecla: ts[0] ?? null, teclas: ts }; })()
+        : { tecla: tele ? recogerTecla(user.id) : null }),
       mensaje: avisos.mensaje,
       parar: avisos.parar,
     };
