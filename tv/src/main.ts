@@ -5234,6 +5234,10 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     if (cerrado) return;
     cerrado = true;
     alPararDesdeAviso = null;
+    // La cuenta atrás de «Siguiente episodio» seguía tras salir por «parar», el límite diario o Stop, y al llegar a
+    // cero arrancaba el episodio siguiente desde una pantalla que ya no existía.
+    window.clearInterval(temporizadorWatchNext);
+    temporizadorWatchNext = 0;
     document.removeEventListener('visibilitychange', manejarVisibilidad);
     reproductorActivo = null;
     portadaGuardada = null;
@@ -5278,7 +5282,10 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
    * en los foros de Plex y Jellyfin, y con cuenta atrás para poder pararla.
    */
   const alTerminar = (directo = false) => {
+    if (cerrado) return;
     cerrado = true;
+    window.clearInterval(temporizadorWatchNext);
+    temporizadorWatchNext = 0;
     document.removeEventListener('visibilitychange', manejarVisibilidad);
     reproductorActivo = null;
     marcadoVisto = true;
@@ -7352,6 +7359,11 @@ window.setTimeout(enviarSiToca, 20_000);
 window.setInterval(enviarSiToca, 60_000);
 document.addEventListener('visibilitychange', () => {
   apuntar(document.visibilityState === 'hidden' ? 'a segundo plano' : 'vuelve a primer plano');
+  // La música de la ficha no debe seguir sonando encima de otra app; al volver, sigue si la ficha sigue ahí.
+  if (audioTema) {
+    if (document.visibilityState === 'hidden') audioTema.pause();
+    else audioTema.play().catch(() => undefined);
+  }
   if (document.visibilityState === 'visible') window.setTimeout(enviarSiToca, 3000);
 });
 
