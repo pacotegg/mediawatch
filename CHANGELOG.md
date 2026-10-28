@@ -12,6 +12,11 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.84 — 28/10/2026
+
+- «Actualizar biblioteca» enseña por dónde va el escaneo («Escaneando Películas: 340 de 1400») y avisa al terminar con cuántos títulos ha visto; también si lo lanzó otro aparato.
+- «Quién está viendo» permite cerrar la sesión de un aparato (tendrá que volver a entrar con el PIN), marca cuál es el tuyo y en Ajustes dice cuántos aparatos reproducen ahora.
+
 ## 3.83 — 28/10/2026
 
 - Los administradores tienen en Ajustes «Quién está viendo»: qué ve cada aparato, por dónde va, si el servidor lo transcodifica, y pueden mandarle un mensaje o parar lo que ve.

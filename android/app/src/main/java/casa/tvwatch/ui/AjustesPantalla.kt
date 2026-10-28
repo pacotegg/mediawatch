@@ -409,11 +409,7 @@ fun PantallaAjustes(
       Spacer(Modifier.height(10.dp))
 
       if (Ajustes.esAdmin) {
-        FilaBoton(
-          titulo = "Quién está viendo",
-          detalle = "Qué ve cada aparato y por dónde va; mandar un mensaje o parar",
-          alPulsar = alIrAActividad,
-        )
+        FilaQuienEstaViendo(alPulsar = alIrAActividad)
         FilaEscaneoBiblioteca()
         FilasReinicioServidor()
       }

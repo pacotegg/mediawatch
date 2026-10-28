@@ -59,6 +59,7 @@ fun PantallaActividad(alPerderSesion: () -> Unit) {
   var fallo by remember { mutableStateOf<String?>(null) }
   var paraMensaje by remember { mutableStateOf<AparatoActividad?>(null) }
   var paraParar by remember { mutableStateOf<AparatoActividad?>(null) }
+  var paraCerrar by remember { mutableStateOf<AparatoActividad?>(null) }
   var recarga by remember { mutableStateOf(0) }
 
   LaunchedEffect(recarga) {
@@ -93,9 +94,9 @@ fun PantallaActividad(alPerderSesion: () -> Unit) {
   ) {
     if (fallo != null) item { Text(fallo!!, color = Color(0xFFE5705F), fontSize = 13.sp) }
     item { Cabecera("Viendo ahora", if (viendo.isEmpty()) "Nadie está viendo nada ahora mismo." else "${viendo.size} reproduciendo") }
-    items(viendo, key = { it.sesion }) { TarjetaAparato(it, { paraMensaje = it }, { paraParar = it }) }
+    items(viendo, key = { it.sesion }) { TarjetaAparato(it, { paraMensaje = it }, { paraParar = it }, { paraCerrar = it }) }
     item { Spacer(Modifier.height(6.dp)); Cabecera("Conectados", "Aparatos con sesión vistos en las últimas 24 horas") }
-    items(resto, key = { it.sesion }) { TarjetaAparato(it, { paraMensaje = it }, { paraParar = it }) }
+    items(resto, key = { it.sesion }) { TarjetaAparato(it, { paraMensaje = it }, { paraParar = it }, { paraCerrar = it }) }
     if (resto.isEmpty()) item { Text("Ninguno.", color = TextoTenue, fontSize = 13.sp) }
   }
 
@@ -129,6 +130,21 @@ fun PantallaActividad(alPerderSesion: () -> Unit) {
     )
   }
 
+  paraCerrar?.let { a ->
+    DialogoCerrarSesion(
+      a,
+      alConfirmar = {
+        paraCerrar = null
+        alcance.launch {
+          val r = withContext(Dispatchers.IO) { runCatching { Api.actividadCerrar(a.sesion) } }
+          aviso(r.exceptionOrNull()?.message ?: "Sesión cerrada")
+          recarga++
+        }
+      },
+      alCancelar = { paraCerrar = null },
+    )
+  }
+
   paraParar?.let { a ->
     AlertDialog(
       onDismissRequest = { paraParar = null },
@@ -150,6 +166,49 @@ fun PantallaActividad(alPerderSesion: () -> Unit) {
   }
 }
 
+/**
+ * La fila «Quién está viendo» de Ajustes, con cuántos aparatos reproducen ahora. Mira al abrir Ajustes y cada 30 s mientras
+ * esté a la vista (`LaunchedEffect` se cancela al salir), no más: es una lista pequeña pero no hace falta pedirla sin parar.
+ */
+@Composable
+internal fun FilaQuienEstaViendo(alPulsar: () -> Unit) {
+  var viendo by remember { mutableStateOf<Int?>(null) }
+  LaunchedEffect(Unit) {
+    while (true) {
+      viendo = withContext(Dispatchers.IO) { runCatching { Api.actividad().count { it.viendo != null } }.getOrNull() }
+      delay(30_000L)
+    }
+  }
+  val ahora = when (viendo) {
+    null -> null
+    0 -> "Nadie está viendo nada"
+    1 -> "1 aparato reproduciendo ahora"
+    else -> "$viendo aparatos reproduciendo ahora"
+  }
+  FilaBoton(
+    titulo = "Quién está viendo",
+    detalle = (ahora?.let { "$it · " } ?: "") + "mensaje, parar o cerrar sesión",
+    alPulsar = alPulsar,
+  )
+}
+
+@Composable
+private fun DialogoCerrarSesion(a: AparatoActividad, alConfirmar: () -> Unit, alCancelar: () -> Unit) {
+  AlertDialog(
+    onDismissRequest = alCancelar,
+    containerColor = FondoTarjeta,
+    title = { Text("Cerrar la sesión", color = Texto, fontWeight = FontWeight.Bold) },
+    text = {
+      Text(
+        "Se cierra la sesión de ${a.usuario} en ${a.dispositivo ?: "ese aparato"} (${a.sesion}): tendrá que volver a entrar con su PIN. Lo que esté viendo se corta.",
+        color = TextoSuave,
+      )
+    },
+    confirmButton = { TextButton(onClick = alConfirmar) { Text("Cerrar sesión", color = Color(0xFFE5705F)) } },
+    dismissButton = { TextButton(onClick = alCancelar) { Text("Cancelar", color = TextoSuave) } },
+  )
+}
+
 @Composable
 private fun Cabecera(titulo: String, detalle: String) {
   Column(Modifier.padding(top = 4.dp)) {
@@ -159,7 +218,7 @@ private fun Cabecera(titulo: String, detalle: String) {
 }
 
 @Composable
-private fun TarjetaAparato(a: AparatoActividad, alMensaje: () -> Unit, alParar: () -> Unit) {
+private fun TarjetaAparato(a: AparatoActividad, alMensaje: () -> Unit, alParar: () -> Unit, alCerrar: () -> Unit) {
   val v = a.viendo
   Column(
     Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(FondoTarjeta).padding(12.dp),
@@ -177,6 +236,7 @@ private fun TarjetaAparato(a: AparatoActividad, alMensaje: () -> Unit, alParar: 
           Spacer(Modifier.width(8.dp))
           Text(a.usuario, color = Texto, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
           if (a.esAdmin == 1) Text("  administrador", color = TextoTenue, fontSize = 11.sp)
+          if (a.esta) Text("  este aparato", color = Realce, fontSize = 11.sp)
         }
         Text("${a.dispositivo ?: "aparato"} · ${hace(a.ultimaVez)}", color = TextoTenue, fontSize = 12.sp)
         if (v != null) {
@@ -203,6 +263,8 @@ private fun TarjetaAparato(a: AparatoActividad, alMensaje: () -> Unit, alParar: 
     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
       TextButton(onClick = alMensaje) { Text("Mensaje", color = Realce) }
       if (v != null) TextButton(onClick = alParar) { Text("Parar", color = Color(0xFFE5705F)) }
+      // Su propia sesión no se cierra desde aquí: sería salir de la app sin querer.
+      if (!a.esta) TextButton(onClick = alCerrar) { Text("Cerrar sesión", color = TextoSuave) }
     }
   }
 }

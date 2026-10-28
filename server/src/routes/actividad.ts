@@ -11,7 +11,7 @@ import type { FastifyInstance } from 'fastify';
 import { db } from '../db.ts';
 import { enviarMensaje, pedirParada } from '../media/avisos.ts';
 import { sessions } from '../media/transcode.ts';
-import { requireUser } from './auth.ts';
+import { requireUser, sesionDe } from './auth.ts';
 import { cortarAparato } from './play.ts';
 
 /** Sin noticias más de esto, ya no está viendo. */
@@ -31,6 +31,7 @@ export default async function actividadRoutes(app: FastifyInstance) {
 
   app.get('/api/actividad', async (req, reply) => {
     if (!soloAdmin(req, reply)) return;
+    const miSesion = sesionDe(req);
     const desdeConectado = new Date(Date.now() - CONECTADO_MS).toISOString();
     const desdeViendo = new Date(Date.now() - VIENDO_MS).toISOString();
 
@@ -62,6 +63,8 @@ export default async function actividadRoutes(app: FastifyInstance) {
       const v = paradoHace < 90_000 ? null : (viendo.find((x) => x.sesion === a.sesion) ?? viendo.find((x) => !x.sesion && x.userId === a.userId));
       return {
         ...a,
+        // El aparato de quien pregunta: la app no le ofrece cerrar su propia sesión.
+        esta: a.sesion === miSesion,
         viendo: v
           ? {
               itemId: v.itemId,

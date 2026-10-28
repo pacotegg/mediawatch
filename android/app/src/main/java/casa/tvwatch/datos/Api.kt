@@ -61,11 +61,12 @@ object Api {
     }.apply { isDaemon = true }.start()
   }
 
-  private fun peticion(ruta: String, cuerpo: String? = null): Request {
+  private fun peticion(ruta: String, cuerpo: String? = null, borrar: Boolean = false): Request {
     // `Servidor.base()` decide si toca la direccion de casa o la de fuera.
     val b = Request.Builder().url(Servidor.base() + ruta)
     Ajustes.token?.let { b.header("Authorization", "Bearer $it") }
-    if (cuerpo != null) b.post(cuerpo.toRequestBody("application/json".toMediaType()))
+    if (borrar) b.delete()
+    else if (cuerpo != null) b.post(cuerpo.toRequestBody("application/json".toMediaType()))
     return b.build()
   }
 
@@ -83,12 +84,13 @@ object Api {
    * `topeSegundos`: lo que se espera la respuesta entera. 25 s valen para casi todo; la búsqueda y la bajada de
    * subtítulos de internet tardan más en el servidor (su tope es de 90 s y 2 min) y a los 25 s se daban por fallidas.
    */
-  fun texto(ruta: String, cuerpo: String? = null, topeSegundos: Long = 25): String {
+  fun texto(ruta: String, cuerpo: String? = null, topeSegundos: Long = 25, borrar: Boolean = false): String {
     val cliente = if (topeSegundos == 25L) httpTexto
       else http.newBuilder().callTimeout(topeSegundos, TimeUnit.SECONDS).readTimeout(topeSegundos, TimeUnit.SECONDS).build()
     // Sin servidor aún (primera apertura, pantalla de conexión): no es un fallo de red.
     if (Ajustes.servidor.isEmpty()) throw FalloDeRed("Todavía no hay servidor configurado.")
-    val maxIntentos = if (cuerpo == null) 3 else 1
+    // Una lectura se reintenta; una escritura (POST o DELETE) no.
+    val maxIntentos = if (cuerpo == null && !borrar) 3 else 1
     var ultimoError: Exception? = null
     val inicio = System.nanoTime()
     fun ms() = (System.nanoTime() - inicio) / 1_000_000
@@ -97,7 +99,7 @@ object Api {
 
     for (intento in 1..maxIntentos) {
       val r = try {
-        cliente.newCall(peticion(ruta, cuerpo)).execute()
+        cliente.newCall(peticion(ruta, cuerpo, borrar)).execute()
       } catch (e: Exception) {
         ultimoError = e
         if (intento < maxIntentos && ms() < NO_REINTENTAR_DESDE_MS) {
@@ -339,6 +341,13 @@ object Api {
   fun actividadParar(sesion: String) {
     texto("/api/actividad/$sesion/parar", "{}")
   }
+  /** Cierra la sesión de un aparato: tendrá que volver a entrar con el PIN. */
+  fun actividadCerrar(sesion: String) {
+    texto("/api/actividad/$sesion", borrar = true)
+  }
+
+  /** Por dónde va el escaneo y cómo acabó el último (solo administradores). */
+  fun escaneoEstado(): EstadoEscaneo = pedir("/api/scan/estado")
 
   /** Avisos del administrador para este aparato: un mensaje, o «para». */
   fun avisos(): Avisos = pedir("/api/mando")
@@ -1011,6 +1020,18 @@ data class ListaLogos(val logos: List<LogoEstudio> = emptyList())
 data class RespuestaEscaneo(val started: Boolean = false, val reason: String? = null)
 
 @Serializable
+data class ProgresoEscaneo(val library: String = "", val done: Int = 0, val total: Int = 0, val current: String = "")
+
+@Serializable
+data class ResultadoEscaneo(val name: String = "", val count: Int = 0)
+
+@Serializable
+data class UltimoEscaneo(val ok: Boolean = true, val resultados: List<ResultadoEscaneo> = emptyList(), val error: String? = null)
+
+@Serializable
+data class EstadoEscaneo(val scanning: Boolean = false, val progreso: ProgresoEscaneo? = null, val ultimo: UltimoEscaneo? = null)
+
+@Serializable
 data class CarpetaBiblioteca(val name: String, val path: String, val kind: String = "")
 
 @Serializable
@@ -1036,6 +1057,8 @@ data class AparatoActividad(
   val usuario: String = "",
   val color: String? = null,
   val esAdmin: Int = 0,
+  /** El aparato de quien pregunta (lo marca el servidor desde la 3.84). */
+  val esta: Boolean = false,
   val viendo: VisionadoActivo? = null,
 )
 

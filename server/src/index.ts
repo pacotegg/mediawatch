@@ -32,6 +32,7 @@ import systemRoutes from './routes/system.ts';
 import licenciaRoutes from './routes/licencia.ts';
 import { scanAllEnWorker, type ScanProgress } from './scanner/scan.ts';
 import { ultimaVersionApp } from './media/version-app.ts';
+import { escaneoAvanza, escaneoFallido, escaneoIniciado, escaneoTerminado, estadoEscaneo } from './media/estado-escaneo.ts';
 import { procesarWebhookPlex } from './media/plex.ts';
 
 /*
@@ -588,21 +589,30 @@ app.post('/api/scan', async (req, reply) => {
   if (!currentUser(req)?.is_admin) return reply.code(403).send({ error: 'Solo un administrador puede escanear' });
   if (scanning) return { started: false, reason: 'Ya hay un escaneo en curso' };
   scanning = true;
+  const ruta = (req.body as { ruta?: string } | null)?.ruta;
+  const solo = ruta && [...config.libraries, ...config.fuentesScraper].some((l) => l.path === ruta) ? [ruta] : undefined;
+  escaneoIniciado(solo ? solo[0] : null);
   // Sin esperar: la petición contesta ya, y el escaneo (ahora por lotes, cede
   // el hilo entre lotes) sigue de fondo sin bloquear al resto del servidor.
   void (async () => {
     try {
-      const ruta = (req.body as { ruta?: string } | null)?.ruta;
-      const solo = ruta && [...config.libraries, ...config.fuentesScraper].some((l) => l.path === ruta) ? [ruta] : undefined;
-      const results = await scanAllEnWorker(undefined, solo);
+      const results = await scanAllEnWorker(escaneoAvanza, solo);
+      escaneoTerminado(results);
       console.log('Escaneo completado:', results.map((r) => `${r.name}=${r.count}`).join(' '));
     } catch (err) {
+      escaneoFallido(String(err));
       console.error('Escaneo fallido:', err);
     } finally {
       scanning = false;
     }
   })();
   return { started: true };
+});
+
+/** Por dónde va el escaneo y cómo acabó el último: lo pide la app de Android tras lanzarlo. */
+app.get('/api/scan/estado', async (req, reply) => {
+  if (!currentUser(req)?.is_admin) return reply.code(403).send({ error: 'Solo un administrador' });
+  return estadoEscaneo();
 });
 
 app.get('/api/scan/stream', async (req, reply) => {
@@ -620,10 +630,13 @@ app.get('/api/scan/stream', async (req, reply) => {
   }
 
   scanning = true;
+  escaneoIniciado(null);
   try {
-    const results = await scanAllEnWorker((p: ScanProgress) => send('progress', p));
+    const results = await scanAllEnWorker((p: ScanProgress) => { escaneoAvanza(p); send('progress', p); });
+    escaneoTerminado(results);
     send('done', { results });
   } catch (err) {
+    escaneoFallido(String(err));
     send('error', { message: String(err) });
   } finally {
     scanning = false;
