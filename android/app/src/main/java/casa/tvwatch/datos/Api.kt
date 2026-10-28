@@ -313,6 +313,33 @@ object Api {
   fun reinicioCancelar(): EstadoReinicio =
     json.decodeFromString(texto("/api/mantenimiento/reinicio/cancelar", "{}"))
 
+  /**
+   * Escaneo de la biblioteca (solo administradores). Sin `ruta` recorre todas; con una, solo esa carpeta
+   * (el servidor ignora rutas que no sean de su configuración). La ruta se codifica con el serializador:
+   * en Windows lleva barras invertidas.
+   */
+  fun escanear(ruta: String? = null): RespuestaEscaneo {
+    val cuerpo = if (ruta == null) "{}"
+      else kotlinx.serialization.json.JsonObject(mapOf("ruta" to kotlinx.serialization.json.JsonPrimitive(ruta))).toString()
+    return json.decodeFromString(texto("/api/scan", cuerpo))
+  }
+
+  /** Las carpetas de biblioteca con su ruta; solo las da a un administrador. */
+  fun carpetasDeBiblioteca(): List<CarpetaBiblioteca> =
+    pedir<AjustesServidor>("/api/server-settings").libraries
+
+  /** Quién está conectado y qué ve cada aparato (solo administradores). */
+  fun actividad(): List<AparatoActividad> = pedir("/api/actividad")
+  fun actividadMensaje(sesion: String, mensaje: String) {
+    texto(
+      "/api/actividad/$sesion/mensaje",
+      kotlinx.serialization.json.JsonObject(mapOf("texto" to kotlinx.serialization.json.JsonPrimitive(mensaje))).toString(),
+    )
+  }
+  fun actividadParar(sesion: String) {
+    texto("/api/actividad/$sesion/parar", "{}")
+  }
+
   /** Avisos del administrador para este aparato: un mensaje, o «para». */
   fun avisos(): Avisos = pedir("/api/mando")
 
@@ -979,6 +1006,38 @@ data class LogoEstudio(val nombre: String, val aspecto: Double = 1.0)
 
 @Serializable
 data class ListaLogos(val logos: List<LogoEstudio> = emptyList())
+
+@Serializable
+data class RespuestaEscaneo(val started: Boolean = false, val reason: String? = null)
+
+@Serializable
+data class CarpetaBiblioteca(val name: String, val path: String, val kind: String = "")
+
+@Serializable
+data class AjustesServidor(val libraries: List<CarpetaBiblioteca> = emptyList())
+
+/** Lo que ve un aparato ahora mismo, según `/api/actividad`. `modo`: raw, remux, remux-audio, transcode... */
+@Serializable
+data class VisionadoActivo(
+  val itemId: Int,
+  val titulo: String = "",
+  val episodio: String? = null,
+  val posicion: Double = 0.0,
+  val duracion: Double? = null,
+  val modo: String? = null,
+  val cliente: String? = null,
+)
+
+@Serializable
+data class AparatoActividad(
+  val sesion: String,
+  val dispositivo: String? = null,
+  val ultimaVez: String = "",
+  val usuario: String = "",
+  val color: String? = null,
+  val esAdmin: Int = 0,
+  val viendo: VisionadoActivo? = null,
+)
 
 @Serializable
 data class EstadoReinicio(

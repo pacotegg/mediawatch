@@ -63,6 +63,7 @@ import casa.tvwatch.ui.Menu
 import casa.tvwatch.ui.Movimiento
 import casa.tvwatch.ui.NovedadesDialogo
 import casa.tvwatch.ui.AvisoDeVersionNueva
+import casa.tvwatch.ui.PantallaActividad
 import casa.tvwatch.ui.PantallaAjustes
 import casa.tvwatch.ui.PantallaBiblioteca
 import casa.tvwatch.ui.PantallaBuscar
@@ -182,6 +183,7 @@ private object Rutas {
   const val PERSONA = "persona/{id}"
   const val MANDO = "mando"
   const val AJUSTES = "ajustes"
+  const val ACTIVIDAD = "actividad"
   const val REPRODUCTOR_LOCAL = "ver_local/{uriEncoded}/{tituloEncoded}"
 
   fun saga(nombre: String) = "saga/" + URLEncoder.encode(nombre, "UTF-8")
@@ -360,8 +362,15 @@ private fun Navegacion(nav: NavHostController) {
         Pantalla(titulo = "Opciones", nav = nav, alMenu = ::abrirMenu) {
           PantallaAjustes(
             alIrADescargas = { nav.navigate(Rutas.DESCARGAS) },
+            alIrAActividad = { nav.navigate(Rutas.ACTIVIDAD) },
             alCerrarSesion = { aConexion() },
           )
+        }
+      }
+
+      composable(Rutas.ACTIVIDAD) {
+        Pantalla(titulo = "Quién está viendo", nav = nav) {
+          PantallaActividad(alPerderSesion = { aConexion() })
         }
       }
 

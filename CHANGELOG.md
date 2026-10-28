@@ -12,6 +12,11 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.83 — 28/10/2026
+
+- Los administradores tienen en Ajustes «Quién está viendo»: qué ve cada aparato, por dónde va, si el servidor lo transcodifica, y pueden mandarle un mensaje o parar lo que ve.
+- Nueva opción «Actualizar biblioteca» en Ajustes para administradores: escanea toda la biblioteca o solo una carpeta, sin tener que ir a la web.
+
 ## 3.82 — 26/10/2026
 
 - Los administradores pueden editar los datos de una película desde su ficha (Editar → Editar datos): título, sinopsis, géneros, saga, año, estudio y más. El escáner respeta lo que cambies y se puede deshacer.
