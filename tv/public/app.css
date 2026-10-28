@@ -4152,7 +4152,7 @@ body.viendo-extra .marco * {
   overflow: hidden;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  transition: box-shadow 0.14s ease-out;
+  /* Sin transición: el aro de foco animado va por detrás del mando y repinta la sombra en cada fotograma (igual que en las carátulas). */
 }
 
 .tarjeta-extra .extra-foto img {
