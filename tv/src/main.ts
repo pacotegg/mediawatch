@@ -22,7 +22,7 @@ import {
 } from './api.ts';
 import { ajustes, cargarAjustes, guardarAjustes, ordenar, type Rendimiento } from './ajustes.ts';
 import { t, tr } from './i18n.ts';
-import { actual, ajustarListaEpisodios, ajustarVentanaRejilla, alEnfocar, alPulsar, anadirPorArriba, situarFila, avisarDeFallos, enfocables, enfocar, indexar, indexarAdemas, iniciarNavegacion, manejadorActual, TECLA } from './nav.ts';
+import { actual, ajustarListaEpisodios, ajustarVentanaRejilla, alEnfocar, alEnfocarEnTodas, alPulsar, anadirPorArriba, situarFila, avisarDeFallos, enfocables, enfocar, indexar, indexarAdemas, iniciarNavegacion, manejadorActual, TECLA } from './nav.ts';
 import { Reproductor, calcularRectDisplay } from './player.ts';
 import { abrirApp, cargarAppsInstaladas, idDeApp } from './plataformas.ts';
 
@@ -1804,6 +1804,27 @@ function notasHtml(ficha: Ficha): string {
  *   - el cartel grande se cambiaba en pleno vuelo (decodificar a mitad): ahora solo si ya está decodificado al empezar.
  * Y arranca dos fotogramas después de pintar la ficha, para no coincidir con ese repintado.
  */
+/*
+ * El cartel grande del vuelo se pide al detenerse el foco en una tarjeta (0,3 s quieto), no al pulsarla: si no llegaba a
+ * tiempo, el vuelo ampliaba ~15 veces el de 320 px y se veía pixelado. Se guarda la última para que siga decodificada.
+ */
+let precargaCartel = 0;
+let cartelPrecargado: HTMLImageElement | null = null;
+alEnfocarEnTodas((el) => {
+  window.clearTimeout(precargaCartel);
+  if (!el.classList.contains('tarjeta')) return;
+  const id = Number(el.getAttribute('data-id'));
+  if (!id || !el.querySelector('.lamina img')) return;
+  precargaCartel = window.setTimeout(() => {
+    const url = imagen.poster(id, 800);
+    if (cartelPrecargado && cartelPrecargado.src === url) return;
+    const i = new Image();
+    i.src = url;
+    if (typeof i.decode === 'function') i.decode().catch(() => undefined);
+    cartelPrecargado = i;
+  }, 300);
+});
+
 function despegarCartel(elOrigen: HTMLElement): { aterrizar: () => void; cancelar: () => void; vuela: boolean } {
   const lamina = elOrigen.querySelector<HTMLElement>('.lamina') || elOrigen;
   const img = lamina.querySelector<HTMLImageElement>('img');
@@ -2246,6 +2267,16 @@ function formatoAspecto(ancho?: number | null, alto?: number | null): string {
   cuerpo += '</div>';
   pintar('inicio', cuerpo);
   if (vuelo) vuelo.aterrizar();
+  // La entrada deja `will-change` y un transform fijados (fill forwards): una capa de pantalla completa reservada
+  // mientras dure la ficha. Al acabar, fuera.
+  const fichaEntrando = marco.querySelector<HTMLElement>('.ficha.animar-entrada');
+  if (fichaEntrando) {
+    fichaEntrando.addEventListener('animationend', function fin(e) {
+      if (e.target !== fichaEntrando) return;
+      fichaEntrando.classList.remove('animar-entrada');
+      fichaEntrando.removeEventListener('animationend', fin);
+    });
+  }
   const cajaLogos = marco.querySelector<HTMLElement>('[data-logos-estudio]');
   if (cajaLogos) void pintarLogosEstudio(ficha.id, cajaLogos);
 
@@ -3449,14 +3480,20 @@ function dialogoEdicionColeccionista(ficha: Ficha, elOrigen?: HTMLElement | null
 
   const es4k = (ficha.tags || []).indexOf('4K') >= 0;
   const chips: string[] = [];
-  chips.push(es4k ? '4K ULTRA HD' : 'BLU-RAY 1080P');
+  // Por la resolución real del mejor fichero: antes un DVD de 480p también salía como «BLU-RAY 1080P».
+  const altoMax = ficha.files.reduce((m, f) => Math.max(m, f.height || 0), 0);
+  const anchoMax = ficha.files.reduce((m, f) => Math.max(m, f.width || 0), 0);
+  const formato = es4k ? '4K ULTRA HD' : altoMax >= 1000 || anchoMax >= 1800 ? 'BLU-RAY 1080P' : altoMax >= 700 || anchoMax >= 1200 ? 'HD 720P' : altoMax > 0 ? 'DVD' : 'BLU-RAY';
+  chips.push(formato);
   const hdrTag = (ficha.tags || []).find((t) => t.indexOf('HDR') === 0 || t === 'DV');
   if (hdrTag) chips.push(hdrTag);
   const audioTag = (ficha.tags || []).find((t) => t === 'Atmos' || t === 'DTS-HD' || t === 'TrueHD' || t === '5.1' || t === '7.1');
   if (audioTag) chips.push(audioTag);
-  if (ficha.runtime) {
-    const horas = Math.floor(ficha.runtime / 60);
-    const mins = Math.round(ficha.runtime % 60);
+  // Se redondea el total antes de partirlo: con 119,6 min salía «1h 60m».
+  const minutosTotales = ficha.runtime ? Math.round(ficha.runtime) : 0;
+  if (minutosTotales) {
+    const horas = Math.floor(minutosTotales / 60);
+    const mins = minutosTotales % 60;
     chips.push(horas > 0 ? horas + 'h ' + mins + 'm' : mins + 'm');
   }
 
@@ -3485,15 +3522,17 @@ function dialogoEdicionColeccionista(ficha: Ficha, elOrigen?: HTMLElement | null
     valor ? '<div class="libreto-fila"><b>' + clave + '</b><span>' + esc(valor) + '</span></div>' : '';
 
   const marcaFormato = '<div class="estuche-lomo-sup-tv' + (es4k ? ' es-4k' : '') + '" style="height: 28px;">' +
-    '<span class="estuche-lomo-texto-tv" style="font-size: 12px;">' + (es4k ? '4K ULTRA HD' : 'Blu-ray') + '</span></div>';
+    '<span class="estuche-lomo-texto-tv" style="font-size: 12px;">' + (es4k ? '4K ULTRA HD' : formato === 'DVD' ? 'DVD' : 'Blu-ray') + '</span></div>';
 
   const capa = document.createElement('div');
-  capa.className = 'capa capa-coleccionista';
+  capa.className = 'capa capa-coleccionista preparando';
   capa.style.setProperty('--origen-x', deltaX + 'px');
   capa.style.setProperty('--origen-y', deltaY + 'px');
   capa.style.setProperty('--escala-inicial', String(escalaInicial));
   capa.innerHTML =
-    (ficha.has_fanart ? '<img class="coleccionista-fondo-pantalla" src="' + imagen.fondo(ficha.id, 1920) + '" alt="">' : '') +
+    // Una sola imagen pequeña para el fondo y la bandeja: ampliada a pantalla ya sale suave, sin `filter: blur` sobre
+    // 1920x1080 (caro en la tele) y sin pedir dos tamaños del mismo fondo.
+    (ficha.has_fanart ? '<img class="coleccionista-fondo-pantalla" src="' + imagen.fondo(ficha.id, 640) + '" alt="">' : '') +
     '<div class="coleccionista-escenario">' +
     '<div class="coleccionista-estuche animando-apertura" style="--rot-y: ' + rotacionY + 'deg;">' +
     '<div class="coleccionista-libro">' +
@@ -3512,7 +3551,7 @@ function dialogoEdicionColeccionista(ficha: Ficha, elOrigen?: HTMLElement | null
     fila('Dirección', direccion) + fila('Reparto', reparto) + fila('Género', generos) +
     fila('Estudio', estudio) +
     '<div class="libreto-tecnica">' + fila('Vídeo', textoVideo) + fila('Audio', textoAudio) +
-    fila('Duración', ficha.runtime ? Math.floor(ficha.runtime / 60) + ' h ' + Math.round(ficha.runtime % 60) + ' min' : '') + '</div>' +
+    fila('Duración', minutosTotales ? Math.floor(minutosTotales / 60) + ' h ' + (minutosTotales % 60) + ' min' : '') + '</div>' +
     '</div>' +
     '</div>' +
     '</div>' +
@@ -3522,7 +3561,7 @@ function dialogoEdicionColeccionista(ficha: Ficha, elOrigen?: HTMLElement | null
     '<div class="coleccionista-bandeja">' +
     // Se destapa al ritmo de la tapa (ver .coleccionista-destapado en app.css).
     '<div class="coleccionista-destapado"><div class="coleccionista-destapado-dentro">' +
-    (ficha.has_fanart ? '<img class="coleccionista-bandeja-fondo" src="' + imagen.fondo(ficha.id, 1280) + '" alt="">' : '') +
+    (ficha.has_fanart ? '<img class="coleccionista-bandeja-fondo" src="' + imagen.fondo(ficha.id, 640) + '" alt="">' : '') +
     '<div class="coleccionista-bandeja-circulo"></div>' +
     (ficha.has_discart
       ? '<img class="coleccionista-disco" src="' + imagen.disco(ficha.id, 800) + '" alt="Disco ' + esc(ficha.title) + '">'
@@ -3553,18 +3592,34 @@ function dialogoEdicionColeccionista(ficha: Ficha, elOrigen?: HTMLElement | null
   // Al acabar la apertura (vuelo, tapa y disco: 2,1 s; ver app.css) se suelta la clase: la tapa y el libro ya están en
   // su sitio definitivo, el transform en línea deja inclinar con las flechas sin que la animación lo pise, y `abierto`
   // arranca el movimiento de reposo (la caja flota; el disco se queda quieto).
-  const temporizadorApertura = window.setTimeout(() => {
-    estuche.classList.remove('animando-apertura');
-    estuche.classList.add('abierto');
-    abierto = true;
-    actualizarPerspectiva();
-  }, 2150);
+  let temporizadorApertura = 0;
+  let cerrando = false;
+  const arrancar = () => {
+    if (cerrando || !capa.classList.contains('preparando')) return;
+    capa.classList.remove('preparando');
+    temporizadorApertura = window.setTimeout(() => {
+      estuche.classList.remove('animando-apertura');
+      estuche.classList.add('abierto');
+      abierto = true;
+      actualizarPerspectiva();
+    }, 2150);
+  };
+  // La apertura espera a tener las imágenes decodificadas (carátula de 1000 px, disco de 800), con un tope de 0,4 s:
+  // decodificarlas a mitad del vuelo era lo que daba el tirón.
+  const decodificando = Array.prototype.slice.call(capa.querySelectorAll('img')).map((img: HTMLImageElement) =>
+    img.decode ? img.decode().catch(() => undefined) : Promise.resolve());
+  void Promise.all(decodificando).then(arrancar);
+  window.setTimeout(arrancar, 400);
 
   const cerrar = () => {
+    if (cerrando) return;
+    cerrando = true;
     window.clearTimeout(temporizadorApertura);
-    if (capa.parentElement) capa.parentElement.removeChild(capa);
     alPulsar(teclasAntes);
     if (focoAntes) enfocar(focoAntes);
+    capa.classList.remove('preparando');
+    capa.classList.add('cerrando');
+    window.setTimeout(() => { if (capa.parentElement) capa.parentElement.removeChild(capa); }, 270);
   };
 
   alPulsar((tecla) => {
@@ -5046,11 +5101,13 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
   // Pausar al irse y reabrir al volver lo evita.
   var posAlSuspender = -1;
   var suspendido = false;
+  var pausadoAlSuspender = false;
   var manejarVisibilidad = function () {
     if (cerrado) return;
     if (document.visibilityState === 'hidden') {
       var est = reproductor.estado();
       if (est === 'PLAYING' || est === 'PAUSED') {
+        pausadoAlSuspender = est === 'PAUSED';
         posAlSuspender = reproductor.tiempo();
         try { reproductor.pausar(); } catch (e) { /* ya parado */ }
         suspendido = true;
@@ -5060,6 +5117,8 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
       var pos = posAlSuspender > 0 ? posAlSuspender : desde;
       window.setTimeout(function () {
         if (cerrado) return;
+        // Se dejó en pausa: vuelve en pausa (antes arrancaba sola al regresar de YouTube).
+        reproductor.pausarAlEmpezar = pausadoAlSuspender;
         abrirFlujo(pos);
       }, 300);
     }

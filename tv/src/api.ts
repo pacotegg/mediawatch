@@ -400,9 +400,17 @@ export const api = {
   subtituloVtt: async (fileId: number, trackId: string, desde = 0, retardo = 0) => {
     const t = token();
     const url = servidor() + '/api/play/' + fileId + '/subtitle/' + trackId + '.vtt?desde=' + desde + '&retardo=' + retardo + (t ? '&token=' + t : '');
-    const res = await fetch(url);
-    if (!res.ok) throw new Error('No se pudo descargar el subtítulo');
-    return await res.text();
+    // Con tope: sin él, un servidor que no contesta dejaba el subtítulo «cargando» para siempre. 45 s porque el
+    // primer OCR de un PGS tarda ~10 s y uno largo, más.
+    const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const reloj = ctrl ? window.setTimeout(() => ctrl.abort(), 45000) : 0;
+    try {
+      const res = await fetch(url, ctrl ? { signal: ctrl.signal } : {});
+      if (!res.ok) throw new Error('No se pudo descargar el subtítulo');
+      return await res.text();
+    } finally {
+      if (reloj) window.clearTimeout(reloj);
+    }
   },
   guardarOffsetSubtitulo: (fileId: number, trackId: string, offsetMs: number) =>
     pedir<{ ok: true; offsetMs: number }>('/api/play/' + fileId + '/offsets/' + trackId, {

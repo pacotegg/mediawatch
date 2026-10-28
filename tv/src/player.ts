@@ -148,6 +148,12 @@ export class Reproductor {
    * con un número viejo se tira.
    */
   private generacion = 0;
+  /**
+   * La próxima apertura arranca en pausa. Al volver de otra app (YouTube…) se reabre el flujo, y antes se ponía a
+   * reproducir aunque se hubiera dejado en pausa: la película corría sola sin nadie delante.
+   */
+  public pausarAlEmpezar = false;
+  private pausaAlLlegar: (() => void) | null = null;
 
   constructor(cb: Callbacks) {
     this.nativo = avplay();
@@ -309,7 +315,11 @@ export class Reproductor {
       p.setListener({
         onbufferingstart: () => { if (vigente()) this.cb.onBuffer(true); },
         onbufferingcomplete: () => { if (vigente()) this.cb.onBuffer(false); },
-        oncurrentplaytime: (ms) => { if (vigente()) this.cb.onTiempo(this.desfase + ms / 1000, this.duracion()); },
+        oncurrentplaytime: (ms) => {
+          if (!vigente()) return;
+          if (this.pausaAlLlegar) this.pausaAlLlegar();
+          this.cb.onTiempo(this.desfase + ms / 1000, this.duracion());
+        },
         onstreamcompleted: () => { if (vigente()) this.cb.onFin(); },
         onsubtitlechange: (duracion, texto) => {
           if (vigente() && this.cb.onSubtitulo) this.cb.onSubtitulo(String(texto || ''), Number(duracion) || 0);
@@ -321,8 +331,23 @@ export class Reproductor {
           this.cb.onError('AVPlay: ' + this.fallo);
         },
       });
+      const enPausa = this.pausarAlEmpezar;
+      this.pausarAlEmpezar = false;
+      /*
+       * Tope a la preparación. Con el audio empezando ≥15 s después del vídeo, `prepareAsync` no llama ni al éxito ni
+       * al error (METODO §8, 26/10): rueda girando para siempre. 25 s cubre de sobra despertar el disco (~7 s).
+       */
+      let preparado = false;
+      window.setTimeout(() => {
+        if (preparado || !vigente()) return;
+        this.fallo = 'prepare: sin respuesta en 25 s';
+        try { p.stop(); } catch {}
+        try { p.close(); } catch {}
+        this.cb.onError('el vídeo no termina de prepararse (25 s)');
+      }, 25000);
       p.prepareAsync(
         () => {
+          preparado = true;
           // Se ha salido mientras se preparaba: ni `play()` ni nada. Arrancar
           // aquí dejaba la película sonando encima de la pantalla siguiente.
           if (!vigente()) return;
@@ -353,10 +378,21 @@ export class Reproductor {
           } else {
             this.elegirSubtitulo(-1);
           }
+          /*
+           * Volver en pausa: se pausa cuando el reloj del propio AVPlay ya está en el punto buscado. Pausar antes de
+           * buscar, o en el aviso de «búsqueda hecha», dejaba la película en pausa pero al segundo 4 (medido en la tele
+           * el 28/10). Tope de 10 s por si el reloj no llega nunca.
+           */
+          if (enPausa) {
+            const objetivo = desdeSegundos > desfaseDelFlujo + 1 ? desdeSegundos : 0;
+            this.pausaAlLlegar = () => { if (this.tiempo() >= objetivo - 2) { this.pausaAlLlegar = null; this.pausar(); } };
+            window.setTimeout(() => { if (vigente() && this.pausaAlLlegar) { this.pausaAlLlegar = null; this.pausar(); } }, 10000);
+          }
           if (desdeSegundos > desfaseDelFlujo + 1) this.irA(desdeSegundos);
           this.cb.onBuffer(false);
         },
         (e) => {
+          preparado = true;
           if (!vigente()) return;
           this.fallo = 'prepare: ' + motivo(e);
           try { this.nativo?.stop(); this.nativo?.close(); } catch {}
@@ -524,6 +560,7 @@ export class Reproductor {
   cerrar() {
     // Lo que llegue a partir de aquí es de una reproducción que ya no existe.
     this.generacion++;
+    this.pausaAlLlegar = null;
     if (this.nativo) {
       try { this.nativo.stop(); } catch (_) { /* no estaba reproduciendo */ }
       try { this.nativo.close(); } catch (_) { /* ya estaba cerrado */ }

@@ -692,7 +692,8 @@ body.rend-rapido .lamina img {
   box-shadow: 0 24px 50px rgba(0, 0, 0, 0.85), -12px 12px 30px rgba(0, 0, 0, 0.6);
   transform: rotateY(-14deg) rotateX(2deg);
   transform-style: preserve-3d;
-  transition: border-color 0.25s, box-shadow 0.25s;
+  /* Solo el borde: animar la sombra (50-65 px de difuminado) obligaba a repintarla en cada fotograma del foco. */
+  transition: border-color 0.25s;
   /* Por encima del disco, que va detrás y solo asoma al enfocar. */
   z-index: 2;
 }
@@ -756,6 +757,17 @@ body.rend-rapido .lamina img {
   animation: barridoLuzEstuche 8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
   pointer-events: none;
   z-index: 7;
+}
+
+/*
+ * En la ficha, el destello solo con el estuche enfocado: antes una capa de ~550x800 se animaba sin parar todo el rato
+ * que se estaba en la ficha. El retraso negativo lo empieza ya cerca del barrido (0,4 s tras enfocar, no 2,4).
+ */
+.estuche-3d-tv .estuche-haz-luz-tv {
+  animation: none;
+}
+.estuche-3d-tv.enfocado .estuche-haz-luz-tv {
+  animation: barridoLuzEstuche 8s cubic-bezier(0.4, 0, 0.2, 1) -2s infinite;
 }
 
 @keyframes barridoLuzEstuche {
@@ -915,8 +927,32 @@ body.rend-rapido .lamina img {
   height: 1080px;
   object-fit: cover;
   opacity: 0.16;
-  filter: blur(4px);
   pointer-events: none;
+}
+
+/*
+ * Mientras se decodifican las imágenes (hasta 0,4 s, ver dialogoEdicionColeccionista) todo está parado en su primer
+ * fotograma, con la capa aún transparente: la apertura no arranca hasta tenerlas, y decodificar a mitad de vuelo era el tirón.
+ */
+.capa-coleccionista.preparando,
+.capa-coleccionista.preparando * {
+  animation-play-state: paused !important;
+}
+
+/* Cierre: lo contrario de aparecer, corto. La caja se encoge un poco mientras todo se funde. */
+.capa-coleccionista.cerrando {
+  animation: desaparecerColeccionista 0.26s ease-in forwards;
+}
+.capa-coleccionista.cerrando .coleccionista-escenario {
+  animation: encogerColeccionista 0.26s ease-in forwards;
+}
+@keyframes desaparecerColeccionista {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes encogerColeccionista {
+  from { transform: scale(1); }
+  to { transform: scale(0.9); }
 }
 
 .coleccionista-escenario {

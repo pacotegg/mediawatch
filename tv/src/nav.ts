@@ -330,10 +330,17 @@ export function alEnfocar(fn: ((el: HTMLElement) => void) | null) {
   alCambiarFoco = fn;
 }
 
+/** Como `alEnfocar`, pero fijo para toda la app: las pantallas no lo pisan al cambiar (lo usa la precarga del cartel). */
+let alEnfocarSiempre: ((el: HTMLElement) => void) | null = null;
+export function alEnfocarEnTodas(fn: (el: HTMLElement) => void) {
+  alEnfocarSiempre = fn;
+}
+
 export function enfocar(el: HTMLElement | null | undefined) {
   if (!el) return;
   if (!el.closest('[data-menu]') && !el.closest('[data-alfabeto]')) ultimoDelContenido = el;
   if (alCambiarFoco) alCambiarFoco(el);
+  if (alEnfocarSiempre) alEnfocarSiempre(el);
 
   const previo = actual();
   if (previo) previo.classList.remove('enfocado');
