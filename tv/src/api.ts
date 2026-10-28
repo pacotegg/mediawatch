@@ -1,5 +1,6 @@
 /** Cliente del servidor TvWatch para la televisión. */
 import { ajustes } from './ajustes';
+import { apuntar, confirmar, idAparato, pendientes } from './registro';
 
 const SERVIDOR_KEY = 'cineteca.tv.servidor';
 const TOKEN_KEY = 'cineteca.tv.token';
@@ -61,7 +62,7 @@ export function olvidarToken() {
  * `tope`: cuánto se espera la respuesta. 12 s valen para casi todo; las búsquedas y bajadas de subtítulos de internet
  * pueden tardar más en el servidor (su propio tope es de 90 s y 2 min) y la tele las daba por fallidas a los 12 s.
  */
-async function pedir<T>(ruta: string, opciones?: RequestInit, tope = 12000): Promise<T> {
+async function pedir<T>(ruta: string, opciones?: RequestInit, tope = 12000, avisarLenta = true): Promise<T> {
   const cabeceras: Record<string, string> = {};
   if (opciones && opciones.body) cabeceras['Content-Type'] = 'application/json';
 
@@ -72,6 +73,7 @@ async function pedir<T>(ruta: string, opciones?: RequestInit, tope = 12000): Pro
   const maxIntentos = esLectura ? 3 : 1;
   let ultimoError: Error | null = null;
 
+  const inicio = Date.now();
   for (let intento = 1; intento <= maxIntentos; intento++) {
     const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
     const reloj = ctrl ? window.setTimeout(() => ctrl.abort(), tope) : 0;
@@ -92,8 +94,12 @@ async function pedir<T>(ruta: string, opciones?: RequestInit, tope = 12000): Pro
           await new Promise((r) => window.setTimeout(r, 1200));
           continue;
         }
+        // 401 es «sin sesión» (se pide entrar), no un fallo que haya que mirar.
+        if (res.status !== 401) apuntar('peticion ' + res.status + ' ' + rutaLimpia(ruta) + ': ' + mensaje);
         throw Object.assign(new Error(mensaje), { status: res.status });
       }
+      const ms = Date.now() - inicio;
+      if (avisarLenta && ms > 4000) apuntar('peticion lenta ' + ms + ' ms ' + rutaLimpia(ruta) + (intento > 1 ? ' (intento ' + intento + ')' : ''));
       return (await res.json()) as T;
     } catch (e) {
       if (reloj) window.clearTimeout(reloj);
@@ -103,7 +109,40 @@ async function pedir<T>(ruta: string, opciones?: RequestInit, tope = 12000): Pro
       if (intento < maxIntentos) await new Promise((r) => window.setTimeout(r, 1200));
     }
   }
+  apuntar('peticion sin respuesta ' + rutaLimpia(ruta) + ' tras ' + maxIntentos + ' intento(s), ' + (Date.now() - inicio) + ' ms: ' + (ultimoError ? ultimoError.message : '?'));
   throw ultimoError || new Error('No se pudo conectar con el servidor');
+}
+
+/** La ruta sin parámetros: basta para agrupar y no arrastra nada que no deba quedar escrito. */
+function rutaLimpia(ruta: string): string {
+  return ruta.split('?')[0];
+}
+
+let enviando = false;
+/**
+ * Manda lo apuntado. Va por `fetch` directo y no por `pedir`: un fallo al enviar el registro no debe apuntarse a sí
+ * mismo. Si no hay sesión o falla, las líneas siguen esperando en la cola.
+ */
+export async function enviarRegistro(version: string, dispositivo: string) {
+  const lineas = pendientes();
+  const t = token();
+  if (enviando || !lineas.length || !t) return;
+  enviando = true;
+  const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const reloj = ctrl ? window.setTimeout(() => ctrl.abort(), 10000) : 0;
+  try {
+    const res = await fetch(servidor() + '/api/cliente/log', Object.assign({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t },
+      body: JSON.stringify({ plataforma: 'tele', aparato: idAparato(), version, dispositivo, lineas }),
+    }, ctrl ? { signal: ctrl.signal } : {}));
+    if (res.ok) confirmar(lineas.length);
+  } catch (e) {
+    /* sin red: se reintenta en el siguiente envío */
+  } finally {
+    if (reloj) window.clearTimeout(reloj);
+    enviando = false;
+  }
 }
 
 export type Titulo = {
@@ -376,7 +415,11 @@ export const api = {
       parar: boolean;
       /** Tecla del mando enviada desde el movil (se entrega una sola vez). */
       tecla: 'arriba' | 'abajo' | 'izquierda' | 'derecha' | 'ok' | 'atras' | 'play_pause' | null;
-    }>('/api/mando?tele=1'),
+      /** Todas las pendientes, en orden (servidor desde el 28/10/2026). */
+      teclas?: string[];
+      // `espera=1`: el servidor sostiene la consulta hasta 8 s y contesta en cuanto haya algo. Por eso el tope es de 15 s
+      // y no se apunta como «lenta».
+    }>('/api/mando?tele=1&espera=1', undefined, 15000, false),
   // El secreto lo inventa esta tele y solo ella lo conoce: sin él, quien adivinara el código en la red de casa podía
   // recoger el token antes que la tele. Va en el cuerpo al empezar y en una cabecera al sondear (no en la URL).
   iniciarEmparejado: (secreto: string) =>

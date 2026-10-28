@@ -56,6 +56,8 @@ export type Ajustes = {
   salvaPausa: number;
   /** Idioma de la interfaz: 'en' por defecto para nuevas instalaciones, 'es' para instalaciones existentes. */
   idiomaInterfaz: 'en' | 'es';
+  /** Mandar al servidor el registro técnico (arranque, fallos, peticiones que fallan). Como «Enviar informes técnicos» de Android. */
+  informes: boolean;
 };
 
 const POR_DEFECTO: Ajustes = {
@@ -89,6 +91,7 @@ const POR_DEFECTO: Ajustes = {
   salvaMenu: 2,
   salvaPausa: 5,
   idiomaInterfaz: 'en',
+  informes: true,
 };
 
 let actuales: Ajustes = POR_DEFECTO;
@@ -130,6 +133,7 @@ export function cargarAjustes(): Ajustes {
          */
         salvaMenu: guardado.salvaMenu ?? POR_DEFECTO.salvaMenu,
         salvaPausa: guardado.salvaPausa ?? POR_DEFECTO.salvaPausa,
+        informes: guardado.informes !== false,
       };
     }
   } catch (e) {

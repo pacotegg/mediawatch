@@ -1,5 +1,6 @@
 import {
   api,
+  enviarRegistro,
   guardarServidor,
   guardarToken,
   imagen,
@@ -25,6 +26,7 @@ import { t, tr } from './i18n.ts';
 import { actual, ajustarListaEpisodios, ajustarVentanaRejilla, alEnfocar, alEnfocarEnTodas, alPulsar, anadirPorArriba, situarFila, avisarDeFallos, enfocables, enfocar, indexar, indexarAdemas, iniciarNavegacion, manejadorActual, TECLA } from './nav.ts';
 import { Reproductor, calcularRectDisplay } from './player.ts';
 import { abrirApp, cargarAppsInstaladas, idDeApp } from './plataformas.ts';
+import { apuntar } from './registro.ts';
 
 const marco = document.getElementById('app') as HTMLElement;
 
@@ -363,7 +365,14 @@ function reproducirTemaMusical(id: number) {
  * como su propio origen. Resultado: Atrás la reabría una y otra vez y no había
  * forma de salir de ahí — que es justo lo que pasaba.
  */
+/*
+ * Turno de pantalla: sube con cada `entrarEn`. Una pantalla que espera al servidor guarda el suyo y, si al volver ya
+ * no es el actual (te has ido a otra mientras cargaba), no pinta: antes la portada lenta acababa encima del buscador.
+ */
+let turnoPantalla = 0;
+
 function entrarEn(id: string, comoVolverAqui: () => void) {
+  turnoPantalla++;
   if (!id.startsWith('ficha-')) pararTemaMusical();
   if (idActual !== id) volverDesde = reabrirActual;
   idActual = id;
@@ -540,6 +549,7 @@ function precargar() {
 
 async function pantallaPortada(volviendo = false) {
   entrarEn('portada', () => void pantallaPortada(true));
+  const turno = turnoPantalla;
 
   let datos: DatosPortada;
   const guardada = volviendo && portadaGuardada && Date.now() - portadaGuardada.cuando < VIGENCIA_PORTADA_MS ? portadaGuardada.datos : null;
@@ -549,8 +559,10 @@ async function pantallaPortada(volviendo = false) {
     pintar('inicio', '<div class="vacio">Cargando la biblioteca…</div>');
     try {
       datos = await api.portada();
+      if (turno !== turnoPantalla) return;
       portadaGuardada = { datos, cuando: Date.now() };
     } catch (e) {
+    if (turno !== turnoPantalla) return;
     if ((e as { status?: number }).status === 401) {
       olvidarToken();
       void pantallaConexion();
@@ -1136,6 +1148,7 @@ function abrirDialogoFiltro(
 
 async function pantallaBiblioteca(id: number, nombre: string, enfocarFiltro?: string) {
   entrarEn('lib-' + id, () => void pantallaBiblioteca(id, nombre));
+  const turno = turnoPantalla;
   pintar('lib-' + id, '<div class="vacio">Cargando…</div>');
   try {
     const f = getFiltrosLib(id);
@@ -1149,6 +1162,7 @@ async function pantallaBiblioteca(id: number, nombre: string, enfocarFiltro?: st
       api.titulos(id, base, cuantos, f),
       conAbecedario ? api.letras(id, f).then((r) => r.letras).catch(() => [] as Letra[]) : Promise.resolve([] as Letra[]),
     ]);
+    if (turno !== turnoPantalla) return;
 
     const barraHtml =
       '<div class="barra-filtros" data-bloque>' +
@@ -1297,6 +1311,7 @@ async function pantallaBiblioteca(id: number, nombre: string, enfocarFiltro?: st
       },
     );
   } catch (e) {
+    if (turno !== turnoPantalla) return;
     pintar('lib-' + id, '<div class="vacio">No se pudo cargar la biblioteca.' +
       '<div class="acciones" data-bloque><button class="boton" data-nav data-reintentar>Reintentar</button>' +
       '<button class="boton" data-nav data-inicio>Ir al inicio</button></div></div>');
@@ -1329,15 +1344,18 @@ let plataformaPagina = 1;
 
 async function pantallaPlataformas(clave?: string, kind?: 'movie' | 'show', pagina = 1) {
   entrarEn('plataformas', () => void pantallaPlataformas(plataformaActiva, plataformaKind, plataformaPagina));
+  const turno = turnoPantalla;
   pintar('plataformas', '<div class="vacio">Cargando…</div>');
 
   let todas: { clave: string; nombre: string; mia?: boolean }[];
   let titulosPorPlataforma: { [clave: string]: number } = {};
   try {
     const r = await api.plataformas();
+    if (turno !== turnoPantalla) return;
     todas = r.plataformas;
     (r.porPlataforma || []).forEach((x) => { titulosPorPlataforma[x.clave] = x.titulos; });
   } catch (e) {
+    if (turno !== turnoPantalla) return;
     pintar('plataformas', '<div class="vacio">No se pudieron cargar las plataformas.' +
       '<div class="acciones" data-bloque><button class="boton" data-nav data-reintentar>Reintentar</button>' +
       '<button class="boton" data-nav data-inicio>Ir al inicio</button></div></div>');
@@ -1373,7 +1391,9 @@ async function pantallaPlataformas(clave?: string, kind?: 'movie' | 'show', pagi
   let datos;
   try {
     datos = await api.catalogoPlataforma(plataformaActiva, plataformaKind, 'popular', plataformaPagina);
+    if (turno !== turnoPantalla) return;
   } catch (e) {
+    if (turno !== turnoPantalla) return;
     // El catálogo sale de internet (TMDb) y puede fallar de vez en cuando: se
     // dice y se deja reintentar, en vez de quedarse en «Cargando…».
     pintar(
@@ -1517,11 +1537,14 @@ function pantallaMisPlataformas(todas: { clave: string; nombre: string; mia?: bo
 
 async function pantallaFavoritos() {
   entrarEn('favoritos', () => void pantallaFavoritos());
+  const turno = turnoPantalla;
   pintar('favoritos', '<div class="vacio">Cargando…</div>');
   try {
     const items = await api.favoritos();
+    if (turno !== turnoPantalla) return;
     pantallaRejilla('favoritos', 'Favoritos', items.length + ' títulos', items);
   } catch (e) {
+    if (turno !== turnoPantalla) return;
     pintar('favoritos', '<div class="vacio">No se pudieron cargar los favoritos.' +
       '<div class="acciones" data-bloque><button class="boton" data-nav data-reintentar>Reintentar</button>' +
       '<button class="boton" data-nav data-inicio>Ir al inicio</button></div></div>');
@@ -1536,11 +1559,14 @@ async function pantallaFavoritos() {
 
 async function pantallaSagas() {
   entrarEn('sagas', () => void pantallaSagas());
+  const turno = turnoPantalla;
   pintar('sagas', '<div class="vacio">Cargando…</div>');
   let sagas;
   try {
     sagas = await api.colecciones();
+    if (turno !== turnoPantalla) return;
   } catch (e) {
+    if (turno !== turnoPantalla) return;
     pintar('sagas', '<div class="vacio">No se pudieron cargar las sagas.' +
       '<div class="acciones" data-bloque><button class="boton" data-nav data-reintentar>Reintentar</button>' +
       '<button class="boton" data-nav data-inicio>Ir al inicio</button></div></div>');
@@ -1589,12 +1615,15 @@ async function pantallaSagas() {
 
 async function pantallaSaga(nombre: string) {
   entrarEn('saga-' + nombre, () => void pantallaSaga(nombre));
+  const turno = turnoPantalla;
   pintar('sagas', '<div class="vacio">Cargando…</div>');
   try {
     const datos = await api.coleccion(nombre);
+    if (turno !== turnoPantalla) return;
     pantallaRejilla('sagas', datos.name, datos.items.length + ' títulos, en orden cronológico', datos.items);
 
   } catch (e) {
+    if (turno !== turnoPantalla) return;
     void pantallaSagas();
   }
 }
@@ -1608,6 +1637,7 @@ function pantallaBuscar(inicial = '') {
   // título otra vez con el mando, que es justo lo que a nadie le apetece.
   let consulta = inicial;
   entrarEn('buscar', () => pantallaBuscar(consulta));
+  const turno = turnoPantalla;
   let resultados: Titulo[] = [];
   let dialogos: DialogoHit[] = [];
   let buscando = 0;
@@ -1699,7 +1729,8 @@ function pantallaBuscar(inicial = '') {
     api
       .buscar(q)
       .then((r) => {
-        if (propia !== buscando) return;   // llegó tarde: hay una búsqueda más nueva
+        // Llegó tarde: hay una búsqueda más nueva, o ya se ha salido del buscador (repintarlo taparía la ficha).
+        if (propia !== buscando || turno !== turnoPantalla) return;
         resultados = r.items;
         pintarTodo();
       })
@@ -1709,7 +1740,7 @@ function pantallaBuscar(inicial = '') {
       api
         .buscarDialogo(q)
         .then((r) => {
-          if (propia !== buscando) return;
+          if (propia !== buscando || turno !== turnoPantalla) return;
           dialogos = r.hits || [];
           pintarTodo();
         })
@@ -2002,6 +2033,7 @@ async function pintarLogosEstudio(id: number, caja: HTMLElement) {
 
 async function pantallaFicha(id: number, volverA?: (() => void) | null, focoInicialId?: number, elOrigen?: HTMLElement | null) {
   entrarEn('ficha-' + id, () => void pantallaFicha(id, volverA, focoInicialId));
+  const turno = turnoPantalla;
   const vengoDe = volverA || volverDesde;
   const vuelo = elOrigen ? despegarCartel(elOrigen) : null;
   if (!elOrigen) pintar('inicio', '<div class="vacio">Cargando…</div>');
@@ -2015,6 +2047,7 @@ async function pantallaFicha(id: number, volverA?: (() => void) | null, focoInic
     } else {
       ficha = await pFicha;
     }
+    if (turno !== turnoPantalla) { if (vuelo) vuelo.cancelar(); return; }
     anotarSello(ficha);
     if (ficha.has_theme) {
       reproducirTemaMusical(ficha.id);
@@ -2023,6 +2056,7 @@ async function pantallaFicha(id: number, volverA?: (() => void) | null, focoInic
     }
   } catch (e) {
     if (vuelo) vuelo.cancelar();
+    if (turno !== turnoPantalla) return;
     /*
      * Antes esto te echaba a la portada. Si el servidor tarda —porque está
      * ocupado, o acaba de reiniciarse— te encontrabas en el inicio sin saber
@@ -2192,7 +2226,7 @@ function formatoAspecto(ancho?: number | null, alto?: number | null): string {
         (ficha.has_discart ? '<img class="estuche-disco-tv" src="' + imagen.disco(ficha.id, 600) + '" alt="">' : '') +
         '<div class="estuche-caja-tv">' +
         '<div class="estuche-lomo-sup-tv' + ((ficha.tags || []).indexOf('4K') >= 0 ? ' es-4k' : '') + '">' +
-        '<span class="estuche-lomo-texto-tv">' + ((ficha.tags || []).indexOf('4K') >= 0 ? '4K ULTRA HD' : 'Blu-ray') + '</span>' +
+        '<span class="estuche-lomo-texto-tv">' + (formatoFisico(ficha) === '4K ULTRA HD' ? '4K ULTRA HD' : formatoFisico(ficha) === 'DVD' ? 'DVD' : 'Blu-ray') + '</span>' +
         '</div>' +
         '<img class="estuche-poster-tv" src="' + imagen.poster(ficha.id, 500) + '" alt="">' +
         '<div class="estuche-brillo-tv"></div>' +
@@ -3202,6 +3236,7 @@ async function menuPistas(fileId: number, tipo: 'audio' | 'subs', alCambiar?: (i
 
 async function pantallaPersona(id: number, volverA?: number | (() => void) | null) {
   entrarEn('persona-' + id, () => void pantallaPersona(id, volverA));
+  const turno = turnoPantalla;
   pintar('inicio', '<div class="vacio">Cargando…</div>');
   const volverFn = () => {
     if (typeof volverA === 'function') volverA();
@@ -3211,7 +3246,9 @@ async function pantallaPersona(id: number, volverA?: number | (() => void) | nul
   let persona;
   try {
     persona = await api.persona(id);
+    if (turno !== turnoPantalla) return;
   } catch (e) {
+    if (turno !== turnoPantalla) return;
     pintar('inicio', '<div class="vacio">No se pudo abrir la ficha de esa persona.' +
       '<div class="acciones" data-bloque>' +
       '<button class="boton primario" data-nav data-reintentar>Reintentar</button>' +
@@ -3460,6 +3497,16 @@ function dialogoResena(autor: string, fuente: string, contenido: string) {
   });
 }
 
+/** Formato de la edición física por la resolución real del mejor fichero: antes un DVD de 480p salía como Blu-ray. */
+function formatoFisico(ficha: Ficha): string {
+  if ((ficha.tags || []).indexOf('4K') >= 0) return '4K ULTRA HD';
+  const alto = ficha.files.reduce((m, f) => Math.max(m, f.height || 0), 0);
+  const ancho = ficha.files.reduce((m, f) => Math.max(m, f.width || 0), 0);
+  if (alto >= 1000 || ancho >= 1800) return 'BLU-RAY 1080P';
+  if (alto >= 700 || ancho >= 1200) return 'HD 720P';
+  return alto > 0 ? 'DVD' : 'BLU-RAY';
+}
+
 /** Modal inmersivo a pantalla completa para admirar la edición física coleccionista en la TV. */
 function dialogoEdicionColeccionista(ficha: Ficha, elOrigen?: HTMLElement | null) {
   const teclasAntes = manejadorActual();
@@ -3480,10 +3527,7 @@ function dialogoEdicionColeccionista(ficha: Ficha, elOrigen?: HTMLElement | null
 
   const es4k = (ficha.tags || []).indexOf('4K') >= 0;
   const chips: string[] = [];
-  // Por la resolución real del mejor fichero: antes un DVD de 480p también salía como «BLU-RAY 1080P».
-  const altoMax = ficha.files.reduce((m, f) => Math.max(m, f.height || 0), 0);
-  const anchoMax = ficha.files.reduce((m, f) => Math.max(m, f.width || 0), 0);
-  const formato = es4k ? '4K ULTRA HD' : altoMax >= 1000 || anchoMax >= 1800 ? 'BLU-RAY 1080P' : altoMax >= 700 || anchoMax >= 1200 ? 'HD 720P' : altoMax > 0 ? 'DVD' : 'BLU-RAY';
+  const formato = formatoFisico(ficha);
   chips.push(formato);
   const hdrTag = (ficha.tags || []).find((t) => t.indexOf('HDR') === 0 || t === 'DV');
   if (hdrTag) chips.push(hdrTag);
@@ -4187,7 +4231,7 @@ function verExtra(ficha: Ficha, extra: Extra, alSalir: () => void) {
     onTiempo: () => {},
     onBuffer: () => {},
     onFin: () => salir(),
-    onError: (mensaje) => { avisoRapido('No se pudo reproducir: ' + mensaje); salir(); },
+    onError: (mensaje) => { apuntar('error de reproduccion (extra): ' + mensaje); avisoRapido('No se pudo reproducir: ' + mensaje); salir(); },
   });
 
   const salir = () => {
@@ -4712,6 +4756,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     // El servidor recorta con `-ss` y copia las pistas: el flujo empieza en ese
     // segundo y su reloj interno vuelve a cero, de ahí el desfase.
     const desfase = saltaReabriendo() && desdeSegundos > 1 ? Math.floor(desdeSegundos) : 0;
+    apuntar('abre fichero ' + fileId + ' desde ' + Math.round(desdeSegundos) + ' s' + (convertir ? ' convertido' : porTuberia() ? ' por tuberia' : ' directo') + (audioOrdinal ? ' audio ' + audioOrdinal : '') + (modoAudio !== 'normal' ? ' ' + modoAudio : ''));
     reproductor.cerrar();
     lienzo.innerHTML = '';
     cargando.style.display = 'block';
@@ -5047,6 +5092,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     onError: (mensaje) => {
       cargando.style.display = 'none';
       if (cerrado) return;
+      apuntar('error de reproduccion fichero ' + fileId + ' a los ' + Math.round(reproductor.tiempo()) + ' s: ' + mensaje);
       // Un 403 (perfil sin permiso o tiempo de hoy agotado) no se arregla reintentando: se pregunta al
       // servidor por qué y, si es eso, se dice y se vuelve a la ficha.
       api.pistas(fileId).then(
@@ -6102,6 +6148,8 @@ function pantallaAjustes(pestanaInicial?: string) {
       pestanaActivaId = 'audio-subs';
     } else if (['heroeRotar', 'heroeSegundos', 'musicaCabecera', 'estuche3D', 'salvaMenu', 'salvaPausa', 'rendimiento', 'idiomaInterfaz'].indexOf(focoAjustesDespues) >= 0) {
       pestanaActivaId = 'pantalla';
+    } else if (focoAjustesDespues === 'informes') {
+      pestanaActivaId = 'sistema';
     }
   }
 
@@ -6220,7 +6268,9 @@ function pantallaAjustes(pestanaInicial?: string) {
     grupo(tr('Servidor y esta tele', 'Server and this TV'), '',
       '<p class="dato">' + esc(servidor()) + '</p>' +
       '<button class="boton" data-nav data-servidor>' + tr('Cambiar servidor', 'Change server') + '</button>' +
-      '<button class="boton" data-nav data-desemparejar>' + tr('Desemparejar esta tele', 'Unpair this TV') + '</button>') +
+      '<button class="boton" data-nav data-desemparejar>' + tr('Desemparejar esta tele', 'Unpair this TV') + '</button>' +
+      siNo('informes', a.informes, 'Enviar informes técnicos', 'Send technical reports') +
+      '<p class="dato">' + tr('Arranque, fallos y peticiones que fallan o tardan, para poder mirar qué pasó. Solo a tu servidor.', 'Startup, errors and failed or slow requests, to see what happened. Only to your server.') + '</p>') +
     grupo(tr('Acerca de', 'About'), '',
       '<p class="dato">Media Watch para Smart TV · Creado por Paco Gamiz</p>' +
       '<p class="dato">App ' + VERSION_APP + ' · ' + esc(infoPlataforma()) + ' · ' + bibliotecas.length + ' ' + tr('bibliotecas', 'libraries') + '</p>') +
@@ -6293,6 +6343,7 @@ function pantallaAjustes(pestanaInicial?: string) {
       else if (campo === 'saltarCabecera') guardarAjustes({ saltarCabecera: valor === 'si' });
       else if (campo === 'musicaCabecera') guardarAjustes({ musicaCabecera: valor === 'si' });
       else if (campo === 'estuche3D') guardarAjustes({ estuche3D: valor === 'si' });
+      else if (campo === 'informes') guardarAjustes({ informes: valor === 'si' });
       else if (campo === 'horaDeFin') guardarAjustes({ horaDeFin: valor === 'si' });
       else if (campo === 'modoMaraton') guardarAjustes({ modoMaraton: valor === 'si' });
       else if (campo === 'idiomaInterfaz') {
@@ -7074,24 +7125,34 @@ function despacharTeclaVirtual(tecla: string) {
  */
 let alPararDesdeAviso: ((motivo: string | null) => void) | null = null;
 
+let escuchandoAlMovil = false;
 function escucharAlMovil() {
-  let enVuelo = false;
-  window.setInterval(() => {
-    // Sin esperar a la anterior, con el servidor caído se amontonaban peticiones de hasta 3 intentos de 12 s.
-    if (!token() || enVuelo) return;
-    enVuelo = true;
+  // `arrancar` se repite al emparejar o cambiar de servidor: sin esto, cada vez quedaba otro sondeo más.
+  if (escuchandoAlMovil) return;
+  escuchandoAlMovil = true;
+  /*
+   * Consulta en espera (`espera=1`): el servidor la sostiene hasta 8 s y contesta en cuanto hay algo, y aquí se vuelve
+   * a preguntar enseguida. Antes se preguntaba cada 1,2 s y cada tecla del mando del móvil tardaba eso en notarse.
+   * Una sola consulta a la vez: con el servidor caído no se amontonan, se espera 3 s entre intentos.
+   */
+  const consultar = () => {
+    if (!token()) { window.setTimeout(consultar, 2000); return; }
+    let siguiente = 150;
     api
       .mando()
       .then((r) => {
-        // Con el límite diario agotado el servidor manda «parar» en CADA consulta: fuera del reproductor no hay nada que
-        // parar, y enseñarlo repetiría el aviso cada 1,2 s.
+        // Con el límite diario agotado el servidor manda «parar» en CADA consulta y sin esperar: fuera del reproductor no
+        // hay nada que parar, y enseñarlo repetiría el aviso sin parar.
         if (r.parar) {
+          siguiente = 1200;
           if (alPararDesdeAviso) alPararDesdeAviso(r.mensaje);
         } else if (r.mensaje) {
           aviso('Mensaje: ' + r.mensaje);
         }
-        if (r.tecla) {
-          despacharTeclaVirtual(r.tecla);
+        const teclas = r.teclas && r.teclas.length ? r.teclas : r.tecla ? [r.tecla] : [];
+        if (teclas.length) {
+          // Un respiro entre una y otra: un «ok» abre una pantalla y la siguiente flecha ya debe caer en ella.
+          teclas.forEach((t, i) => window.setTimeout(() => despacharTeclaVirtual(t), i * 120));
           return;
         }
         if (document.body.classList.contains('viendo')) return;
@@ -7109,9 +7170,10 @@ function escucharAlMovil() {
           pantallaBuscar(r.buscar);
         }
       })
-      .catch(() => undefined)
-      .then(() => { enVuelo = false; });
-  }, 1200);
+      .catch(() => { siguiente = 3000; })
+      .then(() => { window.setTimeout(consultar, siguiente); });
+  };
+  consultar();
 }
 
 async function arrancar() {
@@ -7259,14 +7321,38 @@ cargarAppsInstaladas();
  * ese silencio en una linea en pantalla, que es lo unico que hace falta para
  * saber por donde mirar.
  */
-avisarDeFallos((mensaje) => aviso('Fallo al pulsar: ' + mensaje));
+avisarDeFallos((mensaje) => { apuntar('fallo al pulsar: ' + mensaje); aviso('Fallo al pulsar: ' + mensaje); });
 window.addEventListener('error', (e) => {
   const donde = e.filename ? ' (' + String(e.filename).split('/').pop() + ':' + e.lineno + ')' : '';
+  apuntar('fallo: ' + (e.message || 'desconocido') + donde);
   aviso('Fallo: ' + (e.message || 'desconocido') + donde);
 });
 window.addEventListener('unhandledrejection', (e) => {
   const razon = (e as PromiseRejectionEvent).reason;
+  apuntar('fallo sin atender: ' + ((razon && (razon as Error).message) || String(razon)));
   aviso('Fallo sin atender: ' + ((razon && (razon as Error).message) || String(razon)));
+});
+
+/*
+ * Registro técnico hacia el servidor (ver registro.ts): una línea de arranque y envío cada minuto, a los 20 s de
+ * arrancar y al volver a primer plano. Con «Enviar informes técnicos» apagado se sigue apuntando en la tele, pero no sale.
+ */
+function modeloTele(): string {
+  try {
+    const w = window as unknown as { webapis?: { productinfo?: { getRealModel?: () => string; getFirmware?: () => string } } };
+    const pi = w.webapis && w.webapis.productinfo;
+    if (pi && pi.getRealModel) return pi.getRealModel() + (pi.getFirmware ? ' fw ' + pi.getFirmware() : '');
+  } catch (e) { /* sin productinfo */ }
+  return navigator.userAgent.slice(0, 60);
+}
+const dispositivoTele = infoPlataforma() + ' · ' + modeloTele();
+const enviarSiToca = () => { if (ajustes().informes) void enviarRegistro(VERSION_APP, dispositivoTele); };
+apuntar('arranque ' + VERSION_APP + ' · ' + dispositivoTele + ' · ' + window.innerWidth + 'x' + window.innerHeight + ' · servidor ' + servidor());
+window.setTimeout(enviarSiToca, 20_000);
+window.setInterval(enviarSiToca, 60_000);
+document.addEventListener('visibilitychange', () => {
+  apuntar(document.visibilityState === 'hidden' ? 'a segundo plano' : 'vuelve a primer plano');
+  if (document.visibilityState === 'visible') window.setTimeout(enviarSiToca, 3000);
 });
 
 // El menú se abre y cierra según dónde esté el foco; la navegación ya lo ha
