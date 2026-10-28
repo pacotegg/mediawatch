@@ -3381,6 +3381,75 @@ body.viendo-extra .marco * {
   color: var(--tenue);
 }
 
+/*
+ * Controles del extra (28/10/2026): el título arriba y la barra abajo, a la vista al empezar, al pulsar y en pausa; se
+ * van a los 5 s. Solo se anima opacity, y la barra avanza con scaleX.
+ */
+.extra-cabecera,
+.extra-osd {
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.capa-extra.con-controles .extra-cabecera,
+.capa-extra.con-controles .extra-osd {
+  opacity: 1;
+}
+
+.extra-osd {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  padding: 90px 90px 50px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.85), transparent);
+}
+
+.extra-osd-fila {
+  display: flex;
+  align-items: center;
+}
+
+.extra-estado {
+  width: 40px;
+  font-size: 28px;
+}
+
+.extra-tiempo {
+  min-width: 90px;
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.extra-barra {
+  position: relative;
+  flex: 1;
+  height: 6px;
+  margin: 0 18px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.25);
+  overflow: hidden;
+}
+
+.extra-barra i {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--acento);
+  transform: scaleX(0);
+  transform-origin: left center;
+}
+
+.extra-ayuda {
+  margin-top: 14px;
+  font-size: 18px;
+  color: var(--tenue);
+}
+
 /* ------------------------------------------------ plataformas (Movistar+, Prime, Apple TV+) */
 
 /* «También en tu suscripción», bajo las acciones de la ficha. */

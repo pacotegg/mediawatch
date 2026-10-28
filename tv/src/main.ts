@@ -4222,13 +4222,58 @@ function verExtra(ficha: Ficha, extra: Extra, alSalir: () => void) {
   capa.innerHTML =
     '<div class="extra-cabecera"><h3>' + esc(extra.titulo) + '</h3>' +
     '<p>' + esc(ficha.title) + ' · ' + esc(extra.tipo) + '</p></div>' +
-    '<div class="extra-video"></div>';
+    '<div class="extra-video"></div>' +
+    // Controles (28/10/2026): antes no había ni barra ni forma de avanzar o retroceder.
+    '<div class="extra-osd">' +
+    '<div class="extra-osd-fila"><span class="extra-estado" data-estado>▶</span>' +
+    '<span class="extra-tiempo" data-t>0:00</span>' +
+    '<div class="extra-barra"><i data-p></i></div>' +
+    '<span class="extra-tiempo" data-d>' + (extra.duration ? reloj(extra.duration) : '') + '</span></div>' +
+    '<div class="extra-ayuda">◀ ▶ ' + ajustes().saltoCorto + ' s · OK pausa · Atrás salir</div>' +
+    '</div>';
   marco.appendChild(capa);
   const hueco = capa.querySelector<HTMLElement>('.extra-video')!;
+  const elT = capa.querySelector<HTMLElement>('[data-t]')!;
+  const elD = capa.querySelector<HTMLElement>('[data-d]')!;
+  const elP = capa.querySelector<HTMLElement>('[data-p]')!;
+  const elEstado = capa.querySelector<HTMLElement>('[data-estado]')!;
 
   let cerrado = false;
+  let ocultar = 0;
+  /** Destino de los saltos seguidos: se suman y se busca una sola vez, 0,4 s después de la última pulsación. */
+  let destino: number | null = null;
+  let buscar = 0;
+  const pintarTiempo = (t: number, d: number) => {
+    elT.textContent = reloj(t);
+    if (d > 0) {
+      elD.textContent = reloj(d);
+      // scaleX y no width: en la tele, cambiar el ancho recalcula el diseño en cada aviso del reloj.
+      elP.style.transform = 'scaleX(' + Math.max(0, Math.min(1, t / d)).toFixed(4) + ')';
+    }
+  };
+  /** Controles a la vista; se van a los 5 s salvo en pausa, como en las películas. */
+  const mostrar = () => {
+    capa.classList.add('con-controles');
+    window.clearTimeout(ocultar);
+    const enPausa = reproductor.estado() === 'PAUSED';
+    elEstado.textContent = enPausa ? '❚❚' : '▶';
+    if (!enPausa) ocultar = window.setTimeout(() => capa.classList.remove('con-controles'), 5000);
+  };
+  const saltar = (segundos: number) => {
+    const d = reproductor.duracion();
+    const base = destino !== null ? destino : reproductor.tiempo();
+    destino = Math.max(0, d > 0 ? Math.min(d - 2, base + segundos) : base + segundos);
+    pintarTiempo(destino, d);
+    mostrar();
+    window.clearTimeout(buscar);
+    buscar = window.setTimeout(() => {
+      if (cerrado || destino === null) return;
+      reproductor.irA(destino);
+      destino = null;
+    }, 400);
+  };
   const reproductor = new Reproductor({
-    onTiempo: () => {},
+    onTiempo: (t, d) => { if (destino === null) pintarTiempo(t, d); },
     onBuffer: () => {},
     onFin: () => salir(),
     onError: (mensaje) => { apuntar('error de reproduccion (extra): ' + mensaje); avisoRapido('No se pudo reproducir: ' + mensaje); salir(); },
@@ -4237,6 +4282,8 @@ function verExtra(ficha: Ficha, extra: Extra, alSalir: () => void) {
   const salir = () => {
     if (cerrado) return;
     cerrado = true;
+    window.clearTimeout(ocultar);
+    window.clearTimeout(buscar);
     try { reproductor.cerrar(); } catch (e) { /* ya estaba cerrado */ }
     if (capa.parentElement) capa.parentElement.removeChild(capa);
     document.body.classList.remove('viendo', 'viendo-extra');
@@ -4245,10 +4292,20 @@ function verExtra(ficha: Ficha, extra: Extra, alSalir: () => void) {
   };
 
   reproductor.abrir(urlExtra(extra.id), hueco, 0, extra.duration || 0);
+  mostrar();
 
   alPulsar((tecla) => {
-    if (tecla === TECLA.ENTRAR || tecla === TECLA.PLAY_PAUSA) { reproductor.alternarPausa(); return true; }
+    const aj = ajustes();
     if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE || tecla === TECLA.PARAR) { salir(); return true; }
+    if (tecla === TECLA.ENTRAR || tecla === TECLA.PLAY_PAUSA) reproductor.alternarPausa();
+    else if (tecla === TECLA.PAUSA) reproductor.pausar();
+    else if (tecla === TECLA.REPRODUCIR) reproductor.reproducir();
+    else if (tecla === TECLA.DERECHA) { saltar(aj.saltoCorto); return true; }
+    else if (tecla === TECLA.IZQUIERDA) { saltar(-aj.saltoCorto); return true; }
+    else if (tecla === TECLA.AVANZAR) { saltar(aj.saltoLargo); return true; }
+    else if (tecla === TECLA.RETROCEDER) { saltar(-aj.saltoLargo); return true; }
+    // Cualquier otra tecla (arriba, abajo, info…) solo enseña los controles.
+    mostrar();
     return true;
   });
 }
