@@ -3556,12 +3556,22 @@ function dialogoEdicionColeccionista(ficha: Ficha, elOrigen?: HTMLElement | null
     ? (fichaVideo.width || '?') + '×' + fichaVideo.height + (fichaVideo.video_codec ? ' ' + fichaVideo.video_codec.toUpperCase() : '') + (fichaVideo.hdr ? ' · ' + fichaVideo.hdr : '')
     : '';
   // Los nombres de las pistas del mejor fichero, limpios y sin repetir (dos pistas iguales en idiomas distintos salen una vez).
+  // Atmos y más canales primero: con las dos primeras en el orden del fichero, un Atmos que fuera tercero no salía.
   const nombresAudio: string[] = [];
-  ((fichaVideo && fichaVideo.audio) || []).forEach((a: { codec: string | null; channels: number | null }) => {
-    const t = (nombreCodecAudio(a.codec, false) + ' ' + disposicionCanales(a.channels)).trim();
-    if (t && nombresAudio.indexOf(t) < 0) nombresAudio.push(t);
-  });
+  const conAtmos = (c: string | null) => /atmos|joc/i.test(c || '');
+  ((fichaVideo && fichaVideo.audio) || []).slice()
+    .sort((a, b) => (conAtmos(b.codec) ? 1 : 0) - (conAtmos(a.codec) ? 1 : 0) || (b.channels || 0) - (a.channels || 0))
+    .forEach((a: { codec: string | null; channels: number | null }) => {
+      const t = (nombreCodecAudio(a.codec, false) + ' ' + disposicionCanales(a.channels)).trim();
+      if (t && nombresAudio.indexOf(t) < 0) nombresAudio.push(t);
+    });
   const textoAudio = nombresAudio.slice(0, 2).join(' · ');
+  const idiomasSubs: string[] = [];
+  ((fichaVideo && fichaVideo.subtitles) || []).forEach((st: { language: string | null }) => {
+    const l = (st.language || '').toUpperCase();
+    if (l && idiomasSubs.indexOf(l) < 0) idiomasSubs.push(l);
+  });
+  const textoSubs = idiomasSubs.slice(0, 4).join(', ');
   const fila = (clave: string, valor: string) =>
     valor ? '<div class="libreto-fila"><b>' + clave + '</b><span>' + esc(valor) + '</span></div>' : '';
 
@@ -3589,12 +3599,12 @@ function dialogoEdicionColeccionista(ficha: Ficha, elOrigen?: HTMLElement | null
     '<img src="' + imagen.poster(ficha.id, 1000) + '" alt="' + esc(ficha.title) + '">' +
     '<div class="estuche-brillo-tv"></div><div class="estuche-haz-luz-tv"></div></div>' +
     '<div class="cara cara-interior">' +
-    '<div class="libreto-cabecera"><span>TVWATCH ARCHIVE</span><span>' + (ficha.year ? esc(String(ficha.year)) : '') + '</span></div>' +
-    '<div class="libreto-titulo">' + esc(ficha.title) + '</div>' +
+    // Sin «TVWATCH ARCHIVE» (28/10/2026): el año va pegado al título y, si no cabe, baja solo a la línea siguiente.
+    '<div class="libreto-titulo">' + esc(ficha.title) + (ficha.year ? ' <small>' + esc(String(ficha.year)) + '</small>' : '') + '</div>' +
     (ficha.tagline ? '<div class="libreto-eslogan">«' + esc(ficha.tagline) + '»</div>' : '') +
     fila('Dirección', direccion) + fila('Reparto', reparto) + fila('Género', generos) +
     fila('Estudio', estudio) +
-    '<div class="libreto-tecnica">' + fila('Vídeo', textoVideo) + fila('Audio', textoAudio) +
+    '<div class="libreto-tecnica">' + fila('Vídeo', textoVideo) + fila('Audio', textoAudio) + fila('Subtítulos', textoSubs) +
     fila('Duración', minutosTotales ? Math.floor(minutosTotales / 60) + ' h ' + (minutosTotales % 60) + ' min' : '') + '</div>' +
     '</div>' +
     '</div>' +

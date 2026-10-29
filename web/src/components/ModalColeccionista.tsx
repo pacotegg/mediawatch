@@ -69,8 +69,14 @@ export default function ModalColeccionista({ item, es4k = false, onClose }: Moda
     ? `${mejorFichero.width || '?'}×${mejorFichero.height} ${mejorFichero.video_codec ? mejorFichero.video_codec.toUpperCase() : ''}${mejorFichero.hdr ? ` · ${mejorFichero.hdr}` : ''}`
     : '';
 
-  const audios = mejorFichero?.audio || [];
+  // Atmos y más canales primero: con las dos primeras en el orden del fichero, un Atmos que fuera tercero no salía.
+  const conAtmos = (c?: string | null) => /atmos|joc/i.test(c || '');
+  const audios = [...(mejorFichero?.audio || [])].sort(
+    (a, b) => Number(conAtmos(b.codec)) - Number(conAtmos(a.codec)) || (b.channels || 0) - (a.channels || 0),
+  );
   const textoAudio = audios.length ? audioLabelsUnicas(audios).join(' · ') : 'Stereo';
+  const idiomasSubs = [...new Set((mejorFichero?.subtitles || []).map((s) => (s.language || '').toUpperCase()).filter(Boolean))].slice(0, 4);
+  const textoSubs = idiomasSubs.join(', ');
 
   const horas = item.runtime ? Math.floor(item.runtime / 60) : 0;
   const minutos = item.runtime ? Math.round(item.runtime % 60) : 0;
@@ -212,14 +218,10 @@ export default function ModalColeccionista({ item, es4k = false, onClose }: Moda
                 }}
               >
                 <div>
-                  {/* Encabezado editorial */}
-                  <div className="flex items-center justify-between border-b border-white/15 pb-2.5 mb-3 text-[10px] font-black tracking-widest text-white/55">
-                    <span>TVWATCH ARCHIVE</span>
-                    <span>{item.year || ''}</span>
-                  </div>
-
+                  {/* Título con el año al lado; si no cabe, el año baja solo a la línea siguiente. */}
                   <h3 className="text-lg sm:text-xl font-bold tracking-tight text-white mb-3 line-clamp-2 drop-shadow">
                     {item.title}
+                    {item.year ? <span className="ml-2 text-sm font-medium text-white/55">{item.year}</span> : null}
                   </h3>
 
                   {item.tagline && (
@@ -243,13 +245,13 @@ export default function ModalColeccionista({ item, es4k = false, onClose }: Moda
                       </p>
                     )}
                     {generos && (
-                      <p className="line-clamp-1">
+                      <p className="line-clamp-2">
                         <strong className="text-white/80 font-semibold mr-1.5">Género:</strong>
                         {generos}
                       </p>
                     )}
                     {item.studio && (
-                      <p className="line-clamp-1">
+                      <p className="line-clamp-2">
                         <strong className="text-white/80 font-semibold mr-1.5">Estudio:</strong>
                         {item.studio}
                       </p>
@@ -269,6 +271,12 @@ export default function ModalColeccionista({ item, es4k = false, onClose }: Moda
                     <span className="text-white/60">Audio</span>
                     <span className="font-medium text-white/95">{textoAudio}</span>
                   </div>
+                  {textoSubs && (
+                    <div className="flex justify-between">
+                      <span className="text-white/60">Subtítulos</span>
+                      <span className="font-medium text-white/95">{textoSubs}</span>
+                    </div>
+                  )}
                   {textoDuracion && (
                     <div className="flex justify-between">
                       <span className="text-white/60">Duración</span>
