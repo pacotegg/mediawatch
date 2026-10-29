@@ -1649,7 +1649,9 @@ private fun ModalColeccionistaAndroid(
   // Con la información de reproducción, el detalle real; sin ella, lo que el servidor ya sabe del fichero. Antes el
   // respaldo era el códec de VÍDEO (HEVC) puesto como si fuera el audio.
   val audioTracksTexto = remember(infoPistas, fichero) {
-    infoPistas?.audio?.map { nombreAudioDePista(it) }?.distinct()?.take(2)?.joinToString(" · ")
+    // Atmos y más canales primero: con las dos primeras en el orden del fichero, un Atmos tercero no salía.
+    infoPistas?.audio?.sortedWith(compareByDescending<PistaAudio> { it.atmos }.thenByDescending { it.channels ?: 0 })
+      ?.map { nombreAudioDePista(it) }?.distinct()?.take(2)?.joinToString(" · ")
       ?: fichero?.audio?.mapNotNull { nombreAudioDeFichero(it) }?.distinct()?.take(2)?.joinToString(" · ")?.takeIf { it.isNotBlank() }
   }
   val subsTexto = remember(infoPistas) {
@@ -1838,39 +1840,26 @@ private fun ModalColeccionistaAndroid(
                     .border(0.6.dp, Color(0xAAFFFFFF), RoundedCornerShape(2.dp)),
                 )
 
+                /*
+                 * Libreto (28/10/2026): sin el «TVWATCH ARCHIVE» de cabecera; el año al lado del título (si no cabe, pasa
+                 * debajo solo); reparto, género y estudio hasta dos líneas; la sinopsis llena el hueco que quede; audio y
+                 * subtítulos del mismo color y separados de la pestaña de abajo.
+                 */
                 Column(
                   modifier = Modifier
                     .fillMaxSize()
-                    .padding(start = 6.dp, end = 2.dp, top = 2.dp, bottom = 2.dp),
-                  verticalArrangement = Arrangement.SpaceBetween,
+                    .padding(start = 6.dp, end = 2.dp, top = 2.dp, bottom = 14.dp),
                 ) {
-                  Column {
-                    Row(
-                      verticalAlignment = Alignment.CenterVertically,
-                      horizontalArrangement = Arrangement.SpaceBetween,
-                      modifier = Modifier.fillMaxWidth(),
-                    ) {
-                      Text(
-                        "TVWATCH ARCHIVE",
-                        color = Color(0xFFE2B755),
-                        fontSize = 8.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.2.sp,
-                      )
-                      ficha.year?.let {
-                        Text(
-                          "$it",
-                          color = Color(0xFF94A3B8),
-                          fontSize = 8.5.sp,
-                          fontWeight = FontWeight.SemiBold,
-                        )
-                      }
-                    }
-
-                    Spacer(Modifier.height(3.dp))
-
+                  Column(Modifier.weight(1f)) {
                     Text(
-                      ficha.title,
+                      androidx.compose.ui.text.buildAnnotatedString {
+                        append(ficha.title)
+                        ficha.year?.let {
+                          pushStyle(androidx.compose.ui.text.SpanStyle(color = Color(0xFF94A3B8), fontWeight = FontWeight.Medium, fontSize = 10.sp))
+                          append("  $it")
+                          pop()
+                        }
+                      },
                       color = Color.White,
                       fontSize = if (esApaisado) 14.sp else 13.sp,
                       fontWeight = FontWeight.Bold,
@@ -1909,17 +1898,20 @@ private fun ModalColeccionistaAndroid(
                         "Reparto: $actores",
                         color = Color(0xFF94A3B8),
                         fontSize = 8.5.sp,
-                        maxLines = 1,
+                        lineHeight = 11.sp,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                       )
                     }
 
                     if (generos.isNotBlank()) {
+                      Spacer(Modifier.height(3.dp))
                       Text(
                         "Género: $generos",
                         color = Color(0xFF64748B),
                         fontSize = 8.sp,
-                        maxLines = 1,
+                        lineHeight = 10.sp,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                       )
                     }
@@ -1930,7 +1922,8 @@ private fun ModalColeccionistaAndroid(
                         "Estudio: $est",
                         color = Color(0xFF94A3B8),
                         fontSize = 8.sp,
-                        maxLines = 1,
+                        lineHeight = 10.sp,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                       )
                     }
@@ -1960,7 +1953,7 @@ private fun ModalColeccionistaAndroid(
                         modifier = Modifier
                           .background(Color(0x33000000), RoundedCornerShape(3.dp))
                           .border(0.6.dp, if (es4k) Color(0x88E2B755) else Color(0x44FFFFFF), RoundedCornerShape(3.dp))
-                          .padding(horizontal = 4.dp, vertical = 1.dp),
+                          .padding(horizontal = 4.dp, vertical = 0.dp),
                       )
                       hdrTexto?.let {
                         Text(
@@ -1971,7 +1964,7 @@ private fun ModalColeccionistaAndroid(
                           modifier = Modifier
                             .background(Color(0x33000000), RoundedCornerShape(3.dp))
                             .border(0.6.dp, Color(0x44FFFFFF), RoundedCornerShape(3.dp))
-                            .padding(horizontal = 4.dp, vertical = 1.dp),
+                            .padding(horizontal = 4.dp, vertical = 0.dp),
                         )
                       }
                       Text(
@@ -1981,7 +1974,7 @@ private fun ModalColeccionistaAndroid(
                         fontWeight = FontWeight.Medium,
                         modifier = Modifier
                           .background(Color(0x22FFFFFF), RoundedCornerShape(2.dp))
-                          .padding(horizontal = 3.dp, vertical = 1.dp),
+                          .padding(horizontal = 3.dp, vertical = 0.dp),
                       )
                       if (ficha.runtime != null && ficha.runtime > 0) {
                         Text(
@@ -2006,8 +1999,9 @@ private fun ModalColeccionistaAndroid(
                     if (!subsTexto.isNullOrBlank()) {
                       Text(
                         "SUBS: $subsTexto",
-                        color = Color(0xFF94A3B8),
+                        color = Color(0xFFCBD5E1),
                         fontSize = 7.5.sp,
+                        fontWeight = FontWeight.Medium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                       )

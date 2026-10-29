@@ -325,11 +325,31 @@ fun ReproductorDeExtra(extra: Extra, alCerrar: () -> Unit) {
   // Sin esto el audio sigue sonando tras cerrar la ventana.
   DisposableEffect(Unit) { onDispose { reproductor.release() } }
 
-  Dialog(onDismissRequest = alCerrar, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+  Dialog(onDismissRequest = alCerrar, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+    /*
+     * A pantalla completa, como el reproductor grande (28/10/2026): antes se veía en vertical, al ancho del móvil, en una
+     * franja pequeña. Horizontal, sin barras del sistema y con la pantalla encendida; al cerrar, todo como estaba.
+     */
+    val actividad = contexto as? android.app.Activity
+    val ventana = (androidx.compose.ui.platform.LocalView.current.parent as? androidx.compose.ui.window.DialogWindowProvider)?.window
+    DisposableEffect(Unit) {
+      actividad?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+      ventana?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+      // Sin esto, la ventana respeta el recorte de la cámara y queda desplazada (y «Cerrar» se sale por el otro lado).
+      if (android.os.Build.VERSION.SDK_INT >= 28) {
+        ventana?.attributes = ventana?.attributes?.apply {
+          layoutInDisplayCutoutMode = android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        }
+      }
+      val barras = ventana?.let { androidx.core.view.WindowInsetsControllerCompat(it, it.decorView) }
+      barras?.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+      barras?.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+      onDispose { actividad?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
+    }
     Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
       AndroidView(
         factory = { ctx -> PlayerView(ctx).apply { player = reproductor; useController = true } },
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxSize(),
       )
       TextButton(onClick = alCerrar, modifier = Modifier.align(Alignment.TopEnd).padding(12.dp)) {
         Text("Cerrar", color = Color.White)

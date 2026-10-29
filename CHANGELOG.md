@@ -12,6 +12,11 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.86 — 29/10/2026
+
+- Caja de coleccionista: sin «TVWATCH ARCHIVE», con el año junto al título; reparto, género y estudio en dos líneas si hace falta; el audio con Atmos aparece primero y los subtítulos van del mismo color. Chips más bajos y más aire sobre la pestaña de abajo.
+- Los extras se ven a pantalla completa y en horizontal, como la película.
+
 ## 3.85 — 28/10/2026
 
 - «Instalar» en el aviso de versión nueva descarga la versión y abre el instalador desde la propia app, también en Google TV, que no tiene navegador. La primera vez Android pide permitir instalar desde Media Watch.
