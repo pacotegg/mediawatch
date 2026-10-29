@@ -215,10 +215,18 @@ fun PantallaFicha(
       extras = emptyList()
       return@LaunchedEffect
     }
-    extras = try {
-      withContext(Dispatchers.IO) { Api.extras(itemId) }.extras
-    } catch (e: Exception) {
-      emptyList() // sin extras: la pastilla no sale y ya esta
+    // Un fallo suelto de red no debe dejar la ficha sin extras: 3 intentos (0, 2 y 5 s).
+    var fallos = 0
+    while (true) {
+      try {
+        extras = withContext(Dispatchers.IO) { Api.extras(itemId) }.extras
+        break
+      } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+      } catch (e: Exception) {
+        if (++fallos >= 3) break // sin extras: la pastilla no sale y ya esta
+        kotlinx.coroutines.delay(if (fallos == 1) 2000L else 3000L)
+      }
     }
   }
 

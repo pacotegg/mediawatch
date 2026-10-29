@@ -16,6 +16,7 @@ al final, en bloques por intervalo, sin asignarlos a un número.
 
 - Caja de coleccionista: sin «TVWATCH ARCHIVE», con el año junto al título; reparto, género y estudio en dos líneas si hace falta; el audio con Atmos aparece primero y los subtítulos van del mismo color. Chips más bajos y más aire sobre la pestaña de abajo.
 - Los extras se ven a pantalla completa y en horizontal, como la película.
+- Si falla la carga de los extras al abrir una ficha, se reintenta sola (antes el botón «Extras» podía no salir).
 
 ## 3.85 — 28/10/2026
 
