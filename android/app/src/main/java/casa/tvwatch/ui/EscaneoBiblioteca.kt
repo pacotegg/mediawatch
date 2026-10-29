@@ -17,6 +17,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import casa.tvwatch.datos.Api
+import casa.tvwatch.datos.CambiosEscaneo
 import casa.tvwatch.datos.CarpetaBiblioteca
 import casa.tvwatch.datos.EstadoEscaneo
 import kotlinx.coroutines.Dispatchers
@@ -57,6 +58,7 @@ internal fun FilaEscaneoBiblioteca() {
         if (antes && !e.scanning) {
           val u = e.ultimo
           if (u == null) aviso("Escaneo terminado")
+          else if (u.ok && u.cambios != null) aviso(textoCambios(u.cambios), largo = true)
           else if (u.ok) aviso("Escaneo terminado: ${u.resultados.sumOf { it.count }} títulos en ${u.resultados.size} carpeta(s)", largo = true)
           else aviso("El escaneo ha fallado: ${u.error ?: "sin detalle"}", largo = true)
         }
@@ -119,5 +121,18 @@ internal fun FilaEscaneoBiblioteca() {
       confirmButton = {},
       dismissButton = { TextButton(onClick = { dialogo = false }) { Text("Cancelar", color = TextoSuave) } },
     )
+  }
+}
+
+/** «Títulos: +3 / −1 · Ficheros: +12 / −0», con los nombres de los nuevos y los retirados (29/10/2026). */
+private fun textoCambios(c: CambiosEscaneo): String {
+  if (c.titulosAnadidos == 0 && c.titulosRetirados == 0 && c.ficherosAnadidos == 0 && c.ficherosRetirados == 0) {
+    return "Escaneo terminado: sin cambios"
+  }
+  fun mas(lista: List<String>, total: Int) = lista.joinToString(", ") + if (total > lista.size) " y ${total - lista.size} más" else ""
+  return buildString {
+    append("Escaneo terminado. Títulos: +${c.titulosAnadidos} / −${c.titulosRetirados} · Ficheros: +${c.ficherosAnadidos} / −${c.ficherosRetirados}")
+    if (c.nuevos.isNotEmpty()) append(". Nuevos: ").append(mas(c.nuevos, c.titulosAnadidos))
+    if (c.retirados.isNotEmpty()) append(". Retirados: ").append(mas(c.retirados, c.titulosRetirados))
   }
 }

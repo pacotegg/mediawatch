@@ -12,6 +12,11 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.87 — 29/10/2026
+
+- Al terminar «Actualizar biblioteca» dice cuántos títulos y ficheros han entrado y salido, y cuáles.
+- Los logos de estudio que son una caja (Crystal Lake, Platinum Dunes, Canal+…) se ven con sus colores; antes salían como un bloque claro o dorado donde no se leía el nombre.
+
 ## 3.86 — 29/10/2026
 
 - Caja de coleccionista: sin «TVWATCH ARCHIVE», con el año junto al título; reparto, género y estudio en dos líneas si hace falta; el audio con Atmos aparece primero y los subtítulos van del mismo color. Chips más bajos y más aire sobre la pestaña de abajo.

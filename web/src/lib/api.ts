@@ -377,6 +377,15 @@ export const api = {
   favorite: (itemId: number, favorite: boolean) => post<{ ok: true }>(`/api/items/${itemId}/favorite`, { favorite }),
   favorites: () => request<ItemSummary[]>('/api/favorites'),
   scan: (ruta?: string) => (ruta ? post<{ started: boolean }>('/api/scan', { ruta }) : post<{ started: boolean }>('/api/scan')),
+  /** Cómo va el escaneo y cómo acabó el último; `cambios` desde el 29/10/2026 (lo que entró y salió). */
+  scanEstado: () => request<{
+    scanning: boolean;
+    ultimo: {
+      ok: boolean;
+      error: string | null;
+      cambios?: { titulosAnadidos: number; titulosRetirados: number; ficherosAnadidos: number; ficherosRetirados: number; nuevos: string[]; retirados: string[] } | null;
+    } | null;
+  }>('/api/scan/estado'),
   scraperDestinos: () => request<{ name: string; path: string; kind: 'movie' | 'show' }[]>('/api/scraper/destinos'),
   scraperFuentes: () => request<{ name: string; path: string; kind: 'movie' | 'show'; titulos: number }[]>('/api/scraper/fuentes'),
   scraperGuardarFuentes: (fuentes: { name: string; path: string; kind: 'movie' | 'show' }[]) =>
@@ -946,7 +955,7 @@ export const img = {
   person: (id: number, w = 160) => `/api/people/${id}/thumb?w=${w}&v=3`,
   studio: (id: number, w = 360) => `/api/items/${id}/studio-logo?w=${w}`,
   /** El logo de un estudio por nombre, ya aclarado o dorado por el servidor. `v` sube con cada cambio de estilo (caché de 30 días). */
-  estudio: (nombre: string, w = 400) => `/api/studios/${encodeURIComponent(nombre)}/logo?claro=1&v=4&w=${w}`,
+  estudio: (nombre: string, w = 400) => `/api/studios/${encodeURIComponent(nombre)}/logo?claro=1&v=6&w=${w}`,
 };
 
 function supports(type: string): boolean {

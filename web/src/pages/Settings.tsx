@@ -272,7 +272,33 @@ function LibraryTab() {
     },
   });
 
-  const scan = useMutation({ mutationFn: api.scan, onSuccess: () => setMessage('Escaneo iniciado. Tarda alrededor de medio minuto.') });
+  const scan = useMutation({
+    mutationFn: api.scan,
+    onSuccess: async (r) => {
+      if (!r.started) { setMessage('Ya hay un escaneo en curso.'); return; }
+      setMessage('Escaneo iniciado. Tarda alrededor de medio minuto.');
+      // Al acabar, lo que entró y salió (29/10/2026). Tope de 10 min: si no acaba, se deja el mensaje de arriba.
+      for (let i = 0; i < 300; i++) {
+        await new Promise((res) => setTimeout(res, 2000));
+        const e = await api.scanEstado().catch(() => null);
+        if (!e || e.scanning) continue;
+        const u = e.ultimo;
+        if (!u) return;
+        if (!u.ok) { setMessage('El escaneo falló: ' + (u.error || 'sin detalle')); return; }
+        const c = u.cambios;
+        if (!c) { setMessage('Escaneo terminado.'); return; }
+        if (!c.titulosAnadidos && !c.titulosRetirados && !c.ficherosAnadidos && !c.ficherosRetirados) { setMessage('Escaneo terminado: sin cambios.'); return; }
+        const mas = (lista: string[], total: number) => lista.join(', ') + (total > lista.length ? ` y ${total - lista.length} más` : '');
+        setMessage(
+          `Escaneo terminado. Títulos: +${c.titulosAnadidos} / −${c.titulosRetirados} · Ficheros: +${c.ficherosAnadidos} / −${c.ficherosRetirados}` +
+            (c.nuevos.length ? `. Nuevos: ${mas(c.nuevos, c.titulosAnadidos)}` : '') +
+            (c.retirados.length ? `. Retirados: ${mas(c.retirados, c.titulosRetirados)}` : ''),
+        );
+        void queryClient.invalidateQueries();
+        return;
+      }
+    },
+  });
   return (
     <div className="space-y-5">
       <Panel title="Biblioteca" action={<Button onClick={() => scan.mutate()} disabled={scan.isPending}>Volver a escanear</Button>}>

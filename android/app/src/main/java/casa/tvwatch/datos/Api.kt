@@ -395,7 +395,7 @@ object Api {
   fun logosDeEstudios(id: Int): ListaLogos = pedir("/api/items/$id/studio-logos")
   /** El logo de un estudio por nombre, aclarado o dorado por el servidor; `v` sube con cada cambio de estilo (caché de 30 días). */
   fun logoDeEstudio(nombre: String, ancho: Int = 400) =
-    "${Servidor.baseCacheada()}/api/studios/${java.net.URLEncoder.encode(nombre, "UTF-8").replace("+", "%20")}/logo?claro=1&v=5&w=$ancho"
+    "${Servidor.baseCacheada()}/api/studios/${java.net.URLEncoder.encode(nombre, "UTF-8").replace("+", "%20")}/logo?claro=1&v=6&w=$ancho"
   fun logoEstudio(id: Int, ancho: Int = 360) = "${Servidor.baseCacheada()}/api/items/$id/studio-logo?w=$ancho&claro=1"
 
   /* ------------------------------------------------------- reproducción */
@@ -1026,8 +1026,24 @@ data class ProgresoEscaneo(val library: String = "", val done: Int = 0, val tota
 @Serializable
 data class ResultadoEscaneo(val name: String = "", val count: Int = 0)
 
+/** Lo que entró y salió en el escaneo (servidor desde el 29/10/2026; uno anterior no lo manda). */
 @Serializable
-data class UltimoEscaneo(val ok: Boolean = true, val resultados: List<ResultadoEscaneo> = emptyList(), val error: String? = null)
+data class CambiosEscaneo(
+  val titulosAnadidos: Int = 0,
+  val titulosRetirados: Int = 0,
+  val ficherosAnadidos: Int = 0,
+  val ficherosRetirados: Int = 0,
+  val nuevos: List<String> = emptyList(),
+  val retirados: List<String> = emptyList(),
+)
+
+@Serializable
+data class UltimoEscaneo(
+  val ok: Boolean = true,
+  val resultados: List<ResultadoEscaneo> = emptyList(),
+  val cambios: CambiosEscaneo? = null,
+  val error: String? = null,
+)
 
 @Serializable
 data class EstadoEscaneo(val scanning: Boolean = false, val progreso: ProgresoEscaneo? = null, val ultimo: UltimoEscaneo? = null)
