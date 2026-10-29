@@ -35,3 +35,22 @@ test('lumaVisible ignora lo transparente y separa texto negro de un logo de colo
   // Nada visible: NaN, y NaN < umbral es falso (se sirve tal cual).
   assert.ok(Number.isNaN(lumaVisible(new Uint8Array([0, 0, 0, 0]))));
 });
+
+/**
+ * Una caja opaca (Crystal Lake: fondo azul oscuro con letras blancas) se invertía en un bloque azul claro sin texto, y una
+ * gris (Platinum Dunes) pasaba a dorado con el texto perdido (29/10/2026). Ya traen su fondo: van tal cual.
+ */
+test('cajaOpaca: una caja opaca, aunque tenga margen transparente, sí; letras sueltas no', async () => {
+  const { cajaOpaca } = await import('../src/media/logos-estudio.ts');
+  const lienzo = (w, h, pintar) => {
+    const b = new Uint8Array(w * h * 4);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (pintar(x, y)) b[(y * w + x) * 4 + 3] = 255;
+    return b;
+  };
+  assert.equal(cajaOpaca(lienzo(20, 10, () => true), 20), true);
+  // Platinum Dunes: la caja ocupa el 65 % del lienzo y el resto es margen transparente.
+  assert.equal(cajaOpaca(lienzo(20, 10, (x, y) => x >= 2 && x < 18 && y >= 1 && y < 9), 20), true);
+  // Letras: rayas sueltas dentro de su recuadro.
+  assert.equal(cajaOpaca(lienzo(20, 10, (x) => x % 3 === 0), 20), false);
+  assert.equal(cajaOpaca(lienzo(20, 10, () => false), 20), false);
+});

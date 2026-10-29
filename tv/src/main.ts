@@ -241,15 +241,23 @@ function menuHtml(activa: string): string {
     '<div class="menu-marca"><img class="menu-icono" src="./icon.png" alt="">' +
     '<span class="menu-nombre">Media Watch</span></div>';
   let seccionPuesta = false;
+  const ordenPropio = ajustes().ordenMenu.length > 0;
+  let anteriorEsBiblioteca: boolean | null = null;
 
   lista.forEach((d) => {
-    if (d.clave.indexOf('lib-') === 0 && !seccionPuesta && ajustes().ordenMenu.length === 0) {
+    const esBiblioteca = d.clave.indexOf('lib-') === 0;
+    if (esBiblioteca && !seccionPuesta && !ordenPropio) {
       html += '<div class="menu-seccion">' + tr('Bibliotecas', 'Libraries') + '</div>';
       seccionPuesta = true;
     }
-    if (d.clave === 'ajustes' && ajustes().ordenMenu.length === 0) {
+    if (d.clave === 'ajustes' && !ordenPropio) {
       html += '<div class="menu-seccion menu-pie" aria-hidden="true"></div>';
     }
+    // Con el menú reordenado no salía ninguna raya (29/10/2026): una al pasar de los accesos a las bibliotecas o al revés.
+    if (ordenPropio && anteriorEsBiblioteca !== null && esBiblioteca !== anteriorEsBiblioteca) {
+      html += '<div class="menu-seccion menu-pie" aria-hidden="true"></div>';
+    }
+    anteriorEsBiblioteca = esBiblioteca;
     html +=
       '<button data-nav data-destino="' + d.clave + '" class="opcion' + (d.clave === activa ? ' activa' : '') + '">' +
       icono(d.icono) +
@@ -1677,7 +1685,7 @@ function pantallaBuscar(inicial = '') {
       '</div>' +
       (resultados.length
         ? '<div class="seccion-busqueda-titulos" data-bloque>' +
-          (dialogos.length ? '<h3 class="cabecera-seccion" style="padding: 16px 8px 8px; font-size: 22px; color: var(--texto-sec);">Películas y series (' + resultados.length + ')</h3>' : '') +
+          (dialogos.length ? '<h3 class="cabecera-seccion" style="padding: 16px 0 8px 150px; font-size: 22px; color: var(--texto-sec);">Películas y series (' + resultados.length + ')</h3>' : '') +
           '<div class="rejilla">' + resultados.map(tarjeta).join('') + '</div></div>'
         : consulta.length >= 2 && !dialogos.length
           ? '<div class="vacio">Sin resultados para «' + esc(consulta) + '»</div>'
@@ -4278,7 +4286,17 @@ function verExtra(ficha: Ficha, extra: Extra, alSalir: () => void) {
     window.clearTimeout(buscar);
     buscar = window.setTimeout(() => {
       if (cerrado || destino === null) return;
-      reproductor.irA(destino);
+      /*
+       * Se vuelve a pedir el extra ya cortado, como el salto de las películas: AVPlay no sabe buscar en un MKV por
+       * HTTP y `seekTo` dejaba el extra clavado (29/10/2026). En el navegador sí se busca dentro.
+       */
+      if (reproductor.usaNativo) {
+        const d = reproductor.duracion() || extra.duration || 0;
+        reproductor.cerrar();
+        reproductor.abrir(urlExtra(extra.id, destino), hueco, destino, d, undefined, Math.floor(destino));
+      } else {
+        reproductor.irA(destino);
+      }
       destino = null;
     }, 400);
   };
@@ -6653,12 +6671,28 @@ function panelEscaneo() {
     cuenta.textContent = p.done + ' de ' + p.total;
   });
   fuente.addEventListener('done', (e) => {
-    const d = JSON.parse((e as MessageEvent).data) as { results: { name: string; count: number }[] };
+    const d = JSON.parse((e as MessageEvent).data) as {
+      results: { name: string; count: number }[];
+      // Desde el 29/10/2026: lo que entró y salió. Un servidor anterior no lo manda.
+      cambios?: { titulosAnadidos: number; titulosRetirados: number; ficherosAnadidos: number; ficherosRetirados: number; nuevos: string[]; retirados: string[] };
+    };
     if (fuente) fuente.close();
     fuente = null;
     donde.textContent = 'Listo';
     avance.style.width = '100%';
-    cuenta.textContent = (d.results || []).map((r) => r.name + ': ' + r.count).join(' · ');
+    const c = d.cambios;
+    if (!c) {
+      cuenta.textContent = (d.results || []).map((r) => r.name + ': ' + r.count).join(' · ');
+      return;
+    }
+    const lineas = [
+      'Títulos: +' + c.titulosAnadidos + ' / −' + c.titulosRetirados + ' · Ficheros: +' + c.ficherosAnadidos + ' / −' + c.ficherosRetirados,
+    ];
+    const mas = (lista: string[], total: number) => lista.join(', ') + (total > lista.length ? ' y ' + (total - lista.length) + ' más' : '');
+    if (c.nuevos.length) lineas.push('Nuevos: ' + mas(c.nuevos, c.titulosAnadidos));
+    if (c.retirados.length) lineas.push('Retirados: ' + mas(c.retirados, c.titulosRetirados));
+    if (!c.titulosAnadidos && !c.titulosRetirados && !c.ficherosAnadidos && !c.ficherosRetirados) lineas[0] = 'Sin cambios';
+    cuenta.innerHTML = lineas.map((l) => esc(l)).join('<br>');
   });
   fuente.addEventListener('error', (e) => {
     // Dos cosas llegan por aquí: el aviso del servidor («ya hay un escaneo en

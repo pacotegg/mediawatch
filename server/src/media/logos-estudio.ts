@@ -36,7 +36,7 @@ export function lumaVisible(rgba: Uint8Array): number {
 
 // v4 (19/10/2026): dorado para los que no tienen color; aclarado que conserva el color para los oscuros con color.
 // v5 (26/10/2026): se hace sobre el logo ya recortado. Las carpetas de versiones anteriores quedan sin usar.
-const DIR_CLARO = join(DATA_DIR, 'artwork', 'studios-claro-v5');
+const DIR_CLARO = join(DATA_DIR, 'artwork', 'studios-claro-v6');
 const DIR_RECORTE = join(DATA_DIR, 'artwork', 'studios-recorte-v1');
 
 /**
@@ -106,6 +106,29 @@ export function saturacionVisible(rgba: Uint8Array): number {
 
 export const UMBRAL_SIN_COLOR = 0.15;
 
+/**
+ * El logo es una caja opaca: el 90 % o más de lo que hay dentro del recuadro de lo visible no es transparente. Dentro del
+ * recuadro y no en todo el lienzo: Platinum Dunes es una caja con margen transparente y en el lienzo entero da un 65 %.
+ * Medido el 29/10/2026 en los 815 logos (sobre el lienzo entero): 82 pasan del 90 % y la cuenta apenas cambia hasta 0,99.
+ */
+export function cajaOpaca(rgba: Uint8Array, w: number): boolean {
+  const h = w > 0 ? Math.floor(rgba.length / 4 / w) : 0;
+  let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (rgba[(y * w + x) * 4 + 3] <= 128) continue;
+      if (x < x0) x0 = x;
+      if (x > x1) x1 = x;
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
+    }
+  }
+  if (x1 < 0) return false;
+  let opacos = 0;
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (rgba[(y * w + x) * 4 + 3] > 240) opacos++;
+  return opacos / ((x1 - x0 + 1) * (y1 - y0 + 1)) >= 0.9;
+}
+
 /*
  * Se invierte SOLO la luminosidad (Y) y se deja el color (U, V) y el alfa: el negro pasa a blanco y un azul marino
  * (DreamWorks Animation) a azul claro; con hue=s=0 + negate todo quedaba en grises. Con un mínimo de 205: un rojo oscuro
@@ -136,7 +159,8 @@ export async function versionClara(ruta: string): Promise<string> {
     const oscuro = lumaVisible(stdout) < UMBRAL_OSCURO;
     const sinColor = saturacionVisible(stdout) < UMBRAL_SIN_COLOR;
     // Con color y claro (Warner, Pixar, Marvel…): tal cual. Oscuro: se aclara. Sin color: dorado (aclarado antes si es oscuro).
-    if (!oscuro && !sinColor) {
+    // Una caja opaca (Crystal Lake, Platinum Dunes, Canal+) ya trae su fondo y se lee: tal cual (29/10/2026).
+    if (cajaOpaca(stdout, 64) || (!oscuro && !sinColor)) {
       writeFileSync(talCual, '');
       return ruta;
     }

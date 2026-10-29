@@ -570,7 +570,7 @@ export const imagen = {
    * cambio de ese estilo: el servidor deja guardar las imágenes 30 días y la tele seguiría con la versión vieja.
    */
   estudioNombre: (nombre: string, w: number) =>
-    conToken(servidor() + '/api/studios/' + encodeURIComponent(nombre) + '/logo?claro=1&v=5&w=' + w),
+    conToken(servidor() + '/api/studios/' + encodeURIComponent(nombre) + '/logo?claro=1&v=6&w=' + w),
   tema: (id: number) => conToken(servidor() + '/api/items/' + id + '/theme'),
   // `v` sube cuando se rehacen las fotos (26/10/2026: de 300 a 632 px): el servidor deja guardarlas 30 días en el aparato.
   persona: (id: number, w: number) => conToken(servidor() + '/api/people/' + id + '/thumb?w=' + w + '&v=3'),
@@ -586,7 +586,9 @@ export const imagen = {
 };
 
 /** AVPlay abre una URL pelada: el token tiene que ir dentro. */
-export const urlExtra = (id: number) => conToken(servidor() + '/api/extras/' + id + '/stream');
+/** `desde`: el extra ya cortado en ese segundo (la tele no sabe buscar dentro de un MKV por HTTP). */
+export const urlExtra = (id: number, desde = 0) =>
+  conToken(servidor() + '/api/extras/' + id + '/stream' + (desde > 0 ? '?t=' + Math.floor(desde) : ''));
 
 /*
  * Las pistas traen dos estándares de códigos a la vez (`chi`/`zho`, `fre`/`fra`, `cze`/`ces`…). Chrome 76

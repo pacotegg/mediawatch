@@ -8,7 +8,39 @@
 import type { ScanProgress } from '../scanner/scan.ts';
 
 export type ResultadoEscaneo = { name: string; count: number };
-export type UltimoEscaneo = { fin: string; ok: boolean; resultados: ResultadoEscaneo[]; error: string | null };
+/** Lo que entró y salió en el escaneo (29/10/2026). Por carpeta y por ruta: los ids se renumeran en cada escaneo. */
+export type CambiosEscaneo = {
+  titulosAnadidos: number;
+  titulosRetirados: number;
+  ficherosAnadidos: number;
+  ficherosRetirados: number;
+  /** Hasta 5 títulos de cada lista, para enseñarlos. */
+  nuevos: string[];
+  retirados: string[];
+};
+export type UltimoEscaneo = { fin: string; ok: boolean; resultados: ResultadoEscaneo[]; cambios: CambiosEscaneo | null; error: string | null };
+
+/** Carpeta → título de cada título, y la ruta de cada fichero. La saca `index.ts` de la base. */
+export type FotoBiblioteca = { titulos: Map<string, string>; ficheros: Set<string> };
+
+export function compararFotos(antes: FotoBiblioteca, despues: FotoBiblioteca): CambiosEscaneo {
+  const nuevos: string[] = [];
+  const retirados: string[] = [];
+  for (const [carpeta, titulo] of despues.titulos) if (!antes.titulos.has(carpeta)) nuevos.push(titulo);
+  for (const [carpeta, titulo] of antes.titulos) if (!despues.titulos.has(carpeta)) retirados.push(titulo);
+  let ficherosAnadidos = 0;
+  let ficherosRetirados = 0;
+  for (const f of despues.ficheros) if (!antes.ficheros.has(f)) ficherosAnadidos++;
+  for (const f of antes.ficheros) if (!despues.ficheros.has(f)) ficherosRetirados++;
+  return {
+    titulosAnadidos: nuevos.length,
+    titulosRetirados: retirados.length,
+    ficherosAnadidos,
+    ficherosRetirados,
+    nuevos: nuevos.slice(0, 5),
+    retirados: retirados.slice(0, 5),
+  };
+}
 
 let enCurso: { desde: string; ruta: string | null; progreso: ScanProgress | null } | null = null;
 let ultimo: UltimoEscaneo | null = null;
@@ -22,14 +54,14 @@ export function escaneoAvanza(p: ScanProgress): void {
   if (enCurso) enCurso.progreso = p;
 }
 
-export function escaneoTerminado(resultados: ResultadoEscaneo[]): void {
+export function escaneoTerminado(resultados: ResultadoEscaneo[], cambios: CambiosEscaneo | null = null): void {
   enCurso = null;
-  ultimo = { fin: new Date().toISOString(), ok: true, resultados, error: null };
+  ultimo = { fin: new Date().toISOString(), ok: true, resultados, cambios, error: null };
 }
 
 export function escaneoFallido(error: string): void {
   enCurso = null;
-  ultimo = { fin: new Date().toISOString(), ok: false, resultados: [], error };
+  ultimo = { fin: new Date().toISOString(), ok: false, resultados: [], cambios: null, error };
 }
 
 export function estadoEscaneo() {

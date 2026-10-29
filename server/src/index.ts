@@ -32,7 +32,7 @@ import systemRoutes from './routes/system.ts';
 import licenciaRoutes from './routes/licencia.ts';
 import { scanAllEnWorker, type ScanProgress } from './scanner/scan.ts';
 import { ultimaVersionApp } from './media/version-app.ts';
-import { escaneoAvanza, escaneoFallido, escaneoIniciado, escaneoTerminado, estadoEscaneo } from './media/estado-escaneo.ts';
+import { compararFotos, escaneoAvanza, escaneoFallido, escaneoIniciado, escaneoTerminado, estadoEscaneo, type FotoBiblioteca } from './media/estado-escaneo.ts';
 import { procesarWebhookPlex } from './media/plex.ts';
 
 /*
@@ -585,6 +585,18 @@ await app.register(licenciaRoutes);
 
 let scanning = false;
 
+/** Títulos (por carpeta) y ficheros (por ruta) de la biblioteca, sin las carpetas de entrada: antes y después de escanear. */
+function fotoBiblioteca(): FotoBiblioteca {
+  const titulos = new Map<string, string>();
+  for (const r of db.prepare('SELECT folder, title FROM items_biblioteca').all() as { folder: string; title: string }[]) titulos.set(r.folder, r.title);
+  const ficheros = new Set<string>();
+  const filas = db.prepare(`SELECT f.path FROM media_files f
+    WHERE f.item_id IN (SELECT id FROM items_biblioteca)
+       OR f.episode_id IN (SELECT id FROM episodes_biblioteca)`).all() as { path: string }[];
+  for (const r of filas) ficheros.add(r.path);
+  return { titulos, ficheros };
+}
+
 app.post('/api/scan', async (req, reply) => {
   if (!currentUser(req)?.is_admin) return reply.code(403).send({ error: 'Solo un administrador puede escanear' });
   if (scanning) return { started: false, reason: 'Ya hay un escaneo en curso' };
@@ -596,8 +608,9 @@ app.post('/api/scan', async (req, reply) => {
   // el hilo entre lotes) sigue de fondo sin bloquear al resto del servidor.
   void (async () => {
     try {
+      const antes = fotoBiblioteca();
       const results = await scanAllEnWorker(escaneoAvanza, solo);
-      escaneoTerminado(results);
+      escaneoTerminado(results, compararFotos(antes, fotoBiblioteca()));
       console.log('Escaneo completado:', results.map((r) => `${r.name}=${r.count}`).join(' '));
     } catch (err) {
       escaneoFallido(String(err));
@@ -632,9 +645,11 @@ app.get('/api/scan/stream', async (req, reply) => {
   scanning = true;
   escaneoIniciado(null);
   try {
+    const antes = fotoBiblioteca();
     const results = await scanAllEnWorker((p: ScanProgress) => { escaneoAvanza(p); send('progress', p); });
-    escaneoTerminado(results);
-    send('done', { results });
+    const cambios = compararFotos(antes, fotoBiblioteca());
+    escaneoTerminado(results, cambios);
+    send('done', { results, cambios });
   } catch (err) {
     escaneoFallido(String(err));
     send('error', { message: String(err) });

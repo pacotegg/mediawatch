@@ -1247,6 +1247,38 @@ export default async function playRoutes(app: FastifyInstance) {
       /\.mkv$/i.test(extra.path) ? 'video/x-matroska' :
       /\.avi$/i.test(extra.path) ? 'video/x-msvideo' :
       /\.mov$/i.test(extra.path) ? 'video/quicktime' : 'video/mp4';
+    /*
+     * `t`: el extra ya cortado en ese segundo. La tele no sabe buscar dentro de un MKV por HTTP (ver el salto de
+     * `/api/play/:fileId/stream`): se quedaba clavada al primer ◀ ▶ (29/10/2026, «12 hombres sin piedad»).
+     */
+    const desde = Math.max(0, Number((req.query as Record<string, string | undefined>).t ?? 0)) || 0;
+    if (desde > 0) {
+      const args = [
+        '-hide_banner', '-loglevel', 'error', '-nostdin',
+        '-ss', String(desde),
+        '-i', extra.path,
+        '-map', '0:v:0?', '-map', '0:a?',
+        '-c', 'copy',
+        '-avoid_negative_ts', 'make_zero',
+        '-max_muxing_queue_size', '4096',
+        '-f', 'matroska', 'pipe:1',
+      ];
+      let cerrado = false;
+      const proc = spawn(config.ffmpeg, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+      proc.stdout.on('data', () => marcarActividad());
+      proc.stderr.on('data', (d) => { if (!cerrado) console.error('[extra-corte]', String(d).trim()); });
+      proc.on('error', (e) => console.error('[extra-corte] no arrancó ffmpeg:', e.message));
+      const matar = () => {
+        if (!cerrado) {
+          cerrado = true;
+          try { proc.kill('SIGKILL'); } catch {}
+        }
+      };
+      req.raw.on('close', matar);
+      reply.raw.on('close', matar);
+      return reply.header('Content-Type', 'video/x-matroska').header('Cache-Control', 'no-store').send(proc.stdout);
+    }
+
     reply.header('Accept-Ranges', 'bytes').header('Content-Type', mime);
 
     const rango = parsearRango(req.headers.range, stat.size);
