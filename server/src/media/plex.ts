@@ -110,6 +110,32 @@ export function notificarProgresoAPlex(rutaFichero: string, positionSec: number,
   marcarEnPlex(token, ratingKey, watched, positionSec).catch(() => {});
 }
 
+let nombreDueno: string | null | undefined;
+/** El nombre de la cuenta 1 (el dueño) en la base de Plex; se lee una vez. */
+function nombreCuentaDueno(): string | null {
+  if (nombreDueno !== undefined) return nombreDueno;
+  const plex = getPlexDb();
+  if (!plex) return null;
+  try {
+    const fila = plex.prepare('SELECT name FROM accounts WHERE id = 1').get() as { name: string } | undefined;
+    nombreDueno = fila?.name || null;
+  } catch {
+    return null;
+  }
+  return nombreDueno;
+}
+
+/** ¿Es ese id el de otra persona dada de alta en Plex? (no se recuerda: alguien nuevo puede entrar en cualquier momento) */
+function esOtraCuentaLocal(id: number): boolean {
+  const plex = getPlexDb();
+  if (!plex || !Number.isFinite(id) || id === 1) return false;
+  try {
+    return Boolean(plex.prepare('SELECT 1 FROM accounts WHERE id = ?').get(id));
+  } catch {
+    return true; // sin poder comprobarlo, mejor no tocar el progreso de nadie
+  }
+}
+
 export function procesarWebhookPlex(payload: any): { ok: boolean; motivo?: string } {
   if (!payload || typeof payload !== 'object') return { ok: false, motivo: 'payload vacio o invalido' };
 
@@ -118,8 +144,15 @@ export function procesarWebhookPlex(payload: any): { ok: boolean; motivo?: strin
     return { ok: true, motivo: `evento ignorado (${event})` };
   }
 
+  /*
+   * Plex manda en `Account.id` el id de plex.tv del dueño (11223344), no el 1 de su base: con `!== 1` se descartaban todas
+   * sus pausas (01/11/2026). En la base de Plex el dueño es la cuenta 1 y el resto de personas llevan su id de plex.tv:
+   * es el dueño si el id es 1, o si el nombre es el de la cuenta 1 y el id no es el de otra persona dada de alta.
+   */
   const accountId = payload.Account?.id;
-  if (accountId !== undefined && accountId !== 1) {
+  const esDueno = accountId === undefined || accountId === 1 ||
+    (typeof payload.Account?.title === 'string' && payload.Account.title === nombreCuentaDueno() && !esOtraCuentaLocal(Number(accountId)));
+  if (!esDueno) {
     return { ok: true, motivo: `cuenta no principal (${accountId})` };
   }
 

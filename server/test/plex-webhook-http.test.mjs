@@ -6,7 +6,7 @@
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -16,6 +16,8 @@ import { DatabaseSync } from 'node:sqlite';
 const SERVER = join(dirname(fileURLToPath(import.meta.url)), '..');
 let proceso, datos, base, itemId;
 const RUTA = 'C:/no/existe/Plex Peli (2020)/Plex Peli (2020) 1080p AC3.mkv';
+const DUENO = 'Dueno_De_Plex';
+const OTRA_ID = 55667788;
 
 const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
 const puertoLibre = () => new Promise((res, rej) => {
@@ -26,6 +28,13 @@ const puertoLibre = () => new Promise((res, rej) => {
 
 before(async () => {
   datos = mkdtempSync(join(tmpdir(), 'mediawatch-test-'));
+  // Base de Plex falsa con sus cuentas: el dueño es la 1; el resto de personas llevan su id de plex.tv.
+  const plexDb = join(datos, 'plex-falso.db');
+  const p = new DatabaseSync(plexDb);
+  p.exec('CREATE TABLE accounts (id INTEGER PRIMARY KEY, name TEXT)');
+  p.prepare('INSERT INTO accounts (id, name) VALUES (1, ?), (?, ?)').run(DUENO, OTRA_ID, 'Otra persona');
+  p.close();
+  writeFileSync(join(datos, 'config.json'), JSON.stringify({ plexDb }));
   const puerto = await puertoLibre();
   base = `http://127.0.0.1:${puerto}`;
   proceso = spawn(process.execPath, ['src/index.ts'], {
@@ -87,4 +96,31 @@ test('un media.stop a mitad guarda la posicion; tambien con el JSON a pelo', asy
 test('desde fuera de casa el webhook sigue cerrado', async () => {
   const r = await fetch(base + '/api/plex/webhook', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': '8.8.8.8' }, body: '{}', signal: AbortSignal.timeout(8000) });
   assert.ok([401, 403].includes(r.status), String(r.status));
+});
+
+/*
+ * Plex manda en `Account.id` el id de plex.tv del dueño (11223344), no el 1 local: todas sus pausas se descartaban
+ * como «cuenta no principal» (01/11/2026, data/plex-webhook.log). Se reconoce al dueño por el nombre de la cuenta 1.
+ */
+const comoCuenta = (account, viewOffset) => fetch(base + '/api/plex/webhook', {
+  method: 'POST', headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ ...evento('media.pause', { viewOffset }), Account: account }), signal: AbortSignal.timeout(8000),
+});
+
+test('la pausa del dueño con su id de plex.tv guarda la posicion', async () => {
+  const j = await (await comoCuenta({ id: 11223344, title: DUENO }, 2400000)).json();
+  assert.equal(j.ok, true, JSON.stringify(j));
+  assert.deepEqual({ ...progreso() }, { position: 2400, watched: 0 });
+});
+
+test('la pausa de otra persona no toca el progreso del dueño', async () => {
+  const j = await (await comoCuenta({ id: OTRA_ID, title: 'Otra persona' }, 3000000)).json();
+  assert.match(j.motivo, /cuenta no principal/);
+  assert.equal(progreso().position, 2400);
+});
+
+test('otra cuenta de Plex con el nombre del dueño tampoco cuela', async () => {
+  const j = await (await comoCuenta({ id: OTRA_ID, title: DUENO }, 3300000)).json();
+  assert.match(j.motivo, /cuenta no principal/);
+  assert.equal(progreso().position, 2400);
 });
