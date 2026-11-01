@@ -99,3 +99,42 @@ test('marcar como vista avisa a Plex con /:/scrobble', async () => {
   assert.equal(r.metodo, 'GET');
   assert.equal(r.url.searchParams.get('key'), String(RATING_KEY));
 });
+
+/*
+ * Volver a ver algo ya visto (Cars, 31/10/2026): el servidor la dejaba «vista» en cada aviso, no salía en «Seguir viendo»
+ * y mandaba a Plex un scrobble cada 15 s (254 en una hora). Ahora pasa a «en curso» y a Plex le llega la posición.
+ */
+const fila = () => {
+  const db = new DatabaseSync(join(datos, 'tvwatch.db'));
+  try { return db.prepare('SELECT position, watched FROM progress WHERE item_id = ?').get(itemId); } finally { db.close(); }
+};
+const scrobbles = () => recibidas.filter((x) => x.url.pathname === '/:/scrobble').length;
+
+test('volver a ver una vista pasa a «en curso» y a Plex le llega la posicion, no otro scrobble', async () => {
+  assert.equal(fila().watched, 1, 'el caso anterior la deja vista');
+  const antes = scrobbles();
+  assert.equal((await post('/api/progress', { itemId, position: 2000, duration: 5400 })).status, 200);
+  assert.deepEqual({ ...fila() }, { position: 2000, watched: 0 });
+  const r = await llegada((x) => x.url.pathname === '/:/progress' && x.url.searchParams.get('time') === '2000000');
+  assert.ok(r, 'Plex no recibio la posicion');
+  await esperar(300);
+  assert.equal(scrobbles(), antes, 'no debe mandar «vista» mientras se ve');
+});
+
+test('abrirla un momento (60 s o menos) no le quita el «vista»', async () => {
+  assert.equal((await post(`/api/items/${itemId}/watched`, { watched: true })).status, 200);
+  assert.equal((await post('/api/progress', { itemId, position: 40, duration: 5400 })).status, 200);
+  assert.equal(fila().watched, 1);
+});
+
+test('al terminar se manda UN scrobble, no uno por cada aviso de los creditos', async () => {
+  assert.equal((await post('/api/progress', { itemId, position: 3000, duration: 5400 })).status, 200);
+  await esperar(300);
+  const antes = scrobbles();
+  for (const position of [5000, 5015, 5030]) {
+    assert.equal((await post('/api/progress', { itemId, position, duration: 5400 })).status, 200);
+  }
+  await esperar(800);
+  assert.equal(fila().watched, 1);
+  assert.equal(scrobbles() - antes, 1);
+});

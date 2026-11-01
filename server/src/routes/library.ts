@@ -1260,8 +1260,8 @@ export default async function libraryRoutes(app: FastifyInstance) {
      * los monólogos, la recodificación y la espera de un reinicio (19-20/10/2026). Cuenta: el primer informe, terminar y
      * cualquier avance de un segundo o más.
      */
-    const anterior = db.prepare('SELECT position FROM progress WHERE user_id = ? AND item_id = ? AND episode_id IS ?')
-      .get(user.id, itemId, episodeId ?? null) as { position: number } | undefined;
+    const anterior = db.prepare('SELECT position, watched FROM progress WHERE user_id = ? AND item_id = ? AND episode_id IS ?')
+      .get(user.id, itemId, episodeId ?? null) as { position: number; watched: number } | undefined;
     if (!anterior || watched || Math.abs(position - anterior.position) >= 1) marcarActividad();
     /*
      * Un cero no es una duración, es que el cliente no la sabía. Como el
@@ -1292,10 +1292,15 @@ export default async function libraryRoutes(app: FastifyInstance) {
       if (enCreditos || supera90) {
         esVisto = 1;
       } else {
-        const filaActual = db.prepare('SELECT watched FROM progress WHERE user_id = ? AND item_id = ? AND episode_id IS ?').get(user.id, itemId, episodeId ?? null) as { watched?: number } | undefined;
-        esVisto = filaActual && filaActual.watched === 1 ? 1 : 0;
+        /*
+         * Volver a ver algo ya visto: pasados 60 s queda «en curso» y sale en «Seguir viendo». Antes se quedaba «vista»
+         * en cada aviso y no salía nunca (Cars, 31/10/2026). Abrirla un momento (60 s o menos) no le quita el «vista».
+         */
+        esVisto = anterior?.watched === 1 && position <= 60 ? 1 : 0;
       }
     }
+    // A Plex: «vista» solo al pasar a vista (antes, un scrobble por aviso: 254 en una hora); si ya lo estaba, nada.
+    const avisoPlex = esVisto === 1 ? (anterior?.watched === 1 ? null : 'vista') : 'posicion';
     guardarProgreso(
       user.id,
       itemId,
@@ -1307,12 +1312,12 @@ export default async function libraryRoutes(app: FastifyInstance) {
       subtitle !== undefined ? (subtitle !== null ? String(subtitle) : 'off') : undefined,
     );
     avanzar({ userId: user.id, itemId, episodeId: episodeId ?? null, position, duracion: duration ?? null, vista: Boolean(esVisto), sesion: sesionDe(req) });
-    if (user.id === 1) {
+    if (user.id === 1 && avisoPlex) {
       queueMicrotask(() => {
         const filaRuta = (episodeId
           ? db.prepare('SELECT path FROM media_files WHERE episode_id = ?').get(episodeId)
           : db.prepare('SELECT path FROM media_files WHERE item_id = ? AND episode_id IS NULL').get(itemId)) as { path: string } | undefined;
-        if (filaRuta?.path) notificarProgresoAPlex(filaRuta.path, position, Boolean(esVisto));
+        if (filaRuta?.path) notificarProgresoAPlex(filaRuta.path, position, avisoPlex === 'vista');
       });
     }
     return { ok: true };
