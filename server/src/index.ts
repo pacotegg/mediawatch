@@ -283,6 +283,15 @@ app.post('/api/plex/webhook', {
   }
   if (!payload) return reply.code(400).send({ error: 'Falta campo payload JSON' });
   const resultado = procesarWebhookPlex(payload);
+  /*
+   * Una línea por aviso (01/11/2026): el motivo solo volvía a Plex y Plex no lo anota, así que un aviso descartado no
+   * dejaba rastro (pausas en Plex que no llegaban a MW con 200 en todas). Sin token: solo lo que decide el resultado.
+   */
+  try {
+    const m = payload.Metadata ?? {};
+    appendFileSync(join(DATA_DIR, 'plex-webhook.log'), `${new Date().toISOString()} ${payload.event ?? '?'} cuenta=${payload.Account?.id ?? '?'}` +
+      ` ratingKey=${m.ratingKey ?? '?'} viewOffset=${m.viewOffset ?? 'no'} duration=${m.duration ?? 'no'} -> ${resultado.motivo ?? (resultado.ok ? 'ok' : 'fallo')}\n`);
+  } catch { /* solo para mirar */ }
   return reply.code(200).send(resultado);
 });
 const cspVistos = new Set<string>();
