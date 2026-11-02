@@ -325,6 +325,22 @@ fun ReproductorDeExtra(extra: Extra, alCerrar: () -> Unit) {
   // Sin esto el audio sigue sonando tras cerrar la ventana.
   DisposableEffect(Unit) { onDispose { reproductor.release() } }
 
+  /*
+   * Si el aparato no puede decodificarlo (p. ej. HEVC de 10 bits en algunos móviles) se quedaba en negro y sin ningún
+   * aviso (visto en el emulador el 29/10/2026). Los extras no tienen recodificación en el servidor, así que al menos
+   * se dice qué pasa.
+   */
+  var fallo by remember { mutableStateOf<String?>(null) }
+  DisposableEffect(reproductor) {
+    val oyente = object : androidx.media3.common.Player.Listener {
+      override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+        fallo = "Este aparato no puede reproducir este extra (" + (error.errorCodeName ?: "fallo del reproductor") + ")"
+      }
+    }
+    reproductor.addListener(oyente)
+    onDispose { reproductor.removeListener(oyente) }
+  }
+
   Dialog(onDismissRequest = alCerrar, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
     /*
      * A pantalla completa, como el reproductor grande (28/10/2026): antes se veía en vertical, al ancho del móvil, en una
@@ -351,6 +367,14 @@ fun ReproductorDeExtra(extra: Extra, alCerrar: () -> Unit) {
         factory = { ctx -> PlayerView(ctx).apply { player = reproductor; useController = true } },
         modifier = Modifier.fillMaxSize(),
       )
+      fallo?.let {
+        Text(
+          it,
+          color = Color.White,
+          textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+          modifier = Modifier.background(Color.Black).padding(32.dp),
+        )
+      }
       TextButton(onClick = alCerrar, modifier = Modifier.align(Alignment.TopEnd).padding(12.dp)) {
         Text("Cerrar", color = Color.White)
       }
