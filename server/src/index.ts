@@ -33,6 +33,7 @@ import licenciaRoutes from './routes/licencia.ts';
 import { scanAllEnWorker, type ScanProgress } from './scanner/scan.ts';
 import { ultimaVersionApp } from './media/version-app.ts';
 import { compararFotos, escaneoAvanza, escaneoFallido, escaneoIniciado, escaneoTerminado, estadoEscaneo, type FotoBiblioteca } from './media/estado-escaneo.ts';
+import { medirPendientes } from './media/medir-pendientes.ts';
 import { procesarWebhookPlex } from './media/plex.ts';
 
 /*
@@ -444,6 +445,14 @@ setInterval(limpiarSesiones, 24 * 60 * 60_000).unref();
  * habia 62 ficheros en la base de datos que ya no existian, y sus fichas decian
  * «No se pudieron leer las pistas». Un escaneo completo tarda ~30 s.
  */
+/*
+ * Tras cada escaneo, de fondo: medir lo nuevo o sustituido (01/11/2026). Un fichero sustituido se quedaba con lo del
+ * .nfo viejo hasta reproducirlo, y sin duracion no hay barra ni «Seguir viendo». Ver media/medir-pendientes.ts.
+ */
+function medirTrasEscanear() {
+  void medirPendientes({ soloBiblioteca: true }).catch((e) => console.error('[medir]', (e as Error).message));
+}
+
 let escaneando = false;
 async function escanearSiToca(motivo: string) {
   if (escaneando) return;
@@ -463,6 +472,7 @@ async function escanearSiToca(motivo: string) {
       .catch((e) => console.error('[imagenes-webp]', (e as Error).message));
     // MediaWatch Server: tras escanear, los titulos nuevos se identifican por su nombre.
     if (MODO_PORTABLE) void identificarPendientes().catch((e) => console.error('[identificar]', (e as Error).message));
+    medirTrasEscanear();
   } catch (err) {
     console.error('[escaneo] fallo:', (err as Error).message);
   } finally {
@@ -621,6 +631,7 @@ app.post('/api/scan', async (req, reply) => {
       const results = await scanAllEnWorker(escaneoAvanza, solo);
       escaneoTerminado(results, compararFotos(antes, fotoBiblioteca()));
       console.log('Escaneo completado:', results.map((r) => `${r.name}=${r.count}`).join(' '));
+      medirTrasEscanear();
     } catch (err) {
       escaneoFallido(String(err));
       console.error('Escaneo fallido:', err);
@@ -659,6 +670,7 @@ app.get('/api/scan/stream', async (req, reply) => {
     const cambios = compararFotos(antes, fotoBiblioteca());
     escaneoTerminado(results, cambios);
     send('done', { results, cambios });
+    medirTrasEscanear();
   } catch (err) {
     escaneoFallido(String(err));
     send('error', { message: String(err) });
