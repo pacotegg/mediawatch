@@ -12,6 +12,10 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.88 — 02/11/2026
+
+- Si un extra no se puede reproducir en este aparato (por ejemplo, vídeo HEVC de 10 bits en un móvil que no lo decodifica), se avisa en pantalla en vez de quedarse en negro.
+
 ## 3.87 — 29/10/2026
 
 - Al terminar «Actualizar biblioteca» dice cuántos títulos y ficheros han entrado y salido, y cuáles.
