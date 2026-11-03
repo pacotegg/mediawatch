@@ -32,8 +32,10 @@ import systemRoutes from './routes/system.ts';
 import licenciaRoutes from './routes/licencia.ts';
 import { scanAllEnWorker, type ScanProgress } from './scanner/scan.ts';
 import { ultimaVersionApp } from './media/version-app.ts';
-import { compararFotos, escaneoAvanza, escaneoFallido, escaneoIniciado, escaneoTerminado, estadoEscaneo, type FotoBiblioteca } from './media/estado-escaneo.ts';
+import { compararFotos, escaneoAvanza, escaneoFallido, escaneoIniciado, escaneoTerminado, estadoEscaneo, type CambiosEscaneo, type FotoBiblioteca } from './media/estado-escaneo.ts';
 import { medirPendientes } from './media/medir-pendientes.ts';
+import { marcarCambioBiblioteca } from './media/version-biblioteca.ts';
+import { arrancarVigilante } from './scanner/vigilante.ts';
 import { procesarWebhookPlex } from './media/plex.ts';
 
 /*
@@ -454,18 +456,30 @@ function medirTrasEscanear() {
 }
 
 let escaneando = false;
-async function escanearSiToca(motivo: string) {
+/**
+ * `carpetas`: escaneo PARCIAL, solo esas carpetas de esa biblioteca (lo que pide el vigilante).
+ *
+ * Un parcial **no toca el sello de la pasada completa**: `tocaEscanear()` mira esa fecha, y escribirla aquí dejaría
+ * la biblioteca sin su repaso de madrugada —el único que retira lo que ya no está— cada vez que entrara una película.
+ */
+async function escanearSiToca(motivo: string, solo?: string[], carpetas?: string[]) {
   if (escaneando) return;
   escaneando = true;
+  const parcial = Boolean(carpetas?.length);
   try {
     const t0 = Date.now();
-    const r = await scanAllEnWorker();
-    try {
-      writeFileSync(SELLO_ESCANEO, new Date().toISOString());
-    } catch {
-      /* sin sello se reintentará dentro de una hora; no vale tumbar nada por esto */
+    const antes = fotoBiblioteca();
+    const r = await scanAllEnWorker(undefined, solo, carpetas);
+    const cambios = marcarSiCambio(compararFotos(antes, fotoBiblioteca()));
+    if (!parcial) {
+      try {
+        writeFileSync(SELLO_ESCANEO, new Date().toISOString());
+      } catch {
+        /* sin sello se reintentará dentro de una hora; no vale tumbar nada por esto */
+      }
     }
-    console.log(`[escaneo ${motivo}] ${r.map((x) => `${x.name}: ${x.count}`).join(', ')} en ${((Date.now() - t0) / 1000).toFixed(0)} s`);
+    console.log(`[escaneo ${motivo}] ${r.map((x) => `${x.name}: ${x.count}`).join(', ')} en ${((Date.now() - t0) / 1000).toFixed(0)} s` +
+      ` · títulos +${cambios.titulosAnadidos}/−${cambios.titulosRetirados}, ficheros +${cambios.ficherosAnadidos}/−${cambios.ficherosRetirados}`);
     // Imagenes JPG/PNG nuevas -> WebP (solo si imagenesAWebp esta en config.json; se para si alguien ve algo).
     void comprimirImagenesDeLaBiblioteca()
       .then((res) => { if (res && (res.convertidas || res.errores)) console.log(`[imagenes-webp] ${res.convertidas} convertidas (${(res.ahorroBytes / 1e6).toFixed(1)} MB menos), ${res.errores} con error${res.interrumpido ? ' (parado: ' + res.interrumpido + ')' : ''}`); })
@@ -604,6 +618,19 @@ await app.register(licenciaRoutes);
 
 let scanning = false;
 
+/**
+ * Marca el sello de la biblioteca si el escaneo movió algo, y devuelve los cambios tal cual.
+ *
+ * Solo cuando hay cambios de verdad: si se marcara en todo escaneo, la pasada de las 02:00 tiraría cada noche la
+ * portada guardada de todos los aparatos sin que hubiera nada nuevo que ver. Ver `media/version-biblioteca.ts`.
+ */
+function marcarSiCambio(cambios: CambiosEscaneo): CambiosEscaneo {
+  if (cambios.titulosAnadidos || cambios.titulosRetirados || cambios.ficherosAnadidos || cambios.ficherosRetirados) {
+    marcarCambioBiblioteca();
+  }
+  return cambios;
+}
+
 /** Títulos (por carpeta) y ficheros (por ruta) de la biblioteca, sin las carpetas de entrada: antes y después de escanear. */
 function fotoBiblioteca(): FotoBiblioteca {
   const titulos = new Map<string, string>();
@@ -629,7 +656,7 @@ app.post('/api/scan', async (req, reply) => {
     try {
       const antes = fotoBiblioteca();
       const results = await scanAllEnWorker(escaneoAvanza, solo);
-      escaneoTerminado(results, compararFotos(antes, fotoBiblioteca()));
+      escaneoTerminado(results, marcarSiCambio(compararFotos(antes, fotoBiblioteca())));
       console.log('Escaneo completado:', results.map((r) => `${r.name}=${r.count}`).join(' '));
       medirTrasEscanear();
     } catch (err) {
@@ -667,7 +694,7 @@ app.get('/api/scan/stream', async (req, reply) => {
   try {
     const antes = fotoBiblioteca();
     const results = await scanAllEnWorker((p: ScanProgress) => { escaneoAvanza(p); send('progress', p); });
-    const cambios = compararFotos(antes, fotoBiblioteca());
+    const cambios = marcarSiCambio(compararFotos(antes, fotoBiblioteca()));
     escaneoTerminado(results, cambios);
     send('done', { results, cambios });
     medirTrasEscanear();
@@ -678,6 +705,24 @@ app.get('/api/scan/stream', async (req, reply) => {
     scanning = false;
     reply.raw.end();
   }
+});
+
+/*
+ * Y que no haya que pulsar nada: lo que aparece en los discos entra solo.
+ *
+ * Aquí abajo y no arriba a propósito: necesita `scanning` y `escaneando`, que son las dos banderas que evitan dos
+ * escaneos a la vez, y están declaradas más arriba pero con `let` (zona muerta si se leyeran antes de tiempo).
+ *
+ * `ocupado()` junta las tres razones para no empezar ahora: hay un escaneo manual en marcha, hay uno automático en
+ * marcha, o hay alguien viendo algo —la biblioteca vive en un plato mecánico y escanear a mitad de película es lo que
+ * tumbó el anterior vigilante en 2026-09. Lo apuntado no se pierde: espera al siguiente tic.
+ */
+arrancarVigilante({
+  escanear: (raiz, carpetas) => escanearSiToca('vigilante', raiz ? [raiz] : undefined, carpetas.length ? carpetas : undefined),
+  ocupado: () => scanning || escaneando || hayAlguienViendo(),
+  // Como `MEDIAWATCH_TRICKPLAY_REANUDAR_MS`: solo para que las pruebas no esperen el minuto y medio de rigor.
+  esperaMs: Number(process.env.MEDIAWATCH_VIGILANTE_ESPERA_MS) || undefined,
+  ticMs: Number(process.env.MEDIAWATCH_VIGILANTE_TIC_MS) || undefined,
 });
 
 /*

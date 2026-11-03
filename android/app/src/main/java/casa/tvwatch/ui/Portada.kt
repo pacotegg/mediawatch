@@ -45,7 +45,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -64,9 +66,11 @@ import casa.tvwatch.datos.Cache
 import casa.tvwatch.datos.Registro
 import casa.tvwatch.datos.Servidor
 import casa.tvwatch.datos.Titulo
+import casa.tvwatch.datos.pedirSelloBiblioteca
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -93,6 +97,27 @@ fun PantallaPortada(
   var bibliotecas by remember { mutableStateOf(guardado?.second ?: emptyList()) }
   var fallo by remember { mutableStateOf("") }
   var intento by remember { mutableStateOf(0) }
+
+  /*
+   * Que lo añadido aparezca sin tener que cerrar la aplicación.
+   *
+   * Al volver al primer plano se pregunta el sello de la biblioteca —treinta bytes— y, si el servidor ha escaneado
+   * algo nuevo mientras esto estaba de fondo, `selloCambiado` tira lo guardado y aquí se sube `intento`, que es lo
+   * que hace que el efecto de abajo vuelva a pedir la portada en vez de saltársela por tener ya datos.
+   *
+   * Vale también para lo que entra solo: el servidor vigila los discos y escanea sin que nadie pulse nada.
+   */
+  val alcance = rememberCoroutineScope()
+  LifecycleResumeEffect(Unit) {
+    val trabajo = alcance.launch {
+      val s = withContext(Dispatchers.IO) { pedirSelloBiblioteca() }
+      if (Cache.selloCambiado(s)) {
+        Registro.i("portada", "la biblioteca ha cambiado (sello $s): se recarga")
+        intento++
+      }
+    }
+    onPauseOrDispose { trabajo.cancel() }
+  }
 
   LaunchedEffect(intento) {
     if (datos != null && intento == 0) return@LaunchedEffect

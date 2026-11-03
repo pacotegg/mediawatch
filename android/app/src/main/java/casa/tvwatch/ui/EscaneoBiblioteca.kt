@@ -17,6 +17,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import casa.tvwatch.datos.Api
+import casa.tvwatch.datos.Cache
 import casa.tvwatch.datos.CambiosEscaneo
 import casa.tvwatch.datos.CarpetaBiblioteca
 import casa.tvwatch.datos.EstadoEscaneo
@@ -56,6 +57,12 @@ internal fun FilaEscaneoBiblioteca() {
       if (e != null) {
         estado = e
         if (antes && !e.scanning) {
+          /*
+           * Lo guardado en memoria es de antes del escaneo: sin esto, el aviso decía «Nuevos: Tal» y la portada
+           * seguía igual hasta que caducaba la caché (5 min) o se cerraba la aplicación. Aquí no hay vuelta al
+           * primer plano que dispare la comprobación del sello: el escaneo se ha pedido desde dentro.
+           */
+          Cache.olvidarTodo()
           val u = e.ultimo
           if (u == null) aviso("Escaneo terminado")
           else if (u.ok && u.cambios != null) aviso(textoCambios(u.cambios), largo = true)

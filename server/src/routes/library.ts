@@ -19,6 +19,7 @@ import { itemPermitido } from './play.ts';
 import { marcarActividad } from '../media/ocupado.ts';
 import { loteOmdb, pararOmdb, rellenarConOmdb } from '../media/omdb.ts';
 import { letrasDe } from '../media/letras.ts';
+import { versionBiblioteca } from '../media/version-biblioteca.ts';
 import { obtenerResenas } from '../media/reviews.ts';
 import { paginaTrailer, trailerDe } from '../media/trailers.ts';
 import { toString as qrComoSvg } from 'qrcode';
@@ -541,6 +542,18 @@ export default async function libraryRoutes(app: FastifyInstance) {
                    ORDER BY en_comun DESC, i.rating DESC NULLS LAST LIMIT 20`)
         .all(id, id, id, ...cr.params),
     };
+  });
+
+  /*
+   * «¿Ha cambiado la biblioteca desde que cargué?», en treinta bytes.
+   *
+   * Los clientes guardan la portada en memoria para que ir y volver sea instantáneo y el destacado no salte de
+   * película; el precio era que lo recién añadido no se veía hasta cerrar la aplicación. Con esto preguntan al volver
+   * al primer plano y solo tiran lo guardado si el sello no es el suyo. Ver `media/version-biblioteca.ts`.
+   */
+  app.get('/api/library/version', async (req) => {
+    requireUser(req);
+    return { version: versionBiblioteca() };
   });
 
   app.get('/api/home', async (req) => {

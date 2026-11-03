@@ -22,6 +22,9 @@ object Cache {
   private var bibliotecas: List<Biblioteca>? = null
   private var cuando = 0L
 
+  /** El sello de biblioteca que tenía el servidor cuando se cargó esto. Vacío: todavía no se ha preguntado. */
+  private var sello = ""
+
   private val fichas = LinkedHashMap<Int, Ficha>()
 
   /** Por qué destacado iba la portada, para seguir ahí al volver de una ficha. */
@@ -49,6 +52,23 @@ object Cache {
 
   fun guardarBibliotecas(b: List<Biblioteca>) {
     bibliotecas = b
+  }
+
+  /**
+   * Compara el sello del servidor con el de lo guardado; si no coinciden, tira lo guardado y devuelve `true`.
+   *
+   * La llama la portada al volver al primer plano. Dos cosas de las que depende que no moleste:
+   * - La **primera vez** solo lo apunta. No hay nada viejo que tirar y recargar entonces sería una petición de más.
+   * - Un sello vacío (sin red, servidor viejo, sesión caducada) **no cuenta**: ante la duda se deja lo que hay.
+   */
+  fun selloCambiado(nuevo: String): Boolean {
+    if (nuevo.isEmpty()) return false
+    val viejo = sello
+    sello = nuevo
+    if (viejo.isEmpty() || viejo == nuevo) return false
+    olvidarTodo()
+    sello = nuevo
+    return true
   }
 
   fun fichaGuardada(id: Int): Ficha? = fichas[id]
