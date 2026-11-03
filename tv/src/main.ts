@@ -1969,6 +1969,23 @@ async function pintarLogosEstudio(id: number, caja: HTMLElement) {
   const colocar = () => {
     const imgs = Array.prototype.slice.call(caja.querySelectorAll('img')) as HTMLImageElement[];
     if (!imgs.length) { caja.style.display = 'none'; return; }
+    // `en-flujo` (series sin pestañas de temporada): una sola fila compacta, uno al lado del otro, que
+    // envuelve a una segunda línea sola si no caben todos — en vez de la rejilla de dos en dos (pensada
+    // para flotar junto al cartel) que aquí solo empuja los episodios más de lo necesario.
+    if (caja.classList.contains('en-flujo')) {
+      const ALTO_LOGO = 54;
+      const filaFlujo = document.createElement('div');
+      filaFlujo.className = 'fila-logos-flujo';
+      imgs.forEach((img) => {
+        const r = img.naturalWidth / img.naturalHeight || 1;
+        img.style.height = ALTO_LOGO + 'px';
+        img.style.width = Math.round(ALTO_LOGO * r) + 'px';
+        img.classList.add('listo');
+        filaFlujo.appendChild(img);
+      });
+      caja.appendChild(filaFlujo);
+      return;
+    }
     const solo = imgs.length === 1;
     // Con 3 o más, la caja se ensancha hacia la izquierda, donde no hay nada (medido el 19/10/2026 sobre fichas reales:
     // el botón más a la derecha de las acciones acaba en x=1165 y esta caja empieza en x=1375). Con 280 px de ancho, 5 o
@@ -2027,7 +2044,18 @@ async function pintarLogosEstudio(id: number, caja: HTMLElement) {
       caja.appendChild(fila);
     });
   };
-  const hecho = () => { if (--pendientes === 0 && caja.isConnected) colocar(); };
+  // En flujo, los logos empujan los episodios hacia abajo al terminar de cargar: igual que con el logo
+  // del título (ver más abajo), la ventana de la lista y el índice de navegación se habían medido con
+  // la ficha más corta (sin los logos todavía) y se quedaban tapando una posición que ya no era la
+  // suya — el foco se perdía pantalla abajo, fuera de lo que el lienzo dejaba ver.
+  const hecho = () => {
+    if (--pendientes !== 0 || !caja.isConnected) return;
+    colocar();
+    if (caja.classList.contains('en-flujo')) {
+      const listaEp = marco.querySelector<HTMLElement>('[data-lista-episodios]');
+      if (listaEp) { ajustarListaEpisodios(listaEp); indexar(); }
+    }
+  };
   for (const nombre of estudios) {
     const img = document.createElement('img');
     img.className = 'logo-estudio-3d';
@@ -2244,8 +2272,11 @@ function formatoAspecto(ancho?: number | null, alto?: number | null): string {
         '</div>'
       : '') +
     // Los logos (todos los estudios, uno debajo de otro) se ponen al llegar la lista: ver pintarLogosEstudio.
+    // En series sin pestañas de temporada (sin_temporadas) el hueco de cabecera es demasiado corto
+    // para flotar los logos sobre el fondo sin pisar la ventana de episodios, que empieza justo
+    // debajo: van en flujo normal, empujando los episodios en vez de solaparlos.
     (ficha.studio
-      ? '<div class="estudio-logo-tv-wrap' + (ajustes().estuche3D && ficha.has_poster ? '' : ' sin-estuche') + '" data-logos-estudio></div>'
+      ? '<div class="estudio-logo-tv-wrap' + (ficha.sin_temporadas ? ' en-flujo' : (ajustes().estuche3D && ficha.has_poster ? '' : ' sin-estuche')) + '" data-logos-estudio></div>'
       : '') +
     '</div>';
 
@@ -2253,9 +2284,15 @@ function formatoAspecto(ancho?: number | null, alto?: number | null): string {
   // se viene. El reparto y las relacionadas, después.
   let bloqueEpisodios = '';
   if (esSerie && ficha.episodes && ficha.episodes.length) {
+    // La ayuda va FUERA de [data-lista-episodios]: nav.ts asume que el primer hijo de esa caja
+    // es la pista que se recorta y se desplaza (ajustarListaEpisodios/desplazarLista). Metida dentro
+    // como primer hijo (hasta el 03/11/2026), esas funciones medían y desplazaban la ayuda (22 px) en
+    // vez de la pista real: en listas largas (sin_temporadas) la ventana nunca se recortaba ni se
+    // desplazaba, y el foco se perdía pantalla abajo sin que nada lo trajera de vuelta.
+    const ayudaEpisodios = '<div class="pista-ayuda-episodios">OK: opciones y sinopsis · ▶: reproducir directo</div>';
     if (ficha.sin_temporadas) {
       // Series muy largas (Los Simpson): la lista de episodios se enseña ya, sin pestañas de temporada.
-      bloqueEpisodios = '<div class="episodios"><h3>Episodios</h3><div data-lista-episodios></div></div>';
+      bloqueEpisodios = '<div class="episodios"><h3>Episodios</h3>' + ayudaEpisodios + '<div data-lista-episodios></div></div>';
     } else {
       const temporadas: number[] = [];
       ficha.episodes.forEach((e) => {
@@ -2276,7 +2313,7 @@ function formatoAspecto(ancho?: number | null, alto?: number | null): string {
               (n === 0 ? '★ Especiales' : 'Temporada ' + n) + '</button>',
           )
           .join('') +
-        '</div><div data-lista-episodios></div></div>';
+        '</div>' + ayudaEpisodios + '<div data-lista-episodios></div></div>';
     }
   }
   cuerpo += bloqueEpisodios;
@@ -2608,7 +2645,6 @@ function formatoAspecto(ancho?: number | null, alto?: number | null): string {
         : ficha.episodes!.filter((e) => e.season === temporada && e.file_id);
 
       caja.innerHTML =
-        '<div class="pista-ayuda-episodios">OK: opciones y sinopsis · ▶: reproducir directo</div>' +
         '<div class="pista-episodios">' + deLaTemporada
         .map((e) => {
           const p = ficha.progress.filter((x) => x.episode_id === e.id)[0];

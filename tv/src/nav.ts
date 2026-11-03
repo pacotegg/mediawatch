@@ -572,8 +572,19 @@ export function siguiente(direccion: number): HTMLElement | null {
 
   // Transición desde la primera sección bajo acciones hacia ARRIBA:
   if (direccion === TECLA.ARRIBA) {
-    const bajoAcciones = foco.closest('.temporadas, .reparto') ||
-      (foco.closest('[data-lista-episodios]') && !document.querySelector('.temporadas'));
+    const listaEp = foco.closest('[data-lista-episodios]') as HTMLElement | null;
+    /*
+     * Sin pestañas de temporada (series muy largas, sin_temporadas: Los Simpson), subir desde la
+     * PRIMERA fila de episodios va a las acciones, como si esa fila hiciera de pestañas. Hace falta
+     * comprobar que es la primera fila y no cualquier episodio: la condición de antes solo miraba si
+     * el foco estaba dentro de la lista, así que ARRIBA iba a las acciones desde cualquier fila —en
+     * una lista de 38 episodios, desde la mitad para abajo "subir una fila" saltaba al principio del
+     * todo en vez de a la fila de encima.
+     */
+    const topsEpisodios = listaEp ? Array.prototype.slice.call(listaEp.querySelectorAll('[data-nav]')).map((e: HTMLElement) => e.offsetTop) as number[] : [];
+    const primeraFilaEpisodios = !!(listaEp && !document.querySelector('.temporadas') && topsEpisodios.length &&
+      foco.offsetTop <= Math.min.apply(null, topsEpisodios));
+    const bajoAcciones = foco.closest('.temporadas, .reparto') || primeraFilaEpisodios;
     if (bajoAcciones) {
       const rep = document.querySelector<HTMLElement>('.acciones [data-reproducir], .acciones [data-nav]');
       if (rep) return rep;

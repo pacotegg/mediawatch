@@ -845,6 +845,37 @@ body.rend-rapido .lamina img {
 }
 
 /*
+ * Series sin pestañas de temporada (sin_temporadas: Los Simpson): la cabecera antes de los episodios
+ * es demasiado corta para flotar los logos sobre el fondo sin pisar la ventana de episodios, que
+ * empieza justo debajo y no se mueve. En flujo normal, alineados a la izquierda como el resto del
+ * texto de la ficha, empujan lo de debajo en vez de solaparlo.
+ */
+.estudio-logo-tv-wrap.en-flujo {
+  position: static;
+  width: auto;
+  max-width: 100%;
+  align-items: flex-start;
+  margin: 18px 0 4px;
+  pointer-events: auto;
+}
+
+.estudio-logo-tv-wrap.en-flujo .producida-por {
+  text-align: left;
+}
+
+/* Uno al lado del otro, del mismo alto; envuelve a otra línea sola si no caben todos. */
+.fila-logos-flujo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 20px;
+}
+
+.fila-logos-flujo img {
+  object-fit: contain;
+}
+
+/*
  * Sin el viejo `brightness(0) invert(1)`, que dejaba todo en una silueta blanca (el león de MGM, una mancha): el servidor ya
  * aclara los logos negros (claro=1) y los de color se ven con su color. Se queda el relieve de antes: un filo de luz de 1 px
  * arriba, uno de sombra abajo y la sombra que lo despega del fondo. Es estático: se pinta una vez.
