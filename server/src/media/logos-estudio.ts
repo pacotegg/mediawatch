@@ -62,7 +62,11 @@ export function medianaLumaVisible(rgba: Uint8Array): number {
 // v8 (03/11/2026): «oscuro» exige que la media Y la mediana lo digan (ver medianaLumaVisible) — Gracie Films y NBC
 // dejan de invertirse sin necesidad, sin tocar los que ya estaban bien (Marvel Studios entre ellos). Carpeta nueva
 // para forzar que los 612 logos ya procesados se rehagan con la regla nueva.
-const DIR_CLARO = join(DATA_DIR, 'artwork', 'studios-claro-v8');
+// v9 (03/11/2026): 26 logos que no tenían color en TMDb se sustituyeron por una versión en color real (TMDb
+// `original` no tenía alternativa; Wikidata/Commons sí para algunos, Wikipedia directa para el resto, verificados
+// uno a uno a mano contra el nombre real de la empresa — una búsqueda automática sin esa comprobación coló el logo
+// de otra «Intermedia» rusa y hasta un sello postal de Mosfilm). Carpeta nueva para que se regeneren.
+const DIR_CLARO = join(DATA_DIR, 'artwork', 'studios-claro-v9');
 const DIR_RECORTE = join(DATA_DIR, 'artwork', 'studios-recorte-v1');
 
 /**

@@ -12,6 +12,10 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.91 — 03/11/2026
+
+- 26 logos de productora que no tenían color en la fuente (Paramount, Miramax, TOHO, Samuel Goldwyn Films...) se sustituyeron por su versión real en color, en vez del tono dorado genérico.
+
 ## 3.90 — 03/11/2026
 
 - Lo que se añade a los discos entra solo en la biblioteca, sin pulsar nada: antes había que esperar a la pasada de las 02:00 o darle a «Actualizar biblioteca». Tarda un minuto y medio desde que acaba de copiarse, no toca el disco mientras alguien está viendo algo, y una tanda entera de descargas se resuelve de una pasada.

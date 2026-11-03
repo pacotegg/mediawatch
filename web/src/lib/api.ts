@@ -957,7 +957,7 @@ export const img = {
   person: (id: number, w = 160) => `/api/people/${id}/thumb?w=${w}&v=3`,
   studio: (id: number, w = 360) => `/api/items/${id}/studio-logo?w=${w}`,
   /** El logo de un estudio por nombre, ya aclarado o dorado por el servidor. `v` sube con cada cambio de estilo (caché de 30 días). */
-  estudio: (nombre: string, w = 400) => `/api/studios/${encodeURIComponent(nombre)}/logo?claro=1&v=8&w=${w}`,
+  estudio: (nombre: string, w = 400) => `/api/studios/${encodeURIComponent(nombre)}/logo?claro=1&v=9&w=${w}`,
 };
 
 function supports(type: string): boolean {

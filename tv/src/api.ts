@@ -572,7 +572,7 @@ export const imagen = {
    * cambio de ese estilo: el servidor deja guardar las imágenes 30 días y la tele seguiría con la versión vieja.
    */
   estudioNombre: (nombre: string, w: number) =>
-    conToken(servidor() + '/api/studios/' + encodeURIComponent(nombre) + '/logo?claro=1&v=8&w=' + w),
+    conToken(servidor() + '/api/studios/' + encodeURIComponent(nombre) + '/logo?claro=1&v=9&w=' + w),
   tema: (id: number) => conToken(servidor() + '/api/items/' + id + '/theme'),
   // `v` sube cuando se rehacen las fotos (26/10/2026: de 300 a 632 px): el servidor deja guardarlas 30 días en el aparato.
   persona: (id: number, w: number) => conToken(servidor() + '/api/people/' + id + '/thumb?w=' + w + '&v=3'),
