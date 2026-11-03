@@ -2253,26 +2253,31 @@ function formatoAspecto(ancho?: number | null, alto?: number | null): string {
   // se viene. El reparto y las relacionadas, después.
   let bloqueEpisodios = '';
   if (esSerie && ficha.episodes && ficha.episodes.length) {
-    const temporadas: number[] = [];
-    ficha.episodes.forEach((e) => {
-      if (temporadas.indexOf(e.season) < 0) temporadas.push(e.season);
-    });
-    temporadas.sort((a, b) => a - b);
-    // La primera temporada por defecto es la 1; los especiales (0) quedan como pestaña destacada.
-    let primera = temporadas[0];
-    for (let i = 0; i < temporadas.length; i++) { if (temporadas[i] > 0) { primera = temporadas[i]; break; } }
-    const inicial = ficha.nextUp ? ficha.nextUp.season : primera;
+    if (ficha.sin_temporadas) {
+      // Series muy largas (Los Simpson): la lista de episodios se enseña ya, sin pestañas de temporada.
+      bloqueEpisodios = '<div class="episodios"><h3>Episodios</h3><div data-lista-episodios></div></div>';
+    } else {
+      const temporadas: number[] = [];
+      ficha.episodes.forEach((e) => {
+        if (temporadas.indexOf(e.season) < 0) temporadas.push(e.season);
+      });
+      temporadas.sort((a, b) => a - b);
+      // La primera temporada por defecto es la 1; los especiales (0) quedan como pestaña destacada.
+      let primera = temporadas[0];
+      for (let i = 0; i < temporadas.length; i++) { if (temporadas[i] > 0) { primera = temporadas[i]; break; } }
+      const inicial = ficha.nextUp ? ficha.nextUp.season : primera;
 
-    bloqueEpisodios =
-      '<div class="episodios"><h3>Episodios</h3><div class="temporadas">' +
-      temporadas
-        .map(
-          (n) =>
-            '<button class="temporada' + (n === inicial ? ' activa' : '') + (n === 0 ? ' especial' : '') + '" data-nav data-temporada="' + n + '">' +
-            (n === 0 ? '★ Especiales' : 'Temporada ' + n) + '</button>',
-        )
-        .join('') +
-      '</div><div data-lista-episodios></div></div>';
+      bloqueEpisodios =
+        '<div class="episodios"><h3>Episodios</h3><div class="temporadas">' +
+        temporadas
+          .map(
+            (n) =>
+              '<button class="temporada' + (n === inicial ? ' activa' : '') + (n === 0 ? ' especial' : '') + '" data-nav data-temporada="' + n + '">' +
+              (n === 0 ? '★ Especiales' : 'Temporada ' + n) + '</button>',
+          )
+          .join('') +
+        '</div><div data-lista-episodios></div></div>';
+    }
   }
   cuerpo += bloqueEpisodios;
 
@@ -2598,7 +2603,9 @@ function formatoAspecto(ancho?: number | null, alto?: number | null): string {
     const pintarEpisodios = (temporada: number) => {
       const caja = marco.querySelector<HTMLElement>('[data-lista-episodios]');
       if (!caja) return;
-      const deLaTemporada = ficha.episodes!.filter((e) => e.season === temporada && e.file_id);
+      const deLaTemporada = ficha.sin_temporadas
+        ? ficha.episodes!.filter((e) => e.file_id)
+        : ficha.episodes!.filter((e) => e.season === temporada && e.file_id);
 
       caja.innerHTML =
         '<div class="pista-ayuda-episodios">OK: opciones y sinopsis · ▶: reproducir directo</div>' +
@@ -2613,7 +2620,7 @@ function formatoAspecto(ancho?: number | null, alto?: number | null): string {
             '<div class="episodio' + (esVisto ? ' vista' : '') + '" data-nav data-file="' + e.file_id + '" data-ep="' + e.id + '">' +
             '<div class="ep-imagen">' +
             (e.has_thumb ? '<img data-src="' + imagen.episodio(e.id, 320) + '" alt="">' : '') +
-            '<span class="ep-num">E' + e.episode + '</span>' +
+            '<span class="ep-num">' + (ficha.sin_temporadas ? e.season + 'x' + e.episode : 'E' + e.episode) + '</span>' +
             (durMin ? '<span class="ep-duracion">' + esc(durMin) + '</span>' : '') +
             (esVisto ? '<span class="ep-visto" title="Visto">✓</span>' : '') +
             (pct > 1 ? '<div class="progreso"><i style="width:' + pct.toFixed(0) + '%"></i></div>' : '') +
@@ -2638,10 +2645,12 @@ function formatoAspecto(ancho?: number | null, alto?: number | null): string {
         });
       });
 
-      marco.querySelectorAll<HTMLElement>('[data-temporada]').forEach((el) => {
-        if (Number(el.getAttribute('data-temporada')) === temporada) el.classList.add('activa');
-        else el.classList.remove('activa');
-      });
+      if (!ficha.sin_temporadas) {
+        marco.querySelectorAll<HTMLElement>('[data-temporada]').forEach((el) => {
+          if (Number(el.getAttribute('data-temporada')) === temporada) el.classList.add('activa');
+          else el.classList.remove('activa');
+        });
+      }
       ajustarListaEpisodios(caja);
       indexar();
     };
@@ -2657,10 +2666,14 @@ function formatoAspecto(ancho?: number | null, alto?: number | null): string {
       });
     }
 
-    marco.querySelectorAll<HTMLElement>('[data-temporada]').forEach((el) => {
-      el.addEventListener('click', () => pintarEpisodios(Number(el.getAttribute('data-temporada'))));
-    });
-    pintarEpisodios(ficha.nextUp ? ficha.nextUp.season : Number(marco.querySelector<HTMLElement>('[data-temporada]')!.getAttribute('data-temporada')));
+    if (ficha.sin_temporadas) {
+      pintarEpisodios(0);
+    } else {
+      marco.querySelectorAll<HTMLElement>('[data-temporada]').forEach((el) => {
+        el.addEventListener('click', () => pintarEpisodios(Number(el.getAttribute('data-temporada'))));
+      });
+      pintarEpisodios(ficha.nextUp ? ficha.nextUp.season : Number(marco.querySelector<HTMLElement>('[data-temporada]')!.getAttribute('data-temporada')));
+    }
   }
 
   /*
@@ -6678,6 +6691,13 @@ function panelEscaneo() {
     };
     if (fuente) fuente.close();
     fuente = null;
+    /*
+     * La portada guardada es de antes del escaneo. Sin esto, el panel decía «Nuevos: Tal» y al volver salía la misma
+     * lista de antes hasta que caducaba la caché (5 min) o se cerraba la aplicación: `pantallaPortada(true)` la
+     * reutiliza mientras esté vigente. Tirarla aquí no cuesta nada —al volver se pide una vez— y es justo cuando se
+     * sabe que ya no vale.
+     */
+    portadaGuardada = null;
     donde.textContent = 'Listo';
     avance.style.width = '100%';
     const c = d.cambios;

@@ -395,7 +395,7 @@ object Api {
   fun logosDeEstudios(id: Int): ListaLogos = pedir("/api/items/$id/studio-logos")
   /** El logo de un estudio por nombre, aclarado o dorado por el servidor; `v` sube con cada cambio de estilo (caché de 30 días). */
   fun logoDeEstudio(nombre: String, ancho: Int = 400) =
-    "${Servidor.baseCacheada()}/api/studios/${java.net.URLEncoder.encode(nombre, "UTF-8").replace("+", "%20")}/logo?claro=1&v=6&w=$ancho"
+    "${Servidor.baseCacheada()}/api/studios/${java.net.URLEncoder.encode(nombre, "UTF-8").replace("+", "%20")}/logo?claro=1&v=8&w=$ancho"
   fun logoEstudio(id: Int, ancho: Int = 360) = "${Servidor.baseCacheada()}/api/items/$id/studio-logo?w=$ancho&claro=1"
 
   /* ------------------------------------------------------- reproducción */
@@ -863,6 +863,8 @@ data class Ficha(
   @SerialName("collectionItems") val coleccionItems: List<Titulo> = emptyList(),
   @SerialName("similar") val similares: List<Titulo> = emptyList(),
   @SerialName("arte_actualizado") val arteActualizado: String? = null,
+  /** 1 = la ficha enseña los episodios ya, sin pedir primero la temporada (series muy largas como Los Simpson). */
+  @SerialName("sin_temporadas") val sinTemporadas: Int = 0,
 ) {
   init { Api.anotarSello(id, arteActualizado) }
 }

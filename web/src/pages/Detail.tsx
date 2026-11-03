@@ -175,36 +175,42 @@ function EpisodeList({
 }) {
   const navigate = useNavigate();
   const numbers = [...seasons.keys()].sort((a, b) => a - b);
+  // Series muy largas (Los Simpson): la ficha enseña ya todos los episodios, sin pestañas de temporada.
+  const flat = Boolean(item.sin_temporadas);
   // La temporada por defecto es la primera de verdad (la 1); los especiales (0) son una pestaña más, destacada, que se abre solo si no hay otra.
   const [season, setSeason] = useState(() => item.nextUp?.season ?? numbers.find((n) => n > 0) ?? numbers[0] ?? 1);
   const [downloadEpId, setDownloadEpId] = useState<number | null>(null);
-  const episodes = seasons.get(season) ?? [];
+  const episodes = flat ? numbers.flatMap((n) => seasons.get(n) ?? []) : seasons.get(season) ?? [];
   const progressFor = (id: number) => item.progress.find((p) => p.episode_id === id);
 
   return (
     <div className="mt-12">
-      <div className="no-scrollbar mb-5 flex gap-1.5 overflow-x-auto">
-        {numbers.map((n) => (
-          <button
-            key={n}
-            onClick={() => setSeason(n)}
-            className={`shrink-0 rounded-full px-4 py-1.5 text-[13px] transition-all duration-200 ${
-              n === season
-                ? 'bg-mist-100 font-medium text-ink-950'
-                : n === 0
-                  ? 'bg-amber-300/10 text-amber-200 ring-1 ring-amber-300/50 hover:bg-amber-300/20'
-                  : 'bg-white/6 text-mist-300 hover:bg-white/12'
-            }`}
-          >
-            {n === 0 ? '★ Especiales' : `Temporada ${n}`}
-          </button>
-        ))}
-      </div>
+      {!flat && (
+        <>
+          <div className="no-scrollbar mb-5 flex gap-1.5 overflow-x-auto">
+            {numbers.map((n) => (
+              <button
+                key={n}
+                onClick={() => setSeason(n)}
+                className={`shrink-0 rounded-full px-4 py-1.5 text-[13px] transition-all duration-200 ${
+                  n === season
+                    ? 'bg-mist-100 font-medium text-ink-950'
+                    : n === 0
+                      ? 'bg-amber-300/10 text-amber-200 ring-1 ring-amber-300/50 hover:bg-amber-300/20'
+                      : 'bg-white/6 text-mist-300 hover:bg-white/12'
+                }`}
+              >
+                {n === 0 ? '★ Especiales' : `Temporada ${n}`}
+              </button>
+            ))}
+          </div>
 
-      {season > 0 && (
-        <div className="mb-5">
-          <Trailer key={season} itemId={item.id} temporada={season} texto={`Tráiler de la temporada ${season}`} />
-        </div>
+          {season > 0 && (
+            <div className="mb-5">
+              <Trailer key={season} itemId={item.id} temporada={season} texto={`Tráiler de la temporada ${season}`} />
+            </div>
+          )}
+        </>
       )}
 
       <div className="space-y-2">
@@ -242,7 +248,7 @@ function EpisodeList({
 
                 <div className="min-w-0 flex-1 py-0.5">
                   <div className="flex items-baseline gap-2">
-                    <span className="text-xs text-mist-500">{ep.episode}.</span>
+                    <span className="text-xs text-mist-500">{flat ? `${ep.season}x${ep.episode}` : `${ep.episode}.`}</span>
                     <span className="truncate text-sm font-medium">{ep.title}</span>
                     {progress?.watched === 1 && (
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="shrink-0 text-accent">

@@ -15,7 +15,7 @@ import { config, DATA_DIR } from '../config.ts';
 
 const ejecutar = promisify(execFile);
 
-/** Por debajo de esta luminosidad media (0-255) de lo que se ve, el logo no se leería sobre fondo oscuro. */
+/** Por debajo de esta luminosidad (0-255) de lo que se ve, el logo no se leería sobre fondo oscuro. */
 export const UMBRAL_OSCURO = 100;
 
 /**
@@ -34,9 +34,35 @@ export function lumaVisible(rgba: Uint8Array): number {
   return n ? suma / n : NaN;
 }
 
+/**
+ * Mediana de la misma luminosidad. Se usa JUNTO a la media, no en vez de ella: la media la arruina un logo con una
+ * silueta negra DE ADORNO junto a un dibujo que ya se lee (Gracie Films: pantalla azul + público en silueta negra —
+ * media 78, bajo el umbral, pero la mediana da 104 porque más de la mitad de lo visible ya se lee; invertirlo entero
+ * lo dejaba en un cian deslavado, comprobado el 03/11/2026 sirviendo esa imagen tal cual y con el filtro). Usar SOLO
+ * la mediana habría sido peor: con NBC (plumas de color + «NBC» en negro, mediana 100) ya iba justa, pero con Marvel
+ * Studios (caja roja/blanca con «STUDIOS» en negro sobre blanco, mediana 84, media 112) habría invertido un logo que
+ * ya se lee perfectamente, dejando «STUDIOS» casi invisible por blanco-sobre-gris-claro. Exigir que las DOS midan
+ * oscuro evita ese caso: solo se deja de aclarar cuando la mediana lo desmiente, nunca se empieza a aclarar algo que
+ * la media ya daba por bueno.
+ */
+export function medianaLumaVisible(rgba: Uint8Array): number {
+  const valores: number[] = [];
+  for (let i = 0; i + 3 < rgba.length; i += 4) {
+    if (rgba[i + 3] <= 128) continue;
+    valores.push(0.2126 * rgba[i] + 0.7152 * rgba[i + 1] + 0.0722 * rgba[i + 2]);
+  }
+  if (!valores.length) return NaN;
+  valores.sort((a, b) => a - b);
+  return valores[Math.floor(valores.length / 2)];
+}
+
 // v4 (19/10/2026): dorado para los que no tienen color; aclarado que conserva el color para los oscuros con color.
 // v5 (26/10/2026): se hace sobre el logo ya recortado. Las carpetas de versiones anteriores quedan sin usar.
-const DIR_CLARO = join(DATA_DIR, 'artwork', 'studios-claro-v6');
+// v7: descartada (una v7 de prueba salió con la mediana SOLA, sin la media — rompía Marvel Studios). No reutilizar.
+// v8 (03/11/2026): «oscuro» exige que la media Y la mediana lo digan (ver medianaLumaVisible) — Gracie Films y NBC
+// dejan de invertirse sin necesidad, sin tocar los que ya estaban bien (Marvel Studios entre ellos). Carpeta nueva
+// para forzar que los 612 logos ya procesados se rehagan con la regla nueva.
+const DIR_CLARO = join(DATA_DIR, 'artwork', 'studios-claro-v8');
 const DIR_RECORTE = join(DATA_DIR, 'artwork', 'studios-recorte-v1');
 
 /**
@@ -156,7 +182,7 @@ export async function versionClara(ruta: string): Promise<string> {
   try {
     const { stdout } = await ejecutar(config.ffmpeg, ['-v', 'error', '-i', ruta, '-vf', 'scale=64:-1', '-f', 'rawvideo', '-pix_fmt', 'rgba', '-'],
       { encoding: 'buffer', maxBuffer: 4 * 1024 * 1024, timeout: 20_000, windowsHide: true });
-    const oscuro = lumaVisible(stdout) < UMBRAL_OSCURO;
+    const oscuro = lumaVisible(stdout) < UMBRAL_OSCURO && medianaLumaVisible(stdout) < UMBRAL_OSCURO;
     const sinColor = saturacionVisible(stdout) < UMBRAL_SIN_COLOR;
     // Con color y claro (Warner, Pixar, Marvel…): tal cual. Oscuro: se aclara. Sin color: dorado (aclarado antes si es oscuro).
     // Una caja opaca (Crystal Lake, Platinum Dunes, Canal+) ya trae su fondo y se lee: tal cual (29/10/2026).

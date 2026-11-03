@@ -12,6 +12,17 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.90 — 03/11/2026
+
+- Lo que se añade a los discos entra solo en la biblioteca, sin pulsar nada: antes había que esperar a la pasada de las 02:00 o darle a «Actualizar biblioteca». Tarda un minuto y medio desde que acaba de copiarse, no toca el disco mientras alguien está viendo algo, y una tanda entera de descargas se resuelve de una pasada.
+- Lo recién añadido ya se ve sin cerrar la aplicación: al volver a ella se comprueba si la biblioteca ha cambiado y se recarga solo si hace falta. Antes la portada seguía igual hasta cerrarla del todo, incluso justo después de un escaneo que decía «Nuevos: Tal».
+- En la tele, actualizar la biblioteca a mano también refresca la portada al volver.
+
+## 3.89 — 03/11/2026
+
+- Las series muy largas (Los Simpson) se pueden marcar para que la ficha enseñe los episodios directamente, sin pedir primero la temporada.
+- Los logos de productora que mezclaban un dibujo ya legible con una silueta negra de adorno (Gracie Films, NBC, Warner Bros. Feature Animation...) salían lavados o descoloridos; ahora se sirven con sus colores reales.
+
 ## 3.88 — 02/11/2026
 
 - Si un extra no se puede reproducir en este aparato (por ejemplo, vídeo HEVC de 10 bits en un móvil que no lo decodifica), se avisa en pantalla en vez de quedarse en negro.

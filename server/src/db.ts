@@ -498,6 +498,9 @@ anadirColumna('users', 'limite_diario_min', 'INTEGER');
 // Hasta cuándo ha visto el perfil las novedades (hora local, como items.added_at). Ver routes/novedades.ts.
 anadirColumna('users', 'novedades_vistas', 'TEXT');
 anadirColumna('descargas', 'codec', "TEXT NOT NULL DEFAULT 'h265'");
+// Series muy largas (Los Simpson) donde no interesa elegir temporada antes de
+// ver los episodios: la ficha los enseña ya, todos seguidos. Ver EpisodeList.
+anadirColumna('items', 'sin_temporadas', 'INTEGER NOT NULL DEFAULT 0');
 db.exec("UPDATE sessions SET last_seen = created_at WHERE last_seen IS NULL");
 
 /*

@@ -650,30 +650,37 @@ fun PantallaFicha(
 
 
     if (esSerie && temporadas.isNotEmpty()) {
-      item {
-        LazyRow(
-          contentPadding = PaddingValues(horizontal = 16.dp),
-          horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-          items(temporadas) { n ->
-            val activa = n == temporadaActiva
-            Text(
-              if (n == 0) "★ Especiales" else "Temporada $n",
-              color = if (activa) Color(0xFF15100A) else if (n == 0) Realce else Texto,
-              fontSize = 13.sp,
-              modifier = Modifier
-                .clip(RoundedCornerShape(18.dp))
-                .background(if (activa) Realce else FondoTarjeta)
-                .then(if (n == 0 && !activa) Modifier.border(1.dp, Realce.copy(alpha = 0.6f), RoundedCornerShape(18.dp)) else Modifier)
-                .clickable { temporada = n }
-                .padding(horizontal = 14.dp, vertical = 8.dp),
-            )
+      // Series muy largas (Los Simpson): la lista de episodios se enseña ya, sin pestañas de temporada.
+      if (f.sinTemporadas != 1) {
+        item {
+          LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+          ) {
+            items(temporadas) { n ->
+              val activa = n == temporadaActiva
+              Text(
+                if (n == 0) "★ Especiales" else "Temporada $n",
+                color = if (activa) Color(0xFF15100A) else if (n == 0) Realce else Texto,
+                fontSize = 13.sp,
+                modifier = Modifier
+                  .clip(RoundedCornerShape(18.dp))
+                  .background(if (activa) Realce else FondoTarjeta)
+                  .then(if (n == 0 && !activa) Modifier.border(1.dp, Realce.copy(alpha = 0.6f), RoundedCornerShape(18.dp)) else Modifier)
+                  .clickable { temporada = n }
+                  .padding(horizontal = 14.dp, vertical = 8.dp),
+              )
+            }
           }
+          Spacer(Modifier.height(14.dp))
         }
-        Spacer(Modifier.height(14.dp))
       }
 
-      val deLaTemporada = f.episodes.filter { it.season == temporadaActiva && it.ficheroId != null }
+      val deLaTemporada = if (f.sinTemporadas == 1) {
+        f.episodes.filter { it.ficheroId != null }.sortedWith(compareBy({ it.season }, { it.episode }))
+      } else {
+        f.episodes.filter { it.season == temporadaActiva && it.ficheroId != null }
+      }
       items(deLaTemporada, key = { it.id }) { e ->
         FilaEpisodio(
           f,

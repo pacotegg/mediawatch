@@ -125,6 +125,8 @@ export type ItemDetail = ItemSummary & {
   /** Nota de cada sitio con su escala: IMDb y TMDb sobre 10, los tomatómetros sobre 100. */
   ratings?: { fuente: string; etiqueta: string; valor: number; maximo: number; votos: number }[];
   nextUp?: { id: number; season: number; episode: number; title: string | null; position?: number };
+  /** 1 = la ficha enseña los episodios ya, sin pedir primero la temporada (series muy largas como Los Simpson). */
+  sin_temporadas?: number;
 };
 
 export type PlayInfo = {
@@ -955,7 +957,7 @@ export const img = {
   person: (id: number, w = 160) => `/api/people/${id}/thumb?w=${w}&v=3`,
   studio: (id: number, w = 360) => `/api/items/${id}/studio-logo?w=${w}`,
   /** El logo de un estudio por nombre, ya aclarado o dorado por el servidor. `v` sube con cada cambio de estilo (caché de 30 días). */
-  estudio: (nombre: string, w = 400) => `/api/studios/${encodeURIComponent(nombre)}/logo?claro=1&v=6&w=${w}`,
+  estudio: (nombre: string, w = 400) => `/api/studios/${encodeURIComponent(nombre)}/logo?claro=1&v=8&w=${w}`,
 };
 
 function supports(type: string): boolean {
