@@ -28,7 +28,7 @@ export type Preferences = {
   interface: {
     reduceMotion: boolean;
     showWatched: boolean;
-    themeMusic: boolean;
+    sintoniaFicha: boolean;
     case3D: boolean;
   };
 };
@@ -37,7 +37,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   playback: { maxHeight: 0, resume: true, autoPlayNext: true, autoSkipIntro: true, seekStep: 10, seekStepLarge: 60 },
   audio: { downmixStereo: true, normalize: false, defaultVolume: 1, mode: 'normal' },
   subtitles: { size: 100, color: '#ffffff', background: 'shadow', offset: 0 },
-  interface: { reduceMotion: false, showWatched: true, themeMusic: true, case3D: true },
+  interface: { reduceMotion: false, showWatched: true, sintoniaFicha: false, case3D: true },
 };
 
 const VALORES: Record<string, readonly string[]> = { mode: ['normal', 'dialogue', 'night'], background: ['none', 'shadow', 'box'] };

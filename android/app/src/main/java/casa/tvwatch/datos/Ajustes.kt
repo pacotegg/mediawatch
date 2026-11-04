@@ -163,8 +163,8 @@ object Ajustes {
 
   /** Música de cabecera en la ficha del título. */
   var musicaCabecera: Boolean
-    get() = prefs.getBoolean("musicaCabecera", true)
-    set(v) = prefs.edit().putBoolean("musicaCabecera", v).apply()
+    get() = prefs.getBoolean("sintoniaFicha", false)
+    set(v) = prefs.edit().putBoolean("sintoniaFicha", v).apply()
 
   /**
    * Modo maratón: en un episodio que llega ENCADENADO del anterior, salta solo la cabecera y el resumen. Antes los saltaba

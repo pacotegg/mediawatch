@@ -12,6 +12,11 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.92 — 04/11/2026
+
+- La sintonía de la ficha viene apagada en todas las aplicaciones. Quien la quiera puede activarla en Ajustes.
+- Los logos de productora conservan su color en vez de salir lavados, y 39 que no tenían color lo recuperan con una versión nueva.
+
 ## 3.91 — 03/11/2026
 
 - 26 logos de productora que no tenían color en la fuente (Paramount, Miramax, TOHO, Samuel Goldwyn Films...) se sustituyeron por su versión real en color, en vez del tono dorado genérico.

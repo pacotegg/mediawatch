@@ -353,7 +353,7 @@ function pararTemaMusical() {
 
 function reproducirTemaMusical(id: number) {
   pararTemaMusical();
-  if (!ajustes().musicaCabecera) return;
+  if (!ajustes().sintoniaFicha) return;
   try {
     const a = new Audio(imagen.tema(id));
     a.loop = true;
@@ -6286,7 +6286,7 @@ function pantallaAjustes(pestanaInicial?: string) {
       pestanaActivaId = 'reproduccion';
     } else if (['modoAudio', 'passthroughAvanzado', 'tamanoSubtitulos', 'fondoSubtitulos'].indexOf(focoAjustesDespues) >= 0) {
       pestanaActivaId = 'audio-subs';
-    } else if (['heroeRotar', 'heroeSegundos', 'musicaCabecera', 'estuche3D', 'salvaMenu', 'salvaPausa', 'rendimiento', 'idiomaInterfaz'].indexOf(focoAjustesDespues) >= 0) {
+    } else if (['heroeRotar', 'heroeSegundos', 'sintoniaFicha', 'estuche3D', 'salvaMenu', 'salvaPausa', 'rendimiento', 'idiomaInterfaz'].indexOf(focoAjustesDespues) >= 0) {
       pestanaActivaId = 'pantalla';
     } else if (focoAjustesDespues === 'informes') {
       pestanaActivaId = 'sistema';
@@ -6355,7 +6355,7 @@ function pantallaAjustes(pestanaInicial?: string) {
       elecciones('heroeSegundos', [6, 9, 12, 20].map(function (n: number) { return { valor: n, texto: tr('Cada ', 'Every ') + n + ' s' }; }), a.heroeSegundos),
     ) +
     grupo(tr('Aspecto y rendimiento', 'Appearance and performance'), tr('Música de las fichas, estuche 3D coleccionista y fluidez visual.', 'Theme music, 3D collector case and visual smoothness.'),
-      siNo('musicaCabecera', a.musicaCabecera, 'Música de cabecera', 'Theme music') +
+      siNo('sintoniaFicha', a.sintoniaFicha, 'Música de cabecera', 'Theme music') +
       siNo('estuche3D', a.estuche3D, 'Estuche 3D', '3D case') +
       elecciones('rendimiento', [
         { valor: 'completo', texto: tr('Todos los efectos', 'All effects') },
@@ -6484,7 +6484,7 @@ function pantallaAjustes(pestanaInicial?: string) {
       else if (campo === 'modoAudio') guardarAjustes({ modoAudio: valor as 'normal' | 'night' | 'dialogue' });
       else if (campo === 'passthroughAvanzado') guardarAjustes({ passthroughAvanzado: valor === 'si' });
       else if (campo === 'saltarCabecera') guardarAjustes({ saltarCabecera: valor === 'si' });
-      else if (campo === 'musicaCabecera') guardarAjustes({ musicaCabecera: valor === 'si' });
+      else if (campo === 'sintoniaFicha') guardarAjustes({ sintoniaFicha: valor === 'si' });
       else if (campo === 'estuche3D') guardarAjustes({ estuche3D: valor === 'si' });
       else if (campo === 'informes') guardarAjustes({ informes: valor === 'si' });
       else if (campo === 'horaDeFin') guardarAjustes({ horaDeFin: valor === 'si' });

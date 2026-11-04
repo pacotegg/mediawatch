@@ -6,7 +6,7 @@
  * Ahora se mira cada logo UNA vez: si lo que se ve de él es oscuro, se guarda una versión con la luminosidad invertida (el negro
  * pasa a blanco, un azul marino a azul claro, y el dibujo se conserva); si ya es claro o tiene color, se sirve tal cual.
  */
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
@@ -66,8 +66,10 @@ export function medianaLumaVisible(rgba: Uint8Array): number {
 // `original` no tenía alternativa; Wikidata/Commons sí para algunos, Wikipedia directa para el resto, verificados
 // uno a uno a mano contra el nombre real de la empresa — una búsqueda automática sin esa comprobación coló el logo
 // de otra «Intermedia» rusa y hasta un sello postal de Mosfilm). Carpeta nueva para que se regeneren.
-const DIR_CLARO = join(DATA_DIR, 'artwork', 'studios-claro-v9');
-const DIR_RECORTE = join(DATA_DIR, 'artwork', 'studios-recorte-v1');
+// v10 (04/11/2026): pintarParaFondoOscuro en vez de invertir la imagen entera, que lavaba los colores. Recorte v2 porque
+// se sustituyeron logos: el recorte se recuerda por nombre y seguiría sirviendo el dibujo anterior.
+const DIR_CLARO = join(DATA_DIR, 'artwork', 'studios-claro-v10');
+const DIR_RECORTE = join(DATA_DIR, 'artwork', 'studios-recorte-v2');
 
 /**
  * Caja de lo que se ve (alfa > 16) con 2 px de aire, o null si no hay margen que quitar (ningún lado pasa del 3 %).
@@ -175,7 +177,152 @@ const BRILLO = '(0.80+0.25*cos(2*PI*(Y/H-0.3)))';
 const DORADO = "format=rgba,geq=r='min(255\\,r(X\\,Y)*1.00*" + BRILLO + ")':g='min(255\\,g(X\\,Y)*0.83*" + BRILLO +
   ")':b='min(255\\,b(X\\,Y)*0.52*" + BRILLO + ")':a='alpha(X\\,Y)'";
 
-/** El logo para fondo oscuro: la versión invertida si hace falta, o el mismo fichero. Se decide una vez y se recuerda. */
+const FONDO_FICHA: [number, number, number] = [20, 22, 28];
+const lineal = (c: number) => { const v = c / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+const luminancia = (r: number, g: number, b: number) => 0.2126 * lineal(r) + 0.7152 * lineal(g) + 0.0722 * lineal(b);
+const LUMINANCIA_FONDO = luminancia(...FONDO_FICHA);
+/** Contraste WCAG contra el fondo de la ficha; 3 es el mínimo que se lee en un elemento grande. */
+function contrasteConFondo(r: number, g: number, b: number): number {
+  const l = luminancia(r, g, b);
+  return (Math.max(l, LUMINANCIA_FONDO) + 0.05) / (Math.min(l, LUMINANCIA_FONDO) + 0.05);
+}
+
+function aHsl(r0: number, g0: number, b0: number): [number, number, number] {
+  const r = r0 / 255, g = g0 / 255, b = b0 / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2, d = max - min;
+  if (!d) return [0, 0, l];
+  const s = d / (1 - Math.abs(2 * l - 1));
+  const h = max === r ? ((g - b) / d + 6) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [h * 60, s, l];
+}
+
+function deHsl(h: number, s: number, l: number): [number, number, number] {
+  const c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = l - c / 2;
+  const [a, b, d] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+  return [(a + m) * 255, (b + m) * 255, (d + m) * 255];
+}
+
+/** El mismo tono con la luz justa para leerse: lo mínimo, para que un azul marino siga siendo azul y no celeste. */
+function aclararConservandoTono(r: number, g: number, b: number): [number, number, number] {
+  const [h, s, l] = aHsl(r, g, b);
+  const sat = Math.max(s, 0.6);
+  let bajo = l, alto = 0.9;
+  for (let i = 0; i < 10; i++) {
+    const medio = (bajo + alto) / 2;
+    if (contrasteConFondo(...deHsl(h, sat, medio)) < 3.6) bajo = medio; else alto = medio;
+  }
+  return deHsl(h, sat, Math.min(0.92, alto * (0.9 + 0.2 * Math.min(1, l / alto))));
+}
+
+const NEUTRO_LEGIBLE = 1, CON_COLOR = 2, NEUTRO_OSCURO = 3;
+
+/**
+ * Prepara un logo para el fondo oscuro píxel a píxel. Invertir la imagen entera lavaba los colores (Universal y Paramount
+ * salían en pastel) y dejaba ilegibles otros (ABC, Cine+). Sin color: dorado. Con color: el negro suelto se aclara (texto
+ * de Marvel Studios), el negro rodeado de color se deja porque es dibujo o fondo de otra cosa, y el color oscuro se aclara
+ * con su tono, salvo si la mayor parte ya se lee (Warner: 57 %), que se respeta.
+ */
+export function pintarParaFondoOscuro(fuente: Uint8Array, w: number, h: number): { rgba: Uint8ClampedArray; cambio: boolean } | null {
+  const px = new Uint8ClampedArray(fuente);
+  const n = w * h;
+  let alfaMax = 0;
+  for (let i = 0; i < n; i++) if (px[i * 4 + 3] > alfaMax) alfaMax = px[i * 4 + 3];
+  if (!alfaMax) return null;
+  let cambio = false;
+  if (alfaMax < 220) {
+    const k = 255 / alfaMax;
+    for (let i = 0; i < n; i++) px[i * 4 + 3] = px[i * 4 + 3] * k;
+    cambio = true;
+  }
+  const clase = new Uint8Array(n);
+  let visibles = 0, conColor = 0, legibles = 0;
+  for (let i = 0; i < n; i++) {
+    const a = px[i * 4 + 3];
+    if (!a) continue;
+    const r = px[i * 4], g = px[i * 4 + 1], b = px[i * 4 + 2], max = Math.max(r, g, b), min = Math.min(r, g, b);
+    const seLee = contrasteConFondo(r, g, b) >= 3;
+    if (a > 128) { visibles++; if (seLee) legibles++; }
+    if (max >= 30 && (max - min) / max >= 0.25) { clase[i] = CON_COLOR; if (a > 128) conColor++; } else clase[i] = seLee ? NEUTRO_LEGIBLE : NEUTRO_OSCURO;
+  }
+  // Tabla integral de lo que se ve y no es negro: dice en O(1) si un trozo oscuro está rodeado de dibujo.
+  const tabla = new Uint32Array((w + 1) * (h + 1));
+  for (let y = 0; y < h; y++) {
+    let fila = 0;
+    for (let x = 0; x < w; x++) {
+      const k = clase[y * w + x];
+      if ((k === NEUTRO_LEGIBLE || k === CON_COLOR) && px[(y * w + x) * 4 + 3] > 128) fila++;
+      tabla[(y + 1) * (w + 1) + x + 1] = tabla[y * (w + 1) + x + 1] + fila;
+    }
+  }
+  const dibujoEn = (x0: number, y0: number, x1: number, y1: number) =>
+    tabla[(y1 + 1) * (w + 1) + x1 + 1] - tabla[y0 * (w + 1) + x1 + 1] - tabla[(y1 + 1) * (w + 1) + x0] + tabla[y0 * (w + 1) + x0];
+  const vistos = new Uint8Array(n), rescatar = new Uint8Array(n), pila = new Int32Array(n);
+  for (let inicio = 0; inicio < n; inicio++) {
+    if (clase[inicio] !== NEUTRO_OSCURO || vistos[inicio]) continue;
+    let cima = 0, x0 = w, x1 = 0, y0 = h, y1 = 0, suelto = false;
+    const trozo: number[] = [];
+    pila[cima++] = inicio;
+    vistos[inicio] = 1;
+    while (cima) {
+      const i = pila[--cima];
+      trozo.push(i);
+      const x = i % w, y = (i - x) / w;
+      if (x < x0) x0 = x;
+      if (x > x1) x1 = x;
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
+      if (x === 0 || y === 0 || x === w - 1 || y === h - 1) suelto = true;
+      for (const j of [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, y > 0 ? i - w : -1, y < h - 1 ? i + w : -1]) {
+        if (j < 0) continue;
+        if (!clase[j]) suelto = true;
+        else if (clase[j] === NEUTRO_OSCURO && !vistos[j]) { vistos[j] = 1; pila[cima++] = j; }
+      }
+    }
+    if (suelto && dibujoEn(x0, y0, x1, y1) / ((x1 - x0 + 1) * (y1 - y0 + 1)) < 0.08) for (const i of trozo) rescatar[i] = 1;
+  }
+  const sinColor = visibles > 0 && conColor / visibles < 0.05;
+  const yaSeLee = visibles > 0 && legibles / visibles >= 0.5;
+  const luz = (i: number) => 0.2126 * px[i * 4] + 0.7152 * px[i * 4 + 1] + 0.0722 * px[i * 4 + 2];
+  let luzMax = 0;
+  if (sinColor) for (let i = 0; i < n; i++) if (clase[i] === NEUTRO_LEGIBLE && luz(i) > luzMax) luzMax = luz(i);
+  for (let i = 0; i < n; i++) {
+    const k = clase[i];
+    if (!k) continue;
+    if (sinColor) {
+      if (!rescatar[i] && k !== NEUTRO_LEGIBLE) continue;
+      const v = rescatar[i] ? Math.max(255 - luz(i), 205) : 150 + 105 * Math.max(0, luz(i) - 70) / Math.max(1, luzMax - 70);
+      const brillo = 0.80 + 0.25 * Math.cos(2 * Math.PI * (((i - (i % w)) / w) / h - 0.3));
+      px[i * 4] = v * brillo; px[i * 4 + 1] = v * 0.83 * brillo; px[i * 4 + 2] = v * 0.52 * brillo;
+      cambio = true;
+    } else if (rescatar[i]) {
+      const v = Math.max(255 - luz(i), 205);
+      px[i * 4] = v; px[i * 4 + 1] = v; px[i * 4 + 2] = v;
+      cambio = true;
+    } else if (!yaSeLee && k === CON_COLOR && contrasteConFondo(px[i * 4], px[i * 4 + 1], px[i * 4 + 2]) < 3) {
+      const [a, b, c] = aclararConservandoTono(px[i * 4], px[i * 4 + 1], px[i * 4 + 2]);
+      px[i * 4] = a; px[i * 4 + 1] = b; px[i * 4 + 2] = c;
+      cambio = true;
+    }
+  }
+  return { rgba: px, cambio };
+}
+
+/** Revisados a ojo el 04/11/2026: con pintarParaFondoOscuro se ven peor que invirtiéndolos, así que siguen con el filtro anterior. */
+const CON_FILTRO_ANTERIOR = new Set(['bona-fide-productions', 'double-edge-films', 'nostromo-pictures', 'winkler-films', 'cinergi-pictures',
+  'mythology-entertainment', 'g-base', 'pressman-film', 'the-cannon-group']);
+
+async function guardarWebp(rgba: Uint8ClampedArray, w: number, h: number, destino: string): Promise<void> {
+  await new Promise<void>((bien, mal) => {
+    const p = spawn(config.ffmpeg, ['-v', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgba', '-s', w + 'x' + h, '-i', '-', '-c:v', 'libwebp', '-q:v', '90', destino],
+      { stdio: ['pipe', 'ignore', 'ignore'], windowsHide: true, timeout: 60_000 });
+    p.on('error', mal);
+    p.stdin.on('error', () => undefined);
+    p.on('close', (c) => (c === 0 ? bien() : mal(new Error('ffmpeg salió con ' + c))));
+    p.stdin.end(Buffer.from(rgba.buffer, rgba.byteOffset, rgba.byteLength));
+  });
+}
+
+/** El logo para fondo oscuro: la versión pintada si hace falta, o el mismo fichero. Se decide una vez y se recuerda. */
 export async function versionClara(ruta: string): Promise<string> {
   const base = basename(ruta, extname(ruta));
   const claro = join(DIR_CLARO, base + '.webp');
@@ -184,6 +331,22 @@ export async function versionClara(ruta: string): Promise<string> {
   if (existsSync(talCual)) return ruta;
   mkdirSync(DIR_CLARO, { recursive: true });
   try {
+    if (!CON_FILTRO_ANTERIOR.has(base)) {
+      const { stdout: dim } = await ejecutar(config.ffprobe, ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', ruta],
+        { timeout: 15_000, windowsHide: true });
+      let [w, h] = String(dim).trim().split(',').map(Number);
+      if (!(w > 0 && h > 0)) return ruta;
+      if (w > 800) { h = Math.max(2, Math.round(h * 800 / w / 2) * 2); w = 800; }
+      const { stdout } = await ejecutar(config.ffmpeg, ['-v', 'error', '-i', ruta, '-vf', 'scale=' + w + ':' + h, '-f', 'rawvideo', '-pix_fmt', 'rgba', '-'],
+        { encoding: 'buffer', maxBuffer: w * h * 4 + 1024, timeout: 30_000, windowsHide: true });
+      const pintado = cajaOpaca(stdout, w) ? null : pintarParaFondoOscuro(stdout, w, h);
+      if (!pintado || !pintado.cambio) {
+        writeFileSync(talCual, '');
+        return ruta;
+      }
+      await guardarWebp(pintado.rgba, w, h, claro);
+      return existsSync(claro) ? claro : ruta;
+    }
     const { stdout } = await ejecutar(config.ffmpeg, ['-v', 'error', '-i', ruta, '-vf', 'scale=64:-1', '-f', 'rawvideo', '-pix_fmt', 'rgba', '-'],
       { encoding: 'buffer', maxBuffer: 4 * 1024 * 1024, timeout: 20_000, windowsHide: true });
     const oscuro = lumaVisible(stdout) < UMBRAL_OSCURO && medianaLumaVisible(stdout) < UMBRAL_OSCURO;

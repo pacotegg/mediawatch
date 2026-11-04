@@ -1,6 +1,46 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cajaVisible, lumaVisible, UMBRAL_OSCURO } from '../src/media/logos-estudio.ts';
+import { cajaVisible, lumaVisible, pintarParaFondoOscuro, UMBRAL_OSCURO } from '../src/media/logos-estudio.ts';
+
+const dibujo = (w, h, color) => {
+  const b = new Uint8Array(w * h * 4);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const c = color(x, y); if (c) b.set(c, (y * w + x) * 4); }
+  return b;
+};
+const px = (b, w, x, y) => Array.from(b.subarray((y * w + x) * 4, (y * w + x) * 4 + 4));
+
+test('pintarParaFondoOscuro: el azul oscuro sigue azul y se aclara, no se vuelve pastel', () => {
+  const r = pintarParaFondoOscuro(dibujo(20, 20, () => [0, 40, 130, 255]), 20, 20);
+  const [a, v, z] = px(r.rgba, 20, 10, 10);
+  assert.ok(r.cambio);
+  assert.ok(z > v && v > a, 'mantiene el tono azul');
+  assert.ok(a < 110, 'no se lava hacia un pastel: ' + a);
+  assert.ok(0.2126 * a + 0.7152 * v + 0.0722 * z > 60, 'se ve sobre el fondo oscuro');
+});
+
+test('pintarParaFondoOscuro: el negro sin color pasa a dorado', () => {
+  const r = pintarParaFondoOscuro(dibujo(20, 20, (x) => (x % 4 === 0 ? [0, 0, 0, 255] : null)), 20, 20);
+  const [a, v, z] = px(r.rgba, 20, 4, 5);
+  assert.ok(a > v && v > z && a > 150, 'dorado: ' + [a, v, z]);
+});
+
+test('pintarParaFondoOscuro: el color de un logo que ya se lee no se toca', () => {
+  const r = pintarParaFondoOscuro(dibujo(20, 20, (x) => (x < 14 ? [250, 200, 20, 255] : [20, 30, 140, 255])), 20, 20);
+  assert.deepEqual(px(r.rgba, 20, 18, 10), [20, 30, 140, 255]);
+  assert.deepEqual(px(r.rgba, 20, 2, 10), [250, 200, 20, 255]);
+});
+
+test('pintarParaFondoOscuro: un negro suelto junto a color se rescata; el que hace de fondo no', () => {
+  const suelto = pintarParaFondoOscuro(dibujo(40, 20, (x) => (x < 20 ? [230, 30, 30, 255] : x > 24 ? [0, 0, 0, 255] : null)), 40, 20);
+  assert.ok(px(suelto.rgba, 40, 30, 10)[0] >= 200, 'texto negro suelto aclarado');
+  const letra = pintarParaFondoOscuro(dibujo(20, 20, (x, y) => (x >= 8 && x <= 11 && y >= 8 && y <= 11 ? [0, 0, 0, 255] : [230, 230, 30, 255])), 20, 20);
+  assert.deepEqual(px(letra.rgba, 20, 10, 10), [0, 0, 0, 255]);
+});
+
+test('pintarParaFondoOscuro: un logo con buen contraste no cambia y uno vacío devuelve null', () => {
+  assert.equal(pintarParaFondoOscuro(dibujo(10, 10, () => [240, 40, 40, 255]), 10, 10).cambio, false);
+  assert.equal(pintarParaFondoOscuro(new Uint8Array(400), 10, 10), null);
+});
 
 /** TMDb trae logos con mucho lienzo vacío (Intermedia usa el 22 %): la caja de lo visible es lo que se recorta. */
 test('cajaVisible encuentra lo que se ve, deja 2 px de aire y no recorta un logo sin margen', () => {

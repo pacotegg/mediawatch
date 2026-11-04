@@ -65,7 +65,7 @@ function PlaybackTab() {
         <Toggle checked={p.autoSkipIntro} onChange={(autoSkipIntro) => update('playback', { autoSkipIntro })} />
       </Field>
       <Field label="Música de cabecera en ficha" hint="Suena la sintonía oficial al abrir la ficha de una película o serie.">
-        <Toggle checked={prefs.interface.themeMusic} onChange={(themeMusic) => update('interface', { themeMusic })} />
+        <Toggle checked={prefs.interface.sintoniaFicha} onChange={(sintoniaFicha) => update('interface', { sintoniaFicha })} />
       </Field>
       <Field label="Tráiler en portada" hint="Reproduce el tráiler oficial en segundo plano en la cabecera principal con control de sonido.">
         <Toggle checked={prefs.interface.heroTrailer ?? true} onChange={(heroTrailer) => update('interface', { heroTrailer })} />

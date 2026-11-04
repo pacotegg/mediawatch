@@ -355,7 +355,7 @@ export default function Detail() {
   }, [item?.has_poster, item?.arte_actualizado, itemId]);
 
   useEffect(() => {
-    if (!item?.has_theme || !prefs.interface.themeMusic || temaMute) {
+    if (!item?.has_theme || !prefs.interface.sintoniaFicha || temaMute) {
       setTemaSonando(false);
       return;
     }
@@ -401,7 +401,7 @@ export default function Detail() {
       audio.pause();
       audio.src = '';
     };
-  }, [item?.has_theme, prefs.interface.themeMusic, itemId, temaMute]);
+  }, [item?.has_theme, prefs.interface.sintoniaFicha, itemId, temaMute]);
 
   /*
    * Las dos escriben en el servidor y luego refrescan **todo** lo que enseña ese
@@ -765,7 +765,7 @@ export default function Detail() {
 
               <Trailer itemId={item.id} />
 
-              {item.has_theme === 1 && prefs.interface.themeMusic && (
+              {item.has_theme === 1 && prefs.interface.sintoniaFicha && (
                 <button
                   onClick={() => setTemaMute(!temaMute)}
                   title={temaMute ? 'Activar música' : 'Silenciar música'}
