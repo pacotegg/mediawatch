@@ -6396,6 +6396,9 @@ function pantallaAjustes(pestanaInicial?: string) {
         '<p class="dato" data-estado-cabeceras>…</p>' +
         '<button class="boton" data-nav data-cabeceras>' + tr('Buscar cabeceras en las series nuevas', 'Find intros in new series') + '</button>' +
         '<button class="boton" data-nav data-parar-cabeceras>' + tr('Parar la búsqueda', 'Stop search') + '</button>' +
+        '<p class="dato" data-estado-creditos-pelis>…</p>' +
+        '<button class="boton" data-nav data-creditos-pelis>' + tr('Buscar créditos en las películas', 'Find credits in movies') + '</button>' +
+        '<button class="boton" data-nav data-parar-creditos-pelis>' + tr('Parar la búsqueda', 'Stop search') + '</button>' +
         '<p class="dato" data-estado-notas>…</p>' +
         '<button class="boton" data-nav data-notas>' + tr('Rellenar notas que faltan (OMDb)', 'Fill missing ratings (OMDb)') + '</button>' +
         '<button class="boton" data-nav data-parar-notas>' + tr('Parar notas', 'Stop ratings') + '</button>',
@@ -6531,6 +6534,28 @@ function pantallaAjustes(pestanaInicial?: string) {
   };
   mirarCabeceras();
 
+  // Estado del detector de créditos de películas: mismo patrón que cabeceras, otro trabajo de horas.
+  const estadoCreditosPelis = marco.querySelector<HTMLElement>('[data-estado-creditos-pelis]');
+  const mirarCreditosPelis = () => {
+    if (!estadoCreditosPelis || !estadoCreditosPelis.parentElement) return;
+    api
+      .estadoCreditosPeliculas()
+      .then((r) => {
+        if (!estadoCreditosPelis.parentElement) return;
+        const j = r.job;
+        estadoCreditosPelis.textContent = j.running
+          ? 'Analizando ' + j.actual + ' · ' + j.hechas + ' de ' + j.total + ' · ' + j.conCreditos + ' con créditos'
+          : r.analizadas
+            ? 'Última pasada: ' + r.conCreditos + ' con créditos en ' + r.analizadas + ' películas'
+            : 'Parada';
+        if (j.running) window.setTimeout(mirarCreditosPelis, 5000);
+      })
+      .catch(() => {
+        if (estadoCreditosPelis.parentElement) estadoCreditosPelis.textContent = 'No se pudo consultar';
+      });
+  };
+  mirarCreditosPelis();
+
   const estadoNotas = marco.querySelector<HTMLElement>('[data-estado-notas]');
   const mirarNotas = () => {
     if (!estadoNotas || !estadoNotas.parentElement) return;
@@ -6620,6 +6645,21 @@ function pantallaAjustes(pestanaInicial?: string) {
     api
       .pararCabeceras()
       .then((r) => { aviso(r.parando ? 'Se parará al acabar la temporada en curso' : 'No había nada en marcha'); mirarCabeceras(); })
+      .catch(() => aviso('No se pudo parar'));
+  });
+
+  const bCreditosPelis = marco.querySelector<HTMLElement>('[data-creditos-pelis]');
+  if (bCreditosPelis) bCreditosPelis.addEventListener('click', () => {
+    api
+      .detectarCreditosPeliculas()
+      .then((r) => { aviso(r.total ? 'Analizando ' + r.total + ' películas… puede tardar horas' : 'No falta ninguna'); mirarCreditosPelis(); })
+      .catch((e) => aviso((e as Error).message || 'No se pudo lanzar'));
+  });
+  const bPararCreditosPelis = marco.querySelector<HTMLElement>('[data-parar-creditos-pelis]');
+  if (bPararCreditosPelis) bPararCreditosPelis.addEventListener('click', () => {
+    api
+      .pararCreditosPeliculas()
+      .then((r) => { aviso(r.parando ? 'Se parará al acabar la película en curso' : 'No había nada en marcha'); mirarCreditosPelis(); })
       .catch(() => aviso('No se pudo parar'));
   });
 

@@ -405,6 +405,13 @@ export const api = {
     pedir<{ job: { running: boolean; showTitle: string; season: number | null; kind: string; found: number; total: number; hechas: number } }>(
       '/api/skip/status',
     ),
+  detectarCreditosPeliculas: () => pedir<{ started: boolean; total: number }>('/api/skip/peliculas/detectar', { method: 'POST', body: '{}' }),
+  pararCreditosPeliculas: () => pedir<{ parando: boolean }>('/api/skip/peliculas/parar', { method: 'POST', body: '{}' }),
+  estadoCreditosPeliculas: () =>
+    pedir<{
+      job: { running: boolean; total: number; hechas: number; actual: string; conCreditos: number; conEscenas: number };
+      analizadas: number; conCreditos: number;
+    }>('/api/skip/peliculas'),
   progreso: (cuerpo: { itemId: number; episodeId?: number | null; position: number; duration?: number; watched?: boolean; audio?: number | string | null; subtitle?: string | null }) =>
     pedir<{ ok: true }>('/api/progress', { method: 'POST', body: JSON.stringify(cuerpo) }),
 
