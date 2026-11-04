@@ -1987,25 +1987,24 @@ async function pintarLogosEstudio(id: number, caja: HTMLElement) {
       return;
     }
     const solo = imgs.length === 1;
-    // Con 3 o más, la caja se ensancha hacia la izquierda, donde no hay nada (medido el 19/10/2026 sobre fichas reales:
-    // el botón más a la derecha de las acciones acaba en x=1165 y esta caja empieza en x=1375). Con 280 px de ancho, 5 o
-    // 6 estudios salían apretados y a 17-24 px de alto.
-    // Muy alargados (4:1 o más, p. ej. el texto de DreamWorks Pictures, 11:1): fila propia y casi todo el ancho. Con uno
-    // de esos, aunque sean dos estudios, la caja también se ensancha (a 280 px salía a 18 px de alto).
+    // Con 3 o más, la caja se ensancha hacia la izquierda, donde no hay nada (medido el 03/11/2026 sobre
+    // «Siete almas»: las acciones acaban hacia x=650 y esta caja seguía anclada a 480 px de ancho pese a
+    // haber más de 1.100 px libres hasta el cartel — cuatro logos salían de 25-44 px de alto, diminutos,
+    // con toda esa holgura sin usar debajo del cartel y antes del reparto). Con más ancho y más alto de
+    // tope, el ajuste por `sitio`/`k` de más abajo sigue encogiendo solo si de verdad no cabe.
+    // Muy alargados (4:1 o más, p. ej. el texto de DreamWorks Pictures, 11:1): fila propia y casi todo el ancho.
     const ancho = (img: HTMLImageElement) => (img.naturalWidth / img.naturalHeight || 1) >= 4;
-    // Más grandes (pedido el 19/10/2026: con dos estudios salían pequeños junto al cartel): dos, 360 px; tres o más o uno
-    // alargado, 480 (el logo más a la izquierda empieza en x=1335 y el botón de acciones más a la derecha acaba en x=984).
-    const anchoCaja = imgs.length >= 3 || (!solo && imgs.some(ancho)) ? 480 : imgs.length === 2 ? 360 : 280;
+    const anchoCaja = imgs.length >= 3 || (!solo && imgs.some(ancho)) ? 640 : imgs.length === 2 ? 460 : 280;
     caja.style.width = anchoCaja + 'px';
     const huecoCol = 28;
     const colW = (anchoCaja - huecoCol) / 2;
-    const area = solo ? AREA_LOGO : 9200;
-    const maxW = solo ? 280 : colW, maxH = solo ? 95 : 92;
+    const area = solo ? AREA_LOGO : 16500;
+    const maxW = solo ? 280 : colW, maxH = solo ? 95 : 128;
     const tam = imgs.map((img) => {
       const r = img.naturalWidth / img.naturalHeight || 1;
       const largo = !solo && ancho(img);
       const mW = largo ? anchoCaja * 0.92 : maxW;
-      let w = Math.sqrt((largo ? 11500 : area) * r);
+      let w = Math.sqrt((largo ? 22000 : area) * r);
       let h = w / r;
       if (w > mW) { w = mW; h = w / r; }
       if (h > maxH) { h = maxH; w = h * r; }

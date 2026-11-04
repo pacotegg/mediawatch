@@ -830,7 +830,10 @@ body.rend-rapido .lamina img {
 /* Uno debajo de otro: el primero (el estudio principal) donde iba el logo único; el tamaño de cada uno lo pone el script. */
 .estudio-logo-tv-wrap {
   position: absolute;
-  top: 525px;
+  /* La carátula (.estuche-3d-tv) acaba siempre en 70+365=435 px, fijo en CSS: justo debajo, con margen,
+     en vez de a 525 px (medido el 03/11/2026 en «Siete almas»: 90 px tirados que dejaban los logos
+     mucho más pequeños de lo que el hueco real permitía). */
+  top: 455px;
   right: 105px;
   width: 280px;
   display: flex;
