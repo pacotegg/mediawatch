@@ -19,6 +19,7 @@ const Player = lazy(() => import('./pages/Player.tsx'));
 const Search = lazy(() => import('./pages/Search.tsx'));
 const Person = lazy(() => import('./pages/Person.tsx'));
 const Favorites = lazy(() => import('./pages/Favorites.tsx'));
+const Watchlist = lazy(() => import('./pages/Watchlist.tsx'));
 const Settings = lazy(() => import('./pages/Settings.tsx'));
 const Scraper = lazy(() => import('./pages/Scraper.tsx'));
 const Estadisticas = lazy(() => import('./pages/Estadisticas.tsx'));
@@ -103,7 +104,7 @@ export default function App() {
 
   return (
     <MotionConfig reducedMotion={prefs.interface.reduceMotion ? 'always' : 'user'}>
-      <div className={`min-h-screen ${enVideoEscritorio ? '' : 'bg-ink-950'}`}>
+      <div className={`min-h-screen min-h-dvh ${enVideoEscritorio ? '' : 'bg-ink-950'}`}>
         {!isPlayer && <div className="grain" aria-hidden />}
         {!isPlayer && (
           <>
@@ -128,6 +129,7 @@ export default function App() {
                   <Route path="/sagas" element={<Page><CollectionsIndex /></Page>} />
                   <Route path="/saga/:name" element={<Page><CollectionDetail /></Page>} />
                   <Route path="/favoritos" element={<Page><Favorites /></Page>} />
+                  <Route path="/watchlist" element={<Page><Watchlist /></Page>} />
                   <Route path="/plataformas" element={<Page><Plataformas /></Page>} />
                   <Route path="/plataformas/:clave" element={<Page><Plataformas /></Page>} />
                   <Route path="/ajustes" element={<Page><Settings /></Page>} />

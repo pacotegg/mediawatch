@@ -108,8 +108,29 @@ function SkipPanel() {
 
   const detect = useMutation({ mutationFn: () => api.detectSkips(showId, kind) });
 
+  const queryClient = useQueryClient();
+  const { data: introdbData } = useQuery({
+    queryKey: ['introdb-status'],
+    queryFn: api.introdbStatus,
+    refetchInterval: (q) => (q.state.data?.job.running ? 2000 : 15000),
+  });
+
+  const syncIntroDB = useMutation({
+    mutationFn: (todas: boolean) => api.sincronizarIntroDB(todas),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['introdb-status'] });
+      queryClient.invalidateQueries({ queryKey: ['skip-status'] });
+    },
+  });
+
+  const stopIntroDB = useMutation({
+    mutationFn: api.pararIntroDB,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['introdb-status'] }),
+  });
+
   const matching = (shows?.items ?? []).filter((s) => s.title.toLowerCase().includes(filter.toLowerCase()));
   const running = status?.job.running;
+  const runningIntroDB = introdbData?.job.running;
 
   return (
     <Panel
@@ -157,6 +178,40 @@ function SkipPanel() {
         </p>
       )}
       {status?.job.error && <p className="text-[13px] text-red-400">{status.job.error}</p>}
+
+      <Field label="Sincronización comunitaria (IntroDB + SkipDB)" hint="Descarga marcas de tiempo exactas para cabeceras y créditos, validadas contra los diálogos y duración real de tus ficheros.">
+        <div className="flex flex-wrap gap-2">
+          <Button
+            onClick={() => syncIntroDB.mutate(false)}
+            disabled={Boolean(runningIntroDB) || Boolean(running)}
+          >
+            {runningIntroDB ? 'Sincronizando…' : 'Sincronizar pendientes'}
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => syncIntroDB.mutate(true)}
+            disabled={Boolean(runningIntroDB) || Boolean(running)}
+          >
+            Revisar todos
+          </Button>
+          {runningIntroDB && (
+            <Button onClick={() => stopIntroDB.mutate()} disabled={introdbData?.job.parando}>
+              {introdbData?.job.parando ? 'Parando…' : 'Parar'}
+            </Button>
+          )}
+        </div>
+      </Field>
+
+      {introdbData?.job.running && (
+        <p className="text-[13px] text-mist-400">
+          {introdbData.job.esperando ? 'En espera: alguien está viendo algo. ' : ''}
+          {introdbData.job.hechos} de {introdbData.job.total} analizados
+          {introdbData.job.actual ? ` · ${introdbData.job.actual}` : ''}
+          {` · ${introdbData.job.encontrados} tramos guardados`}
+        </p>
+      )}
+      {syncIntroDB.error && <p className="text-[13px] text-red-400">{(syncIntroDB.error as Error).message}</p>}
+      {introdbData?.job.error && <p className="text-[13px] text-red-400">{introdbData.job.error}</p>}
 
       {status && status.shows.length > 0 && (
         <div className="space-y-1.5">

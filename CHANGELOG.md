@@ -12,6 +12,14 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.93 — 07/11/2026
+
+- Lista «Ver más tarde» (Watchlist) completa en Web, TV y Android: botón directo desde ficha y nuevo acceso dedicado en el menú lateral.
+- Temporizador de apagado (sleep timer) en el reproductor de la tele con opciones de apagado a 15, 30, 45, 60, 90 minutos o al finalizar el vídeo.
+- Siguiente episodio premium en la tele: tarjeta animada sin tirones (reproducción a 60 fps continuos sin redimensionar la capa AVPlay de hardware).
+- 34 logos de productoras actualizados a color real (20th Century Fox, Paramount, Disney, Columbia, DreamWorks, Orion, Bad Robot, etc.) y maquetación corregida en fila horizontal sin amontonamiento vertical.
+- Marcado rápido de tramos desde el reproductor (para el administrador): inicio y fin de cabecera en series, inicio y fin de créditos, escena post-créditos o borrar marcas guardadas.
+
 ## 3.92 — 04/11/2026
 
 - La sintonía de la ficha viene apagada en todas las aplicaciones. Quien la quiera puede activarla en Ajustes.

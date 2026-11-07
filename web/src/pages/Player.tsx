@@ -632,13 +632,28 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
     else video.pause();
   }, [mpv]);
 
-  // Imagen sobre imagen: el vídeo sigue en una ventanita mientras se usa otra cosa. Solo con `<video>` (no con mpv).
-  const hayPip = !mpv && typeof document !== 'undefined' && document.pictureInPictureEnabled;
+  // Imagen sobre imagen: soporte dual W3C Picture-in-Picture y WebKit Presentation Mode (iOS Safari).
+  const [hayPip, setHayPip] = useState(() => !mpv && typeof document !== 'undefined' && Boolean(document.pictureInPictureEnabled));
+
+  useEffect(() => {
+    if (mpv || typeof document === 'undefined') return;
+    const v = videoRef.current as any;
+    const soportaW3C = Boolean(document.pictureInPictureEnabled);
+    const soportaWebKit = Boolean(v && typeof v.webkitSupportsPresentationMode === 'function' && v.webkitSupportsPresentationMode('picture-in-picture'));
+    if (soportaW3C || soportaWebKit) setHayPip(true);
+  }, [mpv]);
+
   const togglePip = useCallback(() => {
-    const video = videoRef.current;
+    const video = videoRef.current as any;
     if (!video) return;
-    if (document.pictureInPictureElement) void document.exitPictureInPicture().catch(() => undefined);
-    else void video.requestPictureInPicture().catch(() => undefined);
+    if (document.pictureInPictureElement) {
+      void document.exitPictureInPicture().catch(() => undefined);
+    } else if (document.pictureInPictureEnabled && video.requestPictureInPicture) {
+      void video.requestPictureInPicture().catch(() => undefined);
+    } else if (typeof video.webkitSetPresentationMode === 'function') {
+      const actual = video.webkitPresentationMode;
+      video.webkitSetPresentationMode(actual === 'picture-in-picture' ? 'inline' : 'picture-in-picture');
+    }
   }, []);
 
   const changeDelay = useCallback(
@@ -777,6 +792,12 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
         case 'C':
           if (info?.chapters && info.chapters.length > 1) {
             setMenu((m) => (m === 'chapters' ? null : 'chapters'));
+          }
+          break;
+        case 'n':
+        case 'N':
+          if (haySiguiente) {
+            irAlSiguiente();
           }
           break;
         case 'Escape':
@@ -1047,7 +1068,7 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
    */
   const sinCreditos = !(skip?.ranges ?? info?.skip ?? []).some((r) => r.kind === 'credits');
   const siguienteEnCreditos = haySiguiente && activeSkip?.kind === 'credits';
-  const siguienteEnCola = haySiguiente && !activeSkip && sinCreditos && duration > 300 && duration - virtual < 40 && duration - virtual > 1;
+  const siguienteEnCola = haySiguiente && !activeSkip && sinCreditos && duration > 300 && duration - virtual < 55 && duration - virtual > 1;
   const enModoWatchNext = (siguienteEnCreditos || siguienteEnCola) && !watchNextCancelado;
 
   // Cuenta atrás para reproducir el siguiente episodio si está en modo Watch Next
@@ -1465,9 +1486,25 @@ function PlayerWeb({ aviso, conMpv = false }: { aviso: string | null; conMpv?: b
                 <button onClick={() => seek(virtual - 10)} className="text-mist-200 transition-transform hover:scale-110 hover:text-white">
                   <Icon path="M11 8 6 12l5 4M18 8l-5 4 5 4" size={20} />
                 </button>
-                <button onClick={() => seek(virtual + 30)} className="text-mist-200 transition-transform hover:scale-110 hover:text-white">
+                <button onClick={() => seek(virtual + 30)} className="text-mist-200 transition-transform hover:scale-110 hover:text-white" title="Avanzar 30 s">
                   <Icon path="M13 8l5 4-5 4M6 8l5 4-5 4" size={20} />
                 </button>
+
+                {haySiguiente && nextEpisode && (
+                  <button
+                    onClick={irAlSiguiente}
+                    title={`Siguiente episodio: ${nextEpisode.title ? nextEpisode.title : `T${nextEpisode.season} E${nextEpisode.episode}`}`}
+                    aria-label="Siguiente episodio"
+                    className="flex items-center gap-1.5 text-mist-200 transition-transform hover:scale-110 hover:text-white"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
+                    </svg>
+                    <span className="hidden xl:inline text-[11px] font-semibold tracking-wide text-mist-300">
+                      Siguiente
+                    </span>
+                  </button>
+                )}
 
                 <div className="group/vol flex items-center gap-1.5 shrink-0">
                   <button onClick={() => setMuted((m) => !m)} className="text-mist-200 hover:text-white p-1">

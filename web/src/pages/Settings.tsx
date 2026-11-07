@@ -1060,7 +1060,22 @@ function MantenimientoPanel() {
     },
   });
 
-  const trabajando = limpiar.isPending || optimizar.isPending || copia.isPending;
+  const identificarExtras = useMutation({
+    mutationFn: api.identificarExtrasBiblioteca,
+    onSuccess: (r) => {
+      if (r.totalGenericos === 0) {
+        setMensaje('No quedan extras genéricos sin identificar en la biblioteca.');
+      } else {
+        setMensaje(`Identificación de extras: ${r.identificados} identificados de ${r.totalGenericos} en ${r.itemsProcesados} títulos.`);
+      }
+      queryClient.invalidateQueries({ queryKey: ['mantenimiento'] });
+    },
+    onError: (err) => {
+      setMensaje('Error al identificar extras: ' + ((err as Error).message || 'Fallo de conexión'));
+    },
+  });
+
+  const trabajando = limpiar.isPending || optimizar.isPending || copia.isPending || identificarExtras.isPending;
 
   return (
     <Panel
@@ -1096,6 +1111,9 @@ function MantenimientoPanel() {
         </Button>
         <Button variant="ghost" onClick={() => optimizar.mutate()} disabled={trabajando}>
           {optimizar.isPending ? 'Optimizando (puede tardar)…' : 'Optimizar base de datos'}
+        </Button>
+        <Button variant="ghost" onClick={() => identificarExtras.mutate()} disabled={trabajando}>
+          {identificarExtras.isPending ? 'Identificando extras…' : 'Identificar extras'}
         </Button>
       </div>
       {mensaje && <p className="text-[12.5px] text-mist-400">{mensaje}</p>}

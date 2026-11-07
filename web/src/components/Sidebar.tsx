@@ -14,6 +14,7 @@ const ICONS = {
   show: 'M4 8h16v11H4zM9 4l3 4 3-4',
   saga: 'M4 6h10M4 12h16M4 18h13',
   heart: 'M12 20.5s-7-4.4-8.7-8.4A5 5 0 0 1 12 6.8a5 5 0 0 1 8.7 5.3C19 16.1 12 20.5 12 20.5Z',
+  bookmark: 'M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z',
   settings: 'M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2v.2a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.6 1.7 1.7 0 0 0-1.9.4l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0-1.2-2.9h-.2a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.4-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5v-.2a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1h.2a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.6 1Z',
   stats: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
   scraper: 'M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M8 12h8',
@@ -105,6 +106,7 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
           <Item to="/" icon={ICONS.home} label={t('home', lang)} collapsed={collapsed} end />
           <Item to="/sagas" icon={ICONS.saga} label={t('sagas', lang)} collapsed={collapsed} />
           <Item to="/favoritos" icon={ICONS.heart} label={t('favorites', lang)} collapsed={collapsed} />
+          <Item to="/watchlist" icon={ICONS.bookmark} label={t('watchlist', lang)} collapsed={collapsed} />
 
           {movieLibs.length > 0 && (
             <>
@@ -310,6 +312,7 @@ export function MobileDrawer({ open, onClose }: { open: boolean; onClose: () => 
           <Item to="/" icon={ICONS.home} label={t('home', lang)} collapsed={false} end />
           <Item to="/sagas" icon={ICONS.saga} label={t('sagas', lang)} collapsed={false} />
           <Item to="/favoritos" icon={ICONS.heart} label={t('favorites', lang)} collapsed={false} />
+          <Item to="/watchlist" icon={ICONS.bookmark} label={t('watchlist', lang)} collapsed={false} />
           <div className="px-3 pt-4 pb-1.5 text-[10.5px] font-semibold tracking-wider text-mist-600 uppercase">{t('libraries', lang)}</div>
           {libraries?.map((lib) => (
             <Item key={lib.id} to={`/biblioteca/${lib.id}`} icon={iconoBiblioteca(lib.name, lib.kind)} label={lib.name} collapsed={false} />

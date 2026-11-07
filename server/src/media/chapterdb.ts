@@ -5,7 +5,13 @@ import type { Capitulo } from './probe.ts';
 export function esTituloGenerico(titulo: string): boolean {
   if (!titulo || !titulo.trim()) return true;
   const t = titulo.trim();
-  return /^(chapter|cap[ií]tulo|part|parte|escena|scene)\s*\d+$/i.test(t) || /^\d+$/i.test(t);
+  return (
+    /^(chapter|cap[ií]tulo|chapitre|kapitel|part|parte|escena|scene)\s*[-–:.]?\s*\d+$/i.test(t) ||
+    /^\d+$/i.test(t) ||
+    /^\d{1,2}:\d{2}(:\d{2}([.,]\d+)?)?$/.test(t) ||
+    /^\{?empty(\s*chapter)?\}?$/i.test(t) ||
+    /^(chapter|cap[ií]tulo|chapitre)\s*\d+\s*[-–:]\s*\d{1,2}:\d{2}(:\d{2})?$/i.test(t)
+  );
 }
 
 export function decodificarHtml(str: string): string {
@@ -342,7 +348,7 @@ export async function autoEnriquecerPeliculaEnSegundoPlano(
       (r) => r.hasNames && (coincideTitulo(original || titulo, r.title) || coincideTitulo(titulo, r.title))
     );
     // Sin una duración que case no hay candidato: coger el primero de la lista metía capítulos de otro montaje.
-    const candidato = conNombre.find((r) => r.durationSec > 0 && Math.abs(r.durationSec - duracion) <= 15);
+    const candidato = conNombre.find((r) => r.durationSec > 0 && Math.abs(r.durationSec - duracion) <= 45);
     if (!candidato) return;
 
     const capsRemotos = await descargarCapitulosChapterDb(candidato.id, duracion);

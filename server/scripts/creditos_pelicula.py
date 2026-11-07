@@ -36,8 +36,8 @@ import time
 import numpy as np
 
 W, H, FPS, RAFAGA_S, MAX_S = 320, 180, 8, 1.5, 12
-PASO_GRUESO = 60.0
-PASO_DENSO = 10.0
+PASO_GRUESO = 25.0
+PASO_DENSO = 8.0
 UMBRAL_TARJETA = 0.85
 MIN_ESCENA_RAFAGAS = 2
 MIN_RANGO_S = 20.0
@@ -112,7 +112,7 @@ class Sonda:
             c = None
         else:
             sube, neg8 = medir(fr)
-            c = "S" if sube >= 0.5 else ("C" if neg8 >= UMBRAL_TARJETA else "E")
+            c = "S" if sube >= 0.45 else ("C" if neg8 >= UMBRAL_TARJETA else "E")
         self.cache[t] = c
         return c
 
@@ -137,26 +137,37 @@ def afinar(sonda, t_a, t_b):
 def analizar(ffmpeg, path, dur, desde=None):
     sonda = Sonda(ffmpeg, path)
 
-    # Pase grueso: ¿hay texto que sube en el último tramo? Si el fichero trae un
-    # último capítulo, `desde` lo acota y el pase cuesta una décima parte.
+    # Pase grueso: ¿hay texto que sube o tarjetas sobre negro en el último tramo?
+    # Si el fichero trae un último capítulo, `desde` lo acota y el pase cuesta menos.
     if desde is None:
         desde = max(0.6 * dur, dur - 30 * 60)
     desde = min(max(desde, 0.4 * dur), dur - 60)
-    primera_s = None
+    inicio = None
     t = desde
     grueso = []
     while t < dur - 3:
-        grueso.append((t, sonda.clase(t)))
+        c = sonda.clase(t)
+        if c is not None:
+            grueso.append((t, c))
         t += PASO_GRUESO
+
     for i, (t, c) in enumerate(grueso):
-        if c == "S" and any(c2 == "S" for _, c2 in grueso[i + 1: i + 4]):
-            primera_s = t
+        if c == "S" and (any(c2 == "S" for _, c2 in grueso[i + 1: i + 5]) or dur - t <= 8 * 60):
+            inicio = t
             break
-    if primera_s is None:
+
+    if inicio is None:
+        for i, (t, c) in enumerate(grueso):
+            if c == "C" and dur - t <= 12 * 60:
+                if [c2 for _, c2 in grueso[i: i + 4]].count("C") >= 2:
+                    inicio = t
+                    break
+
+    if inicio is None:
         return {"rangos": [], "escenas": [], "muestras": sonda.n}
 
-    # Pase denso desde una ráfaga gruesa antes del primer texto hasta el final.
-    t0 = max(desde, primera_s - PASO_GRUESO)
+    # Pase denso desde una ráfaga gruesa antes del primer texto/tarjeta hasta el final.
+    t0 = max(desde, inicio - PASO_GRUESO)
     pts = []
     t = t0
     while t < dur - 2:
@@ -166,10 +177,8 @@ def analizar(ffmpeg, path, dur, desde=None):
     if not pts:
         return {"rangos": [], "escenas": [], "muestras": sonda.n}
 
-    # Inicio: primera ráfaga S, retrocediendo por las tarjetas contiguas.
-    i0 = next((i for i, (_, c) in enumerate(pts) if c == "S"), None)
-    if i0 is None:
-        return {"rangos": [], "escenas": [], "muestras": sonda.n}
+    # Inicio: primera ráfaga S o C, retrocediendo por las tarjetas contiguas.
+    i0 = next((i for i, (pt_t, c) in enumerate(pts) if pt_t >= inicio and c in ("S", "C")), 0)
     while i0 > 0 and pts[i0 - 1][1] in ("C", "S"):
         i0 -= 1
     pts = pts[i0:]

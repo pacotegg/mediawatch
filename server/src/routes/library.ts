@@ -374,6 +374,9 @@ export default async function libraryRoutes(app: FastifyInstance) {
     item.favorite = user
       ? ((db.prepare('SELECT COUNT(*) AS n FROM favorites WHERE user_id = ? AND item_id = ?').get(user.id, id) as any).n > 0 ? 1 : 0)
       : 0;
+    item.watchlist = user
+      ? ((db.prepare('SELECT COUNT(*) AS n FROM watchlist WHERE user_id = ? AND item_id = ?').get(user.id, id) as any).n > 0 ? 1 : 0)
+      : 0;
 
     /*
      * Las valoraciones, cada una con su escala y en un orden fijo: primero las
@@ -1453,6 +1456,43 @@ export default async function libraryRoutes(app: FastifyInstance) {
       db.prepare('DELETE FROM favorites WHERE user_id = ? AND item_id = ?').run(user.id, id);
     }
     return { ok: true };
+  });
+
+  app.get('/api/watchlist', async (req) => {
+    const user = requireUser(req);
+    const cr = clausulaRating(user);
+    return db
+      .prepare(`SELECT ${ITEM_FIELDS} FROM watchlist wl JOIN items_biblioteca i ON i.id = wl.item_id
+                JOIN libraries l ON l.id = i.library_id WHERE wl.user_id = ? ${cr.sql ? `AND ${cr.sql}` : ''} ORDER BY wl.added_at DESC`)
+      .all(user.id, ...cr.params);
+  });
+
+  app.post('/api/items/:id/watchlist', async (req, reply) => {
+    const user = requireUser(req);
+    const id = Number((req.params as { id: string }).id);
+    if (!Number.isInteger(id) || !db.prepare('SELECT 1 FROM items_biblioteca WHERE id = ?').get(id)) return reply.code(404).send({ error: 'Título no encontrado' });
+    const { watchlist } = (req.body ?? {}) as { watchlist?: boolean };
+    const activar = watchlist !== false;
+    if (activar) {
+      db.prepare('INSERT OR IGNORE INTO watchlist (user_id, item_id, added_at) VALUES (?,?,?)').run(user.id, id, new Date().toISOString());
+    } else {
+      db.prepare('DELETE FROM watchlist WHERE user_id = ? AND item_id = ?').run(user.id, id);
+    }
+    return { ok: true, watchlist: activar };
+  });
+
+  app.put('/api/watchlist/:id', async (req, reply) => {
+    const user = requireUser(req);
+    const id = Number((req.params as { id: string }).id);
+    if (!Number.isInteger(id) || !db.prepare('SELECT 1 FROM items_biblioteca WHERE id = ?').get(id)) return reply.code(404).send({ error: 'Título no encontrado' });
+    const { watchlist } = (req.body ?? {}) as { watchlist?: boolean };
+    const activar = watchlist !== false;
+    if (activar) {
+      db.prepare('INSERT OR IGNORE INTO watchlist (user_id, item_id, added_at) VALUES (?,?,?)').run(user.id, id, new Date().toISOString());
+    } else {
+      db.prepare('DELETE FROM watchlist WHERE user_id = ? AND item_id = ?').run(user.id, id);
+    }
+    return { ok: true, watchlist: activar };
   });
 
   app.get('/api/items/:id/reviews', async (req) => {

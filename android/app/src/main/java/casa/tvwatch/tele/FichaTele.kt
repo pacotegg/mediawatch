@@ -96,6 +96,7 @@ import casa.tvwatch.datos.Trailer
 import casa.tvwatch.ui.Fondo
 import casa.tvwatch.ui.FondoTarjeta
 import casa.tvwatch.ui.IconoEstrella
+import casa.tvwatch.ui.IconoMarcador
 import casa.tvwatch.ui.Imagen
 import casa.tvwatch.ui.Realce
 import casa.tvwatch.ui.Texto
@@ -131,6 +132,7 @@ fun FichaTele(
   /** Último episodio enfocado: al volver del reproductor, el foco vuelve a él. */
   var ultimoEpisodio by rememberSaveable(itemId) { mutableStateOf<Int?>(null) }
   var esFavorita by remember(itemId) { mutableStateOf(false) }
+  var enWatchlist by remember(itemId) { mutableStateOf(false) }
   var estaVista by remember(itemId) { mutableStateOf(false) }
   var trailer by remember(itemId) { mutableStateOf<Trailer?>(null) }
   var resenas by remember(itemId) { mutableStateOf<List<Resena>>(emptyList()) }
@@ -146,6 +148,7 @@ fun FichaTele(
       Cache.guardarFicha(f)
       ficha = f
       esFavorita = f.favorite == 1
+      enWatchlist = f.watchlist == 1
       estaVista = f.progress.firstOrNull { it.episodioId == null }?.watched == 1
     } catch (e: Api.SinSesion) {
       alPerderSesion()
@@ -295,6 +298,13 @@ fun FichaTele(
               try { withContext(Dispatchers.IO) { Api.favorito(itemId, nuevo) } } catch (_: Exception) { esFavorita = !nuevo }
             }
           }) { IconoEstrella(it, rellena = esFavorita, tamano = 20.dp) }
+          BotonIcono(if (enWatchlist) "Quitar de ver más tarde" else "Ver más tarde", activo = enWatchlist, alPulsar = {
+            val nuevo = !enWatchlist
+            enWatchlist = nuevo
+            ambito.launch {
+              try { withContext(Dispatchers.IO) { Api.watchlist(itemId, nuevo) } } catch (_: Exception) { enWatchlist = !nuevo }
+            }
+          }) { IconoMarcador(it, rellena = enWatchlist, tamano = 20.dp) }
 
           if (Ajustes.esAdmin) {
             BotonIcono("Editar", alPulsar = {

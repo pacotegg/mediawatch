@@ -4,6 +4,7 @@ import { config, MODO_PORTABLE } from '../config.ts';
 import { BUZON, ficheroDelBuzon, loDelBuzon } from '../media/buzon.ts';
 import { requireUser } from './auth.ts';
 import { applyProposal, buildCandidates, candidateForItem, formatoDeImagen, imagenesDe, missingCount, ponerArte, ponerArteDeDatos, search, soltarArte, TmdbError, urlDeArteValida, type Candidate, type Papel } from '../scanner/tmdb.ts';
+import { autoOrganizarSueltoSiAplica } from '../scanner/organizar.ts';
 
 /** 20 MB: un fondo 4K en PNG pasa de los 2 MB que admite el resto del servidor. */
 const TOPE_SUBIDA = 20 * 1024 * 1024;
@@ -102,6 +103,7 @@ export default async function enrichRoutes(app: FastifyInstance) {
       // `identidad`: poner tambien titulo, ano y datos de identidad de TMDb (siempre en MediaWatch Server; en el resto, si el administrador lo pide).
       const result = await applyProposal({ ...body, identidad: MODO_PORTABLE || body.identidad === true });
       job.candidates = job.candidates.filter((c) => c.itemId !== body.itemId);
+      try { await autoOrganizarSueltoSiAplica(body.itemId); } catch { /* no bloquea */ }
       return result;
     } catch (err) {
       return reply.code(502).send({ error: (err as Error).message });

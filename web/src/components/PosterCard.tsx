@@ -8,6 +8,7 @@ import { img, type ItemSummary } from '../lib/api.ts';
  */
 function PosterCard({ item, width, index = 0 }: { item: ItemSummary; width?: number; index?: number }) {
   const [loaded, setLoaded] = useState(false);
+  const [falloPoster, setFalloPoster] = useState(false);
   const duration = item.progressDuration ?? (item.runtime ? item.runtime * 60 : 0);
   const showProgress = Boolean(item.position && duration && !item.watched);
   const progress = showProgress ? Math.min(1, Math.max(0.02, item.position! / duration)) : 0;
@@ -22,13 +23,14 @@ function PosterCard({ item, width, index = 0 }: { item: ItemSummary; width?: num
         className="relative aspect-2/3 overflow-hidden rounded-[var(--radius-card)] bg-ink-800 shadow-[0_10px_30px_-12px_rgba(0,0,0,0.9)] ring-1 ring-white/8 transition-[transform,box-shadow,outline-color] duration-[420ms] ease-[cubic-bezier(0.34,1.4,0.64,1)] will-change-transform group-hover:-translate-y-1.5 group-hover:scale-[1.045] group-hover:shadow-[0_22px_50px_-16px_rgba(0,0,0,0.95)] group-active:scale-[0.99] group-active:duration-150"
       >
         {!loaded && <div className="skeleton absolute inset-0" />}
-        {item.has_poster ? (
+        {item.has_poster && !falloPoster ? (
           <img
             src={img.poster(item.id, !width || width >= 200 ? 400 : 300, item.arte_actualizado)}
             alt={item.title}
             loading="lazy"
             decoding="async"
             onLoad={() => setLoaded(true)}
+            onError={() => { setLoaded(true); setFalloPoster(true); }}
             className={`h-full w-full object-cover transition-opacity duration-500 ${loaded ? 'opacity-100' : 'opacity-0'}`}
           />
         ) : (

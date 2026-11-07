@@ -5,6 +5,7 @@
  * TMDb lo encuentre. Funcion pura, sin base de datos ni disco.
  *
  * Reglas, en este orden:
+ *   0. Extraer identificadores directos estilo Plex/Jellyfin ({tmdb-12345}, [tmdbid=12345], etc.).
  *   1. Los corchetes `[...]` son etiquetas de release: fuera.
  *   2. Un parentesis con un ano `(1997)` fija el ano; uno con etiquetas tecnicas
  *      sale. Con ano entre parentesis no se busca otro: «Blade Runner 2049 (2017)».
@@ -27,9 +28,25 @@ function anoValido(t: string): number | null {
   return n >= 1900 && n <= new Date().getFullYear() + 1 ? n : null;
 }
 
-export function limpiarNombre(crudo: string): { title: string; year?: number } {
+export function limpiarNombre(crudo: string): { title: string; year?: number; tmdbId?: number; imdbId?: string; tvdbId?: number } {
   let s = crudo.trim();
   let anoParentesis: number | undefined;
+  let tmdbId: number | undefined;
+  let imdbId: string | undefined;
+  let tvdbId: number | undefined;
+
+  // 0. Extraer identificadores directos estilo Plex / Jellyfin
+  const mTmdb = s.match(/[{[]\s*tmdb(?:id)?[\s:=-]*(\d+)\s*[}\]]/i);
+  if (mTmdb) tmdbId = Number(mTmdb[1]);
+
+  const mImdb = s.match(/[{[]\s*imdb(?:id)?[\s:=-]*(tt\d{6,10})\s*[}\]]/i);
+  if (mImdb) imdbId = mImdb[1].toLowerCase();
+
+  const mTvdb = s.match(/[{[]\s*tvdb(?:id)?[\s:=-]*(\d+)\s*[}\]]/i);
+  if (mTvdb) tvdbId = Number(mTvdb[1]);
+
+  // Quitar los bloques de identificador para que no ensucien el título
+  s = s.replace(/[{[]\s*(?:tmdb|imdb|tvdb)(?:id)?[\s:=-]*[a-z0-9]+\s*[}\]]/gi, ' ');
 
   s = s.replace(/\[[^\]]*\]/g, ' ');
   s = s.replace(/\(([^)]*)\)/g, (_todo, dentro: string) => {
@@ -78,7 +95,14 @@ export function limpiarNombre(crudo: string): { title: string; year?: number } {
     .replace(/\s{2,}/g, ' ')
     .trim();
 
-  return title ? { title, year } : { title: crudo.trim(), year };
+  const res: { title: string; year?: number; tmdbId?: number; imdbId?: string; tvdbId?: number } = {
+    title: title || crudo.trim(),
+    year,
+  };
+  if (tmdbId !== undefined) res.tmdbId = tmdbId;
+  if (imdbId !== undefined) res.imdbId = imdbId;
+  if (tvdbId !== undefined) res.tvdbId = tvdbId;
+  return res;
 }
 
 /** ¿Un nombre de carpeta que no dice nada (CD1, Movies...)? Entonces vale el del fichero. */

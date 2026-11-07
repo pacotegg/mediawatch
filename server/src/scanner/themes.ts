@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { DATA_DIR, MODO_PORTABLE } from '../config.ts';
 import { db } from '../db.ts';
+import { hayAlguienViendo } from '../media/ocupado.ts';
 
 const THEMES_DIR = join(DATA_DIR, 'themes');
 mkdirSync(THEMES_DIR, { recursive: true });
@@ -31,6 +32,14 @@ export function tieneTema(itemId: number, folder?: string | null): boolean {
  * ThemerrDB/YouTube para series y películas con TMDB ID) y lo almacena
  * en data/themes/<id>.mp3 (nunca toca E:\).
  */
+let colaDescarga: Promise<unknown> = Promise.resolve();
+
+function encolarDescarga<T>(fn: () => Promise<T>): Promise<T> {
+  const siguiente = colaDescarga.then(fn, fn);
+  colaDescarga = siguiente.catch(() => {});
+  return siguiente;
+}
+
 export async function descargarTema(
   itemId: number,
   tvdbId?: number | null,
@@ -41,6 +50,7 @@ export async function descargarTema(
   if (tieneTema(itemId, folder)) return true;
   // MediaWatch Server: sin yt-dlp empaquetado y con fuentes de terceros (Plex, YouTube), no se descargan temas.
   if (MODO_PORTABLE) return false;
+  if (hayAlguienViendo()) return false;
   // Se llama al abrir la ficha de cualquier título sin sintonía, y un fallo no se recordaba: cada apertura repetía
   // las consultas y lanzaba otro yt-dlp (hasta 3 min). Ahora, uno a la vez por título y un intento al día.
   if (enCurso.has(itemId)) return false;
@@ -48,11 +58,15 @@ export async function descargarTema(
   if (ultimo !== undefined && Date.now() - ultimo < ESPERA_REINTENTO_MS) return false;
   enCurso.add(itemId);
   ultimoIntento.set(itemId, Date.now());
-  try {
-    return await intentarDescargar(itemId, tvdbId, tmdbId, kind);
-  } finally {
-    enCurso.delete(itemId);
-  }
+  return encolarDescarga(async () => {
+    if (tieneTema(itemId, folder)) return true;
+    if (hayAlguienViendo()) return false;
+    try {
+      return await intentarDescargar(itemId, tvdbId, tmdbId, kind);
+    } finally {
+      enCurso.delete(itemId);
+    }
+  });
 }
 
 const enCurso = new Set<number>();

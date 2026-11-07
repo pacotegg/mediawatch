@@ -448,6 +448,29 @@ fun Pestana(texto: String, activa: Boolean, especial: Boolean = false, alPulsar:
   )
 }
 
+
+/** Ver más tarde: la misma rejilla, sin páginas (son pocas). */
+@Composable
+fun WatchlistTele(alAbrirFicha: (Int) -> Unit, alPerderSesion: () -> Unit) {
+  var items by remember { mutableStateOf<List<Titulo>?>(null) }
+  var fallo by remember { mutableStateOf("") }
+  LaunchedEffect(Unit) {
+    try { items = withContext(Dispatchers.IO) { Api.watchlist() } }
+    catch (e: Api.SinSesion) { alPerderSesion() }
+    catch (e: Exception) { fallo = e.message ?: "No se pudo cargar." }
+  }
+  Column(Modifier.fillMaxSize().background(Fondo).padding(top = AireTele.arriba)) {
+    Text("Ver más tarde", color = Texto, fontSize = 26.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = AireTele.lado))
+    val l = items
+    when {
+      fallo.isNotEmpty() -> AvisoTele(fallo)
+      l == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Realce) }
+      l.isEmpty() -> AvisoTele("Aún no hay títulos guardados. Se añaden desde la ficha.")
+      else -> RejillaSimple(l, alAbrirFicha)
+    }
+  }
+}
+
 /** Favoritas: la misma rejilla, sin páginas (son pocas). */
 @Composable
 fun FavoritasTele(alAbrirFicha: (Int) -> Unit, alPerderSesion: () -> Unit) {

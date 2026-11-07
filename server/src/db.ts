@@ -354,6 +354,13 @@ CREATE TABLE IF NOT EXISTS favorites (
   added_at TEXT NOT NULL,
   PRIMARY KEY (user_id, item_id)
 );
+
+CREATE TABLE IF NOT EXISTS watchlist (
+  user_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  item_id  INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+  added_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, item_id)
+);
 `);
 
 /*
@@ -475,6 +482,9 @@ anadirColumna('items', 'personas_revisadas', 'TEXT');
 // id de TVDB encontrado (0 = buscado y no está), ver scanner/detalles-personas.ts.
 anadirColumna('people_details', 'imdb_id', 'TEXT');
 anadirColumna('people_details', 'tvdb_id', 'INTEGER');
+// Si el título del extra se identificó por DVDCompare o se editó a mano, para
+// que el escaneo general no lo sobreescriba con el nombre del fichero (p. ej. 00579).
+anadirColumna('extras', 'titulo_manual', 'INTEGER DEFAULT 0');
 
 // Cuando y desde donde se uso cada sesion, para poder caducarlas y para que se
 // vea que dispositivos tienen acceso.

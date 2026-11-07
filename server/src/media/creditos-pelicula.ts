@@ -26,7 +26,7 @@ export type RangoCreditos = {
   start_s: number;
   end_s: number;
   confidence: number;
-  source: 'capitulo' | 'ultimo-capitulo' | 'texto-sube';
+  source: 'capitulo' | 'ultimo-capitulo' | 'texto-sube' | 'manual';
 };
 
 export function creditosDePelicula(capitulos: Capitulo[], duracion: number): RangoCreditos[] {

@@ -6,11 +6,12 @@ import { detallesDe, search, tmdbGet, TmdbError, type Proposal } from '../scanne
 import { interpretarBusqueda } from '../scanner/buscar-id.ts';
 import { aplicarArteCarpeta, ArteCarpetaError, planArteCarpeta } from '../scanner/arte-carpeta.ts';
 import { basename, dirname, relative } from 'node:path';
-import { aplicacion, aplicarDatos, buscarNuevos, busqueda, ejecutarLote, fuentesConPendientes, listarCandidatos, marcarEntradas, planesDeLoteMedidos, renombrado, SIN_IGNORADAS, sinRegistrar, totalPendientes, validarFuentes } from '../scanner/lote.ts';
+import { aplicacion, aplicarDatos, buscarNuevos, busqueda, depurarBusqueda, ejecutarLote, fuentesConPendientes, limpiarLote, listarCandidatos, marcarEntradas, planesDeLoteMedidos, renombrado, SIN_IGNORADAS, sinRegistrar, totalPendientes, validarFuentes } from '../scanner/lote.ts';
 import { aplicarOrganizar, asegurarMedidos, OrganizarError, planOrganizar } from '../scanner/organizar.ts';
 import { aplicarNfo, NfoError, planNfo } from '../scanner/nfo-escribir.ts';
 import { envio, enviarLote, EnvioError, planEnvio } from '../scanner/enviar.ts';
 import { carpetaDePelicula, carpetaDeSerie } from '../scanner/nombres-tmm.ts';
+import { rescanItem } from '../scanner/scan.ts';
 import { deshacerUltima, HistorialError, ultimaInstantanea } from '../scanner/historial.ts';
 import { editarMetadatos, MetadatosError, validarCambios } from '../scanner/metadatos.ts';
 import { aplicarOmdb, buscarOmdb, detallesOmdb, OmdbError } from '../scanner/omdb-ficha.ts';
@@ -229,7 +230,44 @@ export default async function scraperRoutes(app: FastifyInstance) {
 
   app.get('/api/scraper/nuevos', async (req, reply) => {
     if (!admin(req, reply)) return;
+    depurarBusqueda();
     return { pendientes: totalPendientes(), busqueda, aplicacion, renombrado };
+  });
+
+  app.post('/api/scraper/nuevos/limpiar', async (req, reply) => {
+    if (!admin(req, reply)) return;
+    limpiarLote();
+    return { ok: true };
+  });
+
+  app.post('/api/scraper/cambiar-tipo', async (req, reply) => {
+    if (!admin(req, reply)) return;
+    const body = (req.body ?? {}) as { itemId?: number; kind?: string };
+    const id = Number(body.itemId);
+    const nuevoTipo = body.kind === 'show' ? 'show' : 'movie';
+    if (!id) return reply.code(400).send({ error: 'Falta itemId' });
+
+    const it = db.prepare('SELECT id, folder, kind FROM items WHERE id = ?').get(id) as { id: number; folder: string; kind: string } | undefined;
+    if (!it) return reply.code(404).send({ error: 'Título no encontrado' });
+
+    if (it.kind !== nuevoTipo) {
+      db.exec('BEGIN');
+      try {
+        if (nuevoTipo === 'show') {
+          db.prepare('DELETE FROM media_files WHERE item_id = ? AND episode_id IS NULL').run(id);
+        } else {
+          db.prepare('DELETE FROM episodes WHERE show_id = ?').run(id);
+        }
+        db.prepare("UPDATE items SET kind = ?, tmdb_id = NULL, meta_origen = NULL WHERE id = ?").run(nuevoTipo, id);
+        db.exec('COMMIT');
+      } catch (e) {
+        db.exec('ROLLBACK');
+        throw e;
+      }
+      rescanItem(id);
+      busqueda.resultados = busqueda.resultados.filter((r) => r.itemId !== id);
+    }
+    return { ok: true, itemId: id, kind: nuevoTipo };
   });
 
   /*
@@ -349,7 +387,7 @@ export default async function scraperRoutes(app: FastifyInstance) {
     const planes = ids.map((id) => {
       const titulo = (db.prepare('SELECT title FROM items WHERE id = ?').get(id) as { title: string } | undefined)?.title ?? String(id);
       try {
-        const p = planEnvio(id, String(q.destino ?? ''));
+        const p = planEnvio(id, q.destino ? String(q.destino) : undefined);
         return { itemId: id, titulo, error: null, destino: p.destino, bytes: p.bytes, libre: p.libre, mismoDisco: p.mismoDisco };
       } catch (e) {
         return { itemId: id, titulo, error: (e as Error).message, destino: null, bytes: 0, libre: null, mismoDisco: false };
@@ -364,8 +402,8 @@ export default async function scraperRoutes(app: FastifyInstance) {
     if (body.confirmar !== true) return reply.code(400).send({ error: 'Falta la confirmación expresa' });
     if (envio.corriendo) return reply.code(409).send({ error: 'Ya se está enviando algo' });
     const ids = (body.ids ?? []).filter((n) => Number.isInteger(n) && n > 0).slice(0, 200);
-    if (ids.length === 0 || !body.destino) return reply.code(400).send({ error: 'Faltan los títulos o el destino' });
-    void enviarLote(ids, body.destino, { quitarOriginal: body.quitarOriginal !== false, verificacion: body.verificacion === 'completa' ? 'completa' : 'rapida' }).catch((e) => console.error('[enviar]', (e as Error).message));
+    if (ids.length === 0) return reply.code(400).send({ error: 'Faltan los títulos' });
+    void enviarLote(ids, body.destino || undefined, { quitarOriginal: body.quitarOriginal !== false, verificacion: body.verificacion === 'completa' ? 'completa' : 'rapida' }).catch((e) => console.error('[enviar]', (e as Error).message));
     return { started: true, total: ids.length };
   });
 

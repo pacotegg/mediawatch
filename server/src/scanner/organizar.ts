@@ -20,6 +20,8 @@ import { hayAlguienViendoEn } from '../media/ocupado.ts';
 import { mediaInfo } from '../media/probe.ts';
 import { escaneoEnCurso } from './scan.ts';
 import { carpetaDePelicula, carpetaDeSerie, carpetaDeTemporada, codecDeAudio, ficheroDeEpisodio, ficheroDePelicula, formatoDeVideo } from './nombres-tmm.ts';
+import { aplicarArteCarpeta } from './arte-carpeta.ts';
+import { aplicarNfo } from './nfo-escribir.ts';
 
 /** `hacia` es la ruta en el momento del paso; `final`, la ruta cuando ya se han hecho todos (lo que se ve al acabar). */
 export type Paso = { tipo: 'fichero' | 'carpeta'; desde: string; hacia: string; final: string };
@@ -182,6 +184,27 @@ export function aplicarOrganizar(itemId: number, opciones: { edicion?: string | 
     throw e;
   }
   return { movidos: plan.pasos.length };
+}
+
+/**
+ * Si un título identificado es un vídeo suelto (sin carpeta propia), le crea su carpeta `Título (Año)`,
+ * renombra el fichero limpiamente (`Título (Año) [1080p AC3].ext`), mueve subtítulos acompañantes,
+ * copia el arte descargado y escribe el .nfo con todos los metadatos.
+ */
+export async function autoOrganizarSueltoSiAplica(itemId: number, opciones: { copiarArte?: boolean; escribirNfo?: boolean } = {}): Promise<{ organizado: boolean; carpeta?: string }> {
+  const it = db.prepare('SELECT id, kind, title, year, folder FROM items WHERE id = ?').get(itemId) as Item | undefined;
+  if (!it || it.kind !== 'movie' || !it.year) return { organizado: false };
+  const suelto = VIDEO.test(it.folder) || !existsSync(it.folder) || !statSync(it.folder).isDirectory();
+  if (!suelto) return { organizado: false };
+  if (escaneoEnCurso() || hayAlguienViendoEn(it.folder)) return { organizado: false };
+
+  await asegurarMedidos(itemId);
+  const { movidos } = aplicarOrganizar(itemId);
+  if (movidos === 0) return { organizado: false };
+
+  if (opciones.copiarArte !== false) try { aplicarArteCarpeta(itemId); } catch { /* no bloquea */ }
+  if (opciones.escribirNfo !== false) try { aplicarNfo(itemId); } catch { /* no bloquea */ }
+  return { organizado: true, carpeta: itemDe(itemId).folder };
 }
 
 /** Todas las rutas que la base guarda de este titulo, a su nueva ubicacion; en una transaccion. */

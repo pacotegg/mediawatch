@@ -8,13 +8,14 @@
  */
 import { db, normalize } from '../db.ts';
 import { config } from '../config.ts';
-import { applyProposal, search, TmdbError, type Proposal } from './tmdb.ts';
+import { applyProposal, detallesDe, search, TmdbError, type Proposal } from './tmdb.ts';
 import { rellenarEpisodios } from './episodios-tmdb.ts';
+import { autoOrganizarSueltoSiAplica } from './organizar.ts';
 
 const DIAS_ENTRE_INTENTOS = 30;
 const PAUSA_MS = 300;
 
-type Fila = { id: number; title: string; year: number | null; kind: 'movie' | 'show' };
+type Fila = { id: number; title: string; year: number | null; kind: 'movie' | 'show'; tmdb_id?: string | null };
 
 const mismoTitulo = (a: string, p: Proposal) =>
   normalize(a) === normalize(p.title) || (p.originalTitle != null && normalize(a) === normalize(p.originalTitle));
@@ -46,8 +47,10 @@ export async function identificarPendientes(limite = 150, log: (m: string) => vo
     const corte = new Date(Date.now() - DIAS_ENTRE_INTENTOS * 86_400_000).toISOString();
     const filas = db
       .prepare(
-        `SELECT id, title, year, kind FROM items
-         WHERE tmdb_id IS NULL AND meta_origen IS NULL AND (ident_intento IS NULL OR ident_intento < ?)
+        `SELECT id, title, year, kind, tmdb_id FROM items
+         WHERE meta_origen IS NULL
+           AND (tmdb_id IS NULL OR plot IS NULL)
+           AND (ident_intento IS NULL OR ident_intento < ?)
          ORDER BY id LIMIT ?`,
       )
       .all(corte, limite) as Fila[];
@@ -55,7 +58,17 @@ export async function identificarPendientes(limite = 150, log: (m: string) => vo
     for (const fila of filas) {
       r.revisados++;
       try {
-        const mejor = coincidenciaSegura(fila, await search(fila.title, fila.kind, fila.year));
+        let mejor: Proposal | null = null;
+        if (fila.tmdb_id && /^\d+$/.test(fila.tmdb_id)) {
+          try {
+            mejor = await detallesDe(Number(fila.tmdb_id), fila.kind);
+          } catch {
+            mejor = null;
+          }
+        } else {
+          mejor = coincidenciaSegura(fila, await search(fila.title, fila.kind, fila.year));
+        }
+
         if (mejor) {
           await applyProposal({
             itemId: fila.id, tmdbId: mejor.tmdbId, kind: fila.kind,
@@ -63,6 +76,7 @@ export async function identificarPendientes(limite = 150, log: (m: string) => vo
             fields: fila.kind === 'movie' ? ['poster', 'fanart', 'logo', 'plot', 'rating', 'genres', 'cast', 'studio', 'ratings'] : ['poster', 'fanart', 'logo', 'plot', 'rating', 'genres'], identidad: true,
           });
           if (fila.kind === 'show') await rellenarEpisodios(fila.id, mejor.tmdbId);
+          try { await autoOrganizarSueltoSiAplica(fila.id); } catch { /* no bloquea */ }
           r.identificados++;
         } else {
           r.dudosos++;
@@ -78,7 +92,9 @@ export async function identificarPendientes(limite = 150, log: (m: string) => vo
       }
       await new Promise((ok) => setTimeout(ok, PAUSA_MS));
     }
-    log(`[identificar] ${r.revisados} revisados, ${r.identificados} identificados, ${r.dudosos} dudosos`);
+    if (r.revisados > 0) {
+      log(`[identificar] ${r.revisados} revisados, ${r.identificados} identificados, ${r.dudosos} dudosos`);
+    }
     return r;
   } finally {
     corriendo = false;
@@ -89,8 +105,8 @@ export async function identificarPendientes(limite = 150, log: (m: string) => vo
 export function estadoIdentificacion() {
   const n = (sql: string) => (db.prepare(sql).get() as { n: number }).n;
   return {
-    pendientes: n("SELECT COUNT(*) n FROM items WHERE tmdb_id IS NULL AND meta_origen IS NULL AND ident_intento IS NULL"),
-    dudosos: n("SELECT COUNT(*) n FROM items WHERE tmdb_id IS NULL AND meta_origen IS NULL AND ident_intento IS NOT NULL"),
+    pendientes: n("SELECT COUNT(*) n FROM items WHERE meta_origen IS NULL AND (tmdb_id IS NULL OR plot IS NULL) AND ident_intento IS NULL"),
+    dudosos: n("SELECT COUNT(*) n FROM items WHERE meta_origen IS NULL AND (tmdb_id IS NULL OR plot IS NULL) AND ident_intento IS NOT NULL"),
     identificados: n("SELECT COUNT(*) n FROM items WHERE meta_origen IN ('tmdb', 'servidor')"),
     sinClasificar: db
       .prepare("SELECT id, title, year, kind FROM items WHERE meta_origen IN ('tmdb', 'servidor') AND mpaa IS NULL ORDER BY title")

@@ -2195,17 +2195,18 @@ body.rend-rapido .lamina img {
 /* Tarjeta «Watch Next» en Smart TV */
 .tarjeta-watch-next {
   position: absolute;
-  right: 80px;
-  bottom: 80px;
-  width: 920px;
-  padding: 40px 48px;
-  border-radius: 28px;
-  background: rgba(12, 14, 22, 0.95);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  box-shadow: 0 40px 100px rgba(0, 0, 0, 0.94);
+  right: 64px;
+  bottom: 64px;
+  width: 890px;
+  padding: 34px 42px;
+  border-radius: 24px;
+  background: linear-gradient(135deg, rgba(16, 20, 32, 0.96) 0%, rgba(10, 12, 18, 0.98) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.92);
   z-index: 65;
   display: none;
-  animation: aparecerWatchNextTv 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+  animation: aparecerWatchNextTv 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .tarjeta-watch-next.visible {
@@ -2213,8 +2214,49 @@ body.rend-rapido .lamina img {
 }
 
 @keyframes aparecerWatchNextTv {
-  from { opacity: 0; transform: translateY(24px) scale(0.97); }
+  from { opacity: 0; transform: translateY(24px) scale(0.98); }
   to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.watch-next-pulso {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--acento);
+  margin-right: 12px;
+  vertical-align: middle;
+  box-shadow: 0 0 10px var(--acento);
+  animation: pulsoWatchNext 1.5s infinite;
+}
+
+@keyframes pulsoWatchNext {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.85); }
+}
+
+.watch-next-barra-progreso {
+  width: 100%;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  margin-bottom: 24px;
+  overflow: hidden;
+}
+
+.watch-next-progreso-fill {
+  height: 100%;
+  width: 100%;
+  background: var(--acento);
+  transform-origin: left;
+  transform: scaleX(0);
+  will-change: transform;
+  animation: watchNextProgreso 12s linear forwards;
+}
+
+@keyframes watchNextProgreso {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
 }
 
 .watch-next-cuerpo {

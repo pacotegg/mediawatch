@@ -50,12 +50,24 @@ function ficheros(dir: string, rel = ''): { rel: string; size: number }[] {
   return out;
 }
 
-export function planEnvio(itemId: number, destinoRaiz: string): PlanEnvio {
+export function resolverDestino(it: ItemEnvio, destinoSugerido?: string): string {
+  if (destinoSugerido) {
+    const bib = config.libraries.find((l) => mismoSitio(l.path, destinoSugerido));
+    if (bib && bib.kind === it.kind) return bib.path;
+  }
+  const bibTipo = config.libraries.find((l) => l.kind === it.kind && !['Monólogos'].includes(l.name))
+    ?? config.libraries.find((l) => l.kind === it.kind);
+  if (!bibTipo) throw new EnvioError(`No hay ninguna biblioteca configurada para tipo ${it.kind === 'movie' ? 'películas' : 'series'}`);
+  return bibTipo.path;
+}
+
+export function planEnvio(itemId: number, destinoRaiz?: string): PlanEnvio {
   const it = itemDe(itemId);
   if (VIDEO.test(it.folder) || !existsSync(it.folder) || !statSync(it.folder).isDirectory()) {
     throw new EnvioError('Este título no tiene carpeta propia (es un vídeo suelto): organízalo primero');
   }
-  const biblioteca = config.libraries.find((l) => mismoSitio(l.path, destinoRaiz));
+  const target = destinoRaiz ? destinoRaiz : resolverDestino(it);
+  const biblioteca = config.libraries.find((l) => mismoSitio(l.path, target));
   if (!biblioteca) throw new EnvioError('Ese destino no es una de las bibliotecas configuradas (Ajustes → Biblioteca → Añadir carpeta)');
   if (biblioteca.kind !== it.kind) throw new EnvioError(`La biblioteca «${biblioteca.name}» es de otro tipo (${biblioteca.kind === 'movie' ? 'películas' : 'series'})`);
   if (mismoSitio(biblioteca.path, it.raiz)) throw new EnvioError('El título ya está en esa biblioteca');
@@ -171,15 +183,17 @@ export const envio = {
   resultados: [] as ResultadoEnvio[], terminado: null as string | null,
 };
 
-export async function enviarLote(ids: number[], destinoRaiz: string, opciones: { quitarOriginal: boolean; verificacion?: 'rapida' | 'completa' }): Promise<void> {
+export async function enviarLote(ids: number[], destinoRaiz?: string, opciones: { quitarOriginal: boolean; verificacion?: 'rapida' | 'completa' } = { quitarOriginal: true }): Promise<void> {
   if (envio.corriendo) return;
   Object.assign(envio, { corriendo: true, hechos: 0, total: ids.length, actual: '', resultados: [] as ResultadoEnvio[], terminado: null });
   try {
     for (const id of ids) {
+      const it = itemDe(id);
       const titulo = (db.prepare('SELECT title FROM items WHERE id = ?').get(id) as { title: string } | undefined)?.title ?? String(id);
       envio.actual = titulo;
       try {
-        const r = await enviarTitulo(id, destinoRaiz, opciones, (p) => Object.assign(envio, { fase: p.fase, bytesHechos: p.bytesHechos, bytesTotal: p.bytesTotal, archivo: p.archivo }));
+        const destinoItem = resolverDestino(it, destinoRaiz);
+        const r = await enviarTitulo(id, destinoItem, opciones, (p) => Object.assign(envio, { fase: p.fase, bytesHechos: p.bytesHechos, bytesTotal: p.bytesTotal, archivo: p.archivo }));
         envio.resultados.push({ itemId: id, titulo, ok: true, destino: r.destino, copiado: r.copiado });
       } catch (e) {
         envio.resultados.push({ itemId: id, titulo, ok: false, error: (e as Error).message });

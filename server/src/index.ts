@@ -484,8 +484,8 @@ async function escanearSiToca(motivo: string, solo?: string[], carpetas?: string
     void comprimirImagenesDeLaBiblioteca()
       .then((res) => { if (res && (res.convertidas || res.errores)) console.log(`[imagenes-webp] ${res.convertidas} convertidas (${(res.ahorroBytes / 1e6).toFixed(1)} MB menos), ${res.errores} con error${res.interrumpido ? ' (parado: ' + res.interrumpido + ')' : ''}`); })
       .catch((e) => console.error('[imagenes-webp]', (e as Error).message));
-    // MediaWatch Server: tras escanear, los titulos nuevos se identifican por su nombre.
-    if (MODO_PORTABLE) void identificarPendientes().catch((e) => console.error('[identificar]', (e as Error).message));
+    // Identificación automática de títulos nuevos sin .nfo (por TMDb o por ID en carpeta)
+    void identificarPendientes().catch((e) => console.error('[identificar]', (e as Error).message));
     medirTrasEscanear();
   } catch (err) {
     console.error('[escaneo] fallo:', (err as Error).message);

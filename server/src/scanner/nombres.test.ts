@@ -31,6 +31,13 @@ for (const [entrada, titulo, ano] of casos) {
   });
 }
 
+test('limpiarNombre con IDs estilo Plex / Jellyfin', () => {
+  assert.deepEqual(limpiarNombre('Gladiator (2000) {tmdb-98}'), { title: 'Gladiator', year: 2000, tmdbId: 98 });
+  assert.deepEqual(limpiarNombre('Gladiator (2000) [tmdbid=98]'), { title: 'Gladiator', year: 2000, tmdbId: 98 });
+  assert.deepEqual(limpiarNombre('The Matrix (1999) {imdb-tt0133093}'), { title: 'The Matrix', year: 1999, imdbId: 'tt0133093' });
+  assert.deepEqual(limpiarNombre('Breaking Bad (2008) {tvdb-81189}'), { title: 'Breaking Bad', year: 2008, tvdbId: 81189 });
+});
+
 test('carpetas genericas', () => {
   for (const n of ['CD1', 'Movies', 'Peliculas', 'Películas', '01']) assert.ok(esNombreGenerico(n), n);
   assert.ok(!esNombreGenerico('Heat (1995)'));

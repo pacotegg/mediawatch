@@ -66,7 +66,9 @@ const upsert = db.prepare(`
   INSERT INTO extras (item_id, path, titulo, tipo, size, duration, grupo, scanned_at)
   VALUES (?,?,?,?,?,?,?,?)
   ON CONFLICT(path) DO UPDATE SET
-    item_id=excluded.item_id, titulo=excluded.titulo, tipo=excluded.tipo,
+    item_id=excluded.item_id,
+    titulo=CASE WHEN extras.titulo_manual = 1 THEN extras.titulo ELSE excluded.titulo END,
+    tipo=CASE WHEN extras.titulo_manual = 1 THEN extras.tipo ELSE excluded.tipo END,
     size=excluded.size, grupo=excluded.grupo, scanned_at=excluded.scanned_at
   RETURNING id`);
 
@@ -85,6 +87,16 @@ function tituloDe(archivo: string, tituloItem: string): string {
   }
   const sinTitulo = n.replace(new RegExp(`^${tituloItem.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*[-–]?\\s*`, 'i'), '');
   return (sinTitulo.trim() || n.trim()).replace(/[._]+/g, ' ').trim();
+}
+
+/** Títulos que no dicen qué es el extra: números solos (00579), track01, o nombres vacíos de sentido. */
+export function esTituloGenerico(titulo: string): boolean {
+  const t = titulo.trim();
+  if (!t) return true;
+  if (/^\d+$/.test(t)) return true;
+  if (/^(?:track|title|extra|clip|part|scene|video|ch|cap[íi]tulo)[\s_-]?\d*$/i.test(t)) return true;
+  if (/^(?:extra|extras|bonus|clip|clips|scene|scenes|featurette|featurettes|behind the scenes|making of)$/i.test(t)) return true;
+  return false;
 }
 
 const REGLAS_NOMBRE: [RegExp, string][] = [
@@ -243,9 +255,445 @@ export async function miniatura(id: number): Promise<string | null> {
   return existsSync(destino) ? destino : null;
 }
 
-export function actualizarTipoExtra(id: number, nuevoTipo: string): boolean {
-  const res = db.prepare('UPDATE extras SET tipo = ? WHERE id = ?').run(nuevoTipo, id);
+export function actualizarExtra(id: number, cambios: { tipo?: string; titulo?: string }): boolean {
+  const sets: string[] = ['titulo_manual = 1'];
+  const vals: any[] = [];
+  if (cambios.tipo) {
+    sets.push('tipo = ?');
+    vals.push(cambios.tipo);
+  }
+  if (cambios.titulo) {
+    sets.push('titulo = ?');
+    vals.push(cambios.titulo);
+  }
+  vals.push(id);
+  const res = db.prepare(`UPDATE extras SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
   return res.changes > 0;
+}
+
+export function actualizarTipoExtra(id: number, nuevoTipo: string): boolean {
+  return actualizarExtra(id, { tipo: nuevoTipo });
+}
+
+export type ExtraCandidato = {
+  titulo: string;
+  duracionSegundos: number;
+  tipo?: string;
+  fuente: string;
+};
+
+/** Consulta DVDCompare para obtener las pistas de extras y duraciones oficiales del disco. */
+export async function buscarExtrasDvdCompare(tituloItem: string, anoItem?: number | null): Promise<ExtraCandidato[]> {
+  try {
+    const url = `https://www.dvdcompare.net/comparisons/search.php?param=${encodeURIComponent(tituloItem.trim())}`;
+    const headers = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    };
+    const res = await fetch(url, { headers, signal: AbortSignal.timeout(8000) });
+    if (!res.ok) return [];
+    const html = await res.text();
+    const filmMatches = [...html.matchAll(/<a\s+href="film\.php\?fid=(\d+)"[^>]*>([^<]+)<\/a>/gi)];
+    if (filmMatches.length === 0) return [];
+
+    let elegido = filmMatches[0];
+    if (anoItem) {
+      const conAno = filmMatches.filter((m) => m[2].includes(String(anoItem)));
+      if (conAno.length > 0) {
+        elegido = conAno.find((m) => /blu-ray\s*4k/i.test(m[2])) || conAno.find((m) => /blu-ray/i.test(m[2])) || conAno[0];
+      }
+    } else {
+      elegido = filmMatches.find((m) => /blu-ray\s*4k/i.test(m[2])) || filmMatches.find((m) => /blu-ray/i.test(m[2])) || filmMatches[0];
+    }
+
+    const fid = elegido[1];
+    const filmRes = await fetch(`https://www.dvdcompare.net/comparisons/film.php?fid=${fid}`, { headers, signal: AbortSignal.timeout(8000) });
+    if (!filmRes.ok) return [];
+    const filmHtml = await filmRes.text();
+
+    const extrasBlocks = [...filmHtml.matchAll(/<div class="label">Extras:<\/div>\s*<div class="description">([\s\S]*?)<\/div>/gi)];
+    if (extrasBlocks.length === 0) return [];
+
+    const candidatos: ExtraCandidato[] = [];
+    const vistos = new Set<string>();
+
+    for (const b of extrasBlocks) {
+      const lines = b[1].split(/<br\s*\/?>/i);
+      for (let l of lines) {
+        l = l.replace(/<[^>]+>/g, '').replace(/&quot;/g, '"').replace(/&#039;/g, "'").replace(/&amp;/g, '&').trim();
+        if (!l || l.startsWith('* The Film') || l.startsWith('Audio commentary')) continue;
+
+        const m = l.match(/^(?:-\s*)?["“]?([^"”\(\)]+?)["”]?\s*(?:featurettes?|documentary)?\s*(?:\([^)]*\)\s*)*\(([0-9]+:[0-9]{2}(?::[0-9]{2})?)\)/i);
+        if (m) {
+          const tit = m[1].trim();
+          const timeStr = m[2];
+          const parts = timeStr.split(':').map(Number);
+          let secs = 0;
+          if (parts.length === 2) secs = parts[0] * 60 + parts[1];
+          else if (parts.length === 3) secs = parts[0] * 3600 + parts[1] * 60 + parts[2];
+          if (secs > 0 && !vistos.has(`${tit}-${secs}`)) {
+            vistos.add(`${tit}-${secs}`);
+            let tipo = 'Extra';
+            if (/behind|making|c[oó]mo.*se.*hizo/i.test(l)) tipo = 'Cómo se hizo';
+            else if (/deleted|eliminad/i.test(l)) tipo = 'Escenas eliminadas';
+            else if (/interview|entrevista/i.test(l)) tipo = 'Entrevistas';
+            else if (/featurette|effects|soundtrack/i.test(l)) tipo = 'Featurette';
+            else if (/trailer|teaser|spot/i.test(l)) tipo = 'Tráilers';
+            else if (/short|corto/i.test(l)) tipo = 'Cortos';
+            candidatos.push({ titulo: tit, duracionSegundos: secs, tipo, fuente: 'DVDCompare' });
+          }
+        }
+      }
+      if (candidatos.length > 0) break;
+    }
+
+    return candidatos;
+  } catch {
+    return [];
+  }
+}
+
+const cacheDuracionesYoutube = new Map<string, number>();
+
+async function obtenerDuracionYoutube(key: string): Promise<number | null> {
+  if (cacheDuracionesYoutube.has(key)) return cacheDuracionesYoutube.get(key)!;
+  try {
+    const res = await fetch(`https://www.youtube.com/watch?v=${key}`, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+      signal: AbortSignal.timeout(2500),
+    });
+    const text = await res.text();
+    const m = text.match(/"approxDurationMs":"(\d+)"/);
+    if (m) {
+      const s = Math.round(Number(m[1]) / 1000);
+      cacheDuracionesYoutube.set(key, s);
+      return s;
+    }
+  } catch {}
+  return null;
+}
+
+/** Busca vídeos promocionales / piezas oficiales en TMDb (YouTube). */
+export async function buscarVideosTmdb(tmdbId: string | number, kind: string): Promise<ExtraCandidato[]> {
+  if (!config.tmdbApiKey || !tmdbId) return [];
+  try {
+    const ruta = kind === 'show' ? `/tv/${tmdbId}/videos` : `/movie/${tmdbId}/videos`;
+    const res = await fetch(`https://api.themoviedb.org/3${ruta}?api_key=${config.tmdbApiKey}&include_video_language=es,en,null`, {
+      signal: AbortSignal.timeout(4000),
+    });
+    if (!res.ok) return [];
+    const j = (await res.json()) as { results?: any[] };
+    const videos = (j.results || []).filter((v) => v.site === 'YouTube' && v.type !== 'Trailer' && v.type !== 'Teaser');
+    if (videos.length === 0) return [];
+
+    const promesas = videos.slice(0, 8).map(async (v) => {
+      const dur = await obtenerDuracionYoutube(v.key);
+      if (!dur || dur <= 0) return null;
+      let tipo = 'Extra';
+      if (v.type === 'Behind the Scenes') tipo = 'Cómo se hizo';
+      else if (v.type === 'Featurette') tipo = 'Featurette';
+      else if (v.type === 'Bloopers') tipo = 'Tomas falsas';
+      else if (v.type === 'Clip') tipo = 'Clip';
+      return {
+        titulo: v.name,
+        duracionSegundos: dur,
+        tipo,
+        fuente: 'TMDb Videos',
+      };
+    });
+
+    const resueltos = await Promise.all(promesas);
+    const candidatos: ExtraCandidato[] = [];
+    for (const r of resueltos) {
+      if (r) candidatos.push(r);
+    }
+    return candidatos;
+  } catch {
+    return [];
+  }
+}
+
+/** Para series: busca en la Temporada 0 (Especiales) de TMDb. */
+export async function buscarEspecialesTmdb(tmdbId: string | number): Promise<ExtraCandidato[]> {
+  if (!config.tmdbApiKey || !tmdbId) return [];
+  try {
+    const res = await fetch(`https://api.themoviedb.org/3/tv/${tmdbId}/season/0?api_key=${config.tmdbApiKey}&language=en-US`, {
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!res.ok) return [];
+    const j = (await res.json()) as { episodes?: any[] };
+    const candidatos: ExtraCandidato[] = [];
+    for (const ep of j.episodes || []) {
+      if (ep.runtime && ep.runtime > 0) {
+        let tipo = 'Especial';
+        const n = (ep.name || '').toLowerCase();
+        if (n.includes('behind the scenes') || n.includes('making of') || n.includes('cómo se hizo') || n.includes('bts')) {
+          tipo = 'Cómo se hizo';
+        } else if (n.includes('deleted scene') || n.includes('eliminada')) {
+          tipo = 'Escenas eliminadas';
+        } else if (n.includes('interview') || n.includes('entrevista')) {
+          tipo = 'Entrevistas';
+        } else if (n.includes('gag reel') || n.includes('outtake') || n.includes('tomas falsas')) {
+          tipo = 'Tomas falsas';
+        }
+        candidatos.push({
+          titulo: ep.name,
+          duracionSegundos: ep.runtime * 60,
+          tipo,
+          fuente: 'TMDb Temporada 0',
+        });
+      }
+    }
+    return candidatos;
+  } catch {
+    return [];
+  }
+}
+
+/** Lee título de etiqueta de contenedor/stream y duración con ffprobe. */
+export async function leerMetadatosInternos(ruta: string): Promise<{ titulo?: string; duracion?: number } | null> {
+  try {
+    const { stdout } = await run(config.ffprobe, [
+      '-v', 'error',
+      '-show_entries', 'format=duration:format_tags=title,TITLE:stream_tags=title,TITLE',
+      '-of', 'json',
+      ruta,
+    ], { windowsHide: true, timeout: 30_000 });
+    const j = JSON.parse(stdout);
+    const duracion = Number(j.format?.duration);
+    let tituloInterno: string | undefined = j.format?.tags?.title || j.format?.tags?.TITLE;
+    if (!tituloInterno && Array.isArray(j.streams)) {
+      for (const s of j.streams) {
+        if (s.codec_type !== 'video') continue;
+        const t = s.tags?.title || s.tags?.TITLE;
+        if (t && typeof t === 'string' && !esTituloGenerico(t)) {
+          tituloInterno = t;
+          break;
+        }
+      }
+    }
+    const res: { titulo?: string; duracion?: number } = {};
+    if (duracion > 0) res.duracion = duracion;
+    const esPistaAudioOSub = /^(?:stereo|mono|[0-9]\.[0-9]|surround|english|spanish|castellano|español|ocr|sdh|forced|subt[íi]tulos?)$/i;
+    if (tituloInterno && typeof tituloInterno === 'string' && !esTituloGenerico(tituloInterno) && !esPistaAudioOSub.test(tituloInterno.trim())) {
+      res.titulo = tituloInterno.trim();
+    }
+    return res;
+  } catch {
+    return null;
+  }
+}
+
+/** Identifica los extras de un título que tengan nombre numérico/genérico y no hayan sido fijados a mano. */
+export async function identificarExtrasDeItem(itemId: number): Promise<{
+  identificados: number;
+  total: number;
+  detalles: Array<{ id: number; path: string; tituloViejo: string; tituloNuevo: string; duracion: number; fuente: string }>;
+}> {
+  const item = db.prepare('SELECT id, title, original_title, year, folder, kind, tmdb_id FROM items WHERE id = ?').get(itemId) as
+    | { id: number; title: string; original_title: string | null; year: number | null; folder: string; kind: string; tmdb_id: string | null }
+    | undefined;
+  if (!item) return { identificados: 0, total: 0, detalles: [] };
+
+  const pendientes = (db.prepare('SELECT id, path, titulo, duration FROM extras WHERE item_id = ? AND titulo_manual = 0').all(itemId) as Array<{
+    id: number;
+    path: string;
+    titulo: string;
+    duration: number | null;
+  }>).filter((ex) => esTituloGenerico(ex.titulo));
+
+  if (pendientes.length === 0) return { identificados: 0, total: 0, detalles: [] };
+
+  let candidatosDvd: ExtraCandidato[] = [];
+  if (item.original_title) {
+    candidatosDvd = await buscarExtrasDvdCompare(item.original_title, item.year);
+  }
+  if (candidatosDvd.length === 0 && item.title) {
+    candidatosDvd = await buscarExtrasDvdCompare(item.title, item.year);
+  }
+
+  let candidatosEspeciales: ExtraCandidato[] | null = null;
+  let candidatosTmdbVideos: ExtraCandidato[] | null = null;
+
+  const detalles: Array<{ id: number; path: string; tituloViejo: string; tituloNuevo: string; duracion: number; fuente: string }> = [];
+  let identificados = 0;
+  const usados = new Set<string>();
+
+  for (const ex of pendientes) {
+    let duracionReal = ex.duration;
+    let tituloNuevo: string | null = null;
+    let tipoNuevo: string | null = null;
+    let fuente = '';
+
+    const meta = await leerMetadatosInternos(ex.path);
+    if (meta?.duracion && (!duracionReal || duracionReal <= 0)) {
+      duracionReal = meta.duracion;
+      db.prepare('UPDATE extras SET duration = ? WHERE id = ?').run(duracionReal, ex.id);
+    }
+
+    // 1. DVDCompare por duración
+    if (duracionReal && duracionReal > 0 && candidatosDvd.length > 0) {
+      let mejorMatch: ExtraCandidato | null = null;
+      let menorDif = 4.0;
+
+      for (const cand of candidatosDvd) {
+        if (usados.has(cand.titulo)) continue;
+        const dif = Math.abs(duracionReal - cand.duracionSegundos);
+        if (dif <= menorDif) {
+          menorDif = dif;
+          mejorMatch = cand;
+        }
+      }
+
+      if (mejorMatch) {
+        tituloNuevo = mejorMatch.titulo;
+        tipoNuevo = mejorMatch.tipo ?? null;
+        fuente = 'DVDCompare';
+        usados.add(mejorMatch.titulo);
+      }
+    }
+
+    // 2. TMDb Videos oficiales por duración de YouTube (carga perezosa)
+    if (!tituloNuevo && duracionReal && duracionReal > 0 && item.tmdb_id) {
+      if (!candidatosTmdbVideos) {
+        candidatosTmdbVideos = await buscarVideosTmdb(item.tmdb_id, item.kind);
+      }
+      let mejorMatch: ExtraCandidato | null = null;
+      let menorDif = 4.0;
+
+      for (const cand of candidatosTmdbVideos) {
+        if (usados.has(cand.titulo)) continue;
+        const dif = Math.abs(duracionReal - cand.duracionSegundos);
+        if (dif <= menorDif) {
+          menorDif = dif;
+          mejorMatch = cand;
+        }
+      }
+
+      if (mejorMatch) {
+        tituloNuevo = mejorMatch.titulo;
+        tipoNuevo = mejorMatch.tipo ?? null;
+        fuente = 'TMDb Videos';
+        usados.add(mejorMatch.titulo);
+      }
+    }
+
+    // 3. Temporada 0 (Especiales TMDb para series, carga perezosa)
+    if (!tituloNuevo && duracionReal && duracionReal > 0 && item.kind === 'show' && item.tmdb_id) {
+      if (!candidatosEspeciales) {
+        candidatosEspeciales = await buscarEspecialesTmdb(item.tmdb_id);
+      }
+      let mejorMatch: ExtraCandidato | null = null;
+      let menorDif = 60.0;
+
+      for (const cand of candidatosEspeciales) {
+        if (usados.has(cand.titulo)) continue;
+        const dif = Math.abs(duracionReal - cand.duracionSegundos);
+        const tCand = cand.titulo.toLowerCase();
+        const tEx = ex.titulo.toLowerCase();
+        const coincidePalabra = (tEx.includes('behind') && tCand.includes('behind')) ||
+          (tEx.includes('deleted') && tCand.includes('deleted')) ||
+          (tEx.includes('making') && tCand.includes('making')) ||
+          (tEx.includes('interview') && tCand.includes('interview')) ||
+          (tEx.includes('gag') && tCand.includes('gag'));
+
+        if ((coincidePalabra && dif <= 60.0) || dif <= 25.0) {
+          if (dif < menorDif) {
+            menorDif = dif;
+            mejorMatch = cand;
+          }
+        }
+      }
+
+      if (mejorMatch) {
+        tituloNuevo = mejorMatch.titulo;
+        tipoNuevo = mejorMatch.tipo ?? null;
+        fuente = 'TMDb Temporada 0';
+        usados.add(mejorMatch.titulo);
+      }
+    }
+
+    // 4. Título interno del contenedor si las fuentes online no emparejaron
+    if (!tituloNuevo && meta?.titulo && !esTituloGenerico(meta.titulo)) {
+      const tNorm = meta.titulo.trim().toLowerCase();
+      const pNorm = item.title.trim().toLowerCase();
+      const origNorm = item.original_title ? item.original_title.trim().toLowerCase() : '';
+      const esDisco = /disc\s*\d+|vol(?:ume)?\s*\d+|temporada|season/i.test(tNorm);
+      const esSoloPelicula = esDisco || tNorm === pNorm || (origNorm && tNorm === origNorm) ||
+        pNorm.includes(tNorm) || tNorm.includes(pNorm) || (origNorm && (origNorm.includes(tNorm) || tNorm.includes(origNorm))) ||
+        (tNorm.startsWith(pNorm) && /^(?:\s*\(remastered\)|\s*\(4k\)|\s*\(uhd\))?$/i.test(tNorm.slice(pNorm.length))) ||
+        (origNorm && tNorm.startsWith(origNorm) && /^(?:\s*\(remastered\)|\s*\(4k\)|\s*\(uhd\))?$/i.test(tNorm.slice(origNorm.length)));
+      if (!esSoloPelicula) {
+        tituloNuevo = meta.titulo;
+        fuente = 'Metadatos contenedor';
+      }
+    }
+
+    if (tituloNuevo) {
+      const sets = ['titulo = ?', 'titulo_manual = 1'];
+      const vals: any[] = [tituloNuevo];
+      if (tipoNuevo) {
+        sets.push('tipo = ?');
+        vals.push(tipoNuevo);
+      }
+      vals.push(ex.id);
+      db.prepare(`UPDATE extras SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+      identificados++;
+      detalles.push({
+        id: ex.id,
+        path: ex.path,
+        tituloViejo: ex.titulo,
+        tituloNuevo,
+        duracion: duracionReal ?? 0,
+        fuente,
+      });
+    }
+  }
+
+  return { identificados, total: pendientes.length, detalles };
+}
+
+/** Pasada general por toda la biblioteca para extras genéricos sin identificar. */
+export async function identificarExtrasBiblioteca(): Promise<{
+  totalGenericos: number;
+  identificados: number;
+  itemsProcesados: number;
+  detalles: any[];
+}> {
+  const todos = db.prepare('SELECT id, item_id, path, titulo, duration FROM extras WHERE titulo_manual = 0').all() as Array<{
+    id: number;
+    item_id: number;
+    path: string;
+    titulo: string;
+    duration: number | null;
+  }>;
+
+  const genericos = todos.filter((e) => esTituloGenerico(e.titulo));
+  if (genericos.length === 0) {
+    return { totalGenericos: 0, identificados: 0, itemsProcesados: 0, detalles: [] };
+  }
+
+  const mapaItems = new Map<number, typeof genericos>();
+  for (const g of genericos) {
+    const l = mapaItems.get(g.item_id) || [];
+    l.push(g);
+    mapaItems.set(g.item_id, l);
+  }
+
+  let totalIdentificados = 0;
+  const todosDetalles: any[] = [];
+
+  for (const [itemId] of mapaItems) {
+    const res = await identificarExtrasDeItem(itemId);
+    totalIdentificados += res.identificados;
+    todosDetalles.push(...res.detalles);
+  }
+
+  return {
+    totalGenericos: genericos.length,
+    identificados: totalIdentificados,
+    itemsProcesados: mapaItems.size,
+    detalles: todosDetalles,
+  };
 }
 
 export async function extrasTmdb(itemId: number) {

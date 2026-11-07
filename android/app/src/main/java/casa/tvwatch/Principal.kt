@@ -70,6 +70,7 @@ import casa.tvwatch.ui.PantallaBuscar
 import casa.tvwatch.ui.PantallaConexion
 import casa.tvwatch.ui.PantallaDescargas
 import casa.tvwatch.ui.PantallaFavoritas
+import casa.tvwatch.ui.PantallaWatchlist
 import casa.tvwatch.ui.PantallaFicha
 import casa.tvwatch.ui.PantallaMandoVirtual
 import casa.tvwatch.ui.PantallaPersona
@@ -176,6 +177,7 @@ private object Rutas {
   const val ARTE = "arte/{id}/{kind}/{titulo}/{anio}"
   const val BUSCAR = "buscar"
   const val FAVORITAS = "favoritas"
+  const val WATCHLIST = "watchlist"
   const val DESCARGAS = "descargas"
   const val SAGAS = "sagas"
   const val PLATAFORMAS = "plataformas"
@@ -237,6 +239,7 @@ private fun Navegacion(nav: NavHostController) {
       Destino.Inicio -> nav.popBackStack(Rutas.PORTADA, inclusive = false)
       Destino.Buscar -> encimaDeLaPortada(Rutas.BUSCAR)
       Destino.Favoritas -> encimaDeLaPortada(Rutas.FAVORITAS)
+      Destino.Watchlist -> encimaDeLaPortada(Rutas.WATCHLIST)
       Destino.Descargas -> encimaDeLaPortada(Rutas.DESCARGAS)
       Destino.Sagas -> encimaDeLaPortada(Rutas.SAGAS)
       Destino.Plataformas -> encimaDeLaPortada(Rutas.PLATAFORMAS)
@@ -341,6 +344,15 @@ private fun Navegacion(nav: NavHostController) {
       composable(Rutas.FAVORITAS) {
         Pantalla(titulo = "Favoritas", nav = nav, alMenu = ::abrirMenu) {
           PantallaFavoritas(
+            alAbrirFicha = { nav.navigate(Rutas.ficha(it)) },
+            alPerderSesion = { aConexion() },
+          )
+        }
+      }
+
+      composable(Rutas.WATCHLIST) {
+        Pantalla(titulo = "Ver más tarde", nav = nav, alMenu = ::abrirMenu) {
+          PantallaWatchlist(
             alAbrirFicha = { nav.navigate(Rutas.ficha(it)) },
             alPerderSesion = { aConexion() },
           )

@@ -90,6 +90,8 @@ private val ACCIONES: Map<String, List<Trazo>> = mapOf(
   ),
   "favorito" to listOf(Trazo(ESTRELLA)),
   "favoritoSi" to listOf(Trazo(ESTRELLA, relleno = true)),
+  "marcador" to listOf(Trazo("M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z")),
+  "marcadorSi" to listOf(Trazo("M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z", relleno = true)),
   // Estos cuatro no existen en la tele (allí no hay descargas ni «En la tele»); mismo trazo.
   "descargar" to listOf(Trazo("M12 4v11M7.5 10.8l4.5 4.5 4.5-4.5M5 19.5h14")),
   "tele" to listOf(Trazo("M4 5h16v11H4zM9 20h6M12 16v4"), Trazo("M10.5 8.2v4.6l3.6-2.3z", relleno = true)),

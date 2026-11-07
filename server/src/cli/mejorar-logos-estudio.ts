@@ -69,6 +69,17 @@ async function ancho(f: string): Promise<number> {
   } catch { return 0; }
 }
 
+async function desdeKodiColoured(nombre: string, tmp: string): Promise<string | null> {
+  try {
+    const url = `https://raw.githubusercontent.com/XBMC-Addons/resource.images.studios.coloured/master/resources/${encodeURIComponent(nombre)}.png`;
+    const r = await fetch(url, { headers: UA, signal: AbortSignal.timeout(10_000) });
+    if (!r.ok) return null;
+    const f = tmp + '.png';
+    writeFileSync(f, Buffer.from(await r.arrayBuffer()));
+    return f;
+  } catch { return null; }
+}
+
 async function desdeTmdb(nombre: string, tmp: string): Promise<string | null> {
   const clave = config.tmdbApiKey;
   if (!clave) return null;
@@ -158,6 +169,11 @@ async function barrer() {
         candidato = await desdeCommons(nombre, tmp);
         anchoNuevo = candidato ? await ancho(candidato) : 0;
         fuente = candidato ? 'commons' : '';
+      }
+      if (!candidato) {
+        candidato = await desdeKodiColoured(nombre, tmp);
+        anchoNuevo = candidato ? await ancho(candidato) : 0;
+        fuente = candidato ? 'kodi-coloured' : '';
       }
     } catch (e) { fuente = 'error: ' + (e as Error).message.slice(0, 80); }
 

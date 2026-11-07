@@ -622,9 +622,9 @@ private fun Reproduciendo(
       val respaldoDeCreditos = if (
         deLosDetectados == null && siguiente != null && i != null && duracionViva > 300 &&
         i.skip.none { it.kind == "credits" } &&
-        enSegundos >= duracionViva - 40 && enSegundos < duracionViva - 1 &&
-        ("credits" + (duracionViva - 40)) !in tramosSaltados
-      ) RangoSalto("credits", duracionViva - 40, duracionViva) else null
+        enSegundos >= duracionViva - 55 && enSegundos < duracionViva - 1 &&
+        ("credits" + (duracionViva - 55)) !in tramosSaltados
+      ) RangoSalto("credits", duracionViva - 55, duracionViva) else null
       val dentro = deLosDetectados ?: respaldoDeCreditos
       if (dentro != null && encadenado && Ajustes.modoMaraton && (dentro.kind == "intro" || dentro.kind == "recap")) {
         // Modo maratón: solo en un episodio encadenado (ver Ajustes.modoMaraton).
@@ -1386,6 +1386,34 @@ private fun Reproduciendo(
           if (reproductor.isPlaying) reproductor.pause()
           hudSincroniaVisible = true
         },
+        posicionActualSeg = (if (porTuberia) desdeDeLaTuberia else 0.0) + reproductor.currentPosition / 1000.0,
+        esSerie = episodioId != null,
+        alMarcarTramo = { tipo ->
+          val donde = (if (porTuberia) desdeDeLaTuberia else 0.0) + reproductor.currentPosition / 1000.0
+          val tiempoTxt = tiempo(donde)
+          ambito.launch {
+            val ok = withContext(Dispatchers.IO) { Api.marcarTramo(fileId, tipo, donde) }
+            if (ok) {
+              mensajeAdmin = when (tipo) {
+                "intro_inicio" -> "Inicio de cabecera marcado en " + tiempoTxt
+                "intro_fin" -> "Fin de cabecera marcado en " + tiempoTxt
+                "creditos_inicio" -> "Inicio de créditos marcado en " + tiempoTxt
+                "creditos_fin" -> "Fin de créditos marcado en " + tiempoTxt
+                "post_creditos" -> "Escena post-créditos marcada en " + tiempoTxt
+                "borrar" -> "Marcas eliminadas para este título"
+                else -> "Tramo guardado con éxito"
+              }
+              runCatching {
+                val nuevaInfo = withContext(Dispatchers.IO) { Api.infoDeReproduccion(fileId, sinHevc, calidad) }
+                info = nuevaInfo
+              }
+            } else {
+              mensajeAdmin = "No se pudo guardar el tramo"
+            }
+            delay(4000)
+            mensajeAdmin = ""
+          }
+        },
         alCerrar = { menuAbierto = false },
       )
     }
@@ -1731,6 +1759,9 @@ private fun MenuDePistas(
   alCambiarRetardoSubs: (Int) -> Unit,
   alBuscarSubtitulos: () -> Unit,
   alAbrirSyncEnVivo: () -> Unit,
+  posicionActualSeg: Double = 0.0,
+  esSerie: Boolean = false,
+  alMarcarTramo: (String) -> Unit = {},
   alCerrar: () -> Unit,
 ) {
   // En la tele el foco entra por la pista que suena; sin él, el mando no llega al menú.
@@ -2015,6 +2046,49 @@ private fun MenuDePistas(
               fontSize = 13.sp,
             )
           }
+        }
+      }
+
+      val skips = info?.skip.orEmpty()
+      val introCompleta = skips.any { it.kind == "intro" && it.confidence >= 100 }
+      val creditosCompletos = skips.any { it.kind == "credits" && it.confidence >= 100 }
+      val todoAl100 = if (esSerie) (introCompleta && creditosCompletos) else creditosCompletos
+
+      if (Ajustes.esAdmin && !todoAl100) {
+        Spacer(Modifier.height(14.dp))
+        Text("Marcar tramos (Administrador)", color = Texto, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(6.dp))
+        val tiempoTxt = tiempo(posicionActualSeg)
+
+        val opciones = mutableListOf<Pair<String, String>>()
+        if (esSerie && !introCompleta) {
+          opciones.add("intro_inicio" to ("Marcar inicio de cabecera (" + tiempoTxt + ")"))
+          opciones.add("intro_fin" to ("Marcar fin de cabecera (" + tiempoTxt + ")"))
+        }
+        if (!creditosCompletos) {
+          opciones.add("creditos_inicio" to ("Marcar inicio de créditos (" + tiempoTxt + ")"))
+          opciones.add("creditos_fin" to ("Marcar fin de créditos (" + tiempoTxt + ")"))
+        }
+        opciones.add("post_creditos" to ("Marcar escena post-créditos (" + tiempoTxt + ")"))
+        if (skips.isNotEmpty()) {
+          opciones.add("borrar" to "Borrar marcas de este título")
+        }
+
+        opciones.forEach { (tipo, etiqueta) ->
+          Text(
+            "     " + (if (tipo == "borrar") "🗑️ " else "🏷️ ") + etiqueta,
+            color = if (tipo == "borrar") Color(0xFFE57373) else Realce,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier
+              .fillMaxWidth()
+              .resaltarFoco()
+              .clickable {
+                alMarcarTramo(tipo)
+                alCerrar()
+              }
+              .padding(vertical = 7.dp),
+          )
         }
       }
 

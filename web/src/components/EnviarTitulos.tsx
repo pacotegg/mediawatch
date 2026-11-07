@@ -11,7 +11,7 @@ import { api } from '../lib/api.ts';
 const gb = (n: number) => (n / 1e9).toFixed(1) + ' GB';
 const FASES: Record<string, string> = { preparando: 'Preparando', copiando: 'Copiando', verificando: 'Comprobando la copia', actualizando: 'Actualizando la biblioteca', terminando: 'Terminando' };
 
-export default function EnviarTitulos({ ids, kind }: { ids: number[]; kind: 'movie' | 'show' }) {
+export default function EnviarTitulos({ ids, kind, alTerminar }: { ids: number[]; kind: 'movie' | 'show'; alTerminar?: () => void }) {
   const qc = useQueryClient();
   const { data: fuentes } = useQuery({ queryKey: ['scraper-destinos'], queryFn: api.scraperDestinos });
   const destinos = (fuentes ?? []).filter((f) => f.kind === kind);
@@ -78,9 +78,16 @@ export default function EnviarTitulos({ ids, kind }: { ids: number[]; kind: 'mov
         </div>
       )}
       {e && !e.corriendo && e.resultados.length > 0 && (
-        <ul className="space-y-1">
-          {e.resultados.map((r) => <li key={r.itemId} className={r.ok ? 'text-emerald-300' : 'text-red-400'}>{r.ok ? '✓' : '✗'} {r.titulo}{r.ok ? (r.copiado ? ' — copiado y comprobado' : ' — movido') : ` — ${r.error}`}</li>)}
-        </ul>
+        <>
+          <ul className="space-y-1">
+            {e.resultados.map((r) => <li key={r.itemId} className={r.ok ? 'text-emerald-300' : 'text-red-400'}>{r.ok ? '✓' : '✗'} {r.titulo}{r.ok ? (r.copiado ? ' — copiado y comprobado' : ' — movido') : ` — ${r.error}`}</li>)}
+          </ul>
+          {alTerminar && (
+            <div className="pt-2">
+              <Button onClick={alTerminar}>✓ Envío finalizado · Empezar nuevo lote</Button>
+            </div>
+          )}
+        </>
       )}
       {error && <p className="text-red-400">{error}</p>}
     </div>

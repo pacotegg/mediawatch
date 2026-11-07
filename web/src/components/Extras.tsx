@@ -162,11 +162,144 @@ function ModalTmdb({
   );
 }
 
+function ModalEditarExtra({
+  extra,
+  onClose,
+  onGuardado,
+}: {
+  extra: Extra;
+  onClose: () => void;
+  onGuardado: () => void;
+}) {
+  const [titulo, setTitulo] = useState(extra.titulo);
+  const [tipo, setTipo] = useState(extra.tipo);
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const TIPOS = [
+    'Featurette',
+    'Cómo se hizo',
+    'Escenas eliminadas',
+    'Entrevistas',
+    'Tráilers',
+    'Tomas falsas',
+    'Cortos',
+    'Documental',
+    'Extra',
+  ];
+
+  const handleGuardar = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!titulo.trim()) return;
+    setGuardando(true);
+    setError(null);
+    try {
+      const res = await api.actualizarExtra(extra.id, { titulo: titulo.trim(), tipo: tipo.trim() });
+      if (res.ok) {
+        onGuardado();
+        onClose();
+      } else {
+        setError('No se pudo guardar');
+      }
+    } catch (err) {
+      setError((err as Error).message || 'Error de conexión');
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-100 grid place-items-center bg-black/80 p-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96, y: 14 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.96 }}
+        onClick={(e) => e.stopPropagation()}
+        className="glass-strong w-full max-w-md rounded-[var(--radius-panel)] p-6"
+      >
+        <div className="mb-4 flex items-center justify-between gap-4">
+          <h3 className="text-[17px] font-semibold tracking-tight">Editar información del extra</h3>
+          <button onClick={onClose} className="rounded-full bg-white/8 px-3 py-1 text-[12px] hover:bg-white/14">
+            ✕
+          </button>
+        </div>
+
+        {error && (
+          <div className="mb-4 rounded-xl bg-red-500/15 border border-red-500/30 p-2.5 text-[12px] text-red-200">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleGuardar} className="space-y-4">
+          <div>
+            <label className="block text-[12px] font-medium text-mist-400 mb-1">Título del extra</label>
+            <input
+              type="text"
+              value={titulo}
+              onChange={(e) => setTitulo(e.target.value)}
+              className="w-full rounded-xl bg-white/6 border border-white/10 px-3 py-2 text-[13px] text-white focus:outline-none focus:border-accent"
+              required
+              autoFocus
+            />
+          </div>
+
+          <div>
+            <label className="block text-[12px] font-medium text-mist-400 mb-1">Categoría / Tipo</label>
+            <select
+              value={tipo}
+              onChange={(e) => setTipo(e.target.value)}
+              className="w-full rounded-xl bg-ink-900 border border-white/10 px-3 py-2 text-[13px] text-white focus:outline-none focus:border-accent"
+            >
+              {TIPOS.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {extra.duration ? (
+            <p className="text-[11.5px] text-mist-500 font-mono">
+              Duración medida: {duracion(extra.duration)}
+            </p>
+          ) : null}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-full bg-white/8 px-4 py-1.5 text-[12.5px] text-mist-300 hover:bg-white/14"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={guardando || !titulo.trim()}
+              className="rounded-full bg-mist-100 text-ink-950 px-4 py-1.5 text-[12.5px] font-medium hover:bg-white disabled:opacity-50"
+            >
+              {guardando ? 'Guardando...' : 'Guardar cambios'}
+            </button>
+          </div>
+        </form>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 export default function Extras({ itemId, isAdmin }: { itemId: number; isAdmin?: boolean }) {
   const queryClient = useQueryClient();
   const [filtro, setFiltro] = useState<string | null>(null);
   const [viendo, setViendo] = useState<Extra | null>(null);
+  const [editando, setEditando] = useState<Extra | null>(null);
   const [buscandoTmdb, setBuscandoTmdb] = useState(false);
+  const [identificando, setIdentificando] = useState(false);
+  const [avisoIdentificar, setAvisoIdentificar] = useState<string | null>(null);
 
   const { data } = useQuery({
     queryKey: ['extras', itemId],
@@ -175,6 +308,24 @@ export default function Extras({ itemId, isAdmin }: { itemId: number; isAdmin?: 
   });
 
   const extras = useMemo(() => data?.extras ?? [], [data]);
+
+  const handleIdentificar = async () => {
+    setIdentificando(true);
+    setAvisoIdentificar(null);
+    try {
+      const res = await api.identificarExtras(itemId);
+      if (res.identificados > 0) {
+        setAvisoIdentificar(`Identificados ${res.identificados} extras con éxito`);
+        queryClient.invalidateQueries({ queryKey: ['extras', itemId] });
+      } else {
+        setAvisoIdentificar('No se encontraron coincidencias adicionales');
+      }
+    } catch (err) {
+      setAvisoIdentificar('Error al identificar extras: ' + ((err as Error).message || 'Error de conexión'));
+    } finally {
+      setIdentificando(false);
+    }
+  };
 
   const secciones = useMemo(() => {
     const mapa = new Map<string, Extra[]>();
@@ -202,18 +353,30 @@ export default function Extras({ itemId, isAdmin }: { itemId: number; isAdmin?: 
           <span className="rounded-full bg-white/8 px-2 py-0.5 text-[11px] font-medium text-mist-400">
             {extras.length}
           </span>
+          {avisoIdentificar && (
+            <span className="text-[12px] text-accent animate-fade-in">{avisoIdentificar}</span>
+          )}
         </div>
 
         {isAdmin && (
-          <button
-            onClick={() => setBuscandoTmdb(true)}
-            className="flex items-center gap-1.5 rounded-full bg-white/8 px-3.5 py-1.5 text-[12px] font-medium text-mist-200 hover:bg-white/14 hover:text-white transition active:scale-95"
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-            Añadir extras desde TMDb
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleIdentificar}
+              disabled={identificando}
+              className="flex items-center gap-1.5 rounded-full bg-white/8 px-3.5 py-1.5 text-[12px] font-medium text-mist-200 hover:bg-white/14 hover:text-white transition active:scale-95 disabled:opacity-50"
+            >
+              {identificando ? 'Identificando extras…' : 'Identificar extras'}
+            </button>
+            <button
+              onClick={() => setBuscandoTmdb(true)}
+              className="flex items-center gap-1.5 rounded-full bg-white/8 px-3.5 py-1.5 text-[12px] font-medium text-mist-200 hover:bg-white/14 hover:text-white transition active:scale-95"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              Añadir extras desde TMDb
+            </button>
+          </div>
         )}
       </div>
 
@@ -249,12 +412,14 @@ export default function Extras({ itemId, isAdmin }: { itemId: number; isAdmin?: 
 
           <div className="no-scrollbar flex gap-4 overflow-x-auto pb-4 pt-1">
             {visibles.map((e) => (
-              <button
+              <div
                 key={e.id}
-                onClick={() => setViendo(e)}
-                className="group relative w-60 shrink-0 text-left transition-transform duration-200 hover:scale-[1.02]"
+                className="group relative w-60 shrink-0 text-left cursor-pointer"
               >
-                <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-ink-800 ring-1 ring-white/10 group-hover:ring-white/30">
+                <div
+                  onClick={() => setViendo(e)}
+                  className="relative aspect-video w-full overflow-hidden rounded-xl bg-ink-800 ring-1 ring-white/10 group-hover:ring-white/30 transition-transform duration-200 group-hover:scale-[1.02]"
+                >
                   <img
                     src={extraThumb(e.id)}
                     alt=""
@@ -272,17 +437,34 @@ export default function Extras({ itemId, isAdmin }: { itemId: number; isAdmin?: 
                   <span className="absolute left-2 top-2 rounded-md bg-ink-950/75 backdrop-blur-md px-1.5 py-0.5 text-[10px] font-medium text-mist-200 border border-white/10">
                     {e.tipo}
                   </span>
+                  {isAdmin && (
+                    <button
+                      title="Editar título y categoría"
+                      onClick={(ev) => {
+                        ev.stopPropagation();
+                        setEditando(e);
+                      }}
+                      className="absolute right-2 top-2 z-10 grid h-6 w-6 place-items-center rounded-md bg-ink-950/80 text-mist-300 opacity-0 group-hover:opacity-100 hover:text-white hover:bg-black/90 transition border border-white/10"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+                      </svg>
+                    </button>
+                  )}
                   {e.duration ? (
                     <span className="absolute right-2 bottom-2 rounded bg-black/80 px-1.5 py-0.5 text-[10.5px] font-mono text-mist-300">
                       {duracion(e.duration)}
                     </span>
                   ) : null}
                 </div>
-                <p className="mt-2 line-clamp-2 text-[12.5px] font-medium leading-snug text-mist-100 group-hover:text-accent">
+                <p
+                  onClick={() => setViendo(e)}
+                  className="mt-2 line-clamp-2 text-[12.5px] font-medium leading-snug text-mist-100 group-hover:text-accent"
+                >
                   {e.titulo}
                 </p>
                 {e.grupo && <p className="text-[11px] text-mist-500 mt-0.5">{e.grupo}</p>}
-              </button>
+              </div>
             ))}
           </div>
         </>
@@ -290,6 +472,13 @@ export default function Extras({ itemId, isAdmin }: { itemId: number; isAdmin?: 
 
       <AnimatePresence>
         {viendo && <Reproductor extra={viendo} onClose={() => setViendo(null)} />}
+        {editando && (
+          <ModalEditarExtra
+            extra={editando}
+            onClose={() => setEditando(null)}
+            onGuardado={() => queryClient.invalidateQueries({ queryKey: ['extras', itemId] })}
+          />
+        )}
         {buscandoTmdb && (
           <ModalTmdb
             itemId={itemId}

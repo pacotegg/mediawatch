@@ -567,6 +567,10 @@ function scanMovieFolder(libId: number, dir: string, files: Entry[], now: string
     art.poster ?? null, art.fanart ?? null, art.clearlogo ?? null, art.landscape ?? null, meta.added ?? null, now,
   ) as { id: number };
 
+  if (!suelto) {
+    db.prepare('DELETE FROM episodes WHERE show_id = ?').run(item.id);
+  }
+
   const file = stmt.upsertFile.get(
     item.id, null, main.path, meta.size, meta.container, nfoFichero?.video?.duration ?? null,
     nfoFichero?.video?.codec ?? null, nfoFichero?.video?.width ?? null, nfoFichero?.video?.height ?? null, nfoFichero?.video?.hdr ?? null,
@@ -604,6 +608,23 @@ function numeroDelantero(base: string): number | null {
 }
 
 /**
+ * Detecta si una carpeta corresponde a una serie en vez de una película:
+ * 1. Tiene `tvshow.nfo`
+ * 2. Tiene subcarpetas de temporada (`Season 1`, `Temporada 1`, etc.)
+ * 3. Tiene vídeos con numeración de episodio (`S01E01`, `1x01`)
+ * 4. Tiene 2 o más vídeos con numeración delantera (`01 - ...`, `02 - ...`)
+ */
+export function esCarpetaDeSerie(files: Entry[]): boolean {
+  if (files.some((f) => !f.isDir && f.name.toLowerCase() === 'tvshow.nfo')) return true;
+  if (files.some((f) => f.isDir && seasonNumber(f.name) !== null)) return true;
+  const vids = files.filter((f) => !f.isDir && VIDEO_EXT.has(extname(f.name).toLowerCase()) && !JUNK.test(f.name));
+  if (vids.some((v) => episodeNumbers(v.name) !== null)) return true;
+  const conNum = vids.filter((v) => numeroDelantero(basename(v.name, extname(v.name))) !== null);
+  if (conNum.length >= 2) return true;
+  return false;
+}
+
+/**
  * El nombre sin la numeracion de delante, que no es parte del titulo: cae tanto
  * el «02 - » como el «s01e01 » de «s01e01 Queens of Sci-Fi».
  */
@@ -637,6 +658,8 @@ function scanShowFolder(libId: number, dir: string, files: Entry[], now: string)
     nfo?.country ?? null, nfo?.collection ?? null, nfo?.trailer ?? null, nfo?.imdbId ?? null, nfo?.tmdbId ?? null,
     art.poster ?? null, art.fanart ?? null, art.clearlogo ?? null, art.landscape ?? null, now, now,
   ) as { id: number };
+
+  db.prepare('DELETE FROM media_files WHERE item_id = ? AND episode_id IS NULL').run(item.id);
 
   saveRatings(item.id, nfo);
   saveGenresAndPeople(item.id, nfo, actorThumbs(dir));
@@ -747,21 +770,23 @@ async function escanearCarpetas(
   let count = 0;
   for (let inicio = 0; inicio < entries.length; inicio += LOTE) {
     const lote = entries.slice(inicio, inicio + LOTE);
-    db.exec('BEGIN');
-    try {
-      lote.forEach((entry, j) => {
-        const files = listDir(entry.path);
-        count += lib.kind === 'movie'
-          ? scanMovieFolder(row.id, entry.path, files, now)
-          : scanShowFolder(row.id, entry.path, files, now);
-        if ((inicio + j) % 25 === 0) {
-          onProgress?.({ library: lib.name, done: inicio + j + 1, total: entries.length, current: entry.name });
-        }
-      });
-      db.exec('COMMIT');
-    } catch (err) {
-      db.exec('ROLLBACK');
-      throw err;
+    for (let j = 0; j < lote.length; j++) {
+      const entry = lote[j];
+      const files = listDir(entry.path);
+      const esShow = lib.kind === 'show' || (esFuenteDelScraper(lib) && esCarpetaDeSerie(files));
+      db.exec('BEGIN');
+      try {
+        count += esShow
+          ? scanShowFolder(row.id, entry.path, files, now)
+          : scanMovieFolder(row.id, entry.path, files, now);
+        db.exec('COMMIT');
+      } catch (err) {
+        db.exec('ROLLBACK');
+        throw err;
+      }
+      if ((inicio + j) % 25 === 0) {
+        onProgress?.({ library: lib.name, done: inicio + j + 1, total: entries.length, current: entry.name });
+      }
     }
     if (inicio + LOTE < entries.length) await cederElHilo();
   }
@@ -869,13 +894,15 @@ export async function scanLibrary(lib: LibraryConfig, onProgress?: (p: ScanProgr
     const sueltos = videoFiles(todo).filter(pedida);
     for (let inicio = 0; inicio < sueltos.length; inicio += LOTE) {
       const lote = sueltos.slice(inicio, inicio + LOTE);
-      db.exec('BEGIN');
-      try {
-        for (const video of lote) count += scanMovieFolder(row.id, lib.path, todo, now, video);
-        db.exec('COMMIT');
-      } catch (err) {
-        db.exec('ROLLBACK');
-        throw err;
+      for (const video of lote) {
+        db.exec('BEGIN');
+        try {
+          count += scanMovieFolder(row.id, lib.path, todo, now, video);
+          db.exec('COMMIT');
+        } catch (err) {
+          db.exec('ROLLBACK');
+          throw err;
+        }
       }
       if (inicio + LOTE < sueltos.length) await cederElHilo();
     }
@@ -913,8 +940,8 @@ export async function scanLibrary(lib: LibraryConfig, onProgress?: (p: ScanProgr
  *  without paying for a full library pass. */
 export function rescanItem(itemId: number): boolean {
   const row = db
-    .prepare('SELECT i.folder, i.library_id, l.kind FROM items i JOIN libraries l ON l.id = i.library_id WHERE i.id = ?')
-    .get(itemId) as { folder: string; library_id: number; kind: LibraryConfig['kind'] } | undefined;
+    .prepare('SELECT i.folder, i.library_id, i.kind AS item_kind, l.kind AS lib_kind, l.entrada FROM items i JOIN libraries l ON l.id = i.library_id WHERE i.id = ?')
+    .get(itemId) as { folder: string; library_id: number; item_kind: LibraryConfig['kind']; lib_kind: LibraryConfig['kind']; entrada: number } | undefined;
   if (!row) return false;
 
   const now = new Date().toISOString();
@@ -931,7 +958,8 @@ export function rescanItem(itemId: number): boolean {
   if (esFichero && !suelto) return false;
   db.exec('BEGIN');
   try {
-    const count = row.kind === 'movie'
+    const esShow = row.item_kind === 'show' || row.lib_kind === 'show' || (row.entrada === 1 && !esFichero && esCarpetaDeSerie(files));
+    const count = !esShow
       ? scanMovieFolder(row.library_id, dir, files, now, suelto)
       : scanShowFolder(row.library_id, dir, files, now);
     db.exec('COMMIT');

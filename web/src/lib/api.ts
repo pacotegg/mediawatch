@@ -122,6 +122,8 @@ export type ItemDetail = ItemSummary & {
   progress: { episode_id: number | null; position: number; duration: number | null; watched: number }[];
   /** 1 si el perfil actual lo tiene en favoritos. */
   favorite: number;
+  /** 1 si el perfil actual lo tiene en ver más tarde. */
+  watchlist?: number;
   /** Nota de cada sitio con su escala: IMDb y TMDb sobre 10, los tomatómetros sobre 100. */
   ratings?: { fuente: string; etiqueta: string; valor: number; maximo: number; votos: number }[];
   nextUp?: { id: number; season: number; episode: number; title: string | null; position?: number };
@@ -378,6 +380,8 @@ export const api = {
     post<{ ok: true }>(`/api/items/${itemId}/watched`, { watched, episodeId }),
   favorite: (itemId: number, favorite: boolean) => post<{ ok: true }>(`/api/items/${itemId}/favorite`, { favorite }),
   favorites: () => request<ItemSummary[]>('/api/favorites'),
+  watchlistToggle: (itemId: number, watchlist: boolean) => post<{ ok: true; watchlist: boolean }>(`/api/items/${itemId}/watchlist`, { watchlist }),
+  watchlist: () => request<ItemSummary[]>('/api/watchlist'),
   scan: (ruta?: string) => (ruta ? post<{ started: boolean }>('/api/scan', { ruta }) : post<{ started: boolean }>('/api/scan')),
   /** Cómo va el escaneo y cómo acabó el último; `cambios` desde el 29/10/2026 (lo que entró y salió). */
   scanEstado: () => request<{
@@ -449,6 +453,9 @@ export const api = {
     request<{ pasos: { tipo: 'fichero' | 'carpeta'; desde: string; final: string }[] }>('/api/scraper/organizar/' + id + '?' + new URLSearchParams({ edicion })),
   scraperOrganizarAplicar: (id: number, edicion: string) => post<{ movidos: number }>('/api/scraper/organizar/' + id, { confirmar: true, edicion }),
   scraperNuevos: () => request<ScraperNuevos>('/api/scraper/nuevos'),
+  scraperNuevosLimpiar: () => post<{ ok: boolean }>('/api/scraper/nuevos/limpiar', {}),
+  scraperCambiarTipo: (itemId: number, kind: 'movie' | 'show') =>
+    post<{ ok: boolean; itemId: number; kind: 'movie' | 'show' }>('/api/scraper/cambiar-tipo', { itemId, kind }),
   scraperNuevosLista: (p: { biblioteca: string; q: string; todos: boolean }) =>
     request<{ items: Candidato[]; sinRegistrar: { carpeta: string; ruta: string; tipo: 'carpeta' | 'video'; biblioteca: string }[]; fuentes: { name: string; ruta: string; kind: 'movie' | 'show'; pendientes: number; entrada: boolean }[] }>('/api/scraper/nuevos/lista?' + new URLSearchParams({ biblioteca: p.biblioteca, q: p.q, todos: p.todos ? '1' : '0' })),
   scraperNuevosBuscar: (ids: number[], rutas: string[]) => post<{ started: boolean }>('/api/scraper/nuevos/buscar', { ids, rutas }),
@@ -507,6 +514,9 @@ export const api = {
   afinarCreditosPeliculas: () => post<{ started: boolean; total: number }>('/api/skip/peliculas/afinar', {}),
   pararAfinadoCreditos: () => post<{ parando: boolean }>('/api/skip/peliculas/afinar/parar', {}),
   deshacerAfinadoCreditos: () => post<{ vueltas: number }>('/api/skip/peliculas/afinar/deshacer', {}),
+  introdbStatus: () => request<{ job: IntroDBJob }>('/api/skip/introdb'),
+  sincronizarIntroDB: (todas = false) => post<{ started: boolean; total: number }>('/api/skip/introdb/sincronizar', { todas }),
+  pararIntroDB: () => post<{ parando: boolean }>('/api/skip/introdb/parar', {}),
 
   searchDialogue: (q: string) =>
     request<{ hits: DialogueHit[]; stats: DialogueStats; error?: string }>(`/api/search/dialogue?q=${encodeURIComponent(q)}`),
@@ -524,6 +534,19 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tipo }),
     }),
+  actualizarExtra: (id: number, data: { tipo?: string; titulo?: string }) =>
+    request<{ ok: boolean }>(`/api/extras/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+  identificarExtras: (itemId: number) =>
+    post<{ identificados: number; total: number; detalles: any[] }>(`/api/items/${itemId}/extras/identificar`, {}),
+  identificarExtrasBiblioteca: () =>
+    post<{ totalGenericos: number; identificados: number; itemsProcesados: number; detalles: any[] }>(
+      '/api/mantenimiento/extras/identificar',
+      {},
+    ),
 
   collections: () => request<CollectionSummary[]>('/api/collections'),
   /** Editar a mano los datos de un título (solo administrador). Solo cambia la base de datos; se deshace con `scraperDeshacer`. */
@@ -683,6 +706,19 @@ export type SkipJob = {
   season: number | null;
   kind: string;
   found: number;
+  error: string | null;
+  finishedAt: string | null;
+};
+
+export type IntroDBJob = {
+  running: boolean;
+  total: number;
+  hechos: number;
+  encontrados: number;
+  descartados: number;
+  actual: string;
+  parando: boolean;
+  esperando: boolean;
   error: string | null;
   finishedAt: string | null;
 };

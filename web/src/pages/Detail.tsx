@@ -416,6 +416,7 @@ export default function Detail() {
   const refrescar = () => {
     queryClient.invalidateQueries({ queryKey: ['item', itemId] });
     queryClient.invalidateQueries({ queryKey: ['favorites'] });
+    queryClient.invalidateQueries({ queryKey: ['watchlist'] });
     queryClient.invalidateQueries({ queryKey: ['home'] });
   };
 
@@ -424,6 +425,16 @@ export default function Detail() {
     onMutate: (next) => {
       queryClient.setQueryData(['item', itemId], (previo: ItemDetail | undefined) =>
         previo ? { ...previo, favorite: next ? 1 : 0 } : previo,
+      );
+    },
+    onSettled: refrescar,
+  });
+
+  const watchlistMutation = useMutation({
+    mutationFn: (next: boolean) => api.watchlistToggle(itemId, next),
+    onMutate: (next) => {
+      queryClient.setQueryData(['item', itemId], (previo: ItemDetail | undefined) =>
+        previo ? { ...previo, watchlist: next ? 1 : 0 } : previo,
       );
     },
     onSettled: refrescar,
@@ -486,6 +497,7 @@ export default function Detail() {
   const es4kItem = item.files.some((f) => (f.height ?? 0) >= 1400 || (f.width ?? 0) >= 3000);
   const movieProgress = item.progress.find((p) => p.episode_id === null);
   const esFavorita = item.favorite === 1;
+  const enWatchlist = item.watchlist === 1;
   const estaVista = movieProgress?.watched === 1;
   const resumeAt = prefs.playback.resume && movieProgress && !movieProgress.watched ? movieProgress.position : 0;
   const nextEp = item.nextUp;
@@ -800,6 +812,17 @@ export default function Detail() {
                   <path d="M12 21s-7.5-4.7-9.3-9A5.3 5.3 0 0 1 12 6.5 5.3 5.3 0 0 1 21.3 12c-1.8 4.3-9.3 9-9.3 9Z" strokeLinejoin="round" />
                 </svg>
                 <span>{esFavorita ? 'Favorita' : 'Favoritos'}</span>
+              </button>
+
+              <button
+                onClick={() => watchlistMutation.mutate(!enWatchlist)}
+                title={enWatchlist ? 'Quitar de ver más tarde' : 'Añadir a ver más tarde'}
+                className={`glass flex items-center gap-1.5 rounded-full px-4 py-2.5 text-sm transition-transform duration-200 hover:scale-105 active:scale-95 ${enWatchlist ? 'text-amber-400' : ''}`}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill={enWatchlist ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
+                  <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" strokeLinejoin="round" />
+                </svg>
+                <span>{enWatchlist ? 'Guardado' : 'Ver más tarde'}</span>
               </button>
 
               {me?.is_admin === 1 && (

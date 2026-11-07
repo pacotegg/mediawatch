@@ -191,6 +191,8 @@ export type Ficha = Titulo & {
   progress: { episode_id: number | null; position: number; duration: number | null; watched: number }[];
   /** 1 si el perfil actual lo tiene en favoritos. */
   favorite: number;
+  /** 1 si el perfil actual lo tiene en ver más tarde. */
+  watchlist?: number;
   extras_count?: number;
   /** Valoración de cada sitio, cada una con su escala (10 o 100). */
   ratings?: { fuente: string; etiqueta: string; valor: number; maximo: number; votos: number }[];
@@ -386,9 +388,15 @@ export const api = {
       '/api/plataformas/' + clave + '/catalogo?kind=' + kind + '&orden=' + orden + '&pagina=' + pagina,
     ),
   favoritos: () => pedir<Titulo[]>('/api/favorites'),
+  watchlist: () => pedir<Titulo[]>('/api/watchlist'),
   borrar: (itemId: number, confirmar: string) =>
     pedir<{ borrado: true; titulo: string; ficheros: number }>('/api/items/' + itemId, { method: 'DELETE', body: JSON.stringify({ confirmar }) }),
   escanear: () => pedir<{ started: boolean; reason?: string }>('/api/scan', { method: 'POST' }),
+  identificarExtras: () =>
+    pedir<{ totalGenericos: number; identificados: number; itemsProcesados: number }>('/api/mantenimiento/extras/identificar', {
+      method: 'POST',
+      body: '{}',
+    }),
   detectarCabeceras: () => pedir<{ started: boolean; total: number }>('/api/skip/detect-todo', { method: 'POST', body: '{}' }),
   pararCabeceras: () => pedir<{ parando: boolean }>('/api/skip/parar', { method: 'POST', body: '{}' }),
   miniaturas: (todo = false) => pedir<{ started: boolean; total: number }>('/api/trickplay/lote', { method: 'POST', body: JSON.stringify({ todo }) }),
@@ -446,6 +454,13 @@ export const api = {
     pedir<{ ok: true }>('/api/items/' + itemId + '/watched', { method: 'POST', body: JSON.stringify({ watched: vista, episodeId: episodeId || null }) }),
   favorito: (itemId: number, favorito: boolean) =>
     pedir<{ ok: true }>('/api/items/' + itemId + '/favorite', { method: 'POST', body: JSON.stringify({ favorite: favorito }) }),
+  watchlistToggle: (itemId: number, enWatchlist: boolean) =>
+    pedir<{ ok: true; watchlist: boolean }>('/api/items/' + itemId + '/watchlist', { method: 'POST', body: JSON.stringify({ watchlist: enWatchlist }) }),
+  marcarTramo: (fileId: number, tipo: string, segundo: number) =>
+    pedir<{ ok: boolean; tramo?: unknown; pelicula?: unknown }>('/api/skip/marcar', {
+      method: 'POST',
+      body: JSON.stringify({ fileId, tipo, segundo }),
+    }),
   /** Con `perfil`, el servidor marca que pistas puede decodificar esta tele. */
   pistas: (fileId: number) =>
     pedir<InfoReproduccion>('/api/play/' + fileId + '/info?perfil=' + perfilReproduccion() + '&resumen=1'),

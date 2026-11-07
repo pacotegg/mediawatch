@@ -5,6 +5,7 @@ import { promisify } from 'node:util';
 import type { Capitulo } from './probe.ts';
 import { ROOT, config } from '../config.ts';
 import { db } from '../db.ts';
+import { fusionarNombresConTiemposLocales, obtenerCapitulosBd, sonCapitulosGenericos } from './chapterdb.ts';
 import { creditosDePelicula, type RangoCreditos } from './creditos-pelicula.ts';
 import { esperarSiHayAlguienViendo, hayAlguienViendo } from './ocupado.ts';
 import { mediaInfo } from './probe.ts';
@@ -35,15 +36,17 @@ type Tramo = { start_s: number; end_s: number };
 
 /** Rangos guardados por el detector; null si esta película aún no se ha mirado. */
 function rangosDetectados(itemId: number): RangoCreditos[] | null {
-  const fila = db.prepare('SELECT rangos FROM pelicula_creditos WHERE item_id = ?').get(itemId) as { rangos: string } | undefined;
+  const fila = db.prepare('SELECT rangos, metodo FROM pelicula_creditos WHERE item_id = ?').get(itemId) as { rangos: string; metodo?: string } | undefined;
   if (!fila) return null;
+  const conf = fila.metodo === 'manual' ? 100 : fila.metodo === 'introdb' ? 85 : fila.metodo === 'capitulo' ? 95 : fila.metodo === 'ultimo-capitulo' ? 70 : 80;
+  const source = (fila.metodo === 'manual' ? 'manual' : fila.metodo === 'capitulo' ? 'capitulo' : fila.metodo === 'ultimo-capitulo' ? 'ultimo-capitulo' : 'texto-sube') as RangoCreditos['source'];
   try {
     return (JSON.parse(fila.rangos) as Tramo[]).map((r) => ({
       kind: 'credits',
       start_s: r.start_s,
       end_s: r.end_s,
-      confidence: 80,
-      source: 'texto-sube',
+      confidence: conf,
+      source,
     }));
   } catch {
     return null;
@@ -126,10 +129,24 @@ const guardar = () =>
 async function analizarUna(p: Pendiente): Promise<void> {
   if (!existsSync(p.path)) return;
   const info = await mediaInfo(p.fileId);
-  const porCapitulo = creditosDePelicula(info.chapters, info.duration);
+  const capitulosBd = obtenerCapitulosBd(p.itemId);
+  const capitulosFinales = capitulosBd.length > 0 && (info.chapters.length === 0 || sonCapitulosGenericos(info.chapters))
+    ? (info.chapters.length > 0 ? fusionarNombresConTiemposLocales(info.chapters, capitulosBd) : capitulosBd)
+    : info.chapters;
+  const porCapitulo = creditosDePelicula(capitulosFinales, info.duration);
 
-  // Con un capítulo de créditos con nombre no hace falta mirar el vídeo.
-  if (porCapitulo.length && porCapitulo[0].source === 'capitulo') return;
+  // Con un capítulo de créditos con nombre se guarda directamente sin mirar el vídeo.
+  if (porCapitulo.length && porCapitulo[0].source === 'capitulo') {
+    guardar().run(
+      p.itemId,
+      JSON.stringify([{ start_s: porCapitulo[0].start_s, end_s: porCapitulo[0].end_s }]),
+      '[]',
+      'capitulo',
+      new Date().toISOString()
+    );
+    jobPeliculas.conCreditos++;
+    return;
+  }
 
   // Con un último capítulo genérico, los créditos están ahí dentro: se acota.
   const args = [SCRIPT, '--ffmpeg', config.ffmpeg, '--fichero', p.path, '--duracion', String(info.duration)];
@@ -165,6 +182,20 @@ async function analizarUna(p: Pendiente): Promise<void> {
   const r = JSON.parse(stdout.trim().split('\n').pop() ?? '{}') as { rangos?: Tramo[]; escenas?: Tramo[] };
   const rangos = r.rangos ?? [];
   const escenas = r.escenas ?? [];
+
+  // Si el detector no vio texto pero hay un último capítulo genérico verosímil, usarlo de fallback
+  if (!rangos.length && porCapitulo.length && porCapitulo[0].source === 'ultimo-capitulo') {
+    guardar().run(
+      p.itemId,
+      JSON.stringify([{ start_s: porCapitulo[0].start_s, end_s: porCapitulo[0].end_s }]),
+      '[]',
+      'ultimo-capitulo',
+      new Date().toISOString()
+    );
+    jobPeliculas.conCreditos++;
+    return;
+  }
+
   // Cadena '[]' y no vacía: «ya mirada y sin nada» no debe volver a analizarse.
   guardar().run(p.itemId, JSON.stringify(rangos), JSON.stringify(escenas), 'texto-sube', new Date().toISOString());
   if (rangos.length) jobPeliculas.conCreditos++;

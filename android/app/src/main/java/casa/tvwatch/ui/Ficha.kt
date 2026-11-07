@@ -144,6 +144,7 @@ fun PantallaFicha(
    * aplicación parezca lenta aunque tarde 30 ms; si falla, se deshace.
    */
   var esFavorita by remember(itemId) { mutableStateOf(false) }
+  var enWatchlist by remember(itemId) { mutableStateOf(false) }
   var estaVista by remember(itemId) { mutableStateOf(false) }
   // Los extras se piden aparte para no retrasar la ficha, que es lo que se mira.
   var extras by remember(itemId) { mutableStateOf<List<Extra>>(emptyList()) }
@@ -194,6 +195,7 @@ fun PantallaFicha(
       val traida = withContext(Dispatchers.IO) { Api.ficha(itemId) }
       ficha = traida
       esFavorita = traida.favorite == 1
+      enWatchlist = traida.watchlist == 1
       estaVista = traida.progress.firstOrNull { it.episodioId == null }?.watched == 1
     } catch (e: Api.SinSesion) {
       alPerderSesion()
@@ -599,6 +601,18 @@ fun PantallaFicha(
                 Cache.olvidarFicha(itemId)
               } catch (e: Exception) {
                 esFavorita = !nuevo
+              }
+            }
+          }
+          BotonIcono(if (enWatchlist) "En ver más tarde" else "Ver más tarde", if (enWatchlist) "marcadorSi" else "marcador", activo = enWatchlist) {
+            val nuevo = !enWatchlist
+            enWatchlist = nuevo
+            ambito.launch {
+              try {
+                withContext(Dispatchers.IO) { Api.watchlist(itemId, nuevo) }
+                Cache.olvidarFicha(itemId)
+              } catch (e: Exception) {
+                enWatchlist = !nuevo
               }
             }
           }

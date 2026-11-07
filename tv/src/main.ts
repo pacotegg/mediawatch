@@ -70,6 +70,7 @@ const ICONOS: Record<string, string> = {
   buscar: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14ZM20 20l-3.5-3.5',
   saga: 'M4 6h10M4 12h16M4 18h13',
   favorito: 'M12 20.5s-7-4.4-8.7-8.4A5 5 0 0 1 12 6.8a5 5 0 0 1 8.7 5.3C19 16.1 12 20.5 12 20.5Z',
+  marcador: 'M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z',
   pelicula: 'M3 5.5h18v13H3zM3 9.5h18M8 5.5v4M16 5.5v4',
   serie: 'M4 8h16v11H4zM9 4l3 4 3-4',
   ajustes: 'M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7M4 12h2M18 12h2M12 4v2M12 18v2',
@@ -117,6 +118,8 @@ const ACCIONES: Record<string, string> = {
   vistaSi: '<circle cx="12" cy="12" r="9.2" fill="currentColor" stroke="none"/><path class="contraste" d="M8.3 12.4l2.6 2.6 5-5.4" stroke-width="2.6"/>',
   favorito: '<path d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/>',
   favoritoSi: '<path d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z" fill="currentColor"/>',
+  marcador: '<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>',
+  marcadorSi: '<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" fill="currentColor"/>',
   metadatos: '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>',
   eliminar: '<path d="M4.5 7h15M9.5 7V4.6h5V7M6.6 7l.9 12.4h9l.9-12.4M10.2 10.8v5.4M13.8 10.8v5.4"/>',
 };
@@ -213,6 +216,7 @@ function destinosBase(): Destino[] {
     { clave: 'inicio', etiqueta: t('home'), icono: 'inicio', ir: () => void pantallaPortada() },
     { clave: 'buscar', etiqueta: t('search'), icono: 'buscar', ir: () => pantallaBuscar() },
     { clave: 'favoritos', etiqueta: tr('Favoritos', 'Favorites'), icono: 'favorito', ir: () => void pantallaFavoritos() },
+    { clave: 'watchlist', etiqueta: tr('Ver más tarde', 'Watchlist'), icono: 'marcador', ir: () => void pantallaWatchlist() },
     { clave: 'sagas', etiqueta: tr('Sagas', 'Collections'), icono: 'saga', ir: () => void pantallaSagas() },
     { clave: 'plataformas', etiqueta: tr('Plataformas', 'Streaming'), icono: 'plataformas', ir: () => void pantallaPlataformas() },
   ];
@@ -1543,6 +1547,29 @@ function pantallaMisPlataformas(todas: { clave: string; nombre: string; mia?: bo
   alPulsar((tecla) => (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE ? atrasHaciaMenu() : false));
 }
 
+
+async function pantallaWatchlist() {
+  entrarEn('watchlist', () => void pantallaWatchlist());
+  const turno = turnoPantalla;
+  pintar('watchlist', '<div class="vacio">Cargando…</div>');
+  try {
+    const items = await api.watchlist();
+    if (turno !== turnoPantalla) return;
+    pantallaRejilla('watchlist', tr('Ver más tarde', 'Watchlist'), items.length + ' títulos', items);
+  } catch (e) {
+    if (turno !== turnoPantalla) return;
+    pintar('watchlist', '<div class="vacio">' + tr('No se pudo cargar la lista.', 'Could not load watchlist.') +
+      '<div class="acciones" data-bloque><button class="boton" data-nav data-reintentar>' + tr('Reintentar', 'Retry') + '</button>' +
+      '<button class="boton" data-nav data-inicio>' + tr('Ir al inicio', 'Go to home') + '</button></div></div>');
+    const rein = marco.querySelector<HTMLElement>('[data-reintentar]');
+    if (rein) rein.addEventListener('click', () => void pantallaWatchlist());
+    const ini = marco.querySelector<HTMLElement>('[data-inicio]');
+    if (ini) ini.addEventListener('click', () => void pantallaPortada());
+    enfocar(rein);
+    alPulsar((tecla) => (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE ? atrasHaciaMenu() : false));
+  }
+}
+
 async function pantallaFavoritos() {
   entrarEn('favoritos', () => void pantallaFavoritos());
   const turno = turnoPantalla;
@@ -1994,40 +2021,45 @@ async function pintarLogosEstudio(id: number, caja: HTMLElement) {
     // tope, el ajuste por `sitio`/`k` de más abajo sigue encogiendo solo si de verdad no cabe.
     // Muy alargados (4:1 o más, p. ej. el texto de DreamWorks Pictures, 11:1): fila propia y casi todo el ancho.
     const ancho = (img: HTMLImageElement) => (img.naturalWidth / img.naturalHeight || 1) >= 4;
-    const anchoCaja = imgs.length >= 3 || (!solo && imgs.some(ancho)) ? 640 : imgs.length === 2 ? 460 : 280;
+    // Ancho generoso aprovechando el espacio libre hacia la izquierda sin pisar la sinopsis:
+    const anchoCaja = imgs.length === 1 ? 280 : imgs.length === 2 ? 560 : imgs.length <= 4 ? Math.min(960, imgs.length * 240) : 920;
     caja.style.width = anchoCaja + 'px';
-    const huecoCol = 28;
-    const colW = (anchoCaja - huecoCol) / 2;
-    const area = solo ? AREA_LOGO : 16500;
-    const maxW = solo ? 280 : colW, maxH = solo ? 95 : 128;
+    const huecoCol = 32;
+    // Hasta 4 logos entran en 1 sola fila horizontal; con 5 o más, en 2 filas equilibradas (3 arriba, resto abajo)
+    const cols = solo ? 1 : imgs.length <= 4 ? imgs.length : 3;
+    const colW = (anchoCaja - huecoCol * (cols - 1)) / cols;
+    const area = solo ? AREA_LOGO : 18000;
+    const maxW = solo ? 280 : colW, maxH = solo ? 95 : 110;
     const tam = imgs.map((img) => {
       const r = img.naturalWidth / img.naturalHeight || 1;
       const largo = !solo && ancho(img);
-      const mW = largo ? anchoCaja * 0.92 : maxW;
-      let w = Math.sqrt((largo ? 22000 : area) * r);
+      const mW = largo ? Math.min(anchoCaja * 0.9, 480) : maxW;
+      let w = Math.sqrt((largo ? 24000 : area) * r);
       let h = w / r;
       if (w > mW) { w = mW; h = w / r; }
       if (h > maxH) { h = maxH; w = h * r; }
       return { w: w, h: h };
     });
-    const hueco = 22;
+    const hueco = 20;
     const filas: number[][] = [];
-    let suelto = -1;
-    imgs.forEach((img, i) => {
-      if (!solo && ancho(img)) { filas.push([i]); return; }
-      if (suelto < 0) { suelto = i; return; }
-      filas.push([suelto, i]);
-      suelto = -1;
-    });
-    if (suelto >= 0) filas.push([suelto]);
+    if (solo) {
+      filas.push([0]);
+    } else if (imgs.length <= 4) {
+      // Todos en 1 fila horizontal para que no salgan unos encima de otros habiendo espacio
+      filas.push(imgs.map((_, i) => i));
+    } else {
+      // 5 o más: 2 filas equilibradas (primera fila de 3, segunda con los restantes)
+      filas.push([0, 1, 2]);
+      const f2: number[] = [];
+      for (let i = 3; i < imgs.length; i++) f2.push(i);
+      filas.push(f2);
+    }
     const altoFila = filas.map((f) => Math.max.apply(null, f.map((i) => tam[i].h)));
     const alto = altoFila.reduce((s, h) => s + h, 0) + hueco * (filas.length - 1);
-    // El hueco hasta el Reparto cambia de ficha en ficha (medido el 19/10/2026: empieza entre y=733 y y=857 según las líneas
-    // de sinopsis y de etiquetas); con un límite fijo, los logos tapaban la fila del reparto en varias.
     const reparto = marco.querySelector<HTMLElement>('.reparto');
     const limite = reparto ? reparto.getBoundingClientRect().top - 14 : FONDO_LOGOS;
     const sitio = limite - caja.getBoundingClientRect().top - rotulo.offsetHeight - 12;
-    const k = alto > sitio ? Math.max(0.4, (sitio - hueco * (filas.length - 1)) / (alto - hueco * (filas.length - 1))) : 1;
+    const k = alto > sitio ? Math.max(0.65, (sitio - hueco * (filas.length - 1)) / (alto - hueco * (filas.length - 1))) : 1;
     filas.forEach((f, n) => {
       const fila = document.createElement('div');
       fila.className = 'fila-logos-estudio';
@@ -2171,6 +2203,7 @@ function formatoAspecto(ancho?: number | null, alto?: number | null): string {
 
   const vista = progreso && progreso.watched === 1;
   let esFavorita = ficha.favorite === 1;
+  let enWatchlist = Boolean(ficha.watchlist);
   let acciones = '';
   // Reproducir es el único con texto: es a lo que se viene. El resto, iconos
   // con su nombre al enfocarlos (ver botonIcono).
@@ -2194,6 +2227,7 @@ function formatoAspecto(ancho?: number | null, alto?: number | null): string {
   acciones +=
     botonIcono('data-vista', vista ? 'vistaSi' : 'vista', vista ? 'Vista · quitar' : 'Marcar vista', vista ? ' activo' : '') +
     botonIcono('data-favorito', esFavorita ? 'favoritoSi' : 'favorito', esFavorita ? 'Quitar de favoritos' : 'Añadir a favoritos', esFavorita ? ' activo' : '') +
+    botonIcono('data-watchlist', enWatchlist ? 'marcadorSi' : 'marcador', enWatchlist ? 'Quitar de ver más tarde' : 'Ver más tarde', enWatchlist ? ' activo' : '') +
     (soyAdmin ? botonIcono('data-editar', 'metadatos', 'Editar metadatos / Arte') : '') +
     (soyAdmin ? botonIcono('data-borrar', 'eliminar', 'Eliminar', ' peligro') : '');
 
@@ -2473,6 +2507,23 @@ function formatoAspecto(ancho?: number | null, alto?: number | null): string {
           bFav.innerHTML = iconoAccion(esFavorita ? 'favoritoSi' : 'favorito') + '<span class="rotulo">' + rotulo + '</span>';
           bFav.setAttribute('aria-label', rotulo);
           avisoRapido(esFavorita ? 'Añadida a favoritos' : 'Quitada de favoritos');
+        })
+        .catch(() => aviso('No se pudo guardar'));
+    });
+  }
+
+  const bWatch = marco.querySelector<HTMLElement>('[data-watchlist]');
+  if (bWatch) {
+    bWatch.addEventListener('click', () => {
+      api
+        .watchlistToggle(ficha.id, !enWatchlist)
+        .then(() => {
+          enWatchlist = !enWatchlist;
+          bWatch.classList.toggle('activo', enWatchlist);
+          const rotulo = enWatchlist ? 'Quitar de ver más tarde' : 'Ver más tarde';
+          bWatch.innerHTML = iconoAccion(enWatchlist ? 'marcadorSi' : 'marcador') + '<span class="rotulo">' + rotulo + '</span>';
+          bWatch.setAttribute('aria-label', rotulo);
+          avisoRapido(enWatchlist ? 'Añadida a ver más tarde' : 'Quitada de ver más tarde');
         })
         .catch(() => aviso('No se pudo guardar'));
     });
@@ -4664,6 +4715,8 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
 
   let enBotones = false;
   let iBoton = 1;
+  let minutosApagado = 0;
+  let timerApagado = 0;
   let ocultarEn = 0;
   let ultimoGuardado = 0;
   let destinoSalto: number | null = null;
@@ -4789,6 +4842,14 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     }
     // En series, pasar al siguiente sin esperar a que acabe (con la misma cuenta atrás de siempre).
     if (siguienteEpisodio()) lista.push({ accion: 'siguiente', texto: tr('Siguiente episodio', 'Next episode') });
+    const esSerie = episodeId !== null;
+    const skips = infoServidor?.skip || [];
+    const introCompleta = skips.some((s) => s.kind === 'intro' && s.confidence >= 100);
+    const creditosCompletos = skips.some((s) => s.kind === 'credits' && s.confidence >= 100);
+    const todoAl100 = esSerie ? (introCompleta && creditosCompletos) : creditosCompletos;
+    if (soyAdmin && !todoAl100) lista.push({ accion: 'marcar', texto: tr('Marcar tramo', 'Set markers') });
+    const txtDormir = minutosApagado > 0 ? tr('Dormir: ' + minutosApagado + 'm', 'Sleep: ' + minutosApagado + 'm') : tr('Temporizador', 'Sleep timer');
+    lista.push({ accion: 'dormir', texto: txtDormir });
     lista.push({ accion: 'info', texto: tr('Información', 'Info') });
 
     cajaBotones.innerHTML = lista
@@ -4938,8 +4999,6 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
   const cerrarWatchNext = () => {
     window.clearInterval(temporizadorWatchNext);
     temporizadorWatchNext = 0;
-    lienzo.classList.remove('creditos-reducido');
-    reproductor.encuadrar(null);
     tarjetaWatchNext.classList.remove('visible');
     tarjetaWatchNext.innerHTML = '';
   };
@@ -4957,9 +5016,6 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     if (watchNextCancelado || temporizadorWatchNext) return;
     cuentaAtrasWatchNext = 12;
     watchNextFocoPrimario = true;
-    lienzo.classList.add('creditos-reducido');
-    // El mismo rectángulo que deja `.creditos-reducido` (app.css): 1920x1080 a escala 0,56 y desplazado (-380, -170).
-    reproductor.encuadrar({ x: 42, y: 68, w: 1075, h: 605 });
     tarjetaWatchNext.classList.add('visible');
     const tieneFoto = Boolean(sig.has_thumb);
     const urlFoto = tieneFoto ? imagen.episodio(sig.id, 480) : '';
@@ -4973,14 +5029,15 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
           '</div>'
         : '') +
       '<div class="watch-next-info">' +
-      '<div class="watch-next-etiqueta">SIGUIENTE EPISODIO</div>' +
+      '<div class="watch-next-etiqueta"><span class="watch-next-pulso"></span>SIGUIENTE EPISODIO</div>' +
       '<div class="watch-next-titulo">' + esc(sig.title || 'Episodio ' + sig.episode) + '</div>' +
       '<div class="watch-next-sub">Temporada ' + sig.season + ' · Episodio ' + sig.episode + '</div>' +
       (sig.plot ? '<div class="watch-next-sinopsis">' + esc(sig.plot) + '</div>' : '') +
       '</div>' +
       '</div>' +
+      '<div class="watch-next-barra-progreso"><div class="watch-next-progreso-fill"></div></div>' +
       '<div class="watch-next-botones">' +
-      '<button class="boton-watch-next primario enfocado" data-wn-ver>Ver ahora (<span data-wn-cuenta>' + cuentaAtrasWatchNext + '</span>s)</button>' +
+      '<button class="boton-watch-next primario enfocado" data-wn-ver>Reproducir ahora (<span data-wn-cuenta>' + cuentaAtrasWatchNext + '</span>s)</button>' +
       '<button class="boton-watch-next secundario" data-wn-cred>Ver créditos</button>' +
       '</div>';
 
@@ -6031,6 +6088,101 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     });
   };
 
+
+  /** Temporizador de apagado para quedarse dormido viendo la tele. */
+  const menuTemporizadorDormir = () => {
+    const opciones: OpcionLista[] = [
+      { valor: 0, texto: tr('Desactivado', 'Off') },
+      { valor: 15, texto: '15 ' + tr('minutos', 'minutes') },
+      { valor: 30, texto: '30 ' + tr('minutos', 'minutes') },
+      { valor: 45, texto: '45 ' + tr('minutos', 'minutes') },
+      { valor: 60, texto: '60 ' + tr('minutos', 'minutes') },
+      { valor: 90, texto: '90 ' + tr('minutos', 'minutes') },
+      { valor: -1, texto: tr('Al terminar este vídeo', 'At end of this video') },
+    ];
+
+    menuLista(tr('Temporizador de apagado', 'Sleep timer'), opciones, minutosApagado, (val: number) => {
+      window.clearTimeout(timerApagado);
+      minutosApagado = val;
+      if (val === 0) {
+        avisoRapido(tr('Temporizador desactivado', 'Sleep timer disabled'));
+      } else if (val === -1) {
+        avisoRapido(tr('Se apagará al terminar la reproducción', 'Will stop at end of video'));
+      } else {
+        avisoRapido(tr('Apagado en ' + val + ' minutos', 'Sleep in ' + val + ' minutes'));
+        timerApagado = window.setTimeout(() => {
+          aviso(tr('Temporizador de apagado: pausando reproducción', 'Sleep timer: pausing playback'));
+          reproductor.pausar();
+        }, val * 60 * 1000);
+      }
+      construirBotones();
+    }, () => alPulsar(manejarTeclas));
+  };
+
+  /** Menú de marcado rápido de tramos (cabecera, créditos y post-créditos); solo administrador. */
+  const menuMarcarTramos = () => {
+    const ahora = Math.round(reproductor.tiempo());
+    const tiempoTxt = reloj(ahora);
+    const esSerie = episodeId !== null;
+    const skips = infoServidor?.skip || [];
+    const introCompleta = skips.some((s) => s.kind === 'intro' && s.confidence >= 100);
+    const creditosCompletos = skips.some((s) => s.kind === 'credits' && s.confidence >= 100);
+
+    const opciones: OpcionLista[] = [];
+    const TIPOS_MAP: Record<number, string> = {
+      1: 'intro_inicio',
+      2: 'intro_fin',
+      3: 'creditos_inicio',
+      4: 'creditos_fin',
+      5: 'post_creditos',
+      6: 'borrar',
+    };
+
+    if (esSerie && !introCompleta) {
+      opciones.push({ valor: 1, texto: 'Marcar inicio de cabecera', nota: 'en ' + tiempoTxt });
+      opciones.push({ valor: 2, texto: 'Marcar fin de cabecera', nota: 'en ' + tiempoTxt });
+    }
+    if (!creditosCompletos) {
+      opciones.push({ valor: 3, texto: 'Marcar inicio de créditos', nota: 'en ' + tiempoTxt });
+      opciones.push({ valor: 4, texto: 'Marcar fin de créditos', nota: 'en ' + tiempoTxt });
+    }
+    opciones.push({ valor: 5, texto: 'Marcar escena post-créditos', nota: 'en ' + tiempoTxt });
+    if (skips.length > 0) {
+      opciones.push({ valor: 6, texto: 'Borrar marcas de este título', nota: 'eliminar saltos guardados' });
+    }
+
+    if (opciones.length === 0) {
+      aviso('Este título ya tiene todos sus tramos confirmados al 100 %');
+      return;
+    }
+
+    menuLista('Marcar saltos (Administrador)', opciones, -1, async (val: number) => {
+      const tipo = TIPOS_MAP[val];
+      if (!tipo) return;
+      try {
+        const res = await api.marcarTramo(fileId, tipo, ahora);
+        if (res && res.ok) {
+          const nombre = tipo === 'intro_inicio' ? 'Inicio de cabecera'
+            : tipo === 'intro_fin' ? 'Fin de cabecera'
+            : tipo === 'creditos_inicio' ? 'Inicio de créditos'
+            : tipo === 'creditos_fin' ? 'Fin de créditos'
+            : tipo === 'post_creditos' ? 'Escena post-créditos' : 'Marcas';
+          aviso(tipo === 'borrar' ? 'Marcas eliminadas' : nombre + ' fijado en ' + tiempoTxt);
+          api.pistas(fileId).then((p) => {
+            if (p) {
+              infoServidor = p;
+              construirBotones();
+            }
+          }).catch(() => undefined);
+        } else {
+          aviso('No se pudo guardar la marca');
+        }
+      } catch (e) {
+        aviso('Error al marcar: ' + (e as Error).message);
+      }
+    }, () => alPulsar(manejarTeclas));
+  };
+
   /* -------------------------------------------------------------- teclado */
 
   const accionar = (accion: string | null) => {
@@ -6048,6 +6200,8 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     }
     else if (accion === 'subs') menuSubtitulos();
     else if (accion === 'capitulos') menuCapitulos();
+    else if (accion === 'marcar') menuMarcarTramos();
+    else if (accion === 'dormir') menuTemporizadorDormir();
     else if (accion === 'info') alternarInfo();
     else if (accion === 'siguiente') {
       alTerminar(true);
@@ -6401,7 +6555,8 @@ function pantallaAjustes(pestanaInicial?: string) {
         '<button class="boton" data-nav data-parar-creditos-pelis>' + tr('Parar la búsqueda', 'Stop search') + '</button>' +
         '<p class="dato" data-estado-notas>…</p>' +
         '<button class="boton" data-nav data-notas>' + tr('Rellenar notas que faltan (OMDb)', 'Fill missing ratings (OMDb)') + '</button>' +
-        '<button class="boton" data-nav data-parar-notas>' + tr('Parar notas', 'Stop ratings') + '</button>',
+        '<button class="boton" data-nav data-parar-notas>' + tr('Parar notas', 'Stop ratings') + '</button>' +
+        '<button class="boton" data-nav data-identificar-extras>' + tr('Identificar extras', 'Identify extras') + '</button>',
       ) +
       '</div>'
     : '';
@@ -6661,6 +6816,15 @@ function pantallaAjustes(pestanaInicial?: string) {
       .pararCreditosPeliculas()
       .then((r) => { aviso(r.parando ? 'Se parará al acabar la película en curso' : 'No había nada en marcha'); mirarCreditosPelis(); })
       .catch(() => aviso('No se pudo parar'));
+  });
+
+  const bIdentificarExtras = marco.querySelector<HTMLElement>('[data-identificar-extras]');
+  if (bIdentificarExtras) bIdentificarExtras.addEventListener('click', () => {
+    aviso(tr('Identificando extras en la biblioteca…', 'Identifying extras in library…'));
+    api
+      .identificarExtras()
+      .then((r) => aviso(tr('Extras: ' + r.identificados + ' identificados de ' + r.totalGenericos, 'Extras: ' + r.identificados + ' identified of ' + r.totalGenericos)))
+      .catch((e) => aviso((e as Error).message || 'No se pudo lanzar'));
   });
 
   const bEscanear = marco.querySelector<HTMLElement>('[data-escanear]');

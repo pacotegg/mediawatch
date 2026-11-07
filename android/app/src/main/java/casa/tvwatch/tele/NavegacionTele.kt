@@ -53,6 +53,7 @@ import casa.tvwatch.ui.Fondo
 import casa.tvwatch.ui.IconoBuscar
 import casa.tvwatch.ui.IconoDeBiblioteca
 import casa.tvwatch.ui.IconoEstrella
+import casa.tvwatch.ui.IconoMarcador
 import casa.tvwatch.ui.IconoInicio
 import casa.tvwatch.ui.IconoUsuario
 import casa.tvwatch.ui.Movimiento
@@ -71,6 +72,7 @@ private object RutasTele {
   const val PORTADA = "portada"
   const val BUSCAR = "buscar"
   const val FAVORITAS = "favoritas"
+  const val WATCHLIST = "watchlist"
   const val BIBLIOTECA = "biblioteca/{id}/{nombre}"
   const val FICHA = "ficha/{id}"
   const val REPRODUCTOR = "ver/{fileId}/{itemId}/{episodioId}/{desde}"
@@ -98,7 +100,7 @@ fun NavegacionTele() {
   val entrada by nav.currentBackStackEntryAsState()
   val ruta = entrada?.destination?.route
   val bibliotecaActual = if (ruta == RutasTele.BIBLIOTECA) entrada?.arguments?.getInt("id") else null
-  val conBarra = ruta == RutasTele.PORTADA || ruta == RutasTele.BUSCAR || ruta == RutasTele.FAVORITAS || ruta == RutasTele.BIBLIOTECA
+  val conBarra = ruta == RutasTele.PORTADA || ruta == RutasTele.BUSCAR || ruta == RutasTele.FAVORITAS || ruta == RutasTele.WATCHLIST || ruta == RutasTele.BIBLIOTECA
 
   fun aConexion() {
     Ajustes.olvidarSesion()
@@ -140,6 +142,9 @@ fun NavegacionTele() {
       }
       composable(RutasTele.FAVORITAS) {
         FavoritasTele(alAbrirFicha = { nav.navigate(RutasTele.ficha(it)) }, alPerderSesion = ::aConexion)
+      }
+      composable(RutasTele.WATCHLIST) {
+        WatchlistTele(alAbrirFicha = { nav.navigate(RutasTele.ficha(it)) }, alPerderSesion = ::aConexion)
       }
       composable(
         RutasTele.BIBLIOTECA,
@@ -222,6 +227,9 @@ private fun BarraLateral(ruta: String?, bibliotecaActual: Int?, irA: (String) ->
     }
     EntradaBarra("Favoritas", ruta == "favoritas", abierta, alPulsar = { irA("favoritas") }) {
       IconoEstrella(it, rellena = ruta == "favoritas", tamano = 22.dp)
+    }
+    EntradaBarra("Ver más tarde", ruta == "watchlist", abierta, alPulsar = { irA("watchlist") }) {
+      IconoMarcador(it, rellena = ruta == "watchlist", tamano = 22.dp)
     }
     Spacer(Modifier.weight(1f))
     if (abierta) {

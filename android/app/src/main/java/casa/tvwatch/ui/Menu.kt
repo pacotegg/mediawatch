@@ -76,6 +76,7 @@ val SECCIONES_FIJAS = listOf(
   "inicio" to "Inicio",
   "buscar" to "Buscar",
   "favoritos" to "Favoritas",
+  "watchlist" to "Ver más tarde",
   "descargas" to "Descargas",
   "sagas" to "Sagas",
   "plataformas" to "Plataformas",
@@ -95,6 +96,7 @@ sealed class Destino {
   data object Inicio : Destino()
   data object Buscar : Destino()
   data object Favoritas : Destino()
+  data object Watchlist : Destino()
   data object Sagas : Destino()
   data object Plataformas : Destino()
   data object Descargas : Destino()
@@ -346,6 +348,9 @@ fun Menu(rutaActual: String?, bibliotecaActual: Int?, alIr: (Destino) -> Unit) {
             "buscar" -> Movible(clave, "Buscar", rutaActual == "buscar", alPulsar = { alIr(Destino.Buscar) }) { IconoBuscar(it) }
             "favoritos" -> Movible(clave, "Favoritas", rutaActual == "favoritas", alPulsar = { alIr(Destino.Favoritas) }) {
               IconoEstrella(it, rellena = rutaActual == "favoritas", tamano = 20.dp)
+            }
+            "watchlist" -> Movible(clave, "Ver más tarde", rutaActual == "watchlist", alPulsar = { alIr(Destino.Watchlist) }) {
+              IconoMarcador(it, rellena = rutaActual == "watchlist", tamano = 20.dp)
             }
             "descargas" -> Movible(clave, "Descargas", rutaActual == "descargas", alPulsar = { alIr(Destino.Descargas) }) { IconoDescarga(it) }
             "sagas" -> Movible(clave, "Sagas", rutaActual == "sagas", alPulsar = { alIr(Destino.Sagas) }) { IconoSagas(it) }

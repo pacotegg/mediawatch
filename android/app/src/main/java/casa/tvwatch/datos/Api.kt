@@ -193,6 +193,7 @@ object Api {
   fun portada(): Portada = pedir("/api/home")
   fun bibliotecas(): List<Biblioteca> = pedir("/api/libraries")
   fun favoritos(): List<Titulo> = pedir("/api/favorites")
+  fun watchlist(): List<Titulo> = pedir("/api/watchlist")
   fun titulos(
     libraryId: Int,
     offset: Int,
@@ -529,6 +530,10 @@ object Api {
     texto("/api/items/$itemId/favorite", "{\"favorite\":$favorito}")
   }
 
+  fun watchlist(itemId: Int, watchlist: Boolean) {
+    texto("/api/items/$itemId/watchlist", "{\"watchlist\":$watchlist}")
+  }
+
   /** Marcar como vista o como no vista, la película entera o un episodio. */
   fun marcarVista(itemId: Int, vista: Boolean, episodioId: Int? = null) {
     val cuerpo = buildString {
@@ -542,6 +547,12 @@ object Api {
   fun aplicarMetadatos(itemId: Int, tmdbId: Int, kind: String) {
     val cuerpo = """{"itemId":$itemId,"tmdbId":$tmdbId,"kind":"$kind","fields":["poster","fanart","logo","plot","rating","genres"],"overwrite":true}"""
     texto("/api/enrich/apply", cuerpo)
+  }
+
+  fun marcarTramo(fileId: Int, tipo: String, segundo: Double): Boolean {
+    val segStr = String.format(java.util.Locale.US, "%.1f", segundo)
+    val cuerpo = """{"fileId":$fileId,"tipo":"$tipo","segundo":$segStr}"""
+    return runCatching { texto("/api/skip/marcar", cuerpo) != null }.getOrDefault(false)
   }
 
   fun guardarProgreso(
@@ -848,6 +859,7 @@ data class Ficha(
   val episodes: List<Episodio> = emptyList(),
   val progress: List<Progreso> = emptyList(),
   val favorite: Int = 0,
+  val watchlist: Int = 0,
   @SerialName("extras_count") val extrasCount: Int = 0,
   @SerialName("has_fanart") val tieneFondo: Int = 0,
   @SerialName("has_logo") val tieneLogo: Int = 0,
@@ -945,7 +957,7 @@ data class TrickplayManifest(
 
 /** Cabecera o créditos detectados; `kind` es «intro» o «credits». */
 @Serializable
-data class RangoSalto(val kind: String, @SerialName("start_s") val desde: Double, @SerialName("end_s") val hasta: Double)
+data class RangoSalto(val kind: String, @SerialName("start_s") val desde: Double, @SerialName("end_s") val hasta: Double, val confidence: Int = 0)
 
 @Serializable
 data class Plan(

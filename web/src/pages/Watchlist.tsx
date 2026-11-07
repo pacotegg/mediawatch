@@ -1,0 +1,23 @@
+import { useQuery } from '@tanstack/react-query';
+import PosterCard from '../components/PosterCard.tsx';
+import { api } from '../lib/api.ts';
+
+export default function Watchlist() {
+  const { data, isLoading } = useQuery({ queryKey: ['watchlist'], queryFn: api.watchlist });
+
+  return (
+    <div className="mx-auto max-w-[1800px] px-4 page-pt page-pb sm:px-8">
+      <h1 className="mb-8 text-2xl font-semibold tracking-tight">Ver más tarde</h1>
+      {!isLoading && data?.length === 0 && (
+        <p className="mt-16 text-center text-mist-500">Todavía no has guardado ningún título para ver más tarde.</p>
+      )}
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(132px,1fr))] gap-x-4 gap-y-7 sm:grid-cols-[repeat(auto-fill,minmax(158px,1fr))]">
+        {data?.map((item, i) => (
+          <div key={item.id} className="cull">
+            <PosterCard item={item} index={i} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}

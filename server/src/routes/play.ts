@@ -14,10 +14,11 @@ import { clearOffset, isMeasuring, measure, offsetFor, saveOffset } from '../med
 import { afinarPeliculas, deshacerAfinado, jobAfinado, pararAfinado, resumenAfinado } from '../media/creditos-afinado.ts';
 import { cobertura, generarLote, lote, pararLote, readManifest, sheetPath } from '../media/trickplay.ts';
 import { marcarActividad } from '../media/ocupado.ts';
-import { extraPorId, extrasDe, miniatura, extrasTmdb, descargarExtraTmdb, actualizarTipoExtra } from '../media/extras.ts';
+import { extraPorId, extrasDe, miniatura, extrasTmdb, descargarExtraTmdb, actualizarTipoExtra, actualizarExtra, identificarExtrasDeItem, identificarExtrasBiblioteca } from '../media/extras.ts';
 import { detectForShow, detectarTodas, job, pararDeteccion, showsWithRanges, skipRangesFor } from '../media/intros.ts';
 import { creditosDeEpisodio } from '../media/creditos-episodio.ts';
 import { detectarPeliculas, jobPeliculas, pararPeliculas, resumenPeliculas, skipDePelicula } from '../media/creditos-detector.ts';
+import { jobIntroDB, pararIntroDB, sincronizarBibliotecaIntroDB } from '../media/sync-introdb.ts';
 import { currentUser, deFuera, requireUser, sesionDe } from './auth.ts';
 import type { ServerResponse } from 'node:http';
 import { estadoLimite, MENSAJE_LIMITE } from '../media/limite-diario.ts';
@@ -1122,6 +1123,149 @@ export default async function playRoutes(app: FastifyInstance) {
     return { parando: pararDeteccion() };
   });
 
+  // Sincronización comunitaria de intros y créditos (IntroDB / SkipDB) con validación
+  app.get('/api/skip/introdb', async () => ({ job: jobIntroDB }));
+
+  app.post('/api/skip/introdb/sincronizar', async (req, reply) => {
+    const user = requireUser(req);
+    if (!user.is_admin) return reply.code(403).send({ error: 'Solo un administrador puede sincronizar con IntroDB' });
+    const { todas } = (req.body ?? {}) as { todas?: boolean };
+    try {
+      sincronizarBibliotecaIntroDB(!todas);
+      return { started: true, total: jobIntroDB.total };
+    } catch (err) {
+      return reply.code(409).send({ error: (err as Error).message });
+    }
+  });
+
+  app.post('/api/skip/introdb/parar', async (req, reply) => {
+    const user = requireUser(req);
+    if (!user.is_admin) return reply.code(403).send({ error: 'Solo un administrador puede parar la sincronización' });
+    return { parando: pararIntroDB() };
+  });
+
+  // Marcado manual de tramos (inicio/fin cabecera, inicio/fin créditos, escena post-créditos) desde TV, app o web
+  app.post('/api/skip/marcar', async (req, reply) => {
+    const user = requireUser(req);
+    if (!user.is_admin) return reply.code(403).send({ error: 'Solo un administrador puede marcar tramos' });
+
+    const { fileId, tipo, segundo } = (req.body ?? {}) as {
+      fileId?: number;
+      tipo?: 'intro_inicio' | 'intro_fin' | 'creditos_inicio' | 'creditos_fin' | 'post_creditos' | 'borrar';
+      segundo?: number;
+    };
+
+    if (!fileId || !tipo) {
+      return reply.code(400).send({ error: 'Faltan parámetros obligatorios (fileId, tipo)' });
+    }
+
+    const file = db.prepare('SELECT item_id, episode_id, duration FROM media_files WHERE id = ?').get(fileId) as {
+      item_id: number | null;
+      episode_id: number | null;
+      duration: number;
+    } | undefined;
+
+    if (!file) return reply.code(404).send({ error: 'Fichero no encontrado' });
+
+    const duracion = file.duration || 0;
+    const seg = typeof segundo === 'number' && segundo >= 0 ? Math.round(segundo * 10) / 10 : 0;
+    const now = new Date().toISOString();
+
+    // 1. Episodios
+    if (file.episode_id) {
+      const epId = file.episode_id;
+      if (tipo === 'borrar') {
+        db.prepare('DELETE FROM skip_ranges WHERE episode_id = ?').run(epId);
+        return { ok: true, fileId, tipo, borrado: true };
+      }
+
+      if (tipo === 'intro_inicio') {
+        const actual = db.prepare('SELECT end_s FROM skip_ranges WHERE episode_id = ? AND kind = ?').get(epId, 'intro') as { end_s: number } | undefined;
+        const end_s = actual && actual.end_s > seg ? actual.end_s : Math.min(seg + 60, duracion);
+        db.prepare(`
+          INSERT INTO skip_ranges (episode_id, kind, start_s, end_s, confidence, created_at)
+          VALUES (?, 'intro', ?, ?, 100, ?)
+          ON CONFLICT(episode_id, kind) DO UPDATE SET start_s = excluded.start_s, end_s = excluded.end_s, confidence = 100, created_at = excluded.created_at
+        `).run(epId, seg, end_s, now);
+        return { ok: true, fileId, tipo, tramo: { kind: 'intro', start_s: seg, end_s } };
+      }
+
+      if (tipo === 'intro_fin') {
+        const actual = db.prepare('SELECT start_s FROM skip_ranges WHERE episode_id = ? AND kind = ?').get(epId, 'intro') as { start_s: number } | undefined;
+        const start_s = actual ? actual.start_s : 0;
+        db.prepare(`
+          INSERT INTO skip_ranges (episode_id, kind, start_s, end_s, confidence, created_at)
+          VALUES (?, 'intro', ?, ?, 100, ?)
+          ON CONFLICT(episode_id, kind) DO UPDATE SET start_s = excluded.start_s, end_s = excluded.end_s, confidence = 100, created_at = excluded.created_at
+        `).run(epId, start_s, seg, now);
+        return { ok: true, fileId, tipo, tramo: { kind: 'intro', start_s, end_s: seg } };
+      }
+
+      if (tipo === 'creditos_inicio') {
+        const actual = db.prepare('SELECT end_s FROM skip_ranges WHERE episode_id = ? AND kind = ?').get(epId, 'credits') as { end_s: number } | undefined;
+        const end_s = actual && actual.end_s > seg ? actual.end_s : duracion;
+        db.prepare(`
+          INSERT INTO skip_ranges (episode_id, kind, start_s, end_s, confidence, created_at)
+          VALUES (?, 'credits', ?, ?, 100, ?)
+          ON CONFLICT(episode_id, kind) DO UPDATE SET start_s = excluded.start_s, end_s = excluded.end_s, confidence = 100, created_at = excluded.created_at
+        `).run(epId, seg, end_s, now);
+        return { ok: true, fileId, tipo, tramo: { kind: 'credits', start_s: seg, end_s } };
+      }
+
+      if (tipo === 'creditos_fin') {
+        const actual = db.prepare('SELECT start_s FROM skip_ranges WHERE episode_id = ? AND kind = ?').get(epId, 'credits') as { start_s: number } | undefined;
+        const start_s = actual && actual.start_s < seg ? actual.start_s : Math.max(0, seg - 60);
+        db.prepare(`
+          INSERT INTO skip_ranges (episode_id, kind, start_s, end_s, confidence, created_at)
+          VALUES (?, 'credits', ?, ?, 100, ?)
+          ON CONFLICT(episode_id, kind) DO UPDATE SET start_s = excluded.start_s, end_s = excluded.end_s, confidence = 100, created_at = excluded.created_at
+        `).run(epId, start_s, seg, now);
+        return { ok: true, fileId, tipo, tramo: { kind: 'credits', start_s, end_s: seg } };
+      }
+    }
+
+    // 2. Películas
+    if (file.item_id) {
+      const itemId = file.item_id;
+      if (tipo === 'borrar') {
+        db.prepare('DELETE FROM pelicula_creditos WHERE item_id = ?').run(itemId);
+        return { ok: true, fileId, tipo, borrado: true };
+      }
+
+      const peli = db.prepare('SELECT rangos, escenas FROM pelicula_creditos WHERE item_id = ?').get(itemId) as { rangos: string; escenas: string } | undefined;
+      let rangos: { start_s: number; end_s: number }[] = [];
+      let escenas: { start_s: number; end_s: number }[] = [];
+
+      try { if (peli?.rangos) rangos = JSON.parse(peli.rangos); } catch {}
+      try { if (peli?.escenas) escenas = JSON.parse(peli.escenas); } catch {}
+
+      if (tipo === 'creditos_inicio') {
+        rangos = [{ start_s: seg, end_s: duracion }];
+      } else if (tipo === 'creditos_fin') {
+        if (rangos.length) {
+          rangos[rangos.length - 1].end_s = seg;
+        } else {
+          rangos = [{ start_s: Math.max(0, seg - 120), end_s: seg }];
+        }
+      } else if (tipo === 'post_creditos') {
+        escenas = [{ start_s: seg, end_s: duracion }];
+        if (rangos.length && rangos[0].end_s >= seg) {
+          rangos[0].end_s = Math.max(rangos[0].start_s, seg - 1);
+        }
+      }
+
+      db.prepare(`
+        INSERT INTO pelicula_creditos (item_id, rangos, escenas, metodo, created_at)
+        VALUES (?, ?, ?, 'manual', ?)
+        ON CONFLICT(item_id) DO UPDATE SET rangos = excluded.rangos, escenas = excluded.escenas, metodo = 'manual', created_at = excluded.created_at
+      `).run(itemId, JSON.stringify(rangos), JSON.stringify(escenas), now);
+
+      return { ok: true, fileId, tipo, pelicula: { rangos, escenas } };
+    }
+
+    return reply.code(400).send({ error: 'El fichero no está vinculado a una película o episodio' });
+  });
+
   // Créditos de las películas por el texto que sube; ver creditos-detector.ts.
   app.get('/api/skip/peliculas', async () => ({ job: jobPeliculas, ...resumenPeliculas(), afinado: { job: jobAfinado, ...resumenAfinado() } }));
 
@@ -1213,10 +1357,25 @@ export default async function playRoutes(app: FastifyInstance) {
     const user = requireUser(req);
     if (!user.is_admin) return reply.code(403).send({ error: 'Solo un administrador' });
     const id = Number((req.params as { id: string }).id);
-    const { tipo } = req.body as { tipo: string };
-    if (!tipo || typeof tipo !== 'string' || tipo.trim().length === 0 || tipo.length > 50) return reply.code(400).send({ error: 'Tipo inválido' });
-    const ok = actualizarTipoExtra(id, tipo.trim());
+    const { tipo, titulo } = (req.body ?? {}) as { tipo?: string; titulo?: string };
+    if (!tipo && !titulo) return reply.code(400).send({ error: 'Nada que actualizar' });
+    if (tipo !== undefined && (typeof tipo !== 'string' || tipo.trim().length === 0 || tipo.length > 50)) return reply.code(400).send({ error: 'Tipo inválido' });
+    if (titulo !== undefined && (typeof titulo !== 'string' || titulo.trim().length === 0 || titulo.length > 200)) return reply.code(400).send({ error: 'Título inválido' });
+    const ok = actualizarExtra(id, { tipo: tipo?.trim(), titulo: titulo?.trim() });
     return { ok };
+  });
+
+  app.post('/api/items/:id/extras/identificar', async (req, reply) => {
+    const user = requireUser(req);
+    if (!user.is_admin) return reply.code(403).send({ error: 'Solo un administrador' });
+    const id = Number((req.params as { id: string }).id);
+    return await identificarExtrasDeItem(id);
+  });
+
+  app.post('/api/mantenimiento/extras/identificar', async (req, reply) => {
+    const user = requireUser(req);
+    if (!user.is_admin) return reply.code(403).send({ error: 'Solo un administrador' });
+    return await identificarExtrasBiblioteca();
   });
 
   app.get('/api/extras/:id/thumb', async (req, reply) => {

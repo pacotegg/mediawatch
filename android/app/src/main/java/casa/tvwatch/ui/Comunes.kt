@@ -499,6 +499,30 @@ fun IconoCheck(color: Color, tamano: Dp = 15.dp) {
 }
 
 /**
+ * Icono de «ver más tarde» (marcador/bookmark contorneado o relleno).
+ */
+@Composable
+fun IconoMarcador(color: Color, rellena: Boolean = false, tamano: Dp = 15.dp) {
+  Canvas(Modifier.size(tamano)) {
+    val w = size.width
+    val h = size.height
+    val path = Path().apply {
+      moveTo(w * 0.25f, h * 0.15f)
+      lineTo(w * 0.75f, h * 0.15f)
+      lineTo(w * 0.75f, h * 0.85f)
+      lineTo(w * 0.50f, h * 0.65f)
+      lineTo(w * 0.25f, h * 0.85f)
+      close()
+    }
+    if (rellena) {
+      drawPath(path, color = color)
+    } else {
+      drawPath(path, color = color, style = Stroke(width = size.minDimension * 0.09f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+    }
+  }
+}
+
+/**
  * El dibujo de «favorito» estilo iOS (estrella contorneada o rellena).
  */
 @Composable

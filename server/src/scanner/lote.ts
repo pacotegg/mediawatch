@@ -17,7 +17,7 @@ import { hayAlguienViendoEn } from '../media/ocupado.ts';
 import { applyProposal, search, TmdbError, type Proposal } from './tmdb.ts';
 import { coincidenciaSegura } from './identificar.ts';
 import { rellenarEpisodios } from './episodios-tmdb.ts';
-import { aplicarOrganizar, asegurarMedidos, planOrganizar, type PlanOrganizar } from './organizar.ts';
+import { aplicarOrganizar, asegurarMedidos, autoOrganizarSueltoSiAplica, planOrganizar, type PlanOrganizar } from './organizar.ts';
 import { aplicarArteCarpeta } from './arte-carpeta.ts';
 import { escaneoEnCurso, JUNK, MIN_VIDEO_BYTES, scanAllEnWorker, SKIP_DIRS, VIDEO_EXT } from './scan.ts';
 import { aplicarNfo } from './nfo-escribir.ts';
@@ -53,13 +53,21 @@ export function listarCandidatos(o: { biblioteca?: string; q?: string; todos?: b
   const q = normalize(o.q ?? '');
   if (q) { donde.push('(i.search_title LIKE ? OR LOWER(i.folder) LIKE ?)'); params.push(`%${q}%`, `%${(o.q ?? '').toLowerCase().trim()}%`); }
   const filas = db
-    .prepare(`SELECT i.id, i.title, i.year, i.kind, i.folder, i.added_at, i.tmdb_id, i.meta_origen, l.name AS biblioteca, l.path AS ruta
+    .prepare(`SELECT i.id, i.title, i.year, i.kind, i.folder, i.added_at, i.tmdb_id, i.meta_origen, l.name AS biblioteca, l.path AS ruta, l.entrada
               FROM items i JOIN libraries l ON l.id = i.library_id WHERE ${donde.join(' AND ')} ORDER BY i.added_at DESC, i.id DESC LIMIT ?`)
-    .all(...params, Math.min(Math.max(1, o.limite ?? 500), 1000)) as { id: number; title: string; year: number | null; kind: 'movie' | 'show'; folder: string; added_at: string | null; tmdb_id: string | null; meta_origen: string | null; biblioteca: string; ruta: string }[];
-  return filas.map((f) => ({
-    id: f.id, titulo: f.title, anio: f.year, kind: f.kind, carpeta: basename(f.folder), biblioteca: f.biblioteca, ruta: f.ruta, alta: f.added_at,
-    escrapeado: Boolean(f.tmdb_id) || f.meta_origen != null,
-  }));
+    .all(...params, Math.min(Math.max(1, o.limite ?? 500), 1000)) as { id: number; title: string; year: number | null; kind: 'movie' | 'show'; folder: string; added_at: string | null; tmdb_id: string | null; meta_origen: string | null; biblioteca: string; ruta: string; entrada: number }[];
+  const candidatos: Candidato[] = [];
+  for (const f of filas) {
+    if (f.entrada === 1 && !existsSync(f.folder)) {
+      try { db.prepare('DELETE FROM items WHERE id = ?').run(f.id); } catch {}
+      continue;
+    }
+    candidatos.push({
+      id: f.id, titulo: f.title, anio: f.year, kind: f.kind, carpeta: basename(f.folder), biblioteca: f.biblioteca, ruta: f.ruta, alta: f.added_at,
+      escrapeado: Boolean(f.tmdb_id) || f.meta_origen != null,
+    });
+  }
+  return candidatos;
 }
 
 /* ---- lo que hay en el DISCO de la fuente y el servidor aun no ha analizado ---- */
@@ -97,10 +105,12 @@ export function sinRegistrar(rutaFuente: string): SinRegistrar[] {
   for (const e of raiz) {
     const p = join(fuente.path, e.name);
     if (conocidos.has(resolve(p).toLowerCase())) continue;
+    const esFuente = config.fuentesScraper.some((f) => mismo(f.path, fuente.path));
     if (e.isDirectory()) {
       if (e.name.startsWith('_') || e.name.startsWith('.') || SKIP_DIRS.has(e.name.toLowerCase())) continue;
-      if (tieneVideos(p, fuente.kind === 'show' ? 1 : 0)) out.push({ carpeta: e.name, ruta: p, tipo: 'carpeta', biblioteca: fuente.name });
-    } else if (fuente.kind === 'movie' && e.isFile() && esVideo(p) && grande(p)) {
+      const niveles = (fuente.kind === 'show' || esFuente) ? 1 : 0;
+      if (tieneVideos(p, niveles)) out.push({ carpeta: e.name, ruta: p, tipo: 'carpeta', biblioteca: fuente.name });
+    } else if ((fuente.kind === 'movie' || esFuente) && e.isFile() && esVideo(p) && grande(p)) {
       out.push({ carpeta: e.name, ruta: p, tipo: 'video', biblioteca: fuente.name });
     }
   }
@@ -175,6 +185,38 @@ export function marcarEntradas(): void {
 }
 export const totalPendientes = () => (db.prepare(`SELECT COUNT(*) AS n FROM items i WHERE ${SIN_ESCRAPEAR} AND ${SIN_IGNORADAS}`).get() as { n: number }).n;
 
+export function limpiarLote(): void {
+  Object.assign(busqueda, vacio());
+  Object.assign(aplicacion, vacio());
+  Object.assign(renombrado, vacio());
+}
+
+export function depurarBusqueda(): void {
+  if (busqueda.corriendo || busqueda.resultados.length === 0) return;
+  const ids = busqueda.resultados.map((r) => r.itemId);
+  if (ids.length === 0) return;
+  const placeholders = ids.map(() => '?').join(',');
+  const filas = db.prepare(
+    `SELECT i.id, i.folder, i.tmdb_id, l.entrada
+     FROM items i JOIN libraries l ON l.id = i.library_id
+     WHERE i.id IN (${placeholders})`
+  ).all(...ids) as { id: number; folder: string; tmdb_id: string | null; entrada: number }[];
+
+  const validos = new Set<number>();
+  for (const f of filas) {
+    if (!existsSync(f.folder)) {
+      if (f.entrada === 1) {
+        try { db.prepare('DELETE FROM items WHERE id = ?').run(f.id); } catch {}
+      }
+      continue;
+    }
+    if (f.entrada === 0 && f.tmdb_id) continue;
+    validos.add(f.id);
+  }
+  busqueda.resultados = busqueda.resultados.filter((r) => validos.has(r.itemId));
+  if (busqueda.resultados.length === 0) limpiarLote();
+}
+
 /* ------------------------------------------------------------------ 1. buscar */
 
 export const busqueda: EstadoLote<FilaNueva> & { fase?: string } = vacio();
@@ -238,6 +280,7 @@ export async function aplicarDatos(elegidos: { itemId: number; tmdbId: number }[
           identidad: true,
         });
         if (it.kind === 'show') await rellenarEpisodios(e.itemId, e.tmdbId);
+        try { await autoOrganizarSueltoSiAplica(e.itemId); } catch (err) { console.error(`[lote] No se pudo auto-organizar suelto ${e.itemId}:`, err); }
         aplicacion.resultados.push({ itemId: e.itemId, titulo: it.title, ok: true });
       } catch (err) {
         aplicacion.resultados.push({ itemId: e.itemId, titulo: it?.title ?? String(e.itemId), ok: false, error: (err as Error).message });
