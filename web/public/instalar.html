@@ -22,7 +22,7 @@
     box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
   }
   h1 { font-size: 26px; margin: 0 0 8px; font-weight: 700; }
-  p.sub { color: #9ca3af; font-size: 15px; margin: 0 0 24px; }
+  p.sub { color: #9ca3af; font-size: 15px; margin: 0 0 20px; }
   .btn {
     display: block;
     width: 100%;
@@ -34,11 +34,15 @@
     border-radius: 16px;
     font-weight: 700;
     font-size: 17px;
-    margin: 16px 0;
+    margin: 14px 0;
     transition: transform 0.1s, opacity 0.1s;
     box-shadow: 0 4px 14px rgba(59, 130, 246, 0.4);
   }
   .btn:active { transform: scale(0.98); opacity: 0.9; }
+  .btn-win {
+    background: #2563eb;
+    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4);
+  }
   .btn-sec {
     background: #272a34;
     color: #e5e7eb;
@@ -71,15 +75,23 @@
 <body>
 <div class="card">
   <h1>Media Watch</h1>
-  <p class="sub">Instala Media Watch en tu móvil: Android, iPhone o iPad</p>
+  <p class="sub">Instala Media Watch en tu ordenador o móvil</p>
+
+  <a href="https://github.com/pacotegg/mediawatch/releases/download/escritorio-latest/MediaWatch-Escritorio-Setup-0.6.0.exe" class="btn btn-win">
+    💻 Descargar para Windows (v0.6.0)
+  </a>
+  <p class="sub" style="margin: -6px 0 16px; font-size: 13px;">
+    Decodificación por hardware (Intel Arc/NVIDIA/AMD), HDR nativo y audio passthrough / raw.<br>
+    ¿En Linux? <a href="https://github.com/pacotegg/mediawatch/releases/download/escritorio-latest/MediaWatch-Escritorio-0.6.0.AppImage" style="color:#60a5fa;text-decoration:underline;">AppImage</a> o <a href="https://github.com/pacotegg/mediawatch/releases/download/escritorio-latest/MediaWatch-Escritorio-0.6.0.deb" style="color:#60a5fa;text-decoration:underline;">paquete .deb</a>
+  </p>
 
   <!-- El fichero con número y no /MediaWatch.apk: con la misma dirección para
        todas las versiones, el móvil o el camino devolvían una copia vieja en
        caché (la 3.28 cuando ya estaba la 3.29). Al publicar un APK: subir las dos. -->
   <a href="/MediaWatch-3.93.apk" class="btn" download>
-    ⬇️ Descargar para Android (v3.93)
+    📱 Descargar para Android (v3.93)
   </a>
-  <p class="sub" style="margin: 0 0 8px; font-size: 13px;">
+  <p class="sub" style="margin: -6px 0 8px; font-size: 13px;">
     Si Android avisa de que la app es de una fuente desconocida, permite la instalación desde tu navegador.
   </p>
 

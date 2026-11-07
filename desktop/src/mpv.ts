@@ -22,6 +22,12 @@ export type Pedido = {
   externos?: { id: string }[];
   /** Opciones extra para mpv, de `mpvArgs` en el config del usuario (ver main.ts). */
   extra?: string[];
+  /** Modo de salida de audio: 'pcm' estándar, 'raw' (WASAPI exclusivo) o 'passthrough' (HDMI bitstream). */
+  audioModo?: 'pcm' | 'raw' | 'passthrough';
+  /** Adaptador Direct3D 11 explícito para garantizar que se use la GPU dedicada. */
+  d3d11Adapter?: string | null;
+  /** Directorio de caché de shaders en disco para libplacebo/Direct3D. */
+  shaderCacheDir?: string;
 };
 
 /** Lo que la interfaz necesita saber en cada momento. Los identificadores son los del servidor. */
@@ -112,6 +118,9 @@ export function reproducir(exe: string, p: Pedido, onFin: (acabado: boolean) => 
       '--idle=yes',
       '--force-window=yes',
       '--hwdec=auto-safe',
+      '--vo=gpu-next',
+      '--target-colorspace-hint=yes',
+      '--media-controls=yes',
       // Los subtítulos sueltos del disco no pintan nada aquí: los de este fichero los manda el servidor.
       '--sub-auto=no',
       // Sin controles ni teclas de mpv: manda la interfaz de la web, que es la misma que en el navegador.
@@ -124,6 +133,13 @@ export function reproducir(exe: string, p: Pedido, onFin: (acabado: boolean) => 
       `--input-ipc-server=${canal}`,
     ];
     if (p.wid) args.push(`--wid=${p.wid}`);
+    if (p.audioModo === 'passthrough') {
+      args.push('--audio-spdif=ac3,dts,eac3,dts-hd,truehd');
+    } else if (p.audioModo === 'raw') {
+      args.push('--audio-exclusive=yes');
+    }
+    if (p.d3d11Adapter) args.push(`--d3d11-adapter=${p.d3d11Adapter}`);
+    if (p.shaderCacheDir) args.push(`--gpu-shader-cache-dir=${p.shaderCacheDir}`);
     args.push(...(p.extra ?? []));
     // La salida de error de mpv se guarda: cuando no arranca (sin GPU, un códec que falta, una opción
     // mala) es lo único que dice por qué, y sin esto el usuario solo veía «mpv se cerró antes de empezar».

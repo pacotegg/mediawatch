@@ -4,11 +4,22 @@ import { join } from 'node:path';
 import { iniciarActualizaciones } from './actualizaciones';
 import { buscarMpv, hayReproduccion, ordenar, pararReproduccion, pistasActuales, reproducir, type Estado } from './mpv';
 
+// Forzar a Windows/Linux a utilizar la GPU dedicada de alto rendimiento (Intel Arc A730M / dGPU)
+app.commandLine.appendSwitch('force_high_performance_gpu');
+
 const COOKIE = 'cineteca_session';
 const ficheroConfig = () => join(app.getPath('userData'), 'config.json');
 let ventana: BrowserWindow | null = null;
 
-function leerConfig(): { servidor?: unknown; mpvArgs?: unknown; ventana?: unknown } {
+function leerConfig(): {
+  servidor?: unknown;
+  mpvArgs?: unknown;
+  ventana?: unknown;
+  passthrough?: unknown;
+  audioModo?: unknown;
+  gpuDedicada?: unknown;
+  gpuAdapter?: unknown;
+} {
   try {
     return JSON.parse(readFileSync(ficheroConfig(), 'utf8'));
   } catch {
@@ -201,6 +212,18 @@ const entero = (v: unknown): v is number => typeof v === 'number' && Number.isIn
 
 /** Arranca mpv dentro de la ventana de vídeo que haya ahora. */
 function lanzarMpv(o: any, p: Preparado) {
+  const cfg = leerConfig();
+  const shaderCacheDir = join(app.getPath('userData'), 'shaders');
+  const audioModo: 'pcm' | 'raw' | 'passthrough' =
+    cfg.audioModo === 'raw' || cfg.audioModo === 'passthrough' || cfg.audioModo === 'pcm'
+      ? cfg.audioModo
+      : (cfg.passthrough === true ? 'passthrough' : 'pcm');
+
+  const forzarArc = cfg.gpuDedicada !== false;
+  const d3d11Adapter = process.platform === 'win32' && forzarArc
+    ? (typeof cfg.gpuAdapter === 'string' && cfg.gpuAdapter ? cfg.gpuAdapter : 'Intel(R) Arc(TM) A730M Graphics')
+    : null;
+
   return reproducir(p.exe, {
     servidor: p.servidor, token: p.token, fileId: o.fileId, itemId: o.itemId, episodeId: o.episodeId,
     start: o.start, title: o.title.slice(0, 200),
@@ -209,6 +232,9 @@ function lanzarMpv(o: any, p: Preparado) {
     subtitulo: typeof o.subtitulo === 'string' && /^(off|embedded-\d+|external-\d+)$/.test(o.subtitulo) ? o.subtitulo : null,
     externos: p.externos,
     extra: opcionesExtraMpv(),
+    audioModo,
+    d3d11Adapter,
+    shaderCacheDir,
   }, (acabado) => {
     if (cambiando) return;
     // Acabó solo: la web (que sabe cuál es el siguiente episodio) contesta con `mw:siguiente` o con «cerrar».
@@ -304,17 +330,73 @@ ipcMain.handle('mw:siguiente', async (e, o: any) => {
   }
 });
 
+function actualizarMenu() {
+  const cfg = leerConfig();
+  const modoAudio = typeof cfg.audioModo === 'string' ? cfg.audioModo : (cfg.passthrough ? 'passthrough' : 'pcm');
+  const forzarArc = cfg.gpuDedicada !== false;
+  const esWin = process.platform === 'win32';
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    { label: 'Archivo', submenu: [
+      { label: 'Cambiar de servidor', click: () => { guardarConfig({ servidor: undefined }); abrir(); } },
+      { role: 'quit', label: 'Salir' },
+    ] },
+    { label: 'Audio', submenu: [
+      {
+        label: 'Estándar (PCM compartido)',
+        type: 'radio',
+        checked: modoAudio === 'pcm',
+        click: () => { guardarConfig({ audioModo: 'pcm', passthrough: false }); actualizarMenu(); },
+      },
+      {
+        label: `Audio Raw / Exclusivo (${esWin ? 'WASAPI bit-perfect' : 'Directo'})`,
+        type: 'radio',
+        checked: modoAudio === 'raw',
+        click: () => { guardarConfig({ audioModo: 'raw', passthrough: false }); actualizarMenu(); },
+      },
+      {
+        label: 'Passthrough HDMI (Bitstreaming: Atmos / TrueHD / DTS)',
+        type: 'radio',
+        checked: modoAudio === 'passthrough',
+        click: () => { guardarConfig({ audioModo: 'passthrough', passthrough: true }); actualizarMenu(); },
+      },
+    ] },
+    { label: 'Vídeo', submenu: [
+      {
+        label: 'Renderizado avanzado (libplacebo / gpu-next)',
+        type: 'checkbox',
+        checked: true,
+        enabled: false,
+      },
+      {
+        label: `HDR automático (${esWin ? 'Windows BT.2020 PQ' : 'Wayland / HDR'})`,
+        type: 'checkbox',
+        checked: true,
+        enabled: false,
+      },
+      { type: 'separator' },
+      {
+        label: esWin ? 'GPU dedicada: Forzar Intel Arc A730M (QSV)' : 'Aceleración por hardware (VA-API / QSV / Vulkan)',
+        type: 'checkbox',
+        checked: forzarArc,
+        click: (item) => {
+          guardarConfig({ gpuDedicada: item.checked });
+          actualizarMenu();
+        },
+      },
+    ] },
+    { label: 'Ver', submenu: [
+      { role: 'reload', label: 'Recargar' },
+      { role: 'togglefullscreen', label: 'Pantalla completa' },
+    ] },
+  ]));
+}
+
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.on('second-instance', () => { if (ventana) { if (ventana.isMinimized()) ventana.restore(); ventana.focus(); } });
   void app.whenReady().then(() => {
-    Menu.setApplicationMenu(Menu.buildFromTemplate([
-      { label: 'Archivo', submenu: [
-        { label: 'Cambiar de servidor', click: () => { guardarConfig({ servidor: undefined }); abrir(); } },
-        { role: 'quit', label: 'Salir' },
-      ] },
-      { label: 'Ver', submenu: [{ role: 'reload', label: 'Recargar' }, { role: 'togglefullscreen', label: 'Pantalla completa' }] },
-    ]));
+    actualizarMenu();
     crearVentana();
     iniciarActualizaciones(() => ventana);
   });
