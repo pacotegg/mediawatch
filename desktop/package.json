@@ -1,6 +1,6 @@
 {
   "name": "mediawatch-desktop",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "private": true,
   "description": "Cliente de escritorio de Media Watch: la web del servidor más mpv para reproducir sin transcodificar",
   "main": "dist/main.js",
@@ -8,7 +8,8 @@
     "build": "tsc && node -e \"require('fs').copyFileSync('src/conectar.html','dist/conectar.html')\"",
     "start": "npm run build && electron dist/main.js",
     "dist": "npm run build && node scripts/prepare-mpv.js && electron-builder --win --publish never",
-    "dist:linux": "npm run build && electron-builder --linux --publish never"
+    "dist:linux": "npm run build && electron-builder --linux --publish never",
+    "dist:mac": "npm run build && electron-builder --mac --publish never"
   },
   "devDependencies": {
     "@types/node": "^22.10.1",
@@ -78,6 +79,31 @@
       "depends": [
         "mpv"
       ]
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "category": "public.app-category.video",
+      "icon": "assets/icon.png",
+      "artifactName": "MediaWatch-Escritorio-${version}-mac.${ext}",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
+    },
+    "dmg": {
+      "title": "Media Watch ${version}",
+      "artifactName": "MediaWatch-Escritorio-${version}-mac.${ext}"
     }
   },
   "dependencies": {

@@ -1,6 +1,6 @@
 name: Escritorio
 
-# Instalador del cliente de PC. Se publica con la etiqueta `escritorio-v<version>` (la `v3.x` es de Android).
+# Instalador del cliente de PC (Windows, Linux y macOS). Se publica con la etiqueta `escritorio-v<version>` (la `v3.x` es de Android).
 on:
   push:
     tags: ['escritorio-v*']
@@ -93,8 +93,44 @@ jobs:
             desktop/release/*.deb
             desktop/release/latest-linux.yml
 
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Node.js 26
+        uses: actions/setup-node@v4
+        with:
+          node-version: 26.x
+
+      - name: Dependencias
+        run: npm ci
+        working-directory: desktop
+
+      # Genera el paquete DMG y ZIP Universal (compatible con Apple Silicon M1-M4 e Intel)
+      - name: DMG y ZIP (Universal)
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: npm run dist:mac
+        working-directory: desktop
+
+      - name: Comprobar lo construido
+        run: |
+          set -e
+          ls -la release/*.dmg release/*.zip
+          test -f release/latest-mac.yml
+        working-directory: desktop
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: escritorio-macos
+          path: |
+            desktop/release/*.dmg
+            desktop/release/*.zip
+            desktop/release/latest-mac.yml
+
   publicar:
-    needs: [windows, linux]
+    needs: [windows, linux, macos]
     if: startsWith(github.ref, 'refs/tags/escritorio-v')
     runs-on: ubuntu-latest
     steps:
@@ -103,7 +139,7 @@ jobs:
           path: descargas
 
       - name: Juntar ficheros
-        run: mkdir -p subir && find descargas -type f \( -name '*.exe' -o -name '*.AppImage' -o -name '*.deb' -o -name '*.yml' \) -exec cp {} subir/ \;
+        run: mkdir -p subir && find descargas -type f \( -name '*.exe' -o -name '*.AppImage' -o -name '*.deb' -o -name '*.dmg' -o -name '*.zip' -o -name '*.yml' \) -exec cp {} subir/ \;
 
       - name: Publicar release de esta versión
         uses: softprops/action-gh-release@v2
@@ -112,6 +148,8 @@ jobs:
             subir/*.exe
             subir/*.AppImage
             subir/*.deb
+            subir/*.dmg
+            subir/*.zip
           make_latest: false
           generate_release_notes: true
 
@@ -125,7 +163,7 @@ jobs:
         run: |
           set -e
           base="https://github.com/${{ github.repository }}/releases/download/$TAG"
-          for f in subir/latest.yml subir/latest-linux.yml; do
+          for f in subir/latest.yml subir/latest-linux.yml subir/latest-mac.yml; do
             [ -f "$f" ] || continue
             sed -i -E "s#^( *- url: )(.+)\$#\1$base/\2#; s#^(path: )(.+)\$#\1$base/\2#" "$f"
             grep -q "^ *- url: https://" "$f" || { echo "no se pudo poner la direccion completa en $f"; exit 1; }

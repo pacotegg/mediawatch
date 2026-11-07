@@ -48,9 +48,12 @@ type Pista = { id: number; type: string; 'ff-index'?: number; external?: boolean
 const GUARDAR_CADA_MS = 10_000;
 const EXE = process.platform === 'win32' ? 'mpv.exe' : 'mpv';
 
-/** Primero el mpv que lleva la app o el que el usuario dejó en su carpeta; después el del PATH. */
+/** Primero el mpv que lleva la app o el que el usuario dejó en su carpeta; después el del PATH (incluyendo Homebrew en macOS). */
 export function buscarMpv(carpetas: string[]): string | null {
-  for (const c of [...carpetas, ...(process.env.PATH ?? '').split(delimiter)]) {
+  const rutasMac = process.platform === 'darwin'
+    ? ['/opt/homebrew/bin', '/usr/local/bin', '/opt/local/bin']
+    : [];
+  for (const c of [...carpetas, ...rutasMac, ...(process.env.PATH ?? '').split(delimiter)]) {
     if (!c) continue;
     const ruta = join(c, EXE);
     if (existsSync(ruta)) return ruta;
@@ -107,13 +110,17 @@ export function ordenar(nombre: string, valor?: unknown, pistasDe?: () => { pist
  * la dirección y el token por su canal de control. El fichero se pide en crudo (`raw=1`): mpv decodifica casi
  * todo, así que el servidor no transcodifica nada.
  *
- * mpv aquí solo pinta: sin controles propios ni teclas, porque de eso se encarga la interfaz de la web.
- * `onEstado` la mantiene al día y `onFin` avisa cuando se cierra el vídeo.
+ * En Windows y Linux mpv solo pinta: sin controles propios ni teclas, porque de eso se encarga la interfaz
+ * web superpuesta. En macOS mpv corre en su propia ventana nativa Cocoa/Metal a pantalla completa con OSC.
+ * `onEstado` mantiene al día el estado y `onFin` avisa cuando se cierra el vídeo.
  */
 export function reproducir(exe: string, p: Pedido, onFin: (acabado: boolean) => void, onEstado: (e: Estado) => void): Promise<void> {
   return new Promise((resolve, reject) => {
     const id = randomBytes(6).toString('hex');
-    const canal = process.platform === 'win32' ? `\\\\.\\pipe\\mw-${id}` : join(process.env.XDG_RUNTIME_DIR ?? '/tmp', `mw-${id}.sock`);
+    const esMac = process.platform === 'darwin';
+    const canal = process.platform === 'win32'
+      ? `\\\\.\\pipe\\mw-${id}`
+      : join(process.env.XDG_RUNTIME_DIR ?? '/tmp', `mw-${id}.sock`);
     const args = [
       '--idle=yes',
       '--force-window=yes',
@@ -123,18 +130,24 @@ export function reproducir(exe: string, p: Pedido, onFin: (acabado: boolean) => 
       '--media-controls=yes',
       // Los subtítulos sueltos del disco no pintan nada aquí: los de este fichero los manda el servidor.
       '--sub-auto=no',
-      // Sin controles ni teclas de mpv: manda la interfaz de la web, que es la misma que en el navegador.
-      '--osc=no',
-      '--osd-level=0',
-      '--input-default-bindings=no',
-      '--input-vo-keyboard=no',
-      '--cursor-autohide=no',
       `--title=${p.title.replace(/[\r\n]/g, ' ')}`,
       `--input-ipc-server=${canal}`,
     ];
+    if (esMac) {
+      // En macOS mpv corre en su propia ventana: controles en pantalla nativos y atajos de teclado estándar
+      args.push('--osc=yes', '--osd-level=1', '--input-default-bindings=yes', '--fs=yes', '--native-fs=yes');
+    } else {
+      // En Windows y Linux: sin controles ni teclas de mpv porque la web transparente va encima
+      args.push('--osc=no', '--osd-level=0', '--input-default-bindings=no', '--input-vo-keyboard=no', '--cursor-autohide=no');
+    }
     if (p.wid) args.push(`--wid=${p.wid}`);
     if (p.audioModo === 'passthrough') {
-      args.push('--audio-spdif=ac3,dts,eac3,dts-hd,truehd');
+      if (esMac) {
+        // macOS CoreAudio decodifica TrueHD y DTS-HD a LPCM multicanal 24-bit bit-perfect.
+        args.push('--audio-spdif=ac3,dts');
+      } else {
+        args.push('--audio-spdif=ac3,dts,eac3,dts-hd,truehd');
+      }
     } else if (p.audioModo === 'raw') {
       args.push('--audio-exclusive=yes');
     }

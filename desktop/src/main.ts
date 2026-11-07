@@ -56,9 +56,10 @@ const origen = (url: string) => { try { return new URL(url).origin; } catch { re
 
 /**
  * Identificador nativo de una ventana, para que mpv dibuje DENTRO de ella (`--wid`) en vez de abrir otra.
- * En Windows es un HWND de 64 bits; en X11, el XID. Si no se puede averiguar, mpv abre su propia ventana.
+ * En Windows es un HWND de 64 bits; en X11, el XID. En macOS no se usa porque NSView no permite incrustación entre procesos.
  */
 function widDe(w: BrowserWindow | null): string | null {
+  if (process.platform === 'darwin') return null;
   try {
     const b = w?.getNativeWindowHandle();
     if (!b) return null;
@@ -144,10 +145,11 @@ ipcMain.handle('mw:guardar-servidor', async (e, url: unknown) => {
 });
 
 /*
- * Ventana de reproducción: sin marco, a pantalla completa y TRANSPARENTE. Lo de transparente no es
+ * Ventana de reproducción: sin marco, a pantalla completa y TRANSPARENTE en Windows/Linux. Lo de transparente no es
  * estética: mpv dibuja como ventana hija y la superficie de Chrome se pintaba ENCIMA, así que el vídeo
  * no se veía (pasaba en la 0.2.1). Con la ventana transparente, el vídeo se ve y la interfaz de la web
  * —la misma que en el navegador— se dibuja sobre él.
+ * En macOS mpv corre en su propia ventana nativa Cocoa/Metal con aceleración VideoToolbox.
  */
 let ventanaVideo: BrowserWindow | null = null;
 
@@ -180,7 +182,12 @@ function cerrarVideo() {
   const v = ventanaVideo;
   ventanaVideo = null;
   if (v && !v.isDestroyed()) v.close();
-  if (ventana && !ventana.isDestroyed()) ventana.focus();
+  if (ventana && !ventana.isDestroyed()) {
+    ventana.focus();
+    if (process.platform === 'darwin') {
+      ventana.webContents.send('mw:reproduccion-terminada');
+    }
+  }
 }
 
 type Preparado = { servidor: string; exe: string; token: string; externos: { id: string }[] };
@@ -197,7 +204,11 @@ async function preparar(e: Electron.IpcMainInvokeEvent, o: any): Promise<Prepara
   const carpetaMpv = join(app.getPath('userData'), 'mpv');
   const exe = buscarMpv([join(process.resourcesPath ?? '', 'mpv'), carpetaMpv]);
   if (!exe) {
-    const pista = process.platform === 'win32' ? `Copia mpv.exe en ${carpetaMpv}` : 'Instálalo con el gestor de paquetes (paquete «mpv»)';
+    const pista = process.platform === 'win32'
+      ? `Copia mpv.exe en ${carpetaMpv}`
+      : process.platform === 'darwin'
+        ? 'Instálalo con Homebrew: brew install mpv'
+        : 'Instálalo con el gestor de paquetes (paquete «mpv»)';
     return { error: `No se encontró mpv. ${pista} o déjalo en el PATH.` };
   }
   const galletas = await session.defaultSession.cookies.get({ url: servidor, name: COOKIE });
@@ -210,7 +221,7 @@ async function preparar(e: Electron.IpcMainInvokeEvent, o: any): Promise<Prepara
 
 const entero = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0;
 
-/** Arranca mpv dentro de la ventana de vídeo que haya ahora. */
+/** Arranca mpv dentro de la ventana de vídeo que haya ahora (o en su propia ventana en macOS). */
 function lanzarMpv(o: any, p: Preparado) {
   const cfg = leerConfig();
   const shaderCacheDir = join(app.getPath('userData'), 'shaders');
@@ -248,6 +259,19 @@ function lanzarMpv(o: any, p: Preparado) {
 ipcMain.handle('mw:reproducir', async (e, o: any) => {
   const p = await preparar(e, o);
   if ('error' in p) return { ok: false, error: p.error };
+
+  if (process.platform === 'darwin') {
+    // En macOS mpv abre su propia ventana nativa de Cocoa/Metal sin colisión de procesos
+    try {
+      await lanzarMpv(o, p);
+      atajosMultimedia(true);
+      return { ok: true };
+    } catch (err) {
+      cerrarVideo();
+      return { ok: false, error: (err as Error).message };
+    }
+  }
+
   const { servidor } = p;
   const ep = o.episodeId !== null ? `&ep=${o.episodeId}` : '';
   /*
@@ -335,8 +359,10 @@ function actualizarMenu() {
   const modoAudio = typeof cfg.audioModo === 'string' ? cfg.audioModo : (cfg.passthrough ? 'passthrough' : 'pcm');
   const forzarArc = cfg.gpuDedicada !== false;
   const esWin = process.platform === 'win32';
+  const esMac = process.platform === 'darwin';
 
-  Menu.setApplicationMenu(Menu.buildFromTemplate([
+  const items: Electron.MenuItemConstructorOptions[] = [
+    ...(esMac ? [{ role: 'appMenu', label: app.name } as Electron.MenuItemConstructorOptions] : []),
     { label: 'Archivo', submenu: [
       { label: 'Cambiar de servidor', click: () => { guardarConfig({ servidor: undefined }); abrir(); } },
       { role: 'quit', label: 'Salir' },
@@ -349,13 +375,15 @@ function actualizarMenu() {
         click: () => { guardarConfig({ audioModo: 'pcm', passthrough: false }); actualizarMenu(); },
       },
       {
-        label: `Audio Raw / Exclusivo (${esWin ? 'WASAPI bit-perfect' : 'Directo'})`,
+        label: `Audio Raw / Exclusivo (${esWin ? 'WASAPI bit-perfect' : esMac ? 'CoreAudio exclusivo' : 'Directo ALSA'})`,
         type: 'radio',
         checked: modoAudio === 'raw',
         click: () => { guardarConfig({ audioModo: 'raw', passthrough: false }); actualizarMenu(); },
       },
       {
-        label: 'Passthrough HDMI (Bitstreaming: Atmos / TrueHD / DTS)',
+        label: esMac
+          ? 'Passthrough HDMI (AC3/DTS; TrueHD/DTS-HD a LPCM multicanal)'
+          : 'Passthrough HDMI (Bitstreaming: Atmos / TrueHD / DTS)',
         type: 'radio',
         checked: modoAudio === 'passthrough',
         click: () => { guardarConfig({ audioModo: 'passthrough', passthrough: true }); actualizarMenu(); },
@@ -369,14 +397,18 @@ function actualizarMenu() {
         enabled: false,
       },
       {
-        label: `HDR automático (${esWin ? 'Windows BT.2020 PQ' : 'Wayland / HDR'})`,
+        label: `HDR automático (${esWin ? 'Windows BT.2020 PQ' : esMac ? 'Apple Liquid Retina XDR / EDR' : 'Wayland / HDR'})`,
         type: 'checkbox',
         checked: true,
         enabled: false,
       },
       { type: 'separator' },
       {
-        label: esWin ? 'GPU dedicada: Forzar Intel Arc A730M (QSV)' : 'Aceleración por hardware (VA-API / QSV / Vulkan)',
+        label: esWin
+          ? 'GPU dedicada: Forzar Intel Arc A730M (QSV)'
+          : esMac
+            ? 'Aceleración por hardware (Apple Silicon / VideoToolbox)'
+            : 'Aceleración por hardware (VA-API / QSV / Vulkan)',
         type: 'checkbox',
         checked: forzarArc,
         click: (item) => {
@@ -389,7 +421,9 @@ function actualizarMenu() {
       { role: 'reload', label: 'Recargar' },
       { role: 'togglefullscreen', label: 'Pantalla completa' },
     ] },
-  ]));
+  ];
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(items));
 }
 
 if (!app.requestSingleInstanceLock()) app.quit();
