@@ -206,45 +206,144 @@ Accede desde tu red local en `http://<ip-de-tu-servidor>:8730` o localmente en `
 
 ## Aplicaciones Cliente y Compilación
 
-### Web y Smart TV
-```bash
-npm run build
-```
-Compila los paquetes estáticos a `web/dist/` (servidos directamente por el backend) y `tv/dist/`.
+> 💡 **¿Solo quieres usar las aplicaciones sin compilar código?**  
+> ¡No necesitas compilar nada! Si tu objetivo es simplemente disfrutar de tu contenido:
+> - **Ordenador (Windows, macOS y Linux)**: Descarga el instalador listo para usar desde **[Releases](https://github.com/pacotegg/mediawatch/releases)** o desde la página `/instalar.html` de tu propio servidor.
+> - **Móviles y Tablets (Android)**: Descarga el archivo `.apk` directamente desde `/instalar.html` en el navegador de tu móvil.
+> - **iPhone y iPad**: Abre la web en Safari, pulsa el botón *Compartir* (icono ⎋) y elige *«Añadir a pantalla de inicio»*.
+> 
+> *Sigue las guías siguientes únicamente si quieres desarrollar, modificar o compilar las aplicaciones tú mismo desde el código fuente.*
 
-### Cliente de Escritorio (Windows, macOS y Linux)
-```bash
-cd desktop
-npm install
-npm run build      # Compilar TypeScript y preparar recursos
-npm run dist       # Empaquetar instalador de Windows (.exe NSIS con mpv fijado)
-npm run dist:linux # Empaquetar Linux (.AppImage y .deb)
-npm run dist:mac   # Empaquetar instalador Universal para macOS (.dmg y .zip)
-```
-El instalador generado quedará en `desktop/release/`. Los instaladores listos para usar también se pueden descargar desde [Releases](https://github.com/pacotegg/mediawatch/releases) y desde la página `/instalar.html` del servidor.
+---
 
-### Samsung Smart TV (Tizen)
-Empaqueta e instala el paquete `.wgt` en tu televisión Samsung usando Docker:
-```bash
-MSYS_NO_PATHCONV=1 docker run --rm --network host -v "${PWD}/tv:/app" \
-  --entrypoint sh ghcr.io/georift/install-jellyfin-tizen:latest -c '
-export PATH=$PATH:/tizen-studio/tools:/tizen-studio/tools/ide/bin
-sdb connect <TV_IP>:26101
-TELE=$(sdb devices | grep -v "List of" | awk "{print \$3}" | head -1)
-mkdir -p /build && cp -r /app/dist/* /build/ && cd /build
-tizen build-web -- /build >/dev/null 2>&1
-tizen package -t wgt -s dev -- /build/.buildResult
-mv "/build/.buildResult/Media Watch.wgt" "/build/.buildResult/MediaWatch.wgt" 2>/dev/null || true
-tizen install -n MediaWatch.wgt -t "$TELE" -- /build/.buildResult
-'
-```
+### 1. Cliente de Escritorio (Windows, macOS y Linux)
 
-### App Android
-```bash
-cd android
-./gradlew :app:assembleRelease
-```
-El APK compilado se generará en `android/app/build/outputs/apk/release/`.
+El cliente de escritorio está construido sobre **Electron** y el motor de vídeo **mpv** embebido para reproducción directa sin transcodificación.
+
+#### A. En Windows 10 / 11
+1. Entra en la carpeta del cliente e instala sus dependencias:
+   ```bash
+   cd desktop
+   npm install
+   ```
+2. Compila el instalador de Windows:
+   ```bash
+   npm run dist
+   ```
+   *¿Qué hace este comando?* Descarga automáticamente una compilación de `mpv` verificada por SHA-256, compila el código TypeScript y empaqueta el instalador `.exe` (NSIS) en la carpeta `desktop/release/MediaWatch-Escritorio-Setup-<versión>.exe`. Solo tienes que ejecutarlo como cualquier programa de Windows.
+
+#### B. En macOS (Apple Silicon M1–M4 e Intel)
+1. Instala el motor `mpv` en tu Mac si aún no lo tienes (usando [Homebrew](https://brew.sh/)):
+   ```bash
+   brew install mpv
+   ```
+2. Entra en la carpeta y compila el paquete universal de Mac:
+   ```bash
+   cd desktop
+   npm install
+   npm run dist:mac
+   ```
+   *Resultado*: Genera el archivo `MediaWatch-Escritorio-<versión>-mac.dmg` en `desktop/release/`. Ábrelo y arrastra la app a tu carpeta de *Aplicaciones*.
+   > ℹ️ **Nota para macOS (Gatekeeper)**: La primera vez que abras la app, haz **Control + Clic** (clic derecho) sobre ella y selecciona **Abrir** para confirmar la excepción de seguridad de Apple (o ejecuta en Terminal `xattr -cr /Applications/Media\ Watch.app`).
+
+#### C. En Linux (Ubuntu, Debian, Fedora, Arch, etc.)
+1. Asegúrate de tener `mpv` instalado en tu distribución:
+   ```bash
+   sudo apt install mpv    # En Debian/Ubuntu/Mint
+   sudo dnf install mpv    # En Fedora
+   sudo pacman -S mpv      # En Arch
+   ```
+2. Compila los paquetes de Linux:
+   ```bash
+   cd desktop
+   npm install
+   npm run dist:linux
+   ```
+   *Resultado*: En `desktop/release/` obtendrás tanto el paquete portable universal `.AppImage` como el instalador `.deb`. Para lanzar el AppImage:
+   ```bash
+   chmod +x desktop/release/MediaWatch-Escritorio-*.AppImage
+   ./desktop/release/MediaWatch-Escritorio-*.AppImage
+   ```
+
+---
+
+### 2. Cliente Web y Entorno de Desarrollo
+
+- **Compilar para producción**:
+  ```bash
+  npm run build
+  ```
+  Genera los archivos estáticos optimizados en `web/dist/`, que el servidor Fastify sirve automáticamente sin necesidad de configurar ningún servidor web adicional.
+- **Modo desarrollo (Hot Reload)**:
+  ```bash
+  npm run dev
+  ```
+  Inicia el servidor backend y el servidor de desarrollo Vite con recarga en caliente instantánea al modificar cualquier componente de React.
+
+---
+
+### 3. Samsung Smart TV (Tizen 5.0+ / Modelos 2019 en adelante)
+
+No necesitas instalar los más de 5 GB de Tizen Studio en tu ordenador: empaquetamos e instalamos la aplicación directamente en la tele a través de Docker.
+
+#### Paso 1: Activar el Modo Desarrollador en tu televisor
+1. En el mando a distancia, pulsa el botón **Home** y entra en la sección **Apps**.
+2. Con el teclado numérico del mando (o el menú numérico en pantalla), pulsa sucesivamente: `1`, `2`, `3`, `4`, `5`.
+3. Se abrirá una ventana oculta titulada **Developer Mode**.
+4. Marca la opción en **ON** e introduce en el campo **Host PC IP** la dirección IP local de tu ordenador (por ejemplo `192.168.1.50`).
+5. Pulsa *OK* y **reinicia la tele** manteniendo pulsado el botón de encendido del mando durante 3 segundos hasta que vuelva a salir el logotipo de Samsung.
+
+#### Paso 2: Compilar e instalar la app
+1. Compila el cliente de televisión desde la raíz del proyecto:
+   ```bash
+   npm run build --workspace tv
+   ```
+2. Ejecuta el contenedor de Docker para empaquetar e instalar en la tele (sustituyendo `<IP_DE_TU_TELE>` por la IP de tu televisor Samsung en la red local):
+   ```bash
+   MSYS_NO_PATHCONV=1 docker run --rm --network host -v "${PWD}/tv:/app" \
+     --entrypoint sh ghcr.io/georift/install-jellyfin-tizen:latest -c '
+   export PATH=$PATH:/tizen-studio/tools:/tizen-studio/tools/ide/bin
+   sdb connect <IP_DE_TU_TELE>:26101
+   TELE=$(sdb devices | grep -v "List of" | awk "{print \$3}" | head -1)
+   mkdir -p /build && cp -r /app/dist/* /build/ && cd /build
+   tizen build-web -- /build >/dev/null 2>&1
+   tizen package -t wgt -s dev -- /build/.buildResult
+   mv "/build/.buildResult/Media Watch.wgt" "/build/.buildResult/MediaWatch.wgt" 2>/dev/null || true
+   tizen install -n MediaWatch.wgt -t "$TELE" -- /build/.buildResult
+   '
+   ```
+   La aplicación **Media Watch** aparecerá instalada en el menú principal de tu televisión.
+
+---
+
+### 4. Aplicación Android (Móviles, Tablets y Google Cast)
+
+#### Requisitos previos
+- **JDK 17** instalado y configurado en tu variable de entorno `JAVA_HOME` (por ejemplo [Eclipse Adoptium Temurin 17](https://adoptium.net/temurin/releases/?version=17) o Android Studio).
+
+#### Compilación
+1. Entra en el directorio de Android:
+   ```bash
+   cd android
+   ```
+2. Compila el paquete release:
+   - En **Linux / macOS**:
+     ```bash
+     ./gradlew :app:assembleRelease
+     ```
+   - En **Windows**:
+     ```powershell
+     .\gradlew.bat :app:assembleRelease
+     ```
+3. El archivo `.apk` final se generará en:
+   ```text
+   android/app/build/outputs/apk/release/app-release.apk
+   ```
+4. Para instalarlo en tu móvil conectado por USB con depuración activada:
+   ```bash
+   adb install -r app-release.apk
+   ```
+   O cópialo directamente al almacenamiento de tu teléfono y ábrelo desde cualquier explorador de archivos.
 
 ---
 
