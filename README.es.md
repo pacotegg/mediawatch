@@ -3,7 +3,8 @@
 [![Licencia: GPL v3](https://img.shields.io/badge/Licencia-GPLv3-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-22%2B-green.svg)](https://nodejs.org/)
 [![Clientes](https://img.shields.io/badge/Clientes-Web%20%7C%20Windows%20%7C%20Linux%20%7C%20Samsung%20Smart%20TV%20%7C%20Android-orange.svg)](#aplicaciones-cliente-y-compilaci%C3%B3n)
-[![App de Escritorio](https://img.shields.io/badge/Servidor%20Escritorio-Windows%20%7C%20Linux-0078D6.svg)](https://github.com/pacotegg/MediaWatch-Server)
+[![App de Escritorio](https://img.shields.io/badge/App%20Escritorio-v0.6.0%20(Win%20%7C%20Linux)-0078D6.svg?logo=windows&logoColor=white)](https://github.com/pacotegg/mediawatch/releases/tag/escritorio-v0.6.0)
+[![App Android](https://img.shields.io/badge/App%20Android-v3.93-3DDC84.svg?logo=android&logoColor=white)](https://github.com/pacotegg/mediawatch/releases)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-Invtame%20a%20un%20caf-ff5e5b?logo=ko-fi&logoColor=white)](https://ko-fi.com/pacotegg)
 
 [English](README.md) · [Español](README.es.md)
@@ -14,8 +15,10 @@ Creé Media Watch para el HTPC de mi salón porque quería un servidor de stream
 
 Lee la biblioteca directamente desde tus discos duros o carpetas, indexa los metadatos y carátulas locales, y sirve el contenido a tu tele, móvil, tablet o navegador. Si el reproductor soporta el archivo original, hace **Direct Play directo** sin tocar el vídeo y con un consumo de CPU casi nulo. Si hace falta transcodificar (subtítulos quemados, reducción de bitrate fuera de casa o codecs incompatibles), aprovecha la aceleración por hardware de tu tarjeta gráfica.
 
-> 💡 **¿Buscas un instalador listo para usar sin tocar consola?**  
-> Echa un vistazo a **[MediaWatch Server](https://github.com/pacotegg/MediaWatch-Server)**: una aplicación de escritorio para **Windows** y **Linux** con icono en la bandeja del sistema, descarga automática de metadatos desde TMDb por nombre de archivo (sin necesidad de tener archivos `.nfo` previos) y emparejamiento con móvil mediante código QR. Este repositorio (`pacotegg/mediawatch`) es el motor central.
+> 💡 **¿Buscas instaladores listos para usar?**  
+> - 💻 **Cliente de Escritorio (Windows y Linux)**: Descarga el reproductor nativo de alto rendimiento con Direct Play por GPU, HDR nativo y audio passthrough: **[Instalador Windows (.exe)](https://github.com/pacotegg/mediawatch/releases/tag/escritorio-v0.6.0)** · **[Linux AppImage y .deb](https://github.com/pacotegg/mediawatch/releases/tag/escritorio-v0.6.0)**  
+> - 📱 **Móvil y Cast**: Descarga el APK de Android desde **[Releases](https://github.com/pacotegg/mediawatch/releases)** o desde la página `/instalar.html` de tu servidor.  
+> - 🖥️ **Servidor de Escritorio Autónomo**: Echa un vistazo a **[MediaWatch Server](https://github.com/pacotegg/MediaWatch-Server)** si buscas un paquete de servidor todo en uno con icono en la bandeja del sistema, descarga automática de metadatos desde TMDb por nombre de archivo (sin necesidad de archivos `.nfo`) y emparejamiento con móvil mediante código QR. Este repositorio (`pacotegg/mediawatch`) es el motor central.
 
 ---
 
@@ -69,6 +72,18 @@ Media Watch es software libre y de código abierto: puedes redistribuirlo y/o mo
 
 ---
 
+### Cliente de Escritorio (Windows y Linux — Electron + mpv)
+
+Reproductor de escritorio dedicado, desarrollado para Direct Play bit a bit, decodificación por hardware en GPU y sonido de cine sin pérdidas, sin transcodificar nada en el servidor:
+
+- **Direct Play 100% en crudo**: Reproduce 4K HEVC Main 10, AV1, VP9, VC-1, DTS, DTS-HD MA, Dolby TrueHD, Dolby Atmos, FLAC y subtítulos gráficos (PGS, ASS/SSA) de forma nativa mediante mpv integrado (`raw=1`).
+- **Aceleración por GPU dedicada**: Aprovecha la decodificación por hardware (Intel Arc QSV, NVIDIA NVDEC, AMD D3D11VA y VA-API en Linux) con 0% de uso de CPU.
+- **Motor moderno libplacebo (`gpu-next`)**: Cadena swapchain nativa BT.2020 PQ para HDR en Windows 11 y mapeo de tonos spline de alta precisión en pantallas SDR.
+- **Modos de sonido audiófilo**: PCM estándar, Audio Raw / Exclusivo (WASAPI bit-perfect) y Passthrough HDMI (Bitstreaming a receptores AV o barras de sonido).
+- **Integración con el sistema**: Teclas multimedia globales del teclado, HUD transparente sin marco sobre el vídeo, miniaturas trickplay y encadenado automático de episodios.
+
+---
+
 ## Requisitos de Hardware
 
 Uno de los pilares del diseño ha sido la ligereza: exprimir el hardware sin necesidad de montar un servidor costoso.
@@ -99,29 +114,29 @@ Cuando hace falta convertir el vídeo al vuelo (subtítulos incrustados, menor b
 
 ## Transcodificación por Hardware: H.264 y HEVC / x265
 
-Media Watch incluye aceleración por hardware tanto para **H.264 (AVC)** como para **HEVC (H.265)**:
+Media Watch incluye aceleración por hardware para codificar tanto en **H.264 (AVC)** como en **HEVC (H.265)**:
 
-| Motor Gráfico | Codificador H.264 | Codificador HEVC (x265) | Mapeo de Tonos HDR (Tonemap) |
+| Motor de Hardware | Codificador H.264 | Codificador HEVC (x265) | Mapeo de Tonos HDR |
 |---|---|---|---|
-| **Intel Quick Sync (QSV)** | `h264_qsv` | `hevc_qsv` (10-bit HDR nativo) | `vpp_qsv` (tonemapping por GPU) |
-| **NVIDIA NVENC** | `h264_nvenc` | `hevc_nvenc` | Escalado y tonemap por hardware |
-| **AMD AMF** | `h264_amf` | `hevc_amf` | Escalado por hardware |
-| **CPU (Fallback)** | `libx264` | `libx265` | Tonemap por software |
+| **Intel Quick Sync (QSV)** | `h264_qsv` | `hevc_qsv` (nativo 10 bits HDR) | `vpp_qsv` (tonemap en GPU) |
+| **NVIDIA NVENC** | `h264_nvenc` | `hevc_nvenc` | Escala y tonemap por GPU |
+| **AMD AMF** | `h264_amf` | `hevc_amf` | Escala por GPU |
+| **CPU (Software)** | `libx264` | `libx265` | Tonemap por software |
 
 ### Elegir entre H.264 y HEVC en Ajustes:
-- **H.264 (Por defecto)**: Máxima compatibilidad universal. Cualquier navegador (Firefox en Linux o Windows, navegadores Chromium sin soporte de licencia HEVC, portátiles antiguos) reproduce H.264 sin pantallas negras.
-- **HEVC / H.265**: Ahorra aproximadamente entre un 40% y un 50% de ancho de banda con la misma calidad visual y procesa HDR de 10 bits nativo en GPU. Muy recomendado si tus clientes principales son la aplicación de Android, la Smart TV Samsung o navegadores con decodificador HEVC por hardware activo (Edge, Safari, Chrome configurado).
-- Puedes cambiarlo en cualquier momento en **Ajustes &rarr; Transcodificación &rarr; Códec de transcodificación**.
+- **H.264 (Por defecto)**: Compatibilidad universal total. Cualquier navegador (Firefox en Linux/Windows, navegadores Chromium sin licencias HEVC, ordenadores antiguos) lo reproduce al instante sin pantallas negras.
+- **HEVC / H.265**: Ahorra entre un 40% y un 50% de ancho de banda con la misma calidad visual y mantiene el color HDR de 10 bits por hardware. Recomendado si los clientes principales son la app de Android, la app de la tele Samsung, el cliente de escritorio o navegadores con decodificación HEVC activa en el SO (Edge, Safari, Chrome con decodificadores de Windows).
+- Puedes cambiarlo en cualquier momento desde **Ajustes &rarr; Transcodificación &rarr; Códec de transcodificación**.
 
 ---
 
-## Compatibilidad con Linux y Requisitos
+## Soporte y Requisitos en Linux
 
-Media Watch funciona perfectamente en Linux (Ubuntu, Debian, Fedora, Arch, etc.):
+Media Watch funciona perfectamente en distribuciones Linux (Ubuntu, Debian, Fedora, Arch, etc.). Al alojarlo en Linux:
 
-### 1. Como aplicación de escritorio (vía MediaWatch Server)
-- **AppImage**: Se ejecuta directamente sin instalar nada en el sistema.
-  - *Requisito en distribuciones modernas (Ubuntu 22.04+, Debian 12, Fedora)*: asegúrate de tener instalada la librería FUSE 2:
+### 1. App de Escritorio Autónoma (mediante MediaWatch Server)
+- **AppImage**: Ejecutable directo sin instalación.
+  - *Requisito en distribuciones modernas (Ubuntu 22.04+, Debian 12, Fedora)*: asegurarse de tener instalado FUSE 2:
     ```bash
     sudo apt install libfuse2
     ```
@@ -130,19 +145,19 @@ Media Watch funciona perfectamente en Linux (Ubuntu, Debian, Fedora, Arch, etc.)
   sudo dpkg -i mediawatch-server_*_amd64.deb
   ```
 
-### 2. Aceleración por hardware en Linux
+### 2. Aceleración por Hardware en Linux
 - **Intel QSV / VAAPI**:
-  - Instala el driver de medios oficial:
+  - Instala el controlador de medios non-free:
     ```bash
     sudo apt install intel-media-va-driver-non-free vainfo
     ```
-  - Comprueba que tu usuario pertenece a los grupos de vídeo y render:
+  - Comprueba que tu usuario tiene permisos en el dispositivo de renderizado:
     ```bash
     sudo usermod -aG render,video $USER
     ```
-  - Comprueba con `vainfo` que aparecen los perfiles H.264 y HEVC.
+  - Comprueba con `vainfo` que aparecen los puntos de entrada `VAProfileH264...` y `VAProfileHEVC...`.
 - **NVIDIA NVENC**:
-  - Instala los controladores propietarios oficiales de NVIDIA (`nvidia-driver-xxx`). Comprueba con `nvidia-smi`.
+  - Instala los controladores oficiales propietarios (`nvidia-driver-xxx`). Comprueba con `nvidia-smi`.
 
 ---
 
@@ -157,6 +172,17 @@ Media Watch funciona perfectamente en Linux (Ubuntu, Debian, Fedora, Arch, etc.)
   - *Direct Stream / Remux*: Copia directa de la pista de vídeo y conversión al vuelo solo del audio cuando el cliente lo requiere.
   - *Aceleración por GPU*: Compatible con Intel Quick Sync, NVIDIA NVENC, AMD AMF o software en CPU. Códecs H.264 y HEVC seleccionables.
   - *Línea de tiempo con Trickplay*: Generación de miniaturas para previsualizar el punto exacto al avanzar o retroceder.
+- **Reproductor Nativo de Escritorio (Windows y Linux)**:
+  - Basado en Electron y un motor nativo incrustado de `mpv` con Direct Play en crudo (`raw=1`), sin transcodificar nada en el servidor.
+  - Decodificación acelerada por hardware aprovechando la GPU dedicada (Intel Arc QSV, NVIDIA NVDEC, AMD D3D11VA y VA-API en Linux).
+  - Renderizado moderno con `libplacebo` (`gpu-next`), HDR nativo en Windows (cadena swapchain BT.2020 PQ) y mapeo de tonos spline en pantallas SDR.
+  - Tres modos de audio audiófilos: PCM estándar, Audio Raw / Exclusivo (WASAPI bit-perfect directo) y Passthrough HDMI (Bitstreaming a receptores AV / barras).
+  - Integración fluida: teclas multimedia globales del teclado, HUD transparente sin marco, miniaturas trickplay y encadenado automático de episodios.
+- **Watchlist y Experiencia de Visionado**:
+  - Lista de seguimiento (Watchlist) sincronizada por perfil entre Web, Smart TV, Android y Escritorio.
+  - Siguiente episodio automático con cuenta atrás.
+  - Temporizador de apagado (Sleep Timer) para Smart TVs.
+  - Logos de productoras y estudios en alta definición conservando sus colores originales.
 - **Material Extra y Escenas Eliminadas Nativas**:
   - Filas panorámicas 16:9 integradas en la ficha (*Detrás de las cámaras*, *Tomas falsas*, *Escenas eliminadas*, *Entrevistas*).
   - Descarga automática opcional de extras y tráilers oficiales vía TMDb y `yt-dlp`.
@@ -177,7 +203,7 @@ Media Watch funciona perfectamente en Linux (Ubuntu, Debian, Fedora, Arch, etc.)
   - Menú lateral reorganizable agarrando y soltando (`[OK]` para coger y soltar).
   - Detección acústica de intros y temas de series mediante huella digital Chromaprint.
 - **Interfaz Multilingüe**:
-  - Inglés y Español disponibles en Web, Smart TV y Android.
+  - Inglés y Español disponibles en Web, Smart TV, Android y Escritorio.
 
 ---
 
@@ -189,6 +215,7 @@ Media Watch funciona perfectamente en Linux (Ubuntu, Debian, Fedora, Arch, etc.)
 | `web/` | Cliente Web | React 19 + Vite 6 + Tailwind CSS 4 + Motion |
 | `tv/` | Cliente Smart TV (Samsung Tizen) | TypeScript plano + ES2016 IIFE + AVPlay nativo |
 | `android/` | App Android (Móviles / Tablets / Cast) | Kotlin + Jetpack Compose + Media3 (ExoPlayer) + Google Cast |
+| `desktop/` | Cliente de Escritorio (Windows y Linux) | Electron 44 + mpv incrustado + decodificación GPU (QSV / D3D11 / VA-API) |
 | `data/` | Datos locales de ejecución (no en git) | Base de datos SQLite, caché de arte, miniaturas trickplay |
 
 ---
@@ -231,6 +258,49 @@ npm run scan
 npm start
 ```
 Accede desde tu red local en `http://<ip-de-tu-servidor>:8730` o localmente en `http://localhost:8730`.
+
+---
+
+## Aplicaciones Cliente y Compilación
+
+### Web y Smart TV
+```bash
+npm run build
+```
+Compila los paquetes estáticos a `web/dist/` (servidos directamente por el backend) y `tv/dist/`.
+
+### Cliente de Escritorio (Windows y Linux)
+```bash
+cd desktop
+npm install
+npm run build      # Compilar TypeScript y preparar recursos
+npm run dist       # Empaquetar instalador de Windows (.exe NSIS con mpv fijado)
+npm run dist:linux # Empaquetar Linux (.AppImage y .deb)
+```
+El instalador generado quedará en `desktop/release/`. Los instaladores listos para usar también se pueden descargar desde [Releases](https://github.com/pacotegg/mediawatch/releases) y desde la página `/instalar.html` del servidor.
+
+### Samsung Smart TV (Tizen)
+Empaqueta e instala el paquete `.wgt` en tu televisión Samsung usando Docker:
+```bash
+MSYS_NO_PATHCONV=1 docker run --rm --network host -v "${PWD}/tv:/app" \
+  --entrypoint sh ghcr.io/georift/install-jellyfin-tizen:latest -c '
+export PATH=$PATH:/tizen-studio/tools:/tizen-studio/tools/ide/bin
+sdb connect <TV_IP>:26101
+TELE=$(sdb devices | grep -v "List of" | awk "{print \$3}" | head -1)
+mkdir -p /build && cp -r /app/dist/* /build/ && cd /build
+tizen build-web -- /build >/dev/null 2>&1
+tizen package -t wgt -s dev -- /build/.buildResult
+mv "/build/.buildResult/Media Watch.wgt" "/build/.buildResult/MediaWatch.wgt" 2>/dev/null || true
+tizen install -n MediaWatch.wgt -t "$TELE" -- /build/.buildResult
+'
+```
+
+### App Android
+```bash
+cd android
+./gradlew :app:assembleRelease
+```
+El APK compilado se generará en `android/app/build/outputs/apk/release/`.
 
 ---
 

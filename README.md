@@ -3,7 +3,8 @@
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-22%2B-green.svg)](https://nodejs.org/)
 [![Clients](https://img.shields.io/badge/Clients-Web%20%7C%20Windows%20%7C%20Linux%20%7C%20Samsung%20Smart%20TV%20%7C%20Android-orange.svg)](#client-applications--building)
-[![Desktop App](https://img.shields.io/badge/Desktop%20Server-Windows%20%7C%20Linux-0078D6.svg)](https://github.com/pacotegg/MediaWatch-Server)
+[![Desktop App](https://img.shields.io/badge/Desktop%20App-v0.6.0%20(Win%20%7C%20Linux)-0078D6.svg?logo=windows&logoColor=white)](https://github.com/pacotegg/mediawatch/releases/tag/escritorio-v0.6.0)
+[![Android App](https://img.shields.io/badge/Android%20App-v3.93-3DDC84.svg?logo=android&logoColor=white)](https://github.com/pacotegg/mediawatch/releases)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-Buy%20me%20a%20coffee-ff5e5b?logo=ko-fi&logoColor=white)](https://ko-fi.com/pacotegg)
 
 [English](README.md) · [Español](README.es.md)
@@ -14,8 +15,10 @@ I built Media Watch for my living room HTPC setup because I wanted a clean, fast
 
 It reads your media library directly from your storage drives, indexes your metadata and artwork, and streams to your TV, phone, tablet, or browser. If your player supports the file, it Direct Plays untouched with virtually 0% CPU. If you need transcoding (subtitles, lower bitrates outside home, or unsupported codecs), it uses your GPU hardware acceleration.
 
-> 💡 **Looking for a ready-to-run desktop installer?**  
-> Check out **[MediaWatch Server](https://github.com/pacotegg/MediaWatch-Server)**: a standalone desktop application for **Windows** and **Linux** with system tray controls, automatic TMDb metadata scraping without needing pre-existing `.nfo` files, and an instant QR code pairing tool. This repository (`pacotegg/mediawatch`) is the core engine.
+> 💡 **Looking for ready-to-run client and server installers?**  
+> - 💻 **Desktop Client (Windows & Linux)**: Download the dedicated player with GPU Direct Play, HDR and HDMI audio passthrough: **[Windows Setup (.exe)](https://github.com/pacotegg/mediawatch/releases/tag/escritorio-v0.6.0)** · **[Linux AppImage & .deb](https://github.com/pacotegg/mediawatch/releases/tag/escritorio-v0.6.0)**  
+> - 📱 **Mobile & Cast**: Get the Android app APK from **[Releases](https://github.com/pacotegg/mediawatch/releases)** or your local server's `/instalar.html` page.  
+> - 🖥️ **Standalone Desktop Server**: Check out **[MediaWatch Server](https://github.com/pacotegg/MediaWatch-Server)** for an all-in-one desktop server package with tray icon, automatic TMDb scraping without `.nfo` files, and instant QR pairing. This repository (`pacotegg/mediawatch`) is the core engine.
 
 ---
 
@@ -66,6 +69,18 @@ Media Watch is free and open-source software: you can redistribute it and/or mod
 |:---:|:---:|
 | ![Android Drawer](docs/screenshots/android/android-drawer.webp) | ![Android Settings](docs/screenshots/android/android-settings.webp) |
 | *Interactive drag-and-drop section organization* | *Bitrate quality control, audio modes, and interface language selector* |
+
+---
+
+### Desktop Client (Windows & Linux — Electron + mpv)
+
+Dedicated desktop player engineered for bit-perfect Direct Play, hardware video decoding, and uncompressed home cinema audio without server-side transcoding:
+
+- **100% Direct Play**: Plays 4K HEVC Main 10, AV1, VP9, VC-1, DTS, DTS-HD MA, Dolby TrueHD, Dolby Atmos, FLAC, and graphic subtitles (PGS, ASS/SSA) natively via bundled mpv (`raw=1`).
+- **Dedicated GPU Acceleration**: Zero CPU strain using hardware decoding on dedicated GPUs (Intel Arc QSV, NVIDIA NVDEC, AMD D3D11VA, and Linux VA-API).
+- **Modern libplacebo (`gpu-next`) Engine**: Native BT.2020 PQ HDR swapchain on Windows 11 and high-precision spline tone-mapping on SDR screens.
+- **Audiophile Sound Modes**: Standard PCM, Bit-perfect Audio Raw (WASAPI Exclusive), and HDMI Audio Passthrough (Bitstreaming to AV receivers and soundbars).
+- **Desktop Integration**: Global media keys, transparent frameless overlay HUD, trickplay scrub thumbnails, and seamless episode chaining.
 
 ---
 
@@ -157,6 +172,17 @@ Media Watch runs smoothly on Linux (Ubuntu, Debian, Fedora, Arch, etc.). When ho
   - *Direct Stream / Remux*: Video stream copy with on-the-fly audio transcoding when device codecs require it.
   - *Hardware Acceleration*: GPU-accelerated transcoding via Intel Quick Sync (QSV), NVIDIA NVENC, AMD AMF, or CPU fallback. Both H.264 and HEVC codecs supported.
   - *Trickplay Scrubbing*: Keyframe thumbnail strips generated rapidly for timeline scrubbing.
+- **Native Desktop Player (Windows & Linux)**:
+  - Powered by Electron and an embedded native `mpv` video engine with Direct Play (`raw=1`), requiring zero server-side transcoding.
+  - Dedicated hardware acceleration (Intel Arc QSV, NVIDIA NVDEC, AMD D3D11VA, and Linux VA-API).
+  - Modern `libplacebo` (`gpu-next`) rendering pipeline with native HDR (BT.2020 PQ swapchain) and high-quality tone mapping for SDR screens.
+  - Audiophile sound options: Standard PCM, Bit-perfect Audio Raw (WASAPI Exclusive), and HDMI Audio Passthrough (Bitstreaming to AV receivers).
+  - Seamless integration: global media keyboard shortcuts, transparent frameless overlay HUD, trickplay thumbnails, and automatic episode chaining.
+- **Watchlist & Cross-Device Progress**:
+  - Unified per-profile Watchlist synchronized instantly across Web, Smart TV, Android, and Desktop.
+  - Intelligent next-episode auto-play with countdown HUD.
+  - Sleep timer for late-night viewing on Smart TVs.
+  - High-resolution studio production logos preserving original brand colors.
 - **Native Extra Featurettes & Behind-The-Scenes**:
   - Dedicated 16:9 extra rows integrated directly into media detail pages (*Behind the Scenes*, *Featurettes*, *Deleted Scenes*, *Interviews*, *Bloopers*, *Short Films*).
   - Optional automated downloading of official extras and trailers via TMDb and `yt-dlp`.
@@ -178,7 +204,7 @@ Media Watch runs smoothly on Linux (Ubuntu, Debian, Fedora, Arch, etc.). When ho
   - Automated TV intro/theme detection via Chromaprint acoustic fingerprints and automated credits detection.
 - **Multi-Language Interface Support**:
   - English is enabled by default on all fresh installations and clones.
-  - Seamlessly toggle between **English** and **Spanish** in any client (Web, Smart TV, and Android).
+  - Seamlessly toggle between **English** and **Spanish** in any client (Web, Smart TV, Android, and Desktop).
 
 ---
 
@@ -190,6 +216,7 @@ Media Watch runs smoothly on Linux (Ubuntu, Debian, Fedora, Arch, etc.). When ho
 | `web/` | Web Client | React 19 + Vite 6 + Tailwind CSS 4 + Motion |
 | `tv/` | Smart TV Client (Samsung Tizen) | Plain TypeScript + ES2016 IIFE + AVPlay native |
 | `android/` | Android Mobile / Tablet / Cast | Kotlin + Jetpack Compose + Media3 (ExoPlayer) + Google Cast |
+| `desktop/` | Native Desktop Client (Windows & Linux) | Electron 44 + Embedded mpv + Direct3D 11 / VA-API Hardware Decoding |
 | `data/` | Local runtime data (git-ignored) | SQLite database, generated artwork cache, trickplay thumbnails |
 
 ---
@@ -259,6 +286,16 @@ npm run dev
 npm run build
 ```
 Builds static bundles to `web/dist/` (served directly by the backend) and `tv/dist/`.
+
+### Desktop Client (Windows & Linux)
+```bash
+cd desktop
+npm install
+npm run build      # Compile TypeScript and copy connecting assets
+npm run dist       # Package Windows NSIS installer (.exe with bundled mpv)
+npm run dist:linux # Package Linux AppImage and .deb
+```
+The compiled installer will be in `desktop/release/`. Ready-to-run installers are also available in [Releases](https://github.com/pacotegg/mediawatch/releases) and through the `/instalar.html` download page.
 
 ### Samsung Smart TV (Tizen)
 Package and install the `.wgt` application to your Samsung TV using Docker:
