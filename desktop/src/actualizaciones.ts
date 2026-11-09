@@ -24,7 +24,8 @@ function anotar(mensaje: string) {
 
 export function iniciarActualizaciones(ventana: () => BrowserWindow | null) {
   if (!app.isPackaged) return;
-  autoUpdater.autoDownload = true;
+  // En macOS la actualización automática exige una app firmada y esta no lo está: solo se avisa en el registro.
+  autoUpdater.autoDownload = process.platform !== 'darwin';
   // Al salir, no mientras se está viendo algo.
   autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.on('update-available', (i) => anotar(`hay version ${i.version}`));

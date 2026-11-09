@@ -184,9 +184,6 @@ function cerrarVideo() {
   if (v && !v.isDestroyed()) v.close();
   if (ventana && !ventana.isDestroyed()) {
     ventana.focus();
-    if (process.platform === 'darwin') {
-      ventana.webContents.send('mw:reproduccion-terminada');
-    }
   }
 }
 
