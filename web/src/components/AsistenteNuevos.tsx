@@ -151,6 +151,8 @@ export default function AsistenteNuevos() {
     'inactivo' | 'identificando' | 'aplicando' | 'renombrando' | 'enviando' | 'exito' | 'error'
   >('inactivo');
   const [mensajeError, setMensajeError] = useState<string | null>(null);
+  // ¿El último proceso llegó a enviar a la biblioteca? «Escrapear aquí» y el proceso sin envío no mueven nada fuera de su carpeta.
+  const [enviado, setEnviado] = useState(false);
 
   // Consultas principales
   const { data: estadoNuevos } = useQuery({
@@ -332,7 +334,7 @@ export default function AsistenteNuevos() {
         const ids = elegidosParaProcesar.map((i) => i.id);
         await api.scraperEnviar(ids, '', true, 'rapida');
       } else {
-        setFasePipeline('exito');
+        setEnviado(false); setFasePipeline('exito');
         refrescarTodo();
       }
     } catch (err) {
@@ -365,7 +367,7 @@ export default function AsistenteNuevos() {
           esperas++;
         }
       }
-      setFasePipeline('exito');
+      setEnviado(false); setFasePipeline('exito');
       refrescarTodo();
     } catch (err) {
       setFasePipeline('error');
@@ -382,7 +384,7 @@ export default function AsistenteNuevos() {
           setFasePipeline('error');
           setMensajeError(`Error al transferir: ${fallidos.map((f) => `${f.titulo} (${f.error})`).join('; ')}`);
         } else {
-          setFasePipeline('exito');
+          setEnviado(true); setFasePipeline('exito');
         }
         refrescarTodo();
       }
@@ -530,10 +532,12 @@ export default function AsistenteNuevos() {
             </span>
             <div>
               <div className="font-semibold text-emerald-200">
-                ¡Títulos procesados y enviados a la biblioteca!
+                {enviado ? '¡Títulos procesados y enviados a la biblioteca!' : '¡Títulos procesados en su carpeta!'}
               </div>
               <div className="text-[12px] text-emerald-300/80">
-                Se han generado sus archivos NFO, copiado el arte y reubicado en su carpeta definitiva.
+                {enviado
+                  ? 'Se han generado sus archivos NFO, copiado el arte y reubicado en su carpeta definitiva.'
+                  : 'Se han guardado sus datos y generado NFO y arte junto al vídeo. No se ha enviado a la biblioteca: sigue en su carpeta de entrada.'}
               </div>
             </div>
           </div>

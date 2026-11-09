@@ -68,6 +68,11 @@ export function limpiarNombre(crudo: string): { title: string; year?: number; tm
     .replace(/\u0002/g, '.');
 
   const tokens = s.split(/\s+/).filter(Boolean);
+  // La primera palabra nunca se corta, pero «1408-DC» o «Blade-Runner-4K» son UNA palabra con la edicion o la calidad pegada.
+  if (tokens.length && tokens[0] !== '\u0001') {
+    const m = tokens[0].match(/^(.+?)-([A-Za-z0-9]+)$/);
+    if (m && (esTecnica(m[2]) || /^(dc|uncut|imax|theatrical)$/i.test(m[2]))) tokens[0] = m[1];
+  }
   const marca = tokens.indexOf('\u0001');
   let corte = tokens.length;
   let year = anoParentesis;

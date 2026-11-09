@@ -7,6 +7,18 @@ export type Busqueda =
   | { tipo: 'imdb'; id: string }
   | { tipo: 'texto'; texto: string };
 
+/** Solo cifras: puede ser un id de TMDb o un titulo («1408», «2012», «300»). */
+export const esNumeroPelado = (entrada: string) => /^\d{1,9}$/.test(entrada.trim());
+
+/**
+ * Un numero pelado se busca como titulo Y como id. Si es corto (≤4 cifras: «1408», «2012»; parece titulo o año) mandan los titulos;
+ * si es largo, el id. Antes solo se leia como id y «1408» devolvia «La isla de las cabezas cortadas», que es el id 1408 de TMDb.
+ */
+export function ordenarNumeroPelado<T extends { tmdbId: number }>(entrada: string, porTitulo: T[], porId: T[]): T[] {
+  const orden = entrada.trim().length <= 4 ? [...porTitulo, ...porId] : [...porId, ...porTitulo];
+  return orden.filter((p, i, a) => a.findIndex((x) => x.tmdbId === p.tmdbId) === i);
+}
+
 export function interpretarBusqueda(entrada: string): Busqueda {
   const t = entrada.trim();
   // themoviedb.org/movie/241-natural-born-killers  |  themoviedb.org/tv/1396

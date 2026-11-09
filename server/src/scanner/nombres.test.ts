@@ -15,6 +15,12 @@ const casos: [string, string, number | undefined][] = [
   ['Blade Runner 2049 2017 1080p', 'Blade Runner 2049', 2017],
   ['1917 (2019)', '1917', 2019],
   ['1917', '1917', undefined],
+  // Un solo token con sufijo de edicion o de calidad: antes quedaba «1408-DC» y TMDb no lo encontraba.
+  ['1408-DC', '1408', undefined],
+  ['1408-Uncut', '1408', undefined],
+  ['Blade-Runner-4K', 'Blade-Runner', undefined],
+  ['Spider-Man', 'Spider-Man', undefined],
+  ['X-Men', 'X-Men', undefined],
   ['2012.2009.1080p.BluRay', '2012', 2009],
   ['Mr. Robot (2015)', 'Mr. Robot', 2015],
   ['Dual (2022)', 'Dual', 2022],

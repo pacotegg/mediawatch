@@ -3,7 +3,7 @@ import { config, saveConfig } from '../config.ts';
 import { db, normalize } from '../db.ts';
 import { requireUser } from './auth.ts';
 import { detallesDe, search, tmdbGet, TmdbError, type Proposal } from '../scanner/tmdb.ts';
-import { interpretarBusqueda } from '../scanner/buscar-id.ts';
+import { esNumeroPelado, interpretarBusqueda, ordenarNumeroPelado } from '../scanner/buscar-id.ts';
 import { aplicarArteCarpeta, ArteCarpetaError, planArteCarpeta } from '../scanner/arte-carpeta.ts';
 import { basename, dirname, relative } from 'node:path';
 import { aplicacion, aplicarDatos, buscarNuevos, busqueda, depurarBusqueda, ejecutarLote, fuentesConPendientes, ignorarItem, limpiarLote, listarCandidatos, marcarEntradas, planesDeLoteMedidos, renombrado, SIN_IGNORADAS, sinRegistrar, totalPendientes, validarFuentes } from '../scanner/lote.ts';
@@ -452,7 +452,13 @@ export default async function scraperRoutes(app: FastifyInstance) {
       if (b.tipo === 'texto') {
         propuestas = await search(b.texto, kind, year);
       } else if (b.tipo === 'tmdb') {
-        propuestas = [await detallesDe(b.id, b.kind ?? kind)];
+        if (esNumeroPelado(entrada)) {
+          // «1408» es un titulo y tambien el id 1408 de TMDb: se ofrecen los dos.
+          const porId = await detallesDe(b.id, b.kind ?? kind).then((p) => [p], () => [] as Proposal[]);
+          propuestas = ordenarNumeroPelado(entrada, await search(entrada.trim(), kind, year), porId);
+        } else {
+          propuestas = [await detallesDe(b.id, b.kind ?? kind)];
+        }
       } else {
         const r = await tmdbGet<{ movie_results?: { id: number }[]; tv_results?: { id: number }[] }>(`/find/${b.id}`, { external_source: 'imdb_id' });
         const hit = (kind === 'movie' ? r.movie_results : r.tv_results)?.[0];
@@ -485,9 +491,10 @@ export default async function scraperRoutes(app: FastifyInstance) {
     const { entrada, kind, year, enlazarTmdb } = (req.body ?? {}) as { entrada?: string; kind?: string; year?: number | null; enlazarTmdb?: boolean };
     if (!entrada?.trim() || (kind !== 'movie' && kind !== 'show')) return reply.code(400).send({ error: 'Escribe un título o un id de IMDb' });
     const b = interpretarBusqueda(entrada);
-    if (b.tipo === 'tmdb') return { propuestas: [], aviso: 'OMDb no entiende ids de TMDb: escribe el título o el id de IMDb (tt…)' };
+    // Un numero pelado («1408») es un titulo para OMDb, que no conoce ids de TMDb.
+    if (b.tipo === 'tmdb' && !esNumeroPelado(entrada)) return { propuestas: [], aviso: 'OMDb no entiende ids de TMDb: escribe el título o el id de IMDb (tt…)' };
     try {
-      const halladas = b.tipo === 'imdb' ? [await detallesOmdb(b.id, kind)] : await buscarOmdb(b.texto, kind, year);
+      const halladas = b.tipo === 'imdb' ? [await detallesOmdb(b.id, kind)] : await buscarOmdb(b.tipo === 'texto' ? b.texto : entrada.trim(), kind, year);
       if (enlazarTmdb === true) return await soloConTmdb(halladas, kind, 'OMDb');
       return { propuestas: halladas, aviso: halladas.length ? undefined : 'OMDb no encuentra nada con eso' };
     } catch (err) {
