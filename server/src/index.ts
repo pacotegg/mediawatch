@@ -18,6 +18,7 @@ import descargaRoutes from './routes/descargas.ts';
 import enrichRoutes from './routes/enrich.ts';
 import identificarRoutes from './routes/identificar.ts';
 import scraperRoutes from './routes/scraper.ts';
+import servicioRoutes from './routes/servicio.ts';
 import { identificarPendientes } from './scanner/identificar.ts';
 import libraryRoutes from './routes/library.ts';
 import mandoRoutes from './routes/mando.ts';
@@ -167,6 +168,8 @@ const ABIERTAS = new Set([
   'GET /api/app/version', // la app avisa de versión nueva también antes de entrar
   'GET /api/salud', // el vigilante comprueba que el servidor CONTESTA, no solo que el proceso existe
   'POST /api/plex/webhook', // webhook de Plex (solo red local)
+  'POST /api/servicio/torrdwn/procesar', // servicio para TorrentDWN: el handler exige la clave de servicio y red local
+  'GET /api/servicio/torrdwn/estado',
 ]);
 
 app.addHook('onRequest', async (req, reply) => {
@@ -604,6 +607,7 @@ await app.register(preferenceRoutes);
 await app.register(enrichRoutes);
 await app.register(identificarRoutes);
 await app.register(scraperRoutes);
+await app.register(servicioRoutes);
 await app.register(subtitleRoutes);
 await app.register(novedadesRoutes);
 await app.register(animeRoutes);

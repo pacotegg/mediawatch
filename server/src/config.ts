@@ -57,6 +57,13 @@ export type AppConfig = {
   /** Clave de TheTVDB v4: segunda fuente de logotipos, con el idioma puesto. */
   tvdbApiKey: string;
   /**
+   * Clave de SERVICIO para TorrentDWN (vía máquina a máquina, solo red de casa; vacía = apagado; mínimo 24 caracteres).
+   * Nunca va en el repo: se escribe a mano en data/config.json.
+   */
+  servicioClave: string;
+  /** Con servicio activo: además de escrapear, renombrar + arte + NFO cuando el plan es seguro (apagado por defecto). */
+  servicioRenombrar: boolean;
+  /**
    * Clave de Watchmode: el enlace directo a un título dentro de Prime, Movistar+ o
    * Apple TV+. Plan gratuito: 2.500 llamadas al mes, caché de 30 días como máximo
    * y atribución obligatoria. Sin clave, «Ver» solo abre la app de la plataforma.
@@ -162,6 +169,8 @@ function defaultConfig(): AppConfig {
     omdbApiKey: '',
     fanartApiKey: '',
     tvdbApiKey: '',
+    servicioClave: '',
+    servicioRenombrar: false,
     watchmodeApiKey: '',
   };
 }
