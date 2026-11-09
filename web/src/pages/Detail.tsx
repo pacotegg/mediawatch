@@ -12,7 +12,7 @@ import Extras from '../components/Extras.tsx';
 import Trailer from '../components/Trailer.tsx';
 import Row from '../components/Row.tsx';
 import { api, img, type Episode, type ItemDetail, type PerfilDescarga, type CodecDescarga } from '../lib/api.ts';
-import { aspectRatioLabel, audioLabelsUnicas, certification, clock, codecLabel, fileSize, languageName, resolutionLabel, runtime } from '../lib/format.ts';
+import { aspectRatioLabel, audioLabelsUnicas, certification, clock, codecLabel, fileSize, languageName, premiosEnEspanol, resolutionLabel, runtime } from '../lib/format.ts';
 import { usePreferences } from '../lib/preferences.tsx';
 import { tintFrom } from '../lib/tint.ts';
 import Estuche3D from '../components/Estuche3D.tsx';
@@ -672,6 +672,13 @@ export default function Detail() {
             </div>
 
             {item.genres.length > 0 && <div className="mb-3 text-[14px] text-mist-500">{item.genres.slice(0, 4).join(', ')}</div>}
+
+            {premiosEnEspanol(item.premios) && (
+              <div className="mb-3 flex items-start gap-1.5 text-[13.5px] text-mist-300" title="Premios según OMDb">
+                <span aria-hidden>🏆</span>
+                <span>{premiosEnEspanol(item.premios)}</span>
+              </div>
+            )}
 
             {badges.length > 0 && (
               <div className="mb-4 flex flex-wrap gap-1.5">

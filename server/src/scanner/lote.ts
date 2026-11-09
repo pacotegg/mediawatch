@@ -19,6 +19,7 @@ import { coincidenciaSegura } from './identificar.ts';
 import { rellenarEpisodios } from './episodios-tmdb.ts';
 import { aplicarOrganizar, asegurarMedidos, autoOrganizarSueltoSiAplica, planOrganizar, type PlanOrganizar } from './organizar.ts';
 import { aplicarArteCarpeta } from './arte-carpeta.ts';
+import { traerPremios } from './omdb-ficha.ts';
 import { escaneoEnCurso, JUNK, MIN_VIDEO_BYTES, scanAllEnWorker, SKIP_DIRS, VIDEO_EXT } from './scan.ts';
 import { aplicarNfo } from './nfo-escribir.ts';
 
@@ -285,6 +286,8 @@ export async function aplicarDatos(elegidos: { itemId: number; tmdbId: number }[
           identidad: true,
         });
         if (it.kind === 'show') await rellenarEpisodios(e.itemId, e.tmdbId);
+        // Los premios son un extra (OMDb): si falla o no hay clave, el titulo se aplica igual.
+        try { await traerPremios(e.itemId); } catch (err) { console.error(`[lote] Sin premios para ${e.itemId}: ${(err as Error).message}`); }
         try { await autoOrganizarSueltoSiAplica(e.itemId); } catch (err) { console.error(`[lote] No se pudo auto-organizar suelto ${e.itemId}:`, err); }
         aplicacion.resultados.push({ itemId: e.itemId, titulo: it.title, ok: true });
       } catch (err) {

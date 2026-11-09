@@ -46,3 +46,16 @@ test('audio y clasificación por edad', () => {
   assert.equal(audioLabel('truehd', 8), 'Dolby TrueHD 7.1');
   assert.equal(certification('ES:16 / ES:16/fig'), '16');
 });
+
+test('premios: OMDb los da en inglés y se enseñan en español sin inventar nada', async () => {
+  const { premiosEnEspanol } = await import('../src/lib/format.ts');
+  assert.equal(premiosEnEspanol('Won 1 Oscar. 19 wins & 22 nominations total'), 'Ganó 1 Óscar. 19 premios y 22 nominaciones en total');
+  assert.equal(premiosEnEspanol('Nominated for 3 Oscars. 5 wins & 10 nominations total'), 'Nominada a 3 Óscar. 5 premios y 10 nominaciones en total');
+  assert.equal(premiosEnEspanol('Won 2 Primetime Emmys. 140 wins & 300 nominations total'), 'Ganó 2 Emmys. 140 premios y 300 nominaciones en total');
+  assert.equal(premiosEnEspanol('1 win & 1 nomination'), '1 premio y 1 nominación');
+  assert.equal(premiosEnEspanol('Another 12 wins & 3 nominations'), 'Otros 12 premios y 3 nominaciones');
+  assert.equal(premiosEnEspanol('Won 1 BAFTA Award. 3 wins total'), 'Ganó 1 BAFTA Award. 3 premios en total');
+  assert.equal(premiosEnEspanol(''), null);
+  assert.equal(premiosEnEspanol(null), null);
+  assert.equal(premiosEnEspanol('N/A'), null);
+});

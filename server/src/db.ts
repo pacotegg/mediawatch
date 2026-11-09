@@ -472,6 +472,8 @@ anadirColumna('items', 'discart', 'TEXT');
 // Cuándo se revisaron sus imágenes en fanart.tv/TVDB, para no repetir la
 // comparación de idiomas (que baja previsualizaciones) en cada pasada.
 anadirColumna('items', 'arte_revisado', 'TEXT');
+// Premios tal como los da OMDb («Won 1 Oscar. 19 wins & 22 nominations total»). '' = comprobado y sin premios; NULL = sin comprobar.
+anadirColumna('items', 'premios', 'TEXT');
 // Cuántas cifras tiene el PIN (no el PIN): con eso la tele entra sola al
 // teclear la última, con un único intento. Se apunta al fijarlo y, en los
 // PIN de antes, la primera vez que se aciertan.

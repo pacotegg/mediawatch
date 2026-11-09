@@ -120,6 +120,8 @@ export type ItemDetail = ItemSummary & {
   similar?: ItemSummary[];
   collectionItems?: ItemSummary[];
   progress: { episode_id: number | null; position: number; duration: number | null; watched: number }[];
+  /** Premios como los da OMDb (en inglés); '' o null = nada que enseñar. */
+  premios?: string | null;
   /** 1 si el perfil actual lo tiene en favoritos. */
   favorite: number;
   /** 1 si el perfil actual lo tiene en ver más tarde. */

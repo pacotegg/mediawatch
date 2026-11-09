@@ -134,3 +134,22 @@ export const certification = (mpaa?: string | null) => {
   const first = mpaa.split('/')[0].trim();
   return first.replace(/^ES:/, '') || null;
 };
+
+/**
+ * Los premios llegan de OMDb en inglés («Won 1 Oscar. 19 wins & 22 nominations total»). Solo se cambian las palabras fijas del formato;
+ * los nombres de los premios (BAFTA Award, Golden Globe…) se dejan como vienen. `null` si no hay nada que enseñar.
+ */
+export function premiosEnEspanol(texto: string | null | undefined): string | null {
+  const t = (texto ?? '').trim();
+  if (!t || /^n\/a$/i.test(t)) return null;
+  return t
+    .replace(/\bNominated for\b/g, 'Nominada a')
+    .replace(/\bWon\b/g, 'Ganó')
+    .replace(/\bAnother\b/g, 'Otros')
+    .replace(/\bOscars?\b/g, 'Óscar')
+    .replace(/\bPrimetime Emmys?\b/g, 'Emmys')
+    .replace(/\bwins\b/g, 'premios').replace(/\bwin\b/g, 'premio')
+    .replace(/\bnominations\b/g, 'nominaciones').replace(/\bnomination\b/g, 'nominación')
+    .replace(/ & /g, ' y ')
+    .replace(/\btotal\b/g, 'en total');
+}

@@ -82,6 +82,20 @@ export async function buscarOmdb(texto: string, kind: 'movie' | 'show', year?: n
   return fichas.filter((f): f is Ficha => f !== null).map((f) => aPropuesta(f, kind));
 }
 
+/** «N/A» -> '' (comprobado, sin premios). */
+export const premiosDe = (j: Ficha): string => {
+  const a = (j.Awards ?? '').trim();
+  return /^n\/a$/i.test(a) ? '' : a;
+};
+
+/** Guarda los premios de OMDb de un titulo con id de IMDb. Si OMDb falla lanza el error y NO toca lo que hubiera. */
+export async function traerPremios(itemId: number): Promise<void> {
+  const it = db.prepare('SELECT imdb_id FROM items WHERE id = ?').get(itemId) as { imdb_id: string | null } | undefined;
+  if (!it?.imdb_id || !config.omdbApiKey) return;
+  const j = await pedir({ i: it.imdb_id });
+  db.prepare('UPDATE items SET premios = ? WHERE id = ?').run(premiosDe(j), itemId);
+}
+
 export type AplicarOmdb = {
   itemId: number;
   imdbId: string;
