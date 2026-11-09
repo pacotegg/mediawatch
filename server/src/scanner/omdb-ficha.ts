@@ -8,7 +8,7 @@
 import { join } from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { config } from '../config.ts';
-import { db } from '../db.ts';
+import { db, normalize } from '../db.ts';
 import { descargarWebp, DIR_ARTE, type Proposal } from './tmdb.ts';
 import { tomarInstantanea } from './historial.ts';
 
@@ -88,6 +88,7 @@ export type AplicarOmdb = {
   kind: 'movie' | 'show';
   fields: ('poster' | 'plot' | 'rating' | 'genres')[];
   overwrite?: boolean;
+  identidad?: boolean;
 };
 
 /** Escribe solo lo pedido y, salvo `overwrite`, solo en huecos. Se deshace desde el historial del scraper. */
@@ -110,6 +111,15 @@ export async function aplicarOmdb(req: AplicarOmdb) {
   if (quiere('plot', item.plot) && p.overview) updates.plot = p.overview;
   if (quiere('rating', item.rating) && p.rating != null) updates.rating = p.rating;
   if (!item.imdb_id && p.imdbId) updates.imdb_id = p.imdbId;
+
+  if (req.identidad) {
+    if (p.title) {
+      updates.title = p.title;
+      updates.search_title = normalize(p.title);
+    }
+    if (p.year != null) updates.year = p.year;
+    updates.meta_origen = 'omdb';
+  }
 
   const claves = Object.keys(updates);
   if (claves.length) db.prepare(`UPDATE items SET ${claves.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`).run(...claves.map((k) => updates[k]), req.itemId);

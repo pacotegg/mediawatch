@@ -454,6 +454,7 @@ export const api = {
   scraperOrganizarAplicar: (id: number, edicion: string) => post<{ movidos: number }>('/api/scraper/organizar/' + id, { confirmar: true, edicion }),
   scraperNuevos: () => request<ScraperNuevos>('/api/scraper/nuevos'),
   scraperNuevosLimpiar: () => post<{ ok: boolean }>('/api/scraper/nuevos/limpiar', {}),
+  scraperIgnorar: (itemId: number) => post<{ ok: boolean }>('/api/scraper/ignorar', { itemId }),
   scraperCambiarTipo: (itemId: number, kind: 'movie' | 'show') =>
     post<{ ok: boolean; itemId: number; kind: 'movie' | 'show' }>('/api/scraper/cambiar-tipo', { itemId, kind }),
   scraperNuevosLista: (p: { biblioteca: string; q: string; todos: boolean }) =>
@@ -476,13 +477,16 @@ export const api = {
   /** Lo mismo con OMDb (título o id de IMDb). Su sinopsis y su título vienen en inglés; no tiene fondo ni logo. */
   scraperResolverOmdb: (entrada: string, kind: 'movie' | 'show', year?: number | null) =>
     post<{ propuestas: Proposal[]; aviso?: string }>('/api/scraper/resolver-omdb', { entrada, kind, year }),
+  scraperResolverTvdb: (entrada: string, kind: 'movie' | 'show', year?: number | null) =>
+    post<{ propuestas: Proposal[]; aviso?: string }>('/api/scraper/resolver-tvdb', { entrada, kind, year }),
+
   /** Todas las fuentes de un título a la vez, enlazadas por sus ids (TMDb o IMDb). */
   fuentesFicha: (kind: 'movie' | 'show', ids: { tmdbId?: number; imdbId?: string }) =>
     post<{ ids: { tmdbId: number | null; imdbId: string | null; tvdbId: number | null }; fichas: FichaFuente[]; avisos: string[] }>('/api/scraper/fuentes-ficha', { kind, ...ids }),
   /** Aplicar eligiendo de qué fuente sale cada dato (`{ plot: 'tvdb', rating: 'omdb' }`). */
   aplicarMezcla: (b: { itemId: number; kind: 'movie' | 'show'; tmdbId?: number; imdbId?: string; elecciones: Record<string, FuenteDatos> }) =>
     post<{ ok: true; aplicado: { campo: string; fuente: FuenteDatos }[] }>('/api/scraper/aplicar-mezcla', b),
-  scraperAplicarOmdb: (b: { itemId: number; imdbId: string; kind: 'movie' | 'show'; fields: ('poster' | 'plot' | 'rating' | 'genres')[]; overwrite?: boolean }) =>
+  scraperAplicarOmdb: (b: { itemId: number; imdbId: string; kind: 'movie' | 'show'; fields: ('poster' | 'plot' | 'rating' | 'genres')[]; overwrite?: boolean; identidad?: boolean }) =>
     post<{ applied: string[]; title: string }>('/api/scraper/aplicar-omdb', b),
 
   // Actividad (solo administrador): quién ve qué, mensajes y parar.
@@ -892,7 +896,7 @@ export type ServerSettings = {
 
 export type Proposal = {
   /** De dónde sale: TMDb si falta. Las de OMDb llevan `tmdbId: 0` y se identifican por `imdbId`. */
-  fuente?: 'tmdb' | 'omdb';
+  fuente?: 'tmdb' | 'omdb' | 'tvdb';
   imdbId?: string | null;
   tmdbId: number;
   kind: 'movie' | 'show';

@@ -33,7 +33,12 @@ export type EstadoLote<T> = { corriendo: boolean; hechos: number; total: number;
 const vacio = <T>(): EstadoLote<T> => ({ corriendo: false, hechos: 0, total: 0, error: null, resultados: [], terminado: null });
 const pausa = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-const SIN_ESCRAPEAR = "(i.tmdb_id IS NULL OR i.tmdb_id = '') AND i.meta_origen IS NULL";
+const SIN_ESCRAPEAR = "(i.tmdb_id IS NULL OR i.tmdb_id = '') AND i.meta_origen IS NULL AND (l.entrada = 1 OR i.poster IS NULL)";
+const COND_PENDIENTE = `(${SIN_ESCRAPEAR} OR l.entrada = 1)`;
+
+export function ignorarItem(itemId: number): void {
+  db.prepare("UPDATE items SET meta_origen = 'local' WHERE id = ?").run(itemId);
+}
 
 /** Bibliotecas que el scraper no enseña: los monólogos no tienen datos que buscar (ni los tendrán) y llenaban las listas. */
 const IGNORADAS = ['Monólogos'];
@@ -47,7 +52,7 @@ export type Candidato = { id: number; titulo: string; anio: number | null; kind:
  * llega nuevo, sin .nfo); con `todos`, tambien los ya escrapeados (marcados). `carpeta` es el nombre que tiene en disco, que es lo que el usuario reconoce.
  */
 export function listarCandidatos(o: { biblioteca?: string; q?: string; todos?: boolean; limite?: number }): Candidato[] {
-  const donde: string[] = [o.todos ? '1' : SIN_ESCRAPEAR, SIN_IGNORADAS];
+  const donde: string[] = [o.todos ? '1' : COND_PENDIENTE, SIN_IGNORADAS];
   const params: (string | number)[] = [];
   if (o.biblioteca) { donde.push('l.path = ?'); params.push(o.biblioteca); }
   const q = normalize(o.q ?? '');
@@ -139,7 +144,7 @@ export async function registrarRutas(rutas: string[], escanear: (p?: undefined, 
 
 /** Las fuentes (bibliotecas y carpetas de entrada, aunque aun no se hayan escaneado) con cuantos ficheros les quedan por escrapear. */
 export function fuentesConPendientes() {
-  const contar = db.prepare(`SELECT COUNT(i.id) AS n FROM libraries l JOIN items i ON i.library_id = l.id AND ${SIN_ESCRAPEAR} WHERE LOWER(l.path) = LOWER(?)`);
+  const contar = db.prepare(`SELECT COUNT(i.id) AS n FROM libraries l JOIN items i ON i.library_id = l.id AND ${COND_PENDIENTE} WHERE LOWER(l.path) = LOWER(?)`);
   const marca = (l: LibraryConfig, entrada: boolean) => ({ name: l.name, ruta: l.path, kind: l.kind, entrada, pendientes: (contar.get(l.path) as { n: number }).n });
   return [...config.libraries.filter((l) => !ignorada(l.name)).map((l) => marca(l, false)), ...config.fuentesScraper.map((l) => marca(l, true))];
 }
@@ -183,7 +188,7 @@ export function marcarEntradas(): void {
     throw e;
   }
 }
-export const totalPendientes = () => (db.prepare(`SELECT COUNT(*) AS n FROM items i WHERE ${SIN_ESCRAPEAR} AND ${SIN_IGNORADAS}`).get() as { n: number }).n;
+export const totalPendientes = () => (db.prepare(`SELECT COUNT(*) AS n FROM items i JOIN libraries l ON l.id = i.library_id WHERE ${COND_PENDIENTE} AND ${SIN_IGNORADAS}`).get() as { n: number }).n;
 
 export function limpiarLote(): void {
   Object.assign(busqueda, vacio());

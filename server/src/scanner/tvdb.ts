@@ -10,6 +10,7 @@
  * renueva sola si TVDB contesta 401.
  */
 import { config } from '../config.ts';
+import type { Proposal } from './tmdb.ts';
 
 const API = 'https://api4.thetvdb.com/v4';
 
@@ -161,4 +162,54 @@ export async function fichaTvdb(kind: 'movie' | 'show', ids: { tvdbId?: number |
     posterUrl: ext.image && !/\/missing\//.test(ext.image) ? ext.image : null,
     imdbId: ext.remoteIds?.find((r) => r.sourceName === 'IMDB')?.id ?? null,
   };
+}
+
+/**
+ * Busca títulos en TheTVDB v4 por texto. Devuelve propuestas con los ids cruzados a TMDb e IMDb.
+ */
+export async function buscarTvdb(texto: string, kind: 'movie' | 'show', year?: number | null): Promise<Proposal[]> {
+  if (!config.tvdbApiKey) return [];
+  const typeParam = kind === 'show' ? 'series' : 'movie';
+  const query = encodeURIComponent(texto.trim());
+  const path = `/search?query=${query}&type=${typeParam}${year ? `&year=${year}` : ''}`;
+  type Hit = {
+    tvdb_id?: string;
+    id?: string;
+    name?: string;
+    year?: string;
+    first_air_time?: string;
+    overview?: string;
+    image_url?: string;
+    thumbnail?: string;
+    translations?: Record<string, string>;
+    overviews?: Record<string, string>;
+    remote_ids?: { id: string; sourceName: string }[];
+    genres?: string[];
+  };
+  const r = await tvdb<Hit[]>(path);
+  if (!r || !Array.isArray(r)) return [];
+
+  return r.slice(0, 8).map((item) => {
+    const tmdbRemote = item.remote_ids?.find((x) => x.sourceName === 'TheMovieDB.com');
+    const imdbRemote = item.remote_ids?.find((x) => x.sourceName === 'IMDB');
+    const spaOverview = item.overviews?.spa || item.overviews?.es;
+    const engOverview = item.overviews?.eng || item.overviews?.en;
+    const spaTitle = item.translations?.spa || item.translations?.es;
+
+    return {
+      fuente: 'tvdb',
+      tmdbId: tmdbRemote ? Number(tmdbRemote.id) : 0,
+      kind,
+      title: spaTitle || item.name || '',
+      originalTitle: item.name,
+      year: Number(item.year || item.first_air_time?.slice(0, 4)) || (year ?? null),
+      overview: spaOverview || engOverview || item.overview || null,
+      posterUrl: (item.image_url && !/\/missing\//.test(item.image_url)) ? item.image_url : (item.thumbnail && !/\/missing\//.test(item.thumbnail) ? item.thumbnail : null),
+      backdropUrl: null,
+      logoUrl: null,
+      genres: item.genres || [],
+      imdbId: imdbRemote?.id || null,
+      rating: null,
+    };
+  });
 }

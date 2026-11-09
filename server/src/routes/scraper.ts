@@ -6,7 +6,7 @@ import { detallesDe, search, tmdbGet, TmdbError, type Proposal } from '../scanne
 import { interpretarBusqueda } from '../scanner/buscar-id.ts';
 import { aplicarArteCarpeta, ArteCarpetaError, planArteCarpeta } from '../scanner/arte-carpeta.ts';
 import { basename, dirname, relative } from 'node:path';
-import { aplicacion, aplicarDatos, buscarNuevos, busqueda, depurarBusqueda, ejecutarLote, fuentesConPendientes, limpiarLote, listarCandidatos, marcarEntradas, planesDeLoteMedidos, renombrado, SIN_IGNORADAS, sinRegistrar, totalPendientes, validarFuentes } from '../scanner/lote.ts';
+import { aplicacion, aplicarDatos, buscarNuevos, busqueda, depurarBusqueda, ejecutarLote, fuentesConPendientes, ignorarItem, limpiarLote, listarCandidatos, marcarEntradas, planesDeLoteMedidos, renombrado, SIN_IGNORADAS, sinRegistrar, totalPendientes, validarFuentes } from '../scanner/lote.ts';
 import { aplicarOrganizar, asegurarMedidos, OrganizarError, planOrganizar } from '../scanner/organizar.ts';
 import { aplicarNfo, NfoError, planNfo } from '../scanner/nfo-escribir.ts';
 import { envio, enviarLote, EnvioError, planEnvio } from '../scanner/enviar.ts';
@@ -15,6 +15,7 @@ import { rescanItem } from '../scanner/scan.ts';
 import { deshacerUltima, HistorialError, ultimaInstantanea } from '../scanner/historial.ts';
 import { editarMetadatos, MetadatosError, validarCambios } from '../scanner/metadatos.ts';
 import { aplicarOmdb, buscarOmdb, detallesOmdb, OmdbError } from '../scanner/omdb-ficha.ts';
+import { buscarTvdb } from '../scanner/tvdb.ts';
 import { aplicarMezcla, CAMPOS_MEZCLA, consultarFuentes, FuentesError } from '../scanner/fuentes-datos.ts';
 
 /*
@@ -238,6 +239,17 @@ export default async function scraperRoutes(app: FastifyInstance) {
     if (!admin(req, reply)) return;
     limpiarLote();
     return { ok: true };
+  });
+
+  app.post('/api/scraper/ignorar', async (req, reply) => {
+    if (!admin(req, reply)) return;
+    const body = (req.body ?? {}) as { itemId?: number; ids?: number[] };
+    const ids = Array.isArray(body.ids) ? body.ids : body.itemId ? [body.itemId] : [];
+    if (!ids.length) return reply.code(400).send({ error: 'Falta itemId o ids' });
+    for (const id of ids) {
+      if (Number.isInteger(id)) ignorarItem(id);
+    }
+    return { ok: true, ignorados: ids.length };
   });
 
   app.post('/api/scraper/cambiar-tipo', async (req, reply) => {
@@ -472,14 +484,26 @@ export default async function scraperRoutes(app: FastifyInstance) {
     }
   });
 
+  app.post('/api/scraper/resolver-tvdb', async (req, reply) => {
+    if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'No autorizado' });
+    const { entrada, kind, year } = (req.body ?? {}) as { entrada?: string; kind?: 'movie' | 'show'; year?: number | null };
+    if (!entrada?.trim() || (kind !== 'movie' && kind !== 'show')) return reply.code(400).send({ error: 'Escribe un título' });
+    try {
+      const propuestas = await buscarTvdb(entrada.trim(), kind, year);
+      return { propuestas, aviso: propuestas.length ? undefined : 'TheTVDB no encuentra nada con ese título' };
+    } catch (err) {
+      return reply.code(502).send({ error: (err as Error).message });
+    }
+  });
+
   app.post('/api/scraper/aplicar-omdb', async (req, reply) => {
     if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'No autorizado' });
-    const b = (req.body ?? {}) as { itemId?: number; imdbId?: string; kind?: string; fields?: unknown; overwrite?: boolean };
+    const b = (req.body ?? {}) as { itemId?: number; imdbId?: string; kind?: string; fields?: unknown; overwrite?: boolean; identidad?: boolean };
     const validos = ['poster', 'plot', 'rating', 'genres'];
     if (!Number.isInteger(b.itemId) || !/^tt\d{6,10}$/.test(b.imdbId ?? '') || (b.kind !== 'movie' && b.kind !== 'show')) return reply.code(400).send({ error: 'Faltan datos de la propuesta' });
     if (!Array.isArray(b.fields) || b.fields.length === 0 || b.fields.some((c) => !validos.includes(String(c)))) return reply.code(400).send({ error: 'Solo se pueden aplicar póster, sinopsis, valoración y géneros' });
     try {
-      return await aplicarOmdb({ itemId: b.itemId!, imdbId: b.imdbId!, kind: b.kind, fields: b.fields as never, overwrite: b.overwrite === true });
+      return await aplicarOmdb({ itemId: b.itemId!, imdbId: b.imdbId!, kind: b.kind, fields: b.fields as never, overwrite: b.overwrite === true, identidad: b.identidad === true });
     } catch (err) {
       return reply.code(502).send({ error: (err as Error).message });
     }

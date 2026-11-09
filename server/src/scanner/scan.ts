@@ -238,24 +238,24 @@ const stmt = {
       -- Con meta_origen = 'tmdb' el titulo, el ano y todo lo que puso TMDb se quedan:
       -- sin .nfo el escaneo traia NULL en todos y lo borraba cada 24 h. Los items
       -- con .nfo no tienen meta_origen, y para ellos nada cambia.
-      title=CASE WHEN ${fijado('title')} THEN items.title WHEN items.meta_origen IN ('tmdb', 'servidor') THEN items.title ELSE excluded.title END,
-      search_title=CASE WHEN ${fijado('title')} THEN items.search_title WHEN items.meta_origen IN ('tmdb', 'servidor') THEN items.search_title ELSE excluded.search_title END,
-      year=CASE WHEN ${fijado('year')} THEN items.year WHEN items.meta_origen IN ('tmdb', 'servidor') THEN items.year ELSE excluded.year END,
-      sort_title=CASE WHEN ${fijado('sort_title')} THEN items.sort_title WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.sort_title, items.sort_title) ELSE excluded.sort_title END,
-      original_title=CASE WHEN ${fijado('original_title')} THEN items.original_title WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.original_title, items.original_title) ELSE excluded.original_title END,
-      plot=CASE WHEN ${fijado('plot')} THEN items.plot WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.plot, items.plot) ELSE excluded.plot END,
-      tagline=CASE WHEN ${fijado('tagline')} THEN items.tagline WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.tagline, items.tagline) ELSE excluded.tagline END,
-      runtime=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.runtime, items.runtime) ELSE excluded.runtime END,
-      rating=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.rating, items.rating) ELSE excluded.rating END,
-      votes=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.votes, items.votes) ELSE excluded.votes END,
-      mpaa=CASE WHEN ${fijado('mpaa')} THEN items.mpaa WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.mpaa, items.mpaa) ELSE excluded.mpaa END,
-      premiered=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.premiered, items.premiered) ELSE excluded.premiered END,
-      studio=CASE WHEN ${fijado('studio')} THEN items.studio WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.studio, items.studio) ELSE excluded.studio END,
-      country=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.country, items.country) ELSE excluded.country END,
-      collection=CASE WHEN ${fijado('collection')} THEN items.collection WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.collection, items.collection) ELSE excluded.collection END,
-      trailer=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.trailer, items.trailer) ELSE excluded.trailer END,
-      imdb_id=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.imdb_id, items.imdb_id) ELSE excluded.imdb_id END,
-      tmdb_id=CASE WHEN items.meta_origen IN ('tmdb', 'servidor') THEN COALESCE(excluded.tmdb_id, items.tmdb_id) ELSE excluded.tmdb_id END,
+      title=CASE WHEN ${fijado('title')} THEN items.title WHEN items.meta_origen IN ('tmdb', 'servidor', 'omdb') THEN items.title ELSE excluded.title END,
+      search_title=CASE WHEN ${fijado('title')} THEN items.search_title WHEN items.meta_origen IN ('tmdb', 'servidor', 'omdb') THEN items.search_title ELSE excluded.search_title END,
+      year=CASE WHEN ${fijado('year')} THEN items.year WHEN items.meta_origen IN ('tmdb', 'servidor', 'omdb') THEN items.year ELSE excluded.year END,
+      sort_title=CASE WHEN ${fijado('sort_title')} THEN items.sort_title WHEN items.meta_origen IN ('tmdb', 'servidor', 'omdb') THEN COALESCE(excluded.sort_title, items.sort_title) ELSE excluded.sort_title END,
+      original_title=CASE WHEN ${fijado('original_title')} THEN items.original_title WHEN items.meta_origen IN ('tmdb', 'servidor', 'omdb') THEN COALESCE(excluded.original_title, items.original_title) ELSE excluded.original_title END,
+      plot=CASE WHEN ${fijado('plot')} THEN items.plot WHEN items.meta_origen IN ('tmdb', 'servidor', 'omdb') THEN COALESCE(excluded.plot, items.plot) ELSE excluded.plot END,
+      tagline=CASE WHEN ${fijado('tagline')} THEN items.tagline WHEN items.meta_origen IN ('tmdb', 'servidor', 'omdb') THEN COALESCE(excluded.tagline, items.tagline) ELSE excluded.tagline END,
+      runtime=CASE WHEN items.meta_origen IN ('tmdb', 'servidor', 'omdb') THEN COALESCE(excluded.runtime, items.runtime) ELSE excluded.runtime END,
+      rating=CASE WHEN items.meta_origen IN ('tmdb', 'servidor', 'omdb') THEN COALESCE(excluded.rating, items.rating) ELSE excluded.rating END,
+      votes=CASE WHEN items.meta_origen IN ('tmdb', 'servidor', 'omdb') THEN COALESCE(excluded.votes, items.votes) ELSE excluded.votes END,
+      mpaa=CASE WHEN ${fijado('mpaa')} THEN items.mpaa WHEN items.meta_origen IN ('tmdb', 'servidor', 'omdb') THEN COALESCE(excluded.mpaa, items.mpaa) ELSE excluded.mpaa END,
+      premiered=CASE WHEN items.meta_origen IN ('tmdb', 'servidor', 'omdb') THEN COALESCE(excluded.premiered, items.premiered) ELSE excluded.premiered END,
+      studio=CASE WHEN ${fijado('studio')} THEN items.studio WHEN items.meta_origen IN ('tmdb', 'servidor', 'omdb') THEN COALESCE(excluded.studio, items.studio) ELSE excluded.studio END,
+      country=CASE WHEN items.meta_origen IN ('tmdb', 'servidor', 'omdb') THEN COALESCE(excluded.country, items.country) ELSE excluded.country END,
+      collection=CASE WHEN ${fijado('collection')} THEN items.collection WHEN items.meta_origen IN ('tmdb', 'servidor', 'omdb') THEN COALESCE(excluded.collection, items.collection) ELSE excluded.collection END,
+      trailer=CASE WHEN items.meta_origen IN ('tmdb', 'servidor', 'omdb') THEN COALESCE(excluded.trailer, items.trailer) ELSE excluded.trailer END,
+      imdb_id=CASE WHEN items.meta_origen IN ('tmdb', 'servidor', 'omdb') THEN COALESCE(excluded.imdb_id, items.imdb_id) ELSE excluded.imdb_id END,
+      tmdb_id=CASE WHEN items.meta_origen IN ('tmdb', 'servidor', 'omdb') THEN COALESCE(excluded.tmdb_id, items.tmdb_id) ELSE excluded.tmdb_id END,
       -- Las imagenes elegidas a mano no se tocan; el resto se actualiza con lo
       -- que haya ahora en la carpeta. Sin esto, cambiar una caratula desde la
       -- ficha duraba hasta el siguiente escaneo.
@@ -863,7 +863,7 @@ export type OpcionesEscaneo = {
 };
 
 /** Una fuente del scraper (carpeta de entrada) frente a una biblioteca de verdad. */
-export const esFuenteDelScraper = (lib: LibraryConfig) => config.fuentesScraper.some((f) => f.path === lib.path);
+export const esFuenteDelScraper = (lib: LibraryConfig) => config.fuentesScraper.some((f) => resolve(f.path).toLowerCase() === resolve(lib.path).toLowerCase());
 
 export async function scanLibrary(lib: LibraryConfig, onProgress?: (p: ScanProgress) => void, opciones: OpcionesEscaneo = {}): Promise<number> {
   const forzar = Boolean(opciones.forzar);

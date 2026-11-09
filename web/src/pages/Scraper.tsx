@@ -480,7 +480,7 @@ function Comparar({ titulo, p, campos, setCampos }: { titulo: ScraperTitulo; p: 
       {/* Banner de propuesta */}
       <div className="rounded-2xl bg-gradient-to-r from-accent/14 via-accent/5 to-transparent p-4 ring-1 ring-accent/25">
         <div className="flex items-center gap-2 text-[10.5px] font-bold tracking-[0.16em] text-accent uppercase">
-          <span>Propuesta de {p.fuente === 'omdb' ? 'OMDb' : 'TMDb'}</span>
+          <span>Propuesta de {p.fuente === 'omdb' ? 'OMDb' : p.fuente === 'tvdb' ? 'TheTVDB' : 'TMDb'}</span>
           <span className="font-mono text-accent-soft">· ID {p.fuente === 'omdb' ? p.imdbId : p.tmdbId}</span>
         </div>
         {p.fuente === 'omdb' && (
@@ -581,11 +581,12 @@ function Emparejar({ titulo }: { titulo: ScraperTitulo }) {
   const [hecho, setHecho] = useState('');
   const [identidad, setIdentidad] = useState(false);
   const lanzada = useRef<number | null>(null);
-  const [fuente, setFuente] = useState<'tmdb' | 'omdb' | 'todas'>('tmdb');
-  const inicialDe = (fu: 'tmdb' | 'omdb' | 'todas') => (fu === 'omdb' ? titulo.imdb_id || titulo.title : inicial);
+  const [fuente, setFuente] = useState<'tmdb' | 'tvdb' | 'omdb' | 'todas'>('tmdb');
+  const inicialDe = (fu: 'tmdb' | 'tvdb' | 'omdb' | 'todas') => (fu === 'omdb' ? titulo.imdb_id || titulo.title : inicial);
 
   const buscar = useMutation({
-    mutationFn: async ({ texto, fu }: { texto: string; fu: 'tmdb' | 'omdb' | 'todas' }) => {
+    mutationFn: async ({ texto, fu }: { texto: string; fu: 'tmdb' | 'tvdb' | 'omdb' | 'todas' }) => {
+      if (fu === 'tvdb') return api.scraperResolverTvdb(texto, titulo.kind, titulo.year);
       if (fu === 'omdb') return api.scraperResolverOmdb(texto, titulo.kind, titulo.year);
       let r: { propuestas: Proposal[]; aviso?: string };
       try {
@@ -595,6 +596,8 @@ function Emparejar({ titulo }: { titulo: ScraperTitulo }) {
         r = { propuestas: [], aviso: (e as Error).message };
       }
       if (fu === 'todas' && r.propuestas.length === 0 && !/^\d+$/.test(texto.trim())) {
+        const tv = await api.scraperResolverTvdb(texto, titulo.kind, titulo.year).catch(() => null);
+        if (tv && tv.propuestas.length) return tv;
         const o = await api.scraperResolverOmdb(texto, titulo.kind, titulo.year).catch(() => null);
         if (o && o.propuestas.length) return o;
       }
@@ -619,7 +622,7 @@ function Emparejar({ titulo }: { titulo: ScraperTitulo }) {
     setAviso('');
     setError('');
     setHecho('');
-    setIdentidad(!titulo.tmdb_id);
+    setIdentidad(true);
     if (lanzada.current !== titulo.id) {
       lanzada.current = titulo.id;
       buscar.mutate({ texto: inicial, fu: 'tmdb' });
@@ -650,6 +653,7 @@ function Emparejar({ titulo }: { titulo: ScraperTitulo }) {
             kind: titulo.kind,
             fields: campos.filter((c): c is 'poster' | 'plot' | 'rating' | 'genres' => ['poster', 'plot', 'rating', 'genres'].includes(c)),
             overwrite: true,
+            identidad,
           })
         : api.enrichApply({
             itemId: titulo.id,
@@ -675,7 +679,7 @@ function Emparejar({ titulo }: { titulo: ScraperTitulo }) {
       {/* Selector de fuente y descripción */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/6 pb-3">
         <div className="flex gap-1 rounded-full bg-black/30 p-1 ring-1 ring-white/8">
-          {([['tmdb', 'TMDb'], ['omdb', 'OMDb'], ['todas', 'Todas las fuentes']] as const).map(([k, e]) => (
+          {([['tmdb', 'TMDb'], ['tvdb', 'TheTVDB'], ['omdb', 'OMDb'], ['todas', 'Todas las fuentes']] as const).map(([k, e]) => (
             <button
               key={k}
               type="button"
@@ -704,7 +708,9 @@ function Emparejar({ titulo }: { titulo: ScraperTitulo }) {
           ))}
         </div>
         <span className="text-[12px] text-mist-500">
-          {fuente === 'omdb'
+          {fuente === 'tvdb'
+            ? 'TheTVDB: datos e imágenes con soporte nativo de traducción al español.'
+            : fuente === 'omdb'
             ? 'Sin fondo ni logo; título y sinopsis en inglés.'
             : fuente === 'todas'
               ? 'TMDb, TVDB, OMDb y TVmaze juntas: eliges qué dato adoptar.'
@@ -756,11 +762,11 @@ function Emparejar({ titulo }: { titulo: ScraperTitulo }) {
       {elegida && fuente === 'todas' && <MezclaFuentes titulo={titulo} p={elegida} />}
       {elegida && fuente !== 'todas' && <Comparar titulo={titulo} p={elegida} campos={campos} setCampos={setCampos} />}
 
-      {elegida && fuente !== 'todas' && elegida.fuente !== 'omdb' && (
+      {elegida && fuente !== 'todas' && (
         <label className="flex cursor-pointer items-start gap-3 rounded-xl bg-white/3 p-3 text-[12.5px] text-mist-300 ring-1 ring-white/6">
           <Casilla marcada={identidad} onChange={setIdentidad} />
           <span>
-            Actualizar también el título canónico, año y clasificación oficial de TMDb{' '}
+            Actualizar también el título canónico y año oficiales ({elegida.fuente === 'omdb' ? 'OMDb' : elegida.fuente === 'tvdb' ? 'TheTVDB' : 'TMDb'}){' '}
             <span className="text-mist-500 font-mono">({elegida.title}{elegida.year ? ` · ${elegida.year}` : ''})</span>. Esto lo
             utilizará la opción «Organizar» para renombrar carpetas y archivos.
           </span>
@@ -779,7 +785,7 @@ function Emparejar({ titulo }: { titulo: ScraperTitulo }) {
 
       {elegida && fuente !== 'todas' && (
         <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-          <Button onClick={() => aplicar.mutate()} disabled={aplicar.isPending || campos.length === 0}>
+          <Button onClick={() => aplicar.mutate()} disabled={aplicar.isPending || (campos.length === 0 && !identidad)}>
             {aplicar.isPending ? 'Guardando en biblioteca…' : `Aplicar cambios seleccionados (${campos.length})`}
           </Button>
           <span className="text-[11.5px] text-mist-500">

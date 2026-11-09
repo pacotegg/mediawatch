@@ -43,10 +43,28 @@ function BuscarManual({
 }) {
   const [abierto, setAbierto] = useState(false);
   const [texto, setTexto] = useState(fila.titulo);
+  const [fuente, setFuente] = useState<'tmdb' | 'tvdb' | 'omdb' | 'todas'>('tmdb');
   const [aviso, setAviso] = useState('');
 
   const buscar = useMutation({
-    mutationFn: () => api.scraperResolver(texto, fila.kind, null),
+    mutationFn: async () => {
+      if (fuente === 'tvdb') return api.scraperResolverTvdb(texto, fila.kind, null);
+      if (fuente === 'omdb') return api.scraperResolverOmdb(texto, fila.kind, null);
+      let r: { propuestas: Proposal[]; aviso?: string };
+      try {
+        r = await api.scraperResolver(texto, fila.kind, null);
+      } catch (e) {
+        if (fuente !== 'todas') throw e;
+        r = { propuestas: [], aviso: (e as Error).message };
+      }
+      if (fuente === 'todas' && r.propuestas.length === 0) {
+        const tv = await api.scraperResolverTvdb(texto, fila.kind, null).catch(() => null);
+        if (tv && tv.propuestas.length) return tv;
+        const om = await api.scraperResolverOmdb(texto, fila.kind, null).catch(() => null);
+        if (om && om.propuestas.length) return om;
+      }
+      return r;
+    },
     onSuccess: (r) => {
       alEncontrar(r.propuestas);
       setAviso(r.aviso ?? (r.propuestas.length ? '' : 'Sin resultados'));
@@ -61,7 +79,7 @@ function BuscarManual({
         onClick={() => setAbierto(true)}
         className="text-[12px] font-medium text-accent hover:underline underline-offset-2 flex items-center gap-1"
       >
-        <span>🔍 Buscar otra…</span>
+        <span>🔍 Buscar en otras BBDD…</span>
       </button>
     );
   }
@@ -75,11 +93,21 @@ function BuscarManual({
           if (texto.trim()) buscar.mutate();
         }}
       >
+        <select
+          value={fuente}
+          onChange={(e) => setFuente(e.target.value as any)}
+          className="rounded-lg border border-white/10 bg-black/50 px-2.5 py-1.5 text-[12px] font-medium text-mist-200 outline-none focus:border-accent"
+        >
+          <option value="tmdb" className="bg-ink-900">TMDb</option>
+          <option value="tvdb" className="bg-ink-900">TheTVDB</option>
+          <option value="omdb" className="bg-ink-900">OMDb</option>
+          <option value="todas" className="bg-ink-900">Todas</option>
+        </select>
         <TextInput
           value={texto}
           onChange={setTexto}
-          placeholder="Título, TMDb ID, IMDb tt... o enlace web"
-          className="w-72 max-w-full text-[13px]"
+          placeholder="Título, ID o enlace web…"
+          className="w-64 max-w-full text-[13px]"
         />
         <Button
           variant="primary"
@@ -110,6 +138,7 @@ export default function AsistenteNuevos() {
   const [organizarNombres, setOrganizarNombres] = useState(true);
   const [copiarArte, setCopiarArte] = useState(true);
   const [escribirNfo, setEscribirNfo] = useState(true);
+  const [enviarDestino, setEnviarDestino] = useState(true);
 
   // Selección de ítems y propuestas
   const [marcados, setMarcados] = useState<Set<string>>(new Set());
@@ -268,8 +297,13 @@ export default function AsistenteNuevos() {
 
       if (paraAplicar.length > 0) {
         await api.scraperNuevosAplicar(paraAplicar);
-        // Esperar brevemente a que el lote de aplicación asiente
-        await new Promise((r) => setTimeout(r, 600));
+        let esperas = 0;
+        while (esperas < 60) {
+          await new Promise((r) => setTimeout(r, 800));
+          const est = await api.scraperNuevos();
+          if (!est.aplicacion.corriendo) break;
+          esperas++;
+        }
       }
 
       // 2. Si se solicitó organizar, generar NFO o copiar arte
@@ -277,13 +311,56 @@ export default function AsistenteNuevos() {
         setFasePipeline('renombrando');
         const ids = elegidosParaProcesar.map((i) => i.id);
         await api.scraperLoteAplicar(ids, copiarArte, escribirNfo);
-        await new Promise((r) => setTimeout(r, 600));
+        let esperas = 0;
+        while (esperas < 60) {
+          await new Promise((r) => setTimeout(r, 800));
+          const est = await api.scraperNuevos();
+          if (!est.renombrado.corriendo) break;
+          esperas++;
+        }
       }
 
-      // 3. Enviar a biblioteca correspondiente
-      setFasePipeline('enviando');
-      const ids = elegidosParaProcesar.map((i) => i.id);
-      await api.scraperEnviar(ids, '', true, 'rapida');
+      // 3. Enviar a biblioteca correspondiente solo si enviarDestino está activo
+      if (enviarDestino) {
+        setFasePipeline('enviando');
+        const ids = elegidosParaProcesar.map((i) => i.id);
+        await api.scraperEnviar(ids, '', true, 'rapida');
+      } else {
+        setFasePipeline('exito');
+        refrescarTodo();
+      }
+    } catch (err) {
+      setFasePipeline('error');
+      setMensajeError((err as Error).message);
+    }
+  };
+
+  // Procesar un solo ítem dejándolo en su carpeta actual
+  const procesarIndividualAqui = async (it: Candidato, tmdbId: number) => {
+    setMensajeError(null);
+    try {
+      setFasePipeline('aplicando');
+      await api.scraperNuevosAplicar([{ itemId: it.id, tmdbId }]);
+      let esperas = 0;
+      while (esperas < 40) {
+        await new Promise((r) => setTimeout(r, 600));
+        const est = await api.scraperNuevos();
+        if (!est.aplicacion.corriendo) break;
+        esperas++;
+      }
+      if (organizarNombres || escribirNfo || copiarArte) {
+        setFasePipeline('renombrando');
+        await api.scraperLoteAplicar([it.id], copiarArte, escribirNfo);
+        esperas = 0;
+        while (esperas < 40) {
+          await new Promise((r) => setTimeout(r, 600));
+          const est = await api.scraperNuevos();
+          if (!est.renombrado.corriendo) break;
+          esperas++;
+        }
+      }
+      setFasePipeline('exito');
+      refrescarTodo();
     } catch (err) {
       setFasePipeline('error');
       setMensajeError((err as Error).message);
@@ -294,7 +371,13 @@ export default function AsistenteNuevos() {
   useEffect(() => {
     if (fasePipeline === 'enviando' && estadoEnvio) {
       if (!estadoEnvio.corriendo && estadoEnvio.terminado) {
-        setFasePipeline('exito');
+        const fallidos = (estadoEnvio.resultados ?? []).filter((r) => !r.ok);
+        if (fallidos.length > 0) {
+          setFasePipeline('error');
+          setMensajeError(`Error al transferir: ${fallidos.map((f) => `${f.titulo} (${f.error})`).join('; ')}`);
+        } else {
+          setFasePipeline('exito');
+        }
         refrescarTodo();
       }
     }
@@ -568,6 +651,12 @@ export default function AsistenteNuevos() {
                       {confianzaLabel}
                     </span>
 
+                    {it.escrapeado && (
+                      <span className="rounded-full bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-500/40 px-2 py-0.5 text-[10.5px] font-bold">
+                        ✓ Ya escrapeado en carpeta
+                      </span>
+                    )}
+
                     {/* Destino biblioteca */}
                     <span className="rounded-full bg-emerald-500/10 text-emerald-300 ring-1 ring-emerald-500/20 px-2 py-0.5 text-[10.5px] font-medium">
                       → {destino}
@@ -575,7 +664,7 @@ export default function AsistenteNuevos() {
                   </div>
 
                   {/* Título identificado y nombre en disco */}
-                  <div>
+                  <div className="space-y-0.5">
                     <div className="text-[16px] font-bold text-white tracking-tight flex items-center gap-2">
                       <span>{actual ? `${actual.title}` : it.titulo}</span>
                       {actual?.year && (
@@ -584,6 +673,12 @@ export default function AsistenteNuevos() {
                     </div>
                     <div className="text-[11.5px] font-mono text-mist-500 truncate" title={it.carpeta}>
                       Origen: {it.carpeta}
+                    </div>
+                    <div className="text-[11.5px] font-mono text-emerald-400/90 truncate flex items-center gap-1.5" title={`Carpeta destino prevista: ${destino}\\${actual ? `${actual.title}${actual.year ? ` (${actual.year})` : ''}` : it.carpeta}`}>
+                      <span className="text-mist-400">📁 Carpeta destino:</span>
+                      <span className="font-semibold text-emerald-300">
+                        {destino}\{actual ? `${actual.title}${actual.year ? ` (${actual.year})` : ''}` : it.carpeta}
+                      </span>
                     </div>
                   </div>
 
@@ -659,6 +754,26 @@ export default function AsistenteNuevos() {
                       }}
                     />
                   </label>
+
+                  {actual?.tmdbId && (
+                    <button
+                      type="button"
+                      title="Aplica la ficha, NFO y arte en su carpeta actual sin moverlo a otro disco"
+                      onClick={() => procesarIndividualAqui(it, actual.tmdbId)}
+                      className="rounded-full bg-emerald-500/15 px-3 py-1 text-[11.5px] font-semibold text-emerald-300 ring-1 ring-emerald-500/30 hover:bg-emerald-500/25 transition flex items-center gap-1"
+                    >
+                      <span>💾 Escrapear aquí</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    title="Marca este título como catalogado para sacarlo de la lista de pendientes"
+                    onClick={() => api.scraperIgnorar(it.id).then(() => refrescarTodo())}
+                    className="rounded-full bg-white/6 px-3 py-1 text-[11.5px] font-medium text-mist-400 hover:text-white hover:bg-white/12 transition flex items-center gap-1"
+                  >
+                    <span>✓ Ya catalogado</span>
+                  </button>
 
                   <button
                     type="button"
@@ -753,9 +868,17 @@ export default function AsistenteNuevos() {
                   </span>
                 </div>
                 <div className="text-[11.5px] text-mist-400 flex items-center gap-3 mt-0.5">
-                  <span>Destino: Películas → <b>E:\Peliculas</b></span>
-                  <span>·</span>
-                  <span>Series → <b>E:\Series</b></span>
+                  {enviarDestino ? (
+                    <>
+                      <span>Destino: Películas → <b>E:\Peliculas</b></span>
+                      <span>·</span>
+                      <span>Series → <b>E:\Series</b></span>
+                    </>
+                  ) : (
+                    <span className="text-amber-300/90 font-medium">
+                      📍 Mantener en ubicación actual (sin mover a otro disco)
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -773,6 +896,10 @@ export default function AsistenteNuevos() {
                   <Casilla marcada={copiarArte} onChange={setCopiarArte} />
                   <span>Arte en carpeta</span>
                 </label>
+                <label className="flex items-center gap-2 cursor-pointer hover:text-white border-l border-white/10 pl-3">
+                  <Casilla marcada={enviarDestino} onChange={setEnviarDestino} />
+                  <span className={enviarDestino ? 'text-accent font-medium' : 'text-mist-400'}>Mover a destino</span>
+                </label>
               </div>
 
               {/* Botón Principal CTA */}
@@ -782,7 +909,9 @@ export default function AsistenteNuevos() {
                   onClick={ejecutarPipeline}
                   disabled={elegidosParaProcesar.length === 0}
                 >
-                  ⚡ Procesar y Enviar a la biblioteca ({elegidosParaProcesar.length})
+                  {enviarDestino
+                    ? `⚡ Procesar y Enviar a la biblioteca (${elegidosParaProcesar.length})`
+                    : `💾 Solo escrapear y guardar aquí (${elegidosParaProcesar.length})`}
                 </Button>
               </div>
             </div>
