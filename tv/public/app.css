@@ -1466,6 +1466,18 @@ body.rend-rapido .lamina img {
   color: var(--texto-sec);
 }
 
+/* Sin emoji (la tele puede no tener fuente para él): el rótulo va en texto. */
+.linea-premios {
+  margin-bottom: 14px;
+  font-size: 22px;
+  color: var(--texto-sec);
+}
+.linea-premios::before {
+  content: 'Premios: ';
+  color: var(--texto);
+  font-weight: 600;
+}
+
 .linea-nota {
   margin-bottom: 26px;
   font-size: 24px;

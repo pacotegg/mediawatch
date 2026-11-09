@@ -173,6 +173,8 @@ export type Titulo = {
 
 export type Ficha = Titulo & {
   plot: string | null;
+  /** Premios como los da OMDb (en inglés); '' o null = nada que enseñar. */
+  premios?: string | null;
   genres: string[];
   cast: { id: number; name: string; character: string | null; role: string; has_thumb: number }[];
   files: {

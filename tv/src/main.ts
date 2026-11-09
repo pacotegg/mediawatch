@@ -65,6 +65,18 @@ function esc(texto: string | null | undefined): string {
     .replace(/"/g, '&quot;');
 }
 
+/** Los premios llegan de OMDb en inglés («Won 1 Oscar. 19 wins & 22 nominations total»): solo se traducen las palabras fijas. */
+function premiosEnEspanol(texto: string | null | undefined): string {
+  const t = (texto || '').trim();
+  if (!t || /^n\/a$/i.test(t)) return '';
+  return t
+    .replace(/\bNominated for\b/g, 'Nominada a').replace(/\bWon\b/g, 'Ganó').replace(/\bAnother\b/g, 'Otros')
+    .replace(/\bOscars?\b/g, 'Óscar').replace(/\bPrimetime Emmys?\b/g, 'Emmys')
+    .replace(/\bwins\b/g, 'premios').replace(/\bwin\b/g, 'premio')
+    .replace(/\bnominations\b/g, 'nominaciones').replace(/\bnomination\b/g, 'nominación')
+    .replace(/ & /g, ' y ').replace(/\btotal\b/g, 'en total');
+}
+
 const ICONOS: Record<string, string> = {
   inicio: 'M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1v-9.5Z',
   buscar: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14ZM20 20l-3.5-3.5',
@@ -2269,6 +2281,7 @@ function formatoAspecto(ancho?: number | null, alto?: number | null): string {
       : '') +
     (generos ? '<div class="linea-generos">' + esc(generos) + '</div>' : '') +
     notasHtml(ficha) +
+    (premiosEnEspanol(ficha.premios) ? '<div class="linea-premios">' + esc(premiosEnEspanol(ficha.premios)) + '</div>' : '') +
 
     (ficha.plot ? '<div class="sinopsis">' + esc(ficha.plot) + '</div>' : '') +
     (direccion ? '<div class="direccion">Dirigida por ' + esc(direccion) + '</div>' : '') +
