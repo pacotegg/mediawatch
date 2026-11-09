@@ -99,7 +99,7 @@ async function intentarDescargar(itemId: number, tvdbId?: number | null, tmdbId?
     try {
       const tipo = kind === 'movie' ? 'movies' : 'tv_shows';
       const apiUrl = `https://raw.githubusercontent.com/LizardByte/ThemerrDB/database/${tipo}/themoviedb/${tmdbId}.json`;
-      const res = await fetch(apiUrl, { signal: AbortSignal.timeout(15_000) });
+      const res = await fetch(apiUrl, { signal: AbortSignal.timeout(5_000) });
       if (res.ok) {
         const data = (await res.json()) as { youtube_theme_url?: string };
         if (data.youtube_theme_url) {
@@ -113,7 +113,9 @@ async function intentarDescargar(itemId: number, tvdbId?: number | null, tmdbId?
         }
       }
     } catch (err: any) {
-      console.warn(`[tema] Error consultando ThemerrDB para #${itemId}:`, err.message);
+      if (!/aborted|timeout/i.test(err?.message ?? '')) {
+        console.warn(`[tema] Error consultando ThemerrDB para #${itemId}:`, err.message);
+      }
     }
   }
 
