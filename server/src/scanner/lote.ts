@@ -34,7 +34,7 @@ const vacio = <T>(): EstadoLote<T> => ({ corriendo: false, hechos: 0, total: 0, 
 const pausa = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const SIN_ESCRAPEAR = "(i.tmdb_id IS NULL OR i.tmdb_id = '') AND i.meta_origen IS NULL AND (l.entrada = 1 OR i.poster IS NULL)";
-const COND_PENDIENTE = `(${SIN_ESCRAPEAR} OR l.entrada = 1)`;
+const COND_PENDIENTE = `(${SIN_ESCRAPEAR} OR (l.entrada = 1 AND COALESCE(i.meta_origen, '') != 'local'))`;
 
 export function ignorarItem(itemId: number): void {
   db.prepare("UPDATE items SET meta_origen = 'local' WHERE id = ?").run(itemId);
