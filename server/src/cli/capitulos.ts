@@ -21,6 +21,7 @@ import {
   guardarCapitulosBd,
   obtenerCapitulosBd,
   sonCapitulosGenericos,
+  TOLERANCIA_DURACION_S,
 } from '../media/chapterdb.ts';
 import {
   buscarEnChapterEditor,
@@ -204,7 +205,7 @@ async function comandoEnriquecer(limite: number, soloGenericos: boolean) {
     if (noTiene) {
       candidato = candidatosConNombre.find((r) => r.durationSec > 0 && Math.abs(r.durationSec - duracion) <= 120);
     } else {
-      candidato = candidatosConNombre.find((r) => r.durationSec > 0 && Math.abs(r.durationSec - duracion) <= 45);
+      candidato = candidatosConNombre.find((r) => r.durationSec > 0 && Math.abs(r.durationSec - duracion) <= TOLERANCIA_DURACION_S);
     }
     if (!candidato) {
       // Intentar en Chapter-Database (Doom9 / hubblec4)
@@ -216,7 +217,7 @@ async function comandoEnriquecer(limite: number, soloGenericos: boolean) {
         (r) => (coincideTitulo(p.original_title || p.title, r.title) || coincideTitulo(p.title, r.title)) && r.chaptersCount > 0
       );
       const ceMatch = ceCandidatos.find(
-        (r) => r.durationSec > 0 && Math.abs(r.durationSec - duracion) <= (noTiene ? 120 : 45)
+        (r) => r.durationSec > 0 && Math.abs(r.durationSec - duracion) <= (noTiene ? 120 : TOLERANCIA_DURACION_S)
       );
 
       if (ceMatch) {
@@ -299,7 +300,7 @@ async function comandoEnriquecerCE(limite: number, soloGenericos: boolean) {
       (r) => (coincideTitulo(p.original_title || p.title, r.title) || coincideTitulo(p.title, r.title)) && r.chaptersCount > 0
     );
     const ceMatch = ceCandidatos.find(
-      (r) => r.durationSec > 0 && Math.abs(r.durationSec - duracion) <= (noTiene ? 120 : 45)
+      (r) => r.durationSec > 0 && Math.abs(r.durationSec - duracion) <= (noTiene ? 120 : TOLERANCIA_DURACION_S)
     );
 
     if (!ceMatch) {

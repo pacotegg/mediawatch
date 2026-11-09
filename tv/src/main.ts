@@ -6159,7 +6159,8 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
       opciones.push({ valor: 3, texto: 'Marcar inicio de créditos', nota: 'en ' + tiempoTxt });
       opciones.push({ valor: 4, texto: 'Marcar fin de créditos', nota: 'en ' + tiempoTxt });
     }
-    opciones.push({ valor: 5, texto: 'Marcar escena post-créditos', nota: 'en ' + tiempoTxt });
+    // La escena post-créditos solo se marca en películas: el servidor la rechaza en episodios.
+    if (!esSerie) opciones.push({ valor: 5, texto: 'Marcar escena post-créditos', nota: 'en ' + tiempoTxt });
     if (skips.length > 0) {
       opciones.push({ valor: 6, texto: 'Borrar marcas de este título', nota: 'eliminar saltos guardados' });
     }

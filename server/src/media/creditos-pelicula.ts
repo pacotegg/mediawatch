@@ -20,6 +20,14 @@ const NOMBRE_GENERICO = /^(chapter|cap[ií]tulo|scene|escena|part|parte)?\s*[-�
 /** Créditos plausibles: entre 2 y 12 minutos hasta el final. */
 const MIN_RESTANTE_S = 120;
 const MAX_RESTANTE_S = 720;
+/**
+ * Medido el 09/11/2026 sobre las 349 películas de ≥ 60 min con créditos conocidos (capítulo «End Credits» o IntroDB):
+ * ocupan una mediana del 4,3 % de la película, un p98 del 9,4 % y un máximo del 13,9 %. El fallback del último capítulo
+ * marcaba como créditos el desenlace de los cortos (Wallace & Gromit, 24-31 min: saltaba el 20-24 %). Por debajo de
+ * 60 min no hay un solo caso medido, así que no se adivina; y un último capítulo de más del 10 % no es un rodillo.
+ */
+const MIN_DURACION_ULTIMO_CAPITULO_S = 3600;
+const MAX_FRACCION_ULTIMO_CAPITULO = 0.1;
 
 export type RangoCreditos = {
   kind: 'credits';
@@ -45,8 +53,10 @@ export function creditosDePelicula(capitulos: Capitulo[], duracion: number): Ran
   // rodillo de duración verosímil.
   const todosGenericos = capitulos.every((c) => NOMBRE_GENERICO.test(c.title.trim()));
   if (!todosGenericos) return [];
+  if (duracion < MIN_DURACION_ULTIMO_CAPITULO_S) return [];
   const ultimo = capitulos[capitulos.length - 1];
   const restante = duracion - ultimo.start;
   if (restante < MIN_RESTANTE_S || restante > MAX_RESTANTE_S) return [];
+  if (restante > duracion * MAX_FRACCION_ULTIMO_CAPITULO) return [];
   return [{ kind: 'credits', start_s: ultimo.start, end_s: duracion, confidence: 70, source: 'ultimo-capitulo' }];
 }

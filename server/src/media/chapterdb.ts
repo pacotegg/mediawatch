@@ -244,6 +244,32 @@ export async function descargarCapitulosChapterDb(chapterSetId: string, duracion
  * Técnica mkv-chapter-helper: Si el archivo ya tiene capítulos con marcas de tiempo exactas
  * pero con nombres genéricos, transfiere los nombres de escena remotos a las marcas locales.
  */
+/**
+ * Diferencia máxima, en segundos, entre la duración del fichero y la del montaje de ChapterDB para dar por buena la
+ * lista. Eran 15 s; el 07/11 se subió a 45 s sin medir nada y el 09/11 se volvió a 15 s. Con una lista de otro montaje
+ * las marcas caen en el sitio equivocado, y sin capítulos propios se escribían tal cual.
+ */
+export const TOLERANCIA_DURACION_S = 15;
+
+/** El candidato cuya duración está más cerca de la del fichero, si cae dentro de la tolerancia. */
+export function candidatoPorDuracion<T extends { durationSec: number }>(
+  candidatos: T[],
+  duracion: number,
+  tolerancia = TOLERANCIA_DURACION_S
+): T | undefined {
+  let mejor: T | undefined;
+  let mejorDif = Infinity;
+  for (const c of candidatos) {
+    if (!(c.durationSec > 0)) continue;
+    const dif = Math.abs(c.durationSec - duracion);
+    if (dif <= tolerancia && dif < mejorDif) {
+      mejor = c;
+      mejorDif = dif;
+    }
+  }
+  return mejor;
+}
+
 export function fusionarNombresConTiemposLocales(locales: Capitulo[], remotos: Capitulo[]): Capitulo[] {
   if (!locales.length) return remotos;
   if (!remotos.length) return locales;
@@ -348,7 +374,7 @@ export async function autoEnriquecerPeliculaEnSegundoPlano(
       (r) => r.hasNames && (coincideTitulo(original || titulo, r.title) || coincideTitulo(titulo, r.title))
     );
     // Sin una duración que case no hay candidato: coger el primero de la lista metía capítulos de otro montaje.
-    const candidato = conNombre.find((r) => r.durationSec > 0 && Math.abs(r.durationSec - duracion) <= 45);
+    const candidato = candidatoPorDuracion(conNombre, duracion);
     if (!candidato) return;
 
     const capsRemotos = await descargarCapitulosChapterDb(candidato.id, duracion);

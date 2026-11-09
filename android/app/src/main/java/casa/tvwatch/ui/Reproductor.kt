@@ -2069,7 +2069,8 @@ private fun MenuDePistas(
           opciones.add("creditos_inicio" to ("Marcar inicio de créditos (" + tiempoTxt + ")"))
           opciones.add("creditos_fin" to ("Marcar fin de créditos (" + tiempoTxt + ")"))
         }
-        opciones.add("post_creditos" to ("Marcar escena post-créditos (" + tiempoTxt + ")"))
+        // La escena post-créditos solo se marca en películas: el servidor la rechaza en episodios.
+        if (!esSerie) opciones.add("post_creditos" to ("Marcar escena post-créditos (" + tiempoTxt + ")"))
         if (skips.isNotEmpty()) {
           opciones.add("borrar" to "Borrar marcas de este título")
         }

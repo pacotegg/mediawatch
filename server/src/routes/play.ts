@@ -1167,8 +1167,43 @@ export default async function playRoutes(app: FastifyInstance) {
 
     if (!file) return reply.code(404).send({ error: 'Fichero no encontrado' });
 
+    // Validacion (09/11/2026). La ruta aceptaba cualquier tipo y cualquier segundo: un tipo inventado o una marca de
+    // cabecera en una pelicula devolvian 200 y convertian una deteccion automatica en «manual» (confianza 100) sin
+    // cambiar nada; un segundo ausente guardaba 0, y uno mayor que la duracion, un rango con el fin antes del inicio.
+    const TIPOS_EPISODIO = ['intro_inicio', 'intro_fin', 'creditos_inicio', 'creditos_fin', 'borrar'];
+    const TIPOS_PELICULA = ['creditos_inicio', 'creditos_fin', 'post_creditos', 'borrar'];
+    if (!file.episode_id && !file.item_id) {
+      return reply.code(400).send({ error: 'El fichero no está vinculado a una película o episodio' });
+    }
+    if (![...TIPOS_EPISODIO, ...TIPOS_PELICULA].includes(tipo)) {
+      return reply.code(400).send({ error: `Tipo de marca desconocido: ${String(tipo)}` });
+    }
+    // En la BD real los ficheros de episodio llevan episode_id y NO item_id.
+    if (!(file.episode_id ? TIPOS_EPISODIO : TIPOS_PELICULA).includes(tipo)) {
+      const motivo = tipo === 'post_creditos'
+        ? 'La escena post-créditos solo se marca en películas'
+        : tipo.startsWith('intro_')
+          ? 'La cabecera solo se marca en episodios de series'
+          : 'Esa marca no sirve para este título';
+      return reply.code(400).send({ error: motivo });
+    }
+
     const duracion = file.duration || 0;
-    const seg = typeof segundo === 'number' && segundo >= 0 ? Math.round(segundo * 10) / 10 : 0;
+    let seg = 0;
+    if (tipo !== 'borrar') {
+      if (typeof segundo !== 'number' || !Number.isFinite(segundo) || segundo < 0) {
+        return reply.code(400).send({ error: 'Indica el segundo exacto de la marca (un número mayor o igual que 0)' });
+      }
+      if (!(duracion > 0)) return reply.code(400).send({ error: 'No se conoce la duración de este fichero' });
+      if (segundo > duracion) {
+        return reply.code(400).send({ error: `El segundo ${segundo} pasa de la duración del fichero (${Math.round(duracion)} s)` });
+      }
+      seg = Math.round(segundo * 10) / 10;
+      // Un inicio no puede estar al final del todo: dejaria un rango vacio.
+      if ((tipo.endsWith('_inicio') || tipo === 'post_creditos') && seg >= duracion) {
+        return reply.code(400).send({ error: 'Esa marca no puede estar al final del fichero' });
+      }
+    }
     const now = new Date().toISOString();
 
     // 1. Episodios
@@ -1193,6 +1228,9 @@ export default async function playRoutes(app: FastifyInstance) {
       if (tipo === 'intro_fin') {
         const actual = db.prepare('SELECT start_s FROM skip_ranges WHERE episode_id = ? AND kind = ?').get(epId, 'intro') as { start_s: number } | undefined;
         const start_s = actual ? actual.start_s : 0;
+        if (seg <= start_s) {
+          return reply.code(400).send({ error: `El fin de la cabecera (${seg} s) tiene que ser posterior a su inicio (${start_s} s)` });
+        }
         db.prepare(`
           INSERT INTO skip_ranges (episode_id, kind, start_s, end_s, confidence, created_at)
           VALUES (?, 'intro', ?, ?, 100, ?)
@@ -1214,7 +1252,11 @@ export default async function playRoutes(app: FastifyInstance) {
 
       if (tipo === 'creditos_fin') {
         const actual = db.prepare('SELECT start_s FROM skip_ranges WHERE episode_id = ? AND kind = ?').get(epId, 'credits') as { start_s: number } | undefined;
-        const start_s = actual && actual.start_s < seg ? actual.start_s : Math.max(0, seg - 60);
+        if (actual && actual.start_s >= seg) {
+          return reply.code(400).send({ error: `El fin de los créditos (${seg} s) tiene que ser posterior a su inicio (${actual.start_s} s)` });
+        }
+        const start_s = actual ? actual.start_s : Math.max(0, seg - 60);
+        if (!(seg > start_s)) return reply.code(400).send({ error: 'El fin de los créditos no puede estar al principio del fichero' });
         db.prepare(`
           INSERT INTO skip_ranges (episode_id, kind, start_s, end_s, confidence, created_at)
           VALUES (?, 'credits', ?, ?, 100, ?)
@@ -1243,11 +1285,19 @@ export default async function playRoutes(app: FastifyInstance) {
         rangos = [{ start_s: seg, end_s: duracion }];
       } else if (tipo === 'creditos_fin') {
         if (rangos.length) {
-          rangos[rangos.length - 1].end_s = seg;
+          const ultimo = rangos[rangos.length - 1];
+          if (seg <= ultimo.start_s) {
+            return reply.code(400).send({ error: `El fin de los créditos (${seg} s) tiene que ser posterior a su inicio (${ultimo.start_s} s)` });
+          }
+          ultimo.end_s = seg;
         } else {
+          if (!(seg > 0)) return reply.code(400).send({ error: 'El fin de los créditos no puede estar al principio del fichero' });
           rangos = [{ start_s: Math.max(0, seg - 120), end_s: seg }];
         }
       } else if (tipo === 'post_creditos') {
+        if (rangos.length && seg <= rangos[0].start_s) {
+          return reply.code(400).send({ error: `La escena post-créditos (${seg} s) tiene que ir después del inicio de los créditos (${rangos[0].start_s} s)` });
+        }
         escenas = [{ start_s: seg, end_s: duracion }];
         if (rangos.length && rangos[0].end_s >= seg) {
           rangos[0].end_s = Math.max(rangos[0].start_s, seg - 1);
