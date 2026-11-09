@@ -36,8 +36,12 @@ import time
 import numpy as np
 
 W, H, FPS, RAFAGA_S, MAX_S = 320, 180, 8, 1.5, 12
-PASO_GRUESO = 25.0
-PASO_DENSO = 8.0
+# MEDIDO el 09/11/2026 sobre 24 peliculas con el inicio de creditos conocido (capitulo
+# «End Credits» o IntroDB). El 07/11 estos pasos bajaron a 25/8 s: mismos aciertos (10 de
+# 24 dentro de +-30 s), 3,2 veces mas caro (134 s por pelicula frente a 42) y TRES falsos
+# tardios mas; ademas rompia «El ultimatum de Bourne», que pasaba de -5 s a +136 s.
+PASO_GRUESO = 60.0
+PASO_DENSO = 10.0
 UMBRAL_TARJETA = 0.85
 MIN_ESCENA_RAFAGAS = 2
 MIN_RANGO_S = 20.0
@@ -151,11 +155,15 @@ def analizar(ffmpeg, path, dur, desde=None):
             grueso.append((t, c))
         t += PASO_GRUESO
 
+    # Una sola rafaga que sube NO basta: hace falta otra cerca. Aceptar una suelta en los
+    # ultimos 8 min (07/11) solo anyadio detecciones tardias (+101 s en «Malditos bastardos»).
     for i, (t, c) in enumerate(grueso):
-        if c == "S" and (any(c2 == "S" for _, c2 in grueso[i + 1: i + 5]) or dur - t <= 8 * 60):
+        if c == "S" and any(c2 == "S" for _, c2 in grueso[i + 1: i + 4]):
             inicio = t
             break
 
+    # Respaldo (07/11, MEDIDO y CONSERVADO): creditos que son tarjetas sobre negro sin texto
+    # que suba. Recupera «Infiltrados» (+1 s, antes no se detectaba) sin coste apreciable.
     if inicio is None:
         for i, (t, c) in enumerate(grueso):
             if c == "C" and dur - t <= 12 * 60:
