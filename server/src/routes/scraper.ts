@@ -16,6 +16,7 @@ import { deshacerUltima, HistorialError, ultimaInstantanea } from '../scanner/hi
 import { editarMetadatos, MetadatosError, validarCambios } from '../scanner/metadatos.ts';
 import { aplicarOmdb, buscarOmdb, detallesOmdb, OmdbError } from '../scanner/omdb-ficha.ts';
 import { buscarTvdb } from '../scanner/tvdb.ts';
+import { enlazarConTmdb } from '../scanner/enlazar-tmdb.ts';
 import { aplicarMezcla, CAMPOS_MEZCLA, consultarFuentes, FuentesError } from '../scanner/fuentes-datos.ts';
 
 /*
@@ -465,19 +466,30 @@ export default async function scraperRoutes(app: FastifyInstance) {
     }
   });
 
+  /** Para el Asistente: lo hallado en otra fuente, cruzado con TMDb (que es con lo que se aplica). */
+  async function soloConTmdb(halladas: Proposal[], kind: 'movie' | 'show', fuente: string) {
+    if (!config.tmdbApiKey) return { propuestas: [], aviso: 'Falta la clave de API de TMDb: el Asistente aplica con TMDb' };
+    const { propuestas, sinEnlace } = await enlazarConTmdb(halladas, kind);
+    const aviso = !halladas.length ? `${fuente} no encuentra nada con eso`
+      : !propuestas.length ? `${fuente} lo encuentra, pero TMDb no lo conoce, así que aquí no se puede aplicar`
+      : sinEnlace ? `${sinEnlace} resultado(s) de ${fuente} no están en TMDb y no se ofrecen` : undefined;
+    return { propuestas, aviso };
+  }
+
   /*
    * OMDb como segunda fuente, equivalente a TMDb en el emparejado: mismas propuestas (con `fuente: 'omdb'`) y su propio aplicar.
    * Acepta un titulo o un id de IMDb; un id de TMDb no le sirve.
    */
   app.post('/api/scraper/resolver-omdb', async (req, reply) => {
     if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'No autorizado' });
-    const { entrada, kind, year } = (req.body ?? {}) as { entrada?: string; kind?: string; year?: number | null };
+    const { entrada, kind, year, enlazarTmdb } = (req.body ?? {}) as { entrada?: string; kind?: string; year?: number | null; enlazarTmdb?: boolean };
     if (!entrada?.trim() || (kind !== 'movie' && kind !== 'show')) return reply.code(400).send({ error: 'Escribe un título o un id de IMDb' });
     const b = interpretarBusqueda(entrada);
     if (b.tipo === 'tmdb') return { propuestas: [], aviso: 'OMDb no entiende ids de TMDb: escribe el título o el id de IMDb (tt…)' };
     try {
-      const propuestas = b.tipo === 'imdb' ? [await detallesOmdb(b.id, kind)] : await buscarOmdb(b.texto, kind, year);
-      return { propuestas, aviso: propuestas.length ? undefined : 'OMDb no encuentra nada con eso' };
+      const halladas = b.tipo === 'imdb' ? [await detallesOmdb(b.id, kind)] : await buscarOmdb(b.texto, kind, year);
+      if (enlazarTmdb === true) return await soloConTmdb(halladas, kind, 'OMDb');
+      return { propuestas: halladas, aviso: halladas.length ? undefined : 'OMDb no encuentra nada con eso' };
     } catch (err) {
       if (err instanceof OmdbError && /not found|incorrect imdb/i.test(err.message)) return { propuestas: [], aviso: 'OMDb no encuentra nada con eso' };
       return reply.code(502).send({ error: (err as Error).message });
@@ -486,10 +498,11 @@ export default async function scraperRoutes(app: FastifyInstance) {
 
   app.post('/api/scraper/resolver-tvdb', async (req, reply) => {
     if (!requireUser(req).is_admin) return reply.code(403).send({ error: 'No autorizado' });
-    const { entrada, kind, year } = (req.body ?? {}) as { entrada?: string; kind?: 'movie' | 'show'; year?: number | null };
+    const { entrada, kind, year, enlazarTmdb } = (req.body ?? {}) as { entrada?: string; kind?: 'movie' | 'show'; year?: number | null; enlazarTmdb?: boolean };
     if (!entrada?.trim() || (kind !== 'movie' && kind !== 'show')) return reply.code(400).send({ error: 'Escribe un título' });
     try {
       const propuestas = await buscarTvdb(entrada.trim(), kind, year);
+      if (enlazarTmdb === true) return await soloConTmdb(propuestas, kind, 'TheTVDB');
       return { propuestas, aviso: propuestas.length ? undefined : 'TheTVDB no encuentra nada con ese título' };
     } catch (err) {
       return reply.code(502).send({ error: (err as Error).message });

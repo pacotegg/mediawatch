@@ -48,8 +48,8 @@ function BuscarManual({
 
   const buscar = useMutation({
     mutationFn: async () => {
-      if (fuente === 'tvdb') return api.scraperResolverTvdb(texto, fila.kind, null);
-      if (fuente === 'omdb') return api.scraperResolverOmdb(texto, fila.kind, null);
+      if (fuente === 'tvdb') return api.scraperResolverTvdb(texto, fila.kind, null, true);
+      if (fuente === 'omdb') return api.scraperResolverOmdb(texto, fila.kind, null, true);
       let r: { propuestas: Proposal[]; aviso?: string };
       try {
         r = await api.scraperResolver(texto, fila.kind, null);
@@ -58,9 +58,9 @@ function BuscarManual({
         r = { propuestas: [], aviso: (e as Error).message };
       }
       if (fuente === 'todas' && r.propuestas.length === 0) {
-        const tv = await api.scraperResolverTvdb(texto, fila.kind, null).catch(() => null);
+        const tv = await api.scraperResolverTvdb(texto, fila.kind, null, true).catch(() => null);
         if (tv && tv.propuestas.length) return tv;
-        const om = await api.scraperResolverOmdb(texto, fila.kind, null).catch(() => null);
+        const om = await api.scraperResolverOmdb(texto, fila.kind, null, true).catch(() => null);
         if (om && om.propuestas.length) return om;
       }
       return r;
@@ -294,6 +294,12 @@ export default function AsistenteNuevos() {
           return tmdbId ? { itemId: it.id, tmdbId } : null;
         })
         .filter((x): x is { itemId: number; tmdbId: number } => Boolean(x));
+
+      // Sin id de TMDb y sin estar ya escrapeado no hay con qué nombrarlo: se para antes de tocar nada.
+      const sinId = elegidosParaProcesar.filter((it) => !it.escrapeado && !paraAplicar.some((p) => p.itemId === it.id));
+      if (sinId.length > 0) {
+        throw new Error(`Sin coincidencia de TMDb para: ${sinId.map((it) => it.titulo).join(', ')}. Elige una o desmárcalos.`);
+      }
 
       if (paraAplicar.length > 0) {
         await api.scraperNuevosAplicar(paraAplicar);

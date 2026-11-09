@@ -475,10 +475,11 @@ export const api = {
   scraperResolver: (entrada: string, kind: 'movie' | 'show', year?: number | null) =>
     post<{ propuestas: Proposal[]; aviso?: string }>('/api/scraper/resolver', { entrada, kind, year }),
   /** Lo mismo con OMDb (título o id de IMDb). Su sinopsis y su título vienen en inglés; no tiene fondo ni logo. */
-  scraperResolverOmdb: (entrada: string, kind: 'movie' | 'show', year?: number | null) =>
-    post<{ propuestas: Proposal[]; aviso?: string }>('/api/scraper/resolver-omdb', { entrada, kind, year }),
-  scraperResolverTvdb: (entrada: string, kind: 'movie' | 'show', year?: number | null) =>
-    post<{ propuestas: Proposal[]; aviso?: string }>('/api/scraper/resolver-tvdb', { entrada, kind, year }),
+  /** `enlazarTmdb`: el Asistente aplica con TMDb, así que el servidor cruza lo hallado por IMDb y descarta lo que TMDb no conoce. */
+  scraperResolverOmdb: (entrada: string, kind: 'movie' | 'show', year?: number | null, enlazarTmdb?: boolean) =>
+    post<{ propuestas: Proposal[]; aviso?: string }>('/api/scraper/resolver-omdb', { entrada, kind, year, enlazarTmdb }),
+  scraperResolverTvdb: (entrada: string, kind: 'movie' | 'show', year?: number | null, enlazarTmdb?: boolean) =>
+    post<{ propuestas: Proposal[]; aviso?: string }>('/api/scraper/resolver-tvdb', { entrada, kind, year, enlazarTmdb }),
 
   /** Todas las fuentes de un título a la vez, enlazadas por sus ids (TMDb o IMDb). */
   fuentesFicha: (kind: 'movie' | 'show', ids: { tmdbId?: number; imdbId?: string }) =>
