@@ -12,6 +12,12 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.94 — 09/11/2026
+
+- Premios en la ficha (Óscar, Emmy, nominaciones…), traídos de OMDb y traducidos al español, en móvil y en la tele de Android; también en la web y en la app de Samsung.
+- Logos de productoras en la web: ya no se montan sobre el texto y los iconos, con dos por fila como máximo.
+- El Asistente del scraper (web) aplica también lo hallado en OMDb o TheTVDB, enlazándolo con TMDb.
+
 ## 3.93 — 07/11/2026
 
 - Lista «Ver más tarde» (Watchlist) completa en Web, TV y Android: botón directo desde ficha y nuevo acceso dedicado en el menú lateral.

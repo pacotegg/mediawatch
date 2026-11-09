@@ -435,6 +435,11 @@ fun PantallaFicha(
               Text(f.genres.take(4).joinToString(", "), color = TextoTenue, fontSize = 13.sp)
             }
 
+            casa.tvwatch.datos.Premios.enEspanol(f.premios)?.let {
+              Spacer(Modifier.height(8.dp))
+              Text("Premios: $it", color = TextoTenue, fontSize = 13.sp)
+            }
+
             val directores = remember(f) { f.cast.filter { it.role.equals("director", ignoreCase = true) } }
             if (directores.isNotEmpty()) {
               Spacer(Modifier.height(8.dp))

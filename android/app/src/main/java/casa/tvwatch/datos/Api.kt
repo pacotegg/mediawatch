@@ -853,6 +853,8 @@ data class Ficha(
   val mpaa: String? = null,
   val rating: Double? = null,
   val genres: List<String> = emptyList(),
+  /** Premios como los da OMDb (en inglés); ver [Premios.enEspanol]. */
+  val premios: String? = null,
   val ratings: List<Nota> = emptyList(),
   val cast: List<Persona> = emptyList(),
   val files: List<Fichero> = emptyList(),
