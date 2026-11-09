@@ -12,6 +12,13 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.95 — 09/11/2026
+
+- Marcar tramos ya no deja guardar una marca imposible: avisa si falta el segundo, si cae más allá del final de la película o si el fin de los créditos va antes que su inicio. Antes se guardaba en silencio un tramo sin sentido.
+- «Marcar escena post-créditos» solo aparece en películas. En los episodios de serie no llegaba a guardarse nunca.
+- Los créditos dejan de adivinarse en los cortos: marcar el último capítulo como créditos se comía el desenlace en películas de media hora.
+- La detección de créditos vuelve a ser tres veces más rápida sin perder aciertos, y se corrigen los títulos a los que el botón de saltar aparecía dos minutos tarde.
+
 ## 3.94 — 09/11/2026
 
 - Premios en la ficha (Óscar, Emmy, nominaciones…), traídos de OMDb y traducidos al español, en móvil y en la tele de Android; también en la web y en la app de Samsung.

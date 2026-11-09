@@ -96,7 +96,7 @@ const ICONOS: Record<string, string> = {
 };
 
 /* La misma que `version` de public/config.xml: al subirla, subir las dos. */
-const VERSION_APP = '3.66.0';
+const VERSION_APP = '3.68.0';
 
 function versionTizen(): string {
   try {
