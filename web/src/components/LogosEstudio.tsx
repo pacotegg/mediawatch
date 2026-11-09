@@ -17,25 +17,29 @@ export default function LogosEstudio({ itemId, compacto = false }: { itemId: num
   if (!estudios.length) return null;
   const solo = estudios.length === 1;
   return (
-    <div className={`${compacto ? 'mt-5' : 'mt-7'} flex w-full max-w-[300px] flex-col items-center`}>
+    // Nunca más ancho que el cartel (220 px): con 300 px se metía debajo del texto y los iconos de al lado.
+    <div className={`${compacto ? 'mt-5' : 'mt-7'} flex w-full max-w-[220px] flex-col items-center`}>
       <div className="mb-3 text-[12px] tracking-wide text-mist-500">Producida por</div>
-      <div className="flex flex-wrap items-center justify-center gap-x-7 gap-y-5">
+      <div className="flex w-full flex-wrap items-center justify-center gap-x-3 gap-y-4">
         {estudios.map((nombre) => {
           const largo = largos[nombre];
-          const tam = solo ? (compacto ? 'max-h-12 max-w-[190px]' : 'max-h-16 max-w-[240px]') : largo ? 'max-h-10 max-w-[260px] basis-full' : 'max-h-12 max-w-[120px]';
+          // Un solo logo, algo mayor; varios, DOS por fila como máximo (cada uno ocupa media fila); los muy alargados, fila propia.
+          const celda = solo || largo ? 'basis-full' : 'basis-[calc(50%-6px)]';
+          const tam = solo ? (compacto ? 'max-h-10 max-w-[150px]' : 'max-h-12 max-w-[180px]') : largo ? 'max-h-7 max-w-[200px]' : 'max-h-9 max-w-full';
           return (
-            <img
-              key={nombre}
-              src={img.estudio(nombre)}
-              alt={nombre}
-              loading="lazy"
-              onLoad={(e) => {
-                const el = e.currentTarget;
-                if (!solo && el.naturalWidth / el.naturalHeight >= 4) setLargos((p) => (p[nombre] ? p : { ...p, [nombre]: true }));
-              }}
-              onError={() => setRotos((p) => ({ ...p, [nombre]: true }))}
-              className={`logo-estudio-3d object-contain ${tam}`}
-            />
+            <div key={nombre} className={`flex min-w-0 items-center justify-center ${celda}`}>
+              <img
+                src={img.estudio(nombre)}
+                alt={nombre}
+                loading="lazy"
+                onLoad={(e) => {
+                  const el = e.currentTarget;
+                  if (!solo && el.naturalWidth / el.naturalHeight >= 4) setLargos((p) => (p[nombre] ? p : { ...p, [nombre]: true }));
+                }}
+                onError={() => setRotos((p) => ({ ...p, [nombre]: true }))}
+                className={`logo-estudio-3d object-contain ${tam}`}
+              />
+            </div>
           );
         })}
       </div>
