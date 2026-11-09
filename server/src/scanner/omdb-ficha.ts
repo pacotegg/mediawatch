@@ -82,6 +82,20 @@ export async function buscarOmdb(texto: string, kind: 'movie' | 'show', year?: n
   return fichas.filter((f): f is Ficha => f !== null).map((f) => aPropuesta(f, kind));
 }
 
+/**
+ * Completa la edad de una PELICULA con la de OMDb («US:R»), solo si no tiene ninguna y nadie la dejo vacia a proposito (`campos_fijados`).
+ * Nunca pisa una edad existente: la española (ES:16) y la del fichero mandan. «Not Rated» y compañia no dicen nada.
+ */
+export function completarEdad(itemId: number, rated: string | undefined): boolean {
+  const e = edad(rated);
+  if (!e) return false;
+  const r = db.prepare(
+    `UPDATE items SET mpaa = ? WHERE id = ? AND kind = 'movie' AND (mpaa IS NULL OR mpaa = '')
+       AND instr(',' || COALESCE(campos_fijados, '') || ',', ',mpaa,') = 0`,
+  ).run('US:' + e, itemId);
+  return Number(r.changes) > 0;
+}
+
 /** «N/A» -> '' (comprobado, sin premios). */
 export const premiosDe = (j: Ficha): string => {
   const a = (j.Awards ?? '').trim();
@@ -94,6 +108,7 @@ export async function traerPremios(itemId: number): Promise<void> {
   if (!it?.imdb_id || !config.omdbApiKey) return;
   const j = await pedir({ i: it.imdb_id });
   db.prepare('UPDATE items SET premios = ? WHERE id = ?').run(premiosDe(j), itemId);
+  completarEdad(itemId, j.Rated);
 }
 
 export type AplicarOmdb = {

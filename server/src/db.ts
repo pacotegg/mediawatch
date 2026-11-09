@@ -24,7 +24,7 @@ export function parseRatingCategoria(mpaa: string | null, libraryId: number): st
   if (m.includes('16')) return '16';
   if (m.includes('12') || m.includes('13') || m.includes('PG-13') || m.includes('TV-14')) return '12';
   if (m.includes('7') || m.includes('PG') || m.includes('TV-Y7') || m.includes('TV-PG')) return '7';
-  if (m.includes('APTA') || m.includes(':A') || m.includes('TP') || m.includes(' G') || m.startsWith('G') || m.includes('TV-Y') || m.includes('TV-G')) return 'TP';
+  if (m.includes('APTA') || m.includes(':A') || m.includes('TP') || m.includes(' G') || m.startsWith('G') || m.includes(':G') || m.includes('TV-Y') || m.includes('TV-G')) return 'TP';
   return '18';
 }
 

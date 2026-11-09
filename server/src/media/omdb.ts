@@ -15,6 +15,7 @@
  */
 import { config } from '../config.ts';
 import { db } from '../db.ts';
+import { completarEdad } from '../scanner/omdb-ficha.ts';
 
 export type LoteOmdb = {
   running: boolean;
@@ -55,7 +56,7 @@ function valorDe(texto: string): number | null {
 
 function pendientes(todos: boolean): { id: number; title: string; imdb_id: string }[] {
   // Falta el tomatometro o aun no se han mirado los premios (NULL; '' ya es «mirado y sin premios»).
-  const falta = `(NOT EXISTS (SELECT 1 FROM item_ratings r WHERE r.item_id = i.id AND r.fuente = 'tomatometerallcritics') OR i.premios IS NULL)`;
+  const falta = `(NOT EXISTS (SELECT 1 FROM item_ratings r WHERE r.item_id = i.id AND r.fuente = 'tomatometerallcritics') OR i.premios IS NULL OR (i.kind = 'movie' AND (i.mpaa IS NULL OR i.mpaa = '')))`;
   return db
     .prepare(`SELECT i.id, i.title, i.imdb_id
                 FROM items i
@@ -94,6 +95,7 @@ export function rellenarConOmdb(todos = false) {
             Error?: string;
             imdbVotes?: string;
             Awards?: string;
+            Rated?: string;
             Ratings?: { Source: string; Value: string }[];
           };
 
@@ -107,6 +109,8 @@ export function rellenarConOmdb(todos = false) {
             // Los premios van en la misma respuesta: ni una consulta de mas. «N/A» = mirado y sin premios ('').
             const premios = (datos.Awards ?? '').trim();
             db.prepare('UPDATE items SET premios = ? WHERE id = ?').run(/^n\/a$/i.test(premios) ? '' : premios, it.id);
+            // Y la edad de las peliculas que no tienen ninguna (OMDb siempre: «US:R»); nunca pisa la que ya haya.
+            completarEdad(it.id, datos.Rated);
             let puestas = 0;
             for (const r of datos.Ratings ?? []) {
               const f = FUENTES[r.Source];
