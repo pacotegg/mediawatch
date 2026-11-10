@@ -5,6 +5,8 @@ import { deFuera } from './auth.ts';
 import { aplicacion, aplicarDatos, buscarNuevos, busqueda, ejecutarLote, planesDeLoteMedidos, renombrado } from '../scanner/lote.ts';
 import { hayAlguienViendoEn } from '../media/ocupado.ts';
 import { claveValida, procesarAuto, type Deps, type ResultadoAuto } from '../scanner/servicio-auto.ts';
+import { enviarTitulo, planEnvio } from '../scanner/enviar.ts';
+import { dirname, resolve, sep } from 'node:path';
 
 /*
  * Servicio para TorrentDWN (opción B). NO usa sesiones de usuario: se entra con una clave de servicio propia
@@ -40,6 +42,17 @@ const depsReales: Deps = {
     return { ok: Boolean(r?.ok), error: r?.error, detalle: r?.detalle };
   },
   alguienViendo: (carpeta) => hayAlguienViendoEn(carpeta),
+  enviar: async (itemId, destino) => {
+    // Solo se envía lo que está en una FUENTE del Scraper (C:): nunca algo que ya viva en una biblioteca
+    const carpeta = (db.prepare('SELECT folder FROM items WHERE id = ?').get(itemId) as { folder: string } | undefined)?.folder;
+    if (!carpeta) return { ok: false, error: 'no se conoce la carpeta' };
+    const c = resolve(carpeta).toLowerCase();
+    const enFuente = config.fuentesScraper.some((f) => { const r = resolve(f.path).toLowerCase(); return c === r || c.startsWith(r + sep); });
+    if (!enFuente) return { ok: false, error: 'no está en una fuente del Scraper' };
+    const plan = planEnvio(itemId, destino || undefined); // valida tipo y biblioteca (lanza si el destino no vale)
+    await enviarTitulo(itemId, dirname(plan.destino), { quitarOriginal: true, verificacion: 'rapida' });
+    return { ok: true, destino: plan.destino };
+  },
   carpetaDe: (itemId) => (db.prepare('SELECT folder FROM items WHERE id = ?').get(itemId) as { folder: string } | undefined)?.folder ?? null,
 };
 
@@ -61,11 +74,12 @@ export default async function servicioRoutes(app: FastifyInstance) {
     if (!autorizar(req as never, reply)) return;
     const ruta = String(((req.body ?? {}) as { ruta?: unknown }).ruta ?? '').trim();
     if (!ruta) return reply.code(400).send({ error: 'Falta la carpeta (ruta)' });
+    const destino = String(((req.body ?? {}) as { destino?: unknown }).destino ?? '').trim();
     const k = ruta.toLowerCase();
     if (enCurso.has(k)) return { started: false, motivo: 'ya se está procesando' };
     enCurso.add(k);
     trabajos.set(k, { estado: 'en_curso', en: new Date().toISOString() });
-    void procesarAuto(ruta, { renombrar: config.servicioRenombrar === true }, depsReales)
+    void procesarAuto(ruta, { renombrar: config.servicioRenombrar === true || config.servicioEnviar === true, enviar: config.servicioEnviar === true, destino: destino || undefined }, depsReales)
       .then((r) => trabajos.set(k, { ...r, en: new Date().toISOString() }))
       .catch((e) => trabajos.set(k, { estado: 'error', error: (e as Error).message, en: new Date().toISOString() }))
       .finally(() => enCurso.delete(k));
@@ -75,6 +89,6 @@ export default async function servicioRoutes(app: FastifyInstance) {
   app.get('/api/servicio/torrdwn/estado', async (req, reply) => {
     if (!autorizar(req as never, reply)) return;
     const ruta = String(((req.query ?? {}) as { ruta?: string }).ruta ?? '').trim().toLowerCase();
-    return ruta ? (trabajos.get(ruta) ?? { estado: 'desconocido' }) : { renombrar: config.servicioRenombrar === true, trabajos: trabajos.size };
+    return ruta ? (trabajos.get(ruta) ?? { estado: 'desconocido' }) : { renombrar: config.servicioRenombrar === true, enviar: config.servicioEnviar === true, trabajos: trabajos.size };
   });
 }

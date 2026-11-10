@@ -14,13 +14,17 @@ import { timingSafeEqual } from 'node:crypto';
  *     todos los pasos son movimientos dentro de la carpeta de la biblioteca del título (nada cruza de carpeta
  *     ni de disco) y nadie está viendo algo.
  *  3. Si el Asistente está ocupado, no se pisa: `ocupado` (TorrentDWN reintenta luego).
+ *  4. ENVIAR a la biblioteca (`servicioEnviar`, apagado por defecto; excepción a la regla de E: autorizada por el usuario
+ *     el 10/11/2026 solo para títulos nuevos que deja TorrentDWN): solo tras ficha segura + renombrado + arte + NFO sin
+ *     ningún fallo, solo desde una fuente del Scraper (nunca algo que ya esté en una biblioteca), con el traslado
+ *     verificado de siempre. Cualquier duda deja el título en C: esperando el clic del Asistente.
  */
 
 export type Confianza = 'segura' | 'probable' | 'dudosa' | 'ninguna';
 export type FilaBusqueda = { itemId: number; titulo: string; confianza: Confianza; tmdbId: number | null; propuesta: string | null };
 export type PasoPlan = { desde: string; hacia: string; final: string };
 
-export type Estado = 'en_curso' | 'ocupado' | 'sin_video' | 'sin_coincidencia' | 'dudoso' | 'aplicado' | 'renombrado' | 'error';
+export type Estado = 'en_curso' | 'ocupado' | 'sin_video' | 'sin_coincidencia' | 'dudoso' | 'aplicado' | 'renombrado' | 'enviado' | 'error';
 export type ResultadoAuto = { estado: Estado; itemId?: number; titulo?: string; tmdbId?: number; confianza?: Confianza; propuesta?: string; detalle?: string; error?: string };
 
 export type Deps = {
@@ -31,6 +35,8 @@ export type Deps = {
   renombrar: (itemId: number) => Promise<{ ok: boolean; error?: string; detalle?: string }>;
   alguienViendo: (ruta: string) => boolean;
   carpetaDe: (itemId: number) => string | null;
+  /** Traslado verificado a la biblioteca del tipo (o a `destino` si TorrentDWN lo indicó). Opcional: sin él nunca se envía. */
+  enviar?: (itemId: number, destino?: string) => Promise<{ ok: boolean; error?: string; destino?: string }>;
 };
 
 /** ¿Todos los pasos del plan se quedan DENTRO de la carpeta que contiene al título (misma biblioteca, mismo disco)? */
@@ -52,7 +58,12 @@ export function claveValida(dada: string, esperada: string): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-export async function procesarAuto(ruta: string, opciones: { renombrar: boolean }, deps: Deps): Promise<ResultadoAuto> {
+/** El renombrado devolvió ok pero a veces el arte o el NFO fallan sin tumbarlo: para enviar tiene que estar TODO. */
+export function datosCompletos(detalle?: string): boolean {
+  return Boolean(detalle) && /arte copiado/.test(detalle!) && /NFO escritos/.test(detalle!) && !/no copiado|no escrito/.test(detalle!);
+}
+
+export async function procesarAuto(ruta: string, opciones: { renombrar: boolean; enviar?: boolean; destino?: string }, deps: Deps): Promise<ResultadoAuto> {
   if (deps.ocupado()) return { estado: 'ocupado', detalle: 'El Asistente está en marcha: se reintentará' };
 
   const busca = await deps.buscar(ruta);
@@ -76,10 +87,23 @@ export async function procesarAuto(ruta: string, opciones: { renombrar: boolean 
   if (deps.alguienViendo(carpeta)) return { ...hecho, detalle: 'Ficha aplicada; no se renombra porque alguien está viendo algo' };
   const plan = await deps.plan(fila.itemId);
   if (plan.error) return { ...hecho, detalle: `Ficha aplicada; no se renombra (${plan.error})` };
-  if (plan.pasos.length === 0) return { ...hecho, detalle: 'Ficha aplicada; los nombres ya estaban bien' };
-  if (!pasosSeguros(plan.pasos, carpeta)) return { ...hecho, detalle: 'Ficha aplicada; el renombrado sale de la carpeta de la biblioteca: queda esperando tu confirmación' };
+  // Con «enviar» el renombrado se ejecuta aunque los nombres ya estén bien: hace falta escribir el arte y el NFO
+  // (los datos viajan con la carpeta). Sin «enviar», si no hay nada que renombrar se deja como estaba.
+  if (plan.pasos.length === 0 && !opciones.enviar) return { ...hecho, detalle: 'Ficha aplicada; los nombres ya estaban bien' };
+  if (plan.pasos.length > 0 && !pasosSeguros(plan.pasos, carpeta)) return { ...hecho, detalle: 'Ficha aplicada; el renombrado sale de la carpeta de la biblioteca: queda esperando tu confirmación' };
 
   const r = await deps.renombrar(fila.itemId);
   if (!r.ok) return { ...hecho, detalle: `Ficha aplicada; el renombrado falló: ${r.error ?? 'error'}` };
-  return { ...hecho, estado: 'renombrado', detalle: r.detalle };
+  const renombrado: ResultadoAuto = { ...hecho, estado: 'renombrado', detalle: r.detalle };
+
+  // Último paso: enviar a la biblioteca, solo si TODO lo anterior salió perfecto
+  if (!opciones.enviar || !deps.enviar) return renombrado;
+  if (!datosCompletos(r.detalle)) return { ...renombrado, detalle: `${r.detalle ?? ''} — no se envía: faltan el arte o el NFO; queda en C: esperando tu clic` };
+  try {
+    const e = await deps.enviar(fila.itemId, opciones.destino);
+    if (!e.ok) return { ...renombrado, detalle: `${r.detalle ?? ''} — no se envió (${e.error ?? 'error'}); queda en C:` };
+    return { ...renombrado, estado: 'enviado', detalle: `Enviado a ${e.destino ?? 'la biblioteca'}` };
+  } catch (err) {
+    return { ...renombrado, detalle: `${r.detalle ?? ''} — no se envió (${(err as Error).message}); queda en C:` };
+  }
 }

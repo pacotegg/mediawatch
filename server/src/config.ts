@@ -63,6 +63,8 @@ export type AppConfig = {
   servicioClave: string;
   /** Con servicio activo: además de escrapear, renombrar + arte + NFO cuando el plan es seguro (apagado por defecto). */
   servicioRenombrar: boolean;
+  /** Tras escrapear y renombrar un título de una fuente, enviarlo a la biblioteca (traslado verificado). Apagado por defecto. */
+  servicioEnviar: boolean;
   /**
    * Clave de Watchmode: el enlace directo a un título dentro de Prime, Movistar+ o
    * Apple TV+. Plan gratuito: 2.500 llamadas al mes, caché de 30 días como máximo
@@ -171,6 +173,7 @@ function defaultConfig(): AppConfig {
     tvdbApiKey: '',
     servicioClave: '',
     servicioRenombrar: false,
+    servicioEnviar: false,
     watchmodeApiKey: '',
   };
 }

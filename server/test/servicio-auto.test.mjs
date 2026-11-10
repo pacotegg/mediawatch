@@ -5,7 +5,7 @@
  */
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { claveValida, pasosSeguros, procesarAuto } from '../src/scanner/servicio-auto.ts';
+import { claveValida, datosCompletos, pasosSeguros, procesarAuto } from '../src/scanner/servicio-auto.ts';
 
 const fila = (confianza, extra = {}) => ({ itemId: 7, titulo: 'Serie X', confianza, tmdbId: 99, propuesta: 'Serie X', ...extra });
 
@@ -121,5 +121,85 @@ describe('Servicio TorrentDWN: seguridad de la clave y de los pasos', () => {
     assert.equal(pasosSeguros([{ desde: 'E:\\Series\\Vieja\\a.mkv', hacia: 'E:\\Series\\Nueva\\a.mkv', final: 'E:\\Series\\Nueva\\a.mkv' }], carpeta), true);
     assert.equal(pasosSeguros([{ desde: 'E:\\Series\\Vieja', hacia: 'E:\\Peliculas\\Vieja', final: 'E:\\Peliculas\\Vieja' }], carpeta), false);
     assert.equal(pasosSeguros([], carpeta), false);
+  });
+
+  describe('Enviar a la biblioteca (servicioEnviar)', () => {
+    const OK = 'arte copiado: 2, NFO escritos: 3';
+    const dEnviar = (o = {}) => {
+      const d = deps({
+        plan: async () => ({ pasos: [{ desde: 'C:\\Videos\\Peliculas\\Peli', hacia: 'C:\\Videos\\Peliculas\\Peli (2020)', final: 'C:\\Videos\\Peliculas\\Peli (2020)' }] }),
+        carpetaDe: () => 'C:\\Videos\\Peliculas\\Peli',
+        renombrar: async () => ({ ok: true, detalle: OK }),
+        ...o,
+      });
+      d.enviados = [];
+      d.enviar = o.enviar ?? (async (id, destino) => { d.enviados.push({ id, destino }); return { ok: true, destino: 'E:\\Peliculas\\Peli (2020)' }; });
+      return d;
+    };
+
+    test('todo perfecto: ficha, renombrado, arte, NFO y envío; el destino pedido por TorrentDWN llega tal cual', async () => {
+      const d = dEnviar();
+      const r = await procesarAuto('C:\\Videos\\Peliculas\\Peli', { renombrar: true, enviar: true, destino: 'E:\\Pelis Animacion' }, d);
+      assert.equal(r.estado, 'enviado');
+      assert.deepEqual(d.enviados, [{ id: 7, destino: 'E:\\Pelis Animacion' }]);
+    });
+
+    test('sin la opción enviar NO se envía aunque todo salga bien (queda renombrado)', async () => {
+      const d = dEnviar();
+      const r = await procesarAuto('C:\\Videos\\Peliculas\\Peli', { renombrar: true }, d);
+      assert.equal(r.estado, 'renombrado');
+      assert.equal(d.enviados.length, 0);
+    });
+
+    test('confianza dudosa o sin coincidencia: no se envía nada', async () => {
+      for (const conf of ['probable', 'dudosa', 'ninguna']) {
+        const d = dEnviar({ buscar: async () => ({ fila: fila(conf, conf === 'ninguna' ? { tmdbId: null } : {}) }) });
+        const r = await procesarAuto('C:\\Videos\\Peliculas\\Peli', { renombrar: true, enviar: true }, d);
+        assert.notEqual(r.estado, 'enviado');
+        assert.equal(d.enviados.length, 0);
+      }
+    });
+
+    test('si el arte o el NFO fallan (el renombrado dice ok), NO se envía: los datos viajan con la carpeta', async () => {
+      const d = dEnviar({ renombrar: async () => ({ ok: true, detalle: 'arte copiado: 2, NFO no escrito (disco lleno)' }) });
+      const r = await procesarAuto('C:\\Videos\\Peliculas\\Peli', { renombrar: true, enviar: true }, d);
+      assert.equal(r.estado, 'renombrado');
+      assert.match(r.detalle, /no se envía/);
+      assert.equal(d.enviados.length, 0);
+    });
+
+    test('nombres ya correctos (plan vacío): con enviar se escribe igualmente el arte y el NFO y se envía', async () => {
+      const d = dEnviar({ plan: async () => ({ pasos: [] }) });
+      const r = await procesarAuto('C:\\Videos\\Peliculas\\Peli', { renombrar: true, enviar: true }, d);
+      assert.equal(r.estado, 'enviado');
+    });
+
+    test('un plan que sale de la carpeta, o alguien viendo algo: no se envía', async () => {
+      const salePlan = dEnviar({ plan: async () => ({ pasos: [{ desde: 'C:\\Videos\\Peliculas\\Peli', hacia: 'D:\\Otro\\Peli', final: 'D:\\Otro\\Peli' }] }) });
+      assert.notEqual((await procesarAuto('C:\\Videos\\Peliculas\\Peli', { renombrar: true, enviar: true }, salePlan)).estado, 'enviado');
+      const viendo = dEnviar({ alguienViendo: () => true });
+      assert.notEqual((await procesarAuto('C:\\Videos\\Peliculas\\Peli', { renombrar: true, enviar: true }, viendo)).estado, 'enviado');
+      assert.equal(salePlan.enviados.length + viendo.enviados.length, 0);
+    });
+
+    test('si el envío falla o lanza, el título queda renombrado en C: con el motivo (nunca un falso éxito)', async () => {
+      const falla = dEnviar({ enviar: async () => ({ ok: false, error: 'Alguien está viendo algo' }) });
+      const r1 = await procesarAuto('C:\\Videos\\Peliculas\\Peli', { renombrar: true, enviar: true }, falla);
+      assert.equal(r1.estado, 'renombrado');
+      assert.match(r1.detalle, /no se envió.*viendo/);
+      const lanza = dEnviar({ enviar: async () => { throw new Error('disco desconectado'); } });
+      const r2 = await procesarAuto('C:\\Videos\\Peliculas\\Peli', { renombrar: true, enviar: true }, lanza);
+      assert.equal(r2.estado, 'renombrado');
+      assert.match(r2.detalle, /disco desconectado/);
+    });
+
+    test('sin la dependencia enviar nunca se envía; datosCompletos exige arte Y NFO', async () => {
+      const d = dEnviar(); delete d.enviar;
+      assert.equal((await procesarAuto('C:\\Videos\\Peliculas\\Peli', { renombrar: true, enviar: true }, d)).estado, 'renombrado');
+      assert.equal(datosCompletos('arte copiado: 1, NFO escritos: 1'), true);
+      assert.equal(datosCompletos('NFO escritos: 1'), false);
+      assert.equal(datosCompletos('arte no copiado (x), NFO escritos: 1'), false);
+      assert.equal(datosCompletos(undefined), false);
+    });
   });
 });
