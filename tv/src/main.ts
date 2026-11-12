@@ -27,6 +27,7 @@ import { actual, ajustarListaEpisodios, ajustarVentanaRejilla, alEnfocar, alEnfo
 import { Reproductor, calcularRectDisplay } from './player.ts';
 import { abrirApp, cargarAppsInstaladas, idDeApp } from './plataformas.ts';
 import { apuntar } from './registro.ts';
+import { colocarFilas } from './logos.ts';
 
 const marco = document.getElementById('app') as HTMLElement;
 
@@ -96,7 +97,7 @@ const ICONOS: Record<string, string> = {
 };
 
 /* La misma que `version` de public/config.xml: al subirla, subir las dos. */
-const VERSION_APP = '3.68.0';
+const VERSION_APP = '3.68.3';
 
 function versionTizen(): string {
   try {
@@ -1982,8 +1983,7 @@ function despegarCartel(elOrigen: HTMLElement): { aterrizar: () => void; cancela
  * (260 x 75) un logo casi cuadrado como el león de MGM salía a 116 x 75, la mitad que uno alargado. Cada uno espera a
  * tener su tamaño antes de verse, para no dar saltos. Los que no cargan se quitan.
  */
-// Se pidió más pequeños (19/10/2026): 12.000 -> 9.500 (un 11 % menos de lado); con más de tres, un 20 % menos aún.
-const AREA_LOGO = 9500;
+// Los tamaños (áreas de partida, topes) viven en logos.ts, junto a la elección del hueco.
 /*
  * Hasta dónde pueden bajar: la fila de Reparto empieza hacia los 912 px. Medido el 19/10/2026 sobre 1.973 títulos: 611
  * tienen un logo, 561 dos, 299 tres y 227 de cuatro a ocho; a tamaño normal caben tres. Con más, se encogen TODOS por igual
@@ -2025,67 +2025,13 @@ async function pintarLogosEstudio(id: number, caja: HTMLElement) {
       caja.appendChild(filaFlujo);
       return;
     }
-    const solo = imgs.length === 1;
-    // Con 3 o más, la caja se ensancha hacia la izquierda, donde no hay nada (medido el 03/11/2026 sobre
-    // «Siete almas»: las acciones acaban hacia x=650 y esta caja seguía anclada a 480 px de ancho pese a
-    // haber más de 1.100 px libres hasta el cartel — cuatro logos salían de 25-44 px de alto, diminutos,
-    // con toda esa holgura sin usar debajo del cartel y antes del reparto). Con más ancho y más alto de
-    // tope, el ajuste por `sitio`/`k` de más abajo sigue encogiendo solo si de verdad no cabe.
-    // Muy alargados (4:1 o más, p. ej. el texto de DreamWorks Pictures, 11:1): fila propia y casi todo el ancho.
-    const ancho = (img: HTMLImageElement) => (img.naturalWidth / img.naturalHeight || 1) >= 4;
-    // Ancho generoso aprovechando el espacio libre hacia la izquierda sin pisar la sinopsis:
-    const anchoCaja = imgs.length === 1 ? 280 : imgs.length === 2 ? 560 : imgs.length <= 4 ? Math.min(960, imgs.length * 240) : 920;
-    caja.style.width = anchoCaja + 'px';
-    const huecoCol = 32;
-    // Hasta 4 logos entran en 1 sola fila horizontal; con 5 o más, en 2 filas equilibradas (3 arriba, resto abajo)
-    const cols = solo ? 1 : imgs.length <= 4 ? imgs.length : 3;
-    const colW = (anchoCaja - huecoCol * (cols - 1)) / cols;
-    const area = solo ? AREA_LOGO : 18000;
-    const maxW = solo ? 280 : colW, maxH = solo ? 95 : 110;
-    const tam = imgs.map((img) => {
-      const r = img.naturalWidth / img.naturalHeight || 1;
-      const largo = !solo && ancho(img);
-      const mW = largo ? Math.min(anchoCaja * 0.9, 480) : maxW;
-      let w = Math.sqrt((largo ? 24000 : area) * r);
-      let h = w / r;
-      if (w > mW) { w = mW; h = w / r; }
-      if (h > maxH) { h = maxH; w = h * r; }
-      return { w: w, h: h };
-    });
-    const hueco = 20;
-    const filas: number[][] = [];
-    if (solo) {
-      filas.push([0]);
-    } else if (imgs.length <= 4) {
-      // Todos en 1 fila horizontal para que no salgan unos encima de otros habiendo espacio
-      filas.push(imgs.map((_, i) => i));
-    } else {
-      // 5 o más: 2 filas equilibradas (primera fila de 3, segunda con los restantes)
-      filas.push([0, 1, 2]);
-      const f2: number[] = [];
-      for (let i = 3; i < imgs.length; i++) f2.push(i);
-      filas.push(f2);
-    }
-    const altoFila = filas.map((f) => Math.max.apply(null, f.map((i) => tam[i].h)));
-    const alto = altoFila.reduce((s, h) => s + h, 0) + hueco * (filas.length - 1);
-    const reparto = marco.querySelector<HTMLElement>('.reparto');
-    const limite = reparto ? reparto.getBoundingClientRect().top - 14 : FONDO_LOGOS;
-    const sitio = limite - caja.getBoundingClientRect().top - rotulo.offsetHeight - 12;
-    const k = alto > sitio ? Math.max(0.65, (sitio - hueco * (filas.length - 1)) / (alto - hueco * (filas.length - 1))) : 1;
-    filas.forEach((f, n) => {
-      const fila = document.createElement('div');
-      fila.className = 'fila-logos-estudio';
-      fila.style.height = Math.round(altoFila[n] * k) + 'px';
-      if (n) fila.style.marginTop = hueco + 'px';
-      f.forEach((i) => {
-        const img = imgs[i];
-        img.style.width = Math.round(tam[i].w * k) + 'px';
-        img.style.height = Math.round(tam[i].h * k) + 'px';
-        fila.appendChild(img);
-        img.classList.add('listo');
-      });
-      caja.appendChild(fila);
-    });
+    /*
+     * Dónde cabe, MIDIENDO la ficha (logos.ts). Antes la caja se ensanchaba hacia la izquierda suponiendo que allí no había
+     * nada, y sí: la sinopsis llega hasta x≈1170 y los siete botones hasta x≈1411. Con cinco logos («Project Hail Mary»,
+     * 12/11/2026) salían encima de los botones y de la etiqueta de audio, amontonados. Sin hueco ni encogiendo: mejor ningún
+     * logo que uno pisando los botones.
+     */
+    caja.style.display = colocarFilas(caja, rotulo, marco, imgs, FONDO_LOGOS) ? '' : 'none';
   };
   // En flujo, los logos empujan los episodios hacia abajo al terminar de cargar: igual que con el logo
   // del título (ver más abajo), la ventana de la lista y el índice de navegación se habían medido con
@@ -2097,6 +2043,23 @@ async function pintarLogosEstudio(id: number, caja: HTMLElement) {
     if (caja.classList.contains('en-flujo')) {
       const listaEp = marco.querySelector<HTMLElement>('[data-lista-episodios]');
       if (listaEp) { ajustarListaEpisodios(listaEp); indexar(); }
+      return;
+    }
+    /*
+     * Lo de debajo de los logos puede cambiar DESPUÉS de colocarlos: «también está en tu suscripción» llega del servidor y
+     * empuja el reparto, y las etiquetas de audio/subtítulos se repintan al elegir pista. Se vuelve a colocar, con un pequeño
+     * retraso para juntar varios cambios seguidos. Solo se observa el cuerpo de la ficha: la caja de logos es su hermana, así
+     * que colocarla no dispara el observador otra vez.
+     */
+    const cuerpoFicha = marco.querySelector<HTMLElement>('.ficha-cuerpo');
+    if (cuerpoFicha && typeof MutationObserver !== 'undefined') {
+      let espera = 0;
+      const obs = new MutationObserver(() => {
+        if (!caja.isConnected) { obs.disconnect(); return; }
+        window.clearTimeout(espera);
+        espera = window.setTimeout(() => { if (caja.isConnected) colocar(); }, 200);
+      });
+      obs.observe(cuerpoFicha, { childList: true, subtree: true, characterData: true });
     }
   };
   for (const nombre of estudios) {
@@ -4758,7 +4721,14 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
   let audioId: number | undefined;
   let convertir = false;
   let modoAudio = aj.modoAudio;
-  let retardoSubs = aj.retardoSubtitulos;
+  /*
+   * El desfase de subtítulos es POR PISTA y lo guarda el servidor (`offsetMs`). Antes arrancaba con el valor GLOBAL de
+   * Ajustes, que cada «Enter» del panel de sincronía sobrescribía: lo que se ajustaba en una película se aplicaba a
+   * todas las siguientes (11/11/2026). Ahora empieza en 0 y se toma de la pista elegida.
+   */
+  let retardoSubs = 0;
+  /** Lo último que se le pidió a AVPlay con `setSubtitlePosition`: sirve para no llamarle si no hay nada que cambiar. */
+  let desfaseNativoAplicado = 0;
   let cerrado = false;
   let marcadoVisto = false;
   let tira: Tira | null = null;
@@ -4989,7 +4959,12 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     );
     window.setTimeout(() => {
       refrescarPlay();
-      if (retardoSubs) reproductor.retardoSubtitulos(retardoSubs);
+      // Solo si la pista la pinta AVPlay: a una que pinta la app (PGS, externa) no hay que tocarle `setSubtitlePosition`.
+      const nativa = subOrdinal >= 0 && infoServidor?.subtitles.filter((s) => s.source === 'embedded')[subOrdinal]?.codec !== 'hdmv_pgs_subtitle';
+      if (retardoSubs && nativa) {
+        reproductor.retardoSubtitulos(retardoSubs);
+        desfaseNativoAplicado = retardoSubs;
+      }
     }, 1500);
   };
 
@@ -5836,8 +5811,15 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
       } else {
         cuesExternos = [];
         textoSubExtActual = '';
-        if (reproductor.elegirSubtitulo(n)) avisoRapido('Subtítulos puestos');
-        else if (tr) {
+        if (reproductor.elegirSubtitulo(n)) {
+          avisoRapido('Subtítulos puestos');
+          // El desfase de esta pista, no el de la anterior: `retardoSubs` ya se actualizó arriba pero AVPlay seguía
+          // con el valor viejo hasta tocar el panel.
+          if (tr && (retardoSubs !== 0 || desfaseNativoAplicado !== 0)) {
+            reproductor.retardoSubtitulos(retardoSubs);
+            desfaseNativoAplicado = retardoSubs;
+          }
+        } else if (tr) {
           cargarSubExterno(tr.id);
           avisoRapido('Subtítulos puestos (servidor)');
         } else {
@@ -5895,7 +5877,8 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
       retardoSubs = Math.max(-10000, Math.min(10000, retardoSubs + paso));
       pintarValor();
       refrescarSubEnPausa();
-      if (!reproductor.retardoSubtitulos(retardoSubs) && !avisadoSinSoporte) {
+      if (reproductor.retardoSubtitulos(retardoSubs)) desfaseNativoAplicado = retardoSubs;
+      else if (!avisadoSinSoporte) {
         avisadoSinSoporte = true;
         aviso('Esta tele no deja mover los subtítulos nativos');
       }
@@ -5919,7 +5902,6 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
         return true;
       }
       if (tecla === TECLA.ENTRAR) {
-        guardarAjustes({ retardoSubtitulos: retardoSubs });
         let pistaId: string | null = null;
         if (subOrdinal <= -10 && infoServidor) {
           const extTracks = infoServidor.subtitles.filter((s) => s.source === 'external');
@@ -6381,12 +6363,22 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
       if (subOrdinal <= -10) {
         const extTracks = info.subtitles.filter((s) => s.source === 'external');
         const tr = extTracks[-(subOrdinal + 10)];
-        if (tr) cargarSubExterno(tr.id);
+        if (tr) {
+          cargarSubExterno(tr.id);
+          // Externa: la pinta la app y el desfase lo aplica ella (`seg = tiempo + retardoSubs`). Se pide el VTT con
+          // `retardo=0`, así que el servidor no lo suma otra vez.
+          if (tr.offsetMs) retardoSubs = tr.offsetMs;
+        }
       } else if (subOrdinal >= 0) {
         const delServidor = info.subtitles.filter((s) => s.source === 'embedded');
         const tr = delServidor[subOrdinal];
         if (tr && tr.codec === 'hdmv_pgs_subtitle') {
           cargarSubExterno(tr.id);
+          if (tr.offsetMs) retardoSubs = tr.offsetMs;
+        } else if (tr && tr.offsetMs) {
+          // Pista de texto nativa (AVPlay): el desfase guardado para ESTA pista, el mismo valor que se le pasó a
+          // `setSubtitlePosition` al guardarlo. `abrirFlujo` lo aplica a los 1,5 s.
+          retardoSubs = tr.offsetMs;
         }
       }
       abrirFlujo(desde);
