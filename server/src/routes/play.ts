@@ -14,6 +14,7 @@ import { clearOffset, isMeasuring, measure, offsetFor, saveOffset } from '../med
 import { afinarPeliculas, deshacerAfinado, jobAfinado, pararAfinado, resumenAfinado } from '../media/creditos-afinado.ts';
 import { cobertura, generarLote, lote, pararLote, readManifest, sheetPath } from '../media/trickplay.ts';
 import { marcarActividad } from '../media/ocupado.ts';
+import { inicioDelCorte } from '../media/corte.ts';
 import { extraPorId, extrasDe, miniatura, extrasTmdb, descargarExtraTmdb, actualizarTipoExtra, actualizarExtra, identificarExtrasDeItem, identificarExtrasBiblioteca } from '../media/extras.ts';
 import { detectForShow, detectarTodas, job, pararDeteccion, showsWithRanges, skipRangesFor } from '../media/intros.ts';
 import { creditosDeEpisodio } from '../media/creditos-episodio.ts';
@@ -387,6 +388,19 @@ function extraerSubtituloIncrustado(ruta: string, streamIndex: number, cachePath
 }
 
 export default async function playRoutes(app: FastifyInstance) {
+  /** Segundo real en que empieza el flujo que se sirve cortado en `t` (el fotograma clave anterior). Ver `media/corte.ts`. */
+  app.get('/api/play/:fileId/corte', async (req, reply) => {
+    const fileId = Number((req.params as { fileId: string }).fileId);
+    const row = fileRow(fileId);
+    if (!row) return reply.code(404).send({ error: 'Fichero no encontrado' });
+    if (!permitidoParaUsuario(row, currentUser(req))) return reply.code(403).send({ error: 'Contenido no disponible para este perfil' });
+    const t = Number((req.query as { t?: string }).t ?? 0);
+    if (!Number.isFinite(t) || t < 0) return reply.code(400).send({ error: 'Tiempo no válido' });
+    const statFichero = await statAsync(row.path).catch(() => null);
+    if (!statFichero) return reply.code(410).send({ error: 'El fichero ya no está en disco' });
+    return { inicio: await inicioDelCorte(row.path, statFichero.size, t) };
+  });
+
   app.get('/api/play/:fileId/info', async (req, reply) => {
     const fileId = Number((req.params as { fileId: string }).fileId);
     const row = fileRow(fileId);
