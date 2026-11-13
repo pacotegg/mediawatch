@@ -97,7 +97,7 @@ const ICONOS: Record<string, string> = {
 };
 
 /* La misma que `version` de public/config.xml: al subirla, subir las dos. */
-const VERSION_APP = '3.68.4';
+const VERSION_APP = '3.68.5';
 
 function versionTizen(): string {
   try {
@@ -4705,51 +4705,18 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
   let subOrdinal = -1;
   let cuesExternos: Cue[] = [];
   let textoSubExtActual = '';
-  /** Para descartar la respuesta de una pista que ya se cambió por otra mientras llegaba. */
-  let generacionSub = 0;
-  /** Verdadero mientras una pista de texto la pinta AVPlay (solo hasta que llega el texto del servidor, o si no llega). */
-  let subNativo = false;
-  /** Los subtítulos los pinta la app con el texto del servidor y SU reloj (`reproductor.tiempo()`), no AVPlay. */
   const cargarSubExterno = (trackId: string) => {
-    const mia = ++generacionSub;
-    subNativo = false;
     cuesExternos = [];
     textoSubExtActual = '';
     capaSubs.innerHTML = '';
     reproductor.elegirSubtitulo(-1);
     api.subtituloVtt(fileId, trackId)
       .then((vtt) => {
-        if (mia === generacionSub) cuesExternos = parseVttSimple(vtt);
+        cuesExternos = parseVttSimple(vtt);
       })
       .catch(() => {
-        if (mia === generacionSub) cuesExternos = [];
+        cuesExternos = [];
       });
-  };
-  /**
-   * Una pista de TEXTO incrustada (SRT, ASS): se pinta con el texto del servidor. AVPlay las entrega 10,0 s tarde cuando el
-   * primer subtítulo del flujo cortado cae a más de ~8,7 s del inicio, y `setSubtitlePosition` no mueve nada en la QN93A
-   * (medido el 13/11/2026), así que desde la app no se puede corregir. Mientras llega el texto se deja la pista nativa
-   * puesta (el primer subtítulo no se pierde); si el servidor no lo da —extraerlo de un 4K sin caché puede pasar de los
-   * 45 s—, se queda la nativa: peor sincronizada, pero con subtítulos.
-   */
-  const ponerSubTexto = (trackId: string, n: number) => {
-    const mia = ++generacionSub;
-    cuesExternos = [];
-    textoSubExtActual = '';
-    capaSubs.innerHTML = '';
-    subNativo = true;
-    reproductor.elegirSubtitulo(n);
-    api.subtituloVtt(fileId, trackId)
-      .then((vtt) => {
-        if (mia !== generacionSub || subOrdinal !== n) return;
-        const cues = parseVttSimple(vtt);
-        if (cues.length === 0) return;
-        cuesExternos = cues;
-        subNativo = false;
-        capaSubs.innerHTML = '';
-        reproductor.elegirSubtitulo(-1);
-      })
-      .catch(() => {});
   };
   let audioId: number | undefined;
   let convertir = false;
@@ -4962,53 +4929,39 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
 
   /* ------------------------------------------------------------- el flujo */
 
-  let generacionAbrir = 0;
   const abrirFlujo = (desdeSegundos: number) => {
-    // El servidor recorta con `-ss` y copia las pistas: el flujo empieza en el fotograma clave anterior a ese segundo
-    // y su reloj interno vuelve a cero. `pedido` es lo que se le pide; `inicio`, dónde empieza de verdad (`/corte`).
-    const pedido = saltaReabriendo() && desdeSegundos > 1 ? Math.floor(desdeSegundos) : 0;
-    const mia = ++generacionAbrir;
+    // El servidor recorta con `-ss` y copia las pistas: el flujo empieza en ese
+    // segundo y su reloj interno vuelve a cero, de ahí el desfase.
+    const desfase = saltaReabriendo() && desdeSegundos > 1 ? Math.floor(desdeSegundos) : 0;
+    apuntar('abre fichero ' + fileId + ' desde ' + Math.round(desdeSegundos) + ' s' + (convertir ? ' convertido' : porTuberia() ? ' por tuberia' : ' directo') + (audioOrdinal ? ' audio ' + audioOrdinal : '') + (modoAudio !== 'normal' ? ' ' + modoAudio : ''));
     reproductor.cerrar();
     lienzo.innerHTML = '';
     cargando.style.display = 'block';
     capaSubs.innerHTML = '';
-    if (pedido === 0) {
-      abrirConInicio(desdeSegundos, 0, 0);
-      return;
-    }
-    // Sin respuesta a tiempo se usa lo pedido, como hasta ahora: peor sincronizado, pero reproduce.
-    const sinRespuesta = new Promise<number>((ok) => window.setTimeout(() => ok(pedido), 16000));
-    Promise.race([api.inicioDelCorte(fileId, pedido).catch(() => pedido), sinRespuesta]).then((inicio) => {
-      if (mia !== generacionAbrir || cerrado) return;
-      abrirConInicio(desdeSegundos, pedido, inicio);
-    });
-  };
-  const abrirConInicio = (desdeSegundos: number, pedido: number, inicio: number) => {
-    const desfase = pedido > 0 ? inicio : 0;
-    apuntar('abre fichero ' + fileId + ' desde ' + Math.round(desdeSegundos) + ' s' + (pedido > 0 ? ' (flujo en ' + inicio.toFixed(1) + ')' : '') + (convertir ? ' convertido' : porTuberia() ? ' por tuberia' : ' directo') + (audioOrdinal ? ' audio ' + audioOrdinal : '') + (modoAudio !== 'normal' ? ' ' + modoAudio : ''));
     const v = infoServidor ? infoServidor.video : null;
     const rect = v
       ? calcularRectDisplay(v.width, v.height, v.dar, v.sar)
       : (fichero && fichero.width && fichero.height ? calcularRectDisplay(fichero.width, fichero.height) : undefined);
     reproductor.abrir(
-      urlReproduccion(fileId, porTuberia() ? audioId : undefined, pedido, modoAudio, convertir),
+      urlReproduccion(fileId, porTuberia() ? audioId : undefined, desfase, modoAudio, convertir),
       lienzo,
-      // El flujo ya empieza en `inicio`: si se le dijera que vaya a `desdeSegundos` (hasta 10 s después) intentaría
-      // buscar dentro de él, y AVPlay no sabe buscar en este MKV.
-      pedido > 0 ? inicio : desdeSegundos,
+      desdeSegundos,
       duracionFichero,
       {
         audio: porTuberia() ? 0 : audioOrdinal,
-        // Solo la pista de texto que la app no ha podido pintar (ver `ponerSubTexto`).
-        subtitulo: subNativo && subOrdinal >= 0 ? subOrdinal : -1,
+        subtitulo:
+          subOrdinal >= 0 && infoServidor?.subtitles.filter((s) => s.source === 'embedded')[subOrdinal]?.codec !== 'hdmv_pgs_subtitle'
+            ? subOrdinal
+            : -1,
       },
       desfase,
       rect,
     );
     window.setTimeout(() => {
       refrescarPlay();
-      // Solo si la pista la pinta AVPlay: a una que pinta la app no hay que tocarle `setSubtitlePosition`.
-      if (retardoSubs && subNativo) {
+      // Solo si la pista la pinta AVPlay: a una que pinta la app (PGS, externa) no hay que tocarle `setSubtitlePosition`.
+      const nativa = subOrdinal >= 0 && infoServidor?.subtitles.filter((s) => s.source === 'embedded')[subOrdinal]?.codec !== 'hdmv_pgs_subtitle';
+      if (retardoSubs && nativa) {
         reproductor.retardoSubtitulos(retardoSubs);
         desfaseNativoAplicado = retardoSubs;
       }
@@ -5834,8 +5787,6 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     if (ficha.kind === 'show' && infoServidor) recordarSerie(ficha.id, 'subs', infoServidor, n);
     capaSubs.innerHTML = '';
     if (n === -1) {
-      generacionSub++;
-      subNativo = false;
       cuesExternos = [];
       textoSubExtActual = '';
       reproductor.elegirSubtitulo(-1);
@@ -5857,15 +5808,23 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
         reproductor.elegirSubtitulo(-1);
         cargarSubExterno(tr.id);
         avisoRapido('Subtítulo PGS puesto');
-      } else if (tr) {
-        ponerSubTexto(tr.id, n);
-        avisoRapido('Subtítulos puestos');
       } else {
         cuesExternos = [];
         textoSubExtActual = '';
-        subNativo = true;
-        if (reproductor.elegirSubtitulo(n)) avisoRapido('Subtítulos puestos');
-        else aviso('No se pudo cambiar: ' + (reproductor.fallo || 'la tele lo rechaza'));
+        if (reproductor.elegirSubtitulo(n)) {
+          avisoRapido('Subtítulos puestos');
+          // El desfase de esta pista, no el de la anterior: `retardoSubs` ya se actualizó arriba pero AVPlay seguía
+          // con el valor viejo hasta tocar el panel.
+          if (tr && (retardoSubs !== 0 || desfaseNativoAplicado !== 0)) {
+            reproductor.retardoSubtitulos(retardoSubs);
+            desfaseNativoAplicado = retardoSubs;
+          }
+        } else if (tr) {
+          cargarSubExterno(tr.id);
+          avisoRapido('Subtítulos puestos (servidor)');
+        } else {
+          aviso('No se pudo cambiar: ' + (reproductor.fallo || 'la tele lo rechaza'));
+        }
       }
     }
   }
@@ -6416,10 +6375,10 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
         if (tr && tr.codec === 'hdmv_pgs_subtitle') {
           cargarSubExterno(tr.id);
           if (tr.offsetMs) retardoSubs = tr.offsetMs;
-        } else if (tr) {
-          // Texto incrustado: la pinta la app (`ponerSubTexto`); mientras llega, AVPlay con esta misma pista.
-          ponerSubTexto(tr.id, subOrdinal);
-          if (tr.offsetMs) retardoSubs = tr.offsetMs;
+        } else if (tr && tr.offsetMs) {
+          // Pista de texto nativa (AVPlay): el desfase guardado para ESTA pista, el mismo valor que se le pasó a
+          // `setSubtitlePosition` al guardarlo. `abrirFlujo` lo aplica a los 1,5 s.
+          retardoSubs = tr.offsetMs;
         }
       }
       abrirFlujo(desde);

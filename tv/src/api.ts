@@ -466,9 +466,6 @@ export const api = {
   /** Con `perfil`, el servidor marca que pistas puede decodificar esta tele. */
   pistas: (fileId: number) =>
     pedir<InfoReproduccion>('/api/play/' + fileId + '/info?perfil=' + perfilReproduccion() + '&resumen=1'),
-  /** Segundo real en que empieza el flujo que el servidor corta en `t` (el fotograma clave anterior). */
-  inicioDelCorte: (fileId: number, t: number) =>
-    pedir<{ inicio: number }>('/api/play/' + fileId + '/corte?t=' + t, undefined, 12000, false).then((r) => (Number.isFinite(r.inicio) ? r.inicio : t)),
   subtituloVtt: async (fileId: number, trackId: string, desde = 0, retardo = 0) => {
     const t = token();
     const url = servidor() + '/api/play/' + fileId + '/subtitle/' + trackId + '.vtt?desde=' + desde + '&retardo=' + retardo + (t ? '&token=' + t : '');
