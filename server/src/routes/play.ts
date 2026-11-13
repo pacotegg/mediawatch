@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { createReadStream, existsSync, mkdirSync, readFileSync, statSync, unlinkSync } from 'node:fs';
 import { readFile, stat as statAsync, writeFile } from 'node:fs/promises';
 import { parsearRango } from '../media/rango.ts';
+import { ocrSupAVtt, srtToVtt } from '../media/pgs-ocr.ts';
 import { join } from 'node:path';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { config, DATA_DIR } from '../config.ts';
@@ -213,15 +214,6 @@ function recoger(proc: ReturnType<typeof spawn>): Promise<string> {
   });
 }
 
-function srtToVtt(text: string): string {
-  const body = text
-    .replace(/^﻿/, '')
-    .replace(/\r\n/g, '\n')
-    .replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2')
-    .replace(/^\d+\n(?=\d{2}:\d{2}:\d{2})/gm, '');
-  return `WEBVTT\n\n${body}`;
-}
-
 /*
  * Perfiles de dispositivo: que audio decodifica cada cliente de verdad.
  *
@@ -323,28 +315,9 @@ async function extraerYOcrPgs(
         return vacio;
       }
 
-      const ocrLang = lang === 'spa' || lang === 'es' || lang === 'esp' ? 'spa' : 'eng';
-      const dotnetExe = existsSync('C:\\Program Files\\dotnet\\dotnet.exe') ? 'C:\\Program Files\\dotnet\\dotnet.exe' : 'dotnet';
-      const pgsToSrtDll = 'C:\\scripts\\PgsToSrt\\PgsToSrt.dll';
-      const tessData = 'C:\\scripts\\PgsToSrt\\tessdata';
-
-      await new Promise<void>((resolve, reject) => {
-        const proc = spawn(
-          dotnetExe,
-          [pgsToSrtDll, '--input', tmpSup, '--output', tmpSrt, '--tesseractlanguage', ocrLang, '--tesseractdata', tessData],
-          { windowsHide: true, timeout: 10 * 60_000 },
-        );
-        proc.on('error', reject);
-        proc.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`PgsToSrt exit ${code}`))));
-      });
-
-      if (existsSync(tmpSrt)) {
-        const srtRaw = readFileSync(tmpSrt, 'utf8');
-        const vtt = srtToVtt(srtRaw);
-        await writeFile(cachePath, vtt, 'utf8').catch(() => {});
-        return vtt;
-      }
-      return null;
+      const vtt = await ocrSupAVtt(tmpSup, tmpSrt, lang);
+      if (vtt) await writeFile(cachePath, vtt, 'utf8').catch(() => {});
+      return vtt;
     } catch (err) {
       console.error('[subtitulos-pgs] fallo en OCR:', (err as Error).message);
       return null;
@@ -607,6 +580,9 @@ export default async function playRoutes(app: FastifyInstance) {
         // y AVPlay no prepara con 15 s o más; con 0 salen alternados (0,3 s).
         ...(rellenarInicio ? ['-max_interleave_delta', '0'] : []),
         '-max_muxing_queue_size', '4096',
+        // Igual que en `copia-desde`: sin esto ffmpeg aplica make_non_negative y el 0 del flujo es el fotograma clave
+        // anterior al segundo pedido (el audio convertido empezaba a +10 s), con el reloj de la app y los subtítulos 10 s mal.
+        '-avoid_negative_ts', 'disabled',
         '-f', 'matroska', 'pipe:1',
       ];
       /*

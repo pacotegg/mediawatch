@@ -97,7 +97,7 @@ const ICONOS: Record<string, string> = {
 };
 
 /* La misma que `version` de public/config.xml: al subirla, subir las dos. */
-const VERSION_APP = '3.68.5';
+const VERSION_APP = '3.68.6';
 
 function versionTizen(): string {
   try {
@@ -4705,18 +4705,33 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
   let subOrdinal = -1;
   let cuesExternos: Cue[] = [];
   let textoSubExtActual = '';
+  /** Sube con cada pista elegida: una descarga que llega tarde de la pista ANTERIOR no pinta encima de la nueva. */
+  let pedidoSub = 0;
   const cargarSubExterno = (trackId: string) => {
     cuesExternos = [];
     textoSubExtActual = '';
     capaSubs.innerHTML = '';
     reproductor.elegirSubtitulo(-1);
-    api.subtituloVtt(fileId, trackId)
-      .then((vtt) => {
-        cuesExternos = parseVttSimple(vtt);
-      })
-      .catch(() => {
-        cuesExternos = [];
-      });
+    const pedido = ++pedidoSub;
+    let intentos = 0;
+    const pedir = () => {
+      api.subtituloVtt(fileId, trackId)
+        .then((vtt) => {
+          if (pedido === pedidoSub && !cerrado) cuesExternos = parseVttSimple(vtt);
+        })
+        .catch((e: Error) => {
+          /*
+           * Un PGS sin caché obliga al servidor a leer la película entera y pasarle OCR: puede pasar de los 45 s del
+           * tope y antes se quedaba sin subtítulos toda la sesión. El servidor sigue y lo guarda, y la petición
+           * repetida se une al mismo OCR, así que se vuelve a pedir. Un error HTTP (el OCR falló) no se repite:
+           * relanzaría la lectura entera cada vez.
+           */
+          if (pedido !== pedidoSub || cerrado || /No se pudo descargar/.test(String(e && e.message)) || ++intentos > 20) return;
+          if (intentos === 1) avisoRapido('Preparando los subtítulos (la primera vez tarda unos minutos)…');
+          window.setTimeout(pedir, 5000);
+        });
+    };
+    pedir();
   };
   let audioId: number | undefined;
   let convertir = false;
@@ -5214,6 +5229,19 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     }
     mostrarPanelError(mensaje, 5, 4, 0);
   }
+  /** Pinta la frase de un subtítulo que dibuja la app (PGS por OCR, externo) para ese segundo de la película. */
+  const pintarSubExt = (segundos: number) => {
+    if (cuesExternos.length === 0) return;
+    const seg = segundos + (retardoSubs / 1000);
+    const activa = cuesExternos.find((c) => seg >= c.start && seg <= c.end);
+    const txt = activa ? activa.text : '';
+    if (txt !== textoSubExtActual) {
+      textoSubExtActual = txt;
+      capaSubs.innerHTML = txt
+        ? txt.split('\n').map((l) => '<span>' + esc(l) + '</span>').join('')
+        : '';
+    }
+  };
   const reproductor = new Reproductor({
     onTiempo: (segundos, duracion) => {
       if (capaError && capaError.parentElement) {
@@ -5227,17 +5255,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
         avisoEdadMostrado = true;
         mostrarAvisoEdad(ficha, marco.querySelector<HTMLElement>('.reproductor') || marco);
       }
-      if (cuesExternos.length > 0) {
-        const seg = segundos + (retardoSubs / 1000);
-        const activa = cuesExternos.find((c) => seg >= c.start && seg <= c.end);
-        const txt = activa ? activa.text : '';
-        if (txt !== textoSubExtActual) {
-          textoSubExtActual = txt;
-          capaSubs.innerHTML = txt
-            ? txt.split('\n').map((l) => '<span>' + esc(l) + '</span>').join('')
-            : '';
-        }
-      }
+      pintarSubExt(segundos);
       const t = duracion || duracionFichero;
       revisarTramo(segundos);
 
@@ -5407,6 +5425,16 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     aviso(motivo || 'El administrador ha parado la reproducción');
     salir();
   };
+
+  /*
+   * AVPlay solo avisa del tiempo cada ~0,5 s (medido en la QN93A: saltos de 0,503 s), así que los subtítulos que pinta
+   * la app entraban y salían hasta medio segundo tarde. Se pregunta la hora cada 100 ms mientras haya frases cargadas.
+   * Se apaga solo al cerrar el reproductor, salga por donde salga.
+   */
+  const relojSubs = window.setInterval(() => {
+    if (cerrado) { window.clearInterval(relojSubs); return; }
+    if (cuesExternos.length > 0 && reproductor.reproduciendo()) pintarSubExt(reproductor.tiempo());
+  }, 100);
 
   const salir = () => {
     if (cerrado) return;
@@ -5787,6 +5815,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     if (ficha.kind === 'show' && infoServidor) recordarSerie(ficha.id, 'subs', infoServidor, n);
     capaSubs.innerHTML = '';
     if (n === -1) {
+      pedidoSub++;
       cuesExternos = [];
       textoSubExtActual = '';
       reproductor.elegirSubtitulo(-1);
@@ -5809,6 +5838,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
         cargarSubExterno(tr.id);
         avisoRapido('Subtítulo PGS puesto');
       } else {
+        pedidoSub++;
         cuesExternos = [];
         textoSubExtActual = '';
         if (reproductor.elegirSubtitulo(n)) {
