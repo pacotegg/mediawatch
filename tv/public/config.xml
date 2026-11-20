@@ -2,7 +2,7 @@
 <widget xmlns="http://www.w3.org/ns/widgets"
         xmlns:tizen="http://tizen.org/ns/widgets"
         id="http://cineteca.local/tv"
-        version="3.68.6"
+        version="3.68.7"
         viewmodes="maximized">
   <name>Media Watch</name>
   <description>Media Watch · tu biblioteca de películas y series</description>
@@ -37,12 +37,12 @@
     y peticiones por HTTP hacia el HTPC.
   -->
   <tizen:content-security-policy>
-    default-src 'self' http: data:;
+    default-src 'self' http: https: data:;
     script-src 'self';
     style-src 'self' 'unsafe-inline';
-    img-src 'self' http: data:;
-    media-src 'self' http:;
-    connect-src 'self' http:;
+    img-src 'self' http: https: data:;
+    media-src 'self' http: https:;
+    connect-src 'self' http: https:;
     object-src 'none'
   </tizen:content-security-policy>
   <tizen:allow-navigation>*</tizen:allow-navigation>

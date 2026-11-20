@@ -27,6 +27,7 @@ import { actual, ajustarListaEpisodios, ajustarVentanaRejilla, alEnfocar, alEnfo
 import { Reproductor, calcularRectDisplay } from './player.ts';
 import { abrirApp, cargarAppsInstaladas, idDeApp } from './plataformas.ts';
 import { apuntar } from './registro.ts';
+import { quitarEsquema, urlServidor } from './servidor-url.ts';
 import { colocarFilas } from './logos.ts';
 
 const marco = document.getElementById('app') as HTMLElement;
@@ -97,7 +98,7 @@ const ICONOS: Record<string, string> = {
 };
 
 /* La misma que `version` de public/config.xml: al subirla, subir las dos. */
-const VERSION_APP = '3.68.6';
+const VERSION_APP = '3.68.7';
 
 function versionTizen(): string {
   try {
@@ -7447,46 +7448,63 @@ function pantallaPinEmparejar(perfil: { id: number; name: string; has_pin: numbe
 }
 
 function pantallaServidor() {
-  let valor = servidor().replace('http://', '');
+  let valor = quitarEsquema(servidor());
   const volverA = () => (token() ? pantallaAjustes('sistema') : void pantallaConexion());
+  const CARACTERES = 'abcdefghijklmnopqrstuvwxyz0123456789.-:'.split('');
 
-  const dibujar = () => {
-    pantallaSimple(
-      '<h1 class="marca">Dirección del servidor</h1>' +
-        '<p class="sub">Usa los números del mando. El botón de volver borra o sale.</p>' +
-        '<div class="entrada">http://' + esc(valor) + '</div>' +
-        '<div><button class="boton primario" data-nav data-guardar>Guardar</button>' +
-        '<button class="boton" data-nav data-volver>Volver</button></div>',
-    );
-    const g = marco.querySelector<HTMLElement>('[data-guardar]');
-    if (g) {
-      g.addEventListener('click', () => {
-        guardarServidor('http://' + valor);
-        void arrancar();
-      });
-    }
-    const v = marco.querySelector<HTMLElement>('[data-volver]');
-    if (v) v.addEventListener('click', volverA);
-    enfocar(enfocables()[0]);
+  // Se pinta una vez y al teclear solo cambia la caja: repintar entero devolvía el foco a la primera tecla.
+  const caja = () => {
+    const c = marco.querySelector<HTMLElement>('[data-entrada-servidor]');
+    if (c) c.textContent = (urlServidor(valor || 'a').indexOf('http://') === 0 ? 'http://' : 'https://') + valor;
   };
+  const anadir = (c: string) => { if (valor.length < 80) { valor += c; caja(); } };
+  const borrar = () => { valor = valor.slice(0, -1); caja(); };
+
+  pantallaSimple(
+    '<h1 class="marca">Dirección del servidor</h1>' +
+      '<p class="sub">Una IP va por http; un nombre con letras, por https.</p>' +
+      '<div class="entrada" data-entrada-servidor></div>' +
+      '<div class="teclado">' +
+      CARACTERES.map((c) => '<button class="tecla" data-nav data-car="' + c + '">' + c + '</button>').join('') +
+      '<button class="tecla ancha" data-nav data-borrar>borrar</button>' +
+      '</div>' +
+      '<div><button class="boton primario" data-nav data-guardar>Guardar</button>' +
+      '<button class="boton" data-nav data-volver>Volver</button></div>',
+  );
+  caja();
+  marco.querySelectorAll<HTMLElement>('[data-car]').forEach((el) => {
+    el.addEventListener('click', () => anadir(el.getAttribute('data-car') || ''));
+  });
+  const bo = marco.querySelector<HTMLElement>('[data-borrar]');
+  if (bo) bo.addEventListener('click', borrar);
+  const g = marco.querySelector<HTMLElement>('[data-guardar]');
+  if (g) {
+    g.addEventListener('click', () => {
+      if (!valor) return;
+      guardarServidor(urlServidor(valor));
+      void arrancar();
+    });
+  }
+  const v = marco.querySelector<HTMLElement>('[data-volver]');
+  if (v) v.addEventListener('click', volverA);
+  enfocar(marco.querySelector<HTMLElement>('[data-car="a"]'));
 
   alPulsar((tecla) => {
-    if (tecla >= 48 && tecla <= 57) { valor += String(tecla - 48); dibujar(); return true; }
-    if (tecla === 190 || tecla === 110) { valor += '.'; dibujar(); return true; }
-    if (tecla === 186 || tecla === 59) { valor += ':'; dibujar(); return true; }
+    if (tecla >= 48 && tecla <= 57) { anadir(String(tecla - 48)); return true; }
+    if (tecla >= 65 && tecla <= 90) { anadir(String.fromCharCode(tecla + 32)); return true; }
+    if (tecla === 190 || tecla === 110) { anadir('.'); return true; }
+    if (tecla === 189 || tecla === 109) { anadir('-'); return true; }
+    if (tecla === 186 || tecla === 59) { anadir(':'); return true; }
     if (tecla === TECLA.ATRAS || tecla === TECLA.ESCAPE) {
       if (valor.length === 0) {
         volverA();
         return true;
       }
-      valor = valor.slice(0, -1);
-      dibujar();
+      borrar();
       return true;
     }
     return false;
   });
-
-  dibujar();
 }
 
 /* -------------------------------------------------------------- arranque */

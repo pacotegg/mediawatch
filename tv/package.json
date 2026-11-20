@@ -1,6 +1,6 @@
 {
   "name": "@tvwatch/tv",
-  "version": "3.68.6",
+  "version": "3.68.7",
   "private": true,
   "type": "module",
   "scripts": {
