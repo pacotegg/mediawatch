@@ -88,13 +88,13 @@ móvil de verdad, la IP del HTPC.
 
 | Cosa | Dónde |
 |---|---|
-| JDK 17 | `C:\Program Files\Eclipse Adoptium\jdk-17.0.20.101-hotspot` |
+| JDK 17 | `C:\tools\jdk17-extraido\jdk-17.0.21.1+2` |
 | SDK de Android | `C:\android-sdk` (plataforma 35, build-tools 35.0.0, emulador) |
 | Gradle 8.10.2 | `C:\gradle\gradle-8.10.2` |
 
 ```bash
 cd /c/tvwatch/android
-JAVA_HOME="C:\Program Files\Eclipse Adoptium\jdk-17.0.20.101-hotspot" \
+JAVA_HOME="C:\tools\jdk17-extraido\jdk-17.0.21.1+2" \
   /c/gradle/gradle-8.10.2/bin/gradle.bat --no-daemon :app:assembleRelease
 ```
 
