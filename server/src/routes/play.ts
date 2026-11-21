@@ -23,6 +23,7 @@ import { jobIntroDB, pararIntroDB, sincronizarBibliotecaIntroDB } from '../media
 import { currentUser, deFuera, requireUser, sesionDe } from './auth.ts';
 import type { ServerResponse } from 'node:http';
 import { estadoLimite, MENSAJE_LIMITE } from '../media/limite-diario.ts';
+import { mapaSubtitulos } from '../media/mapa-subtitulos.ts';
 import { autoEnriquecerPeliculaEnSegundoPlano, fusionarNombresConTiemposLocales, obtenerCapitulosBd, sonCapitulosGenericos } from '../media/chapterdb.ts';
 
 function caps(req: FastifyRequest): ClientCaps {
@@ -569,7 +570,7 @@ export default async function playRoutes(app: FastifyInstance) {
         '-map', '0:v:0', '-map', `0:${audioIndex}`,
         // Los subtítulos de un MP4 (`mov_text`, o de mapa de bits) ni se copian ni se convierten a Matroska
         // y ffmpeg no escribe nada; la tele pide los suyos aparte por `/subtitle/`, así que se dejan fuera.
-        ...(/mp4|m4v|mov/.test(info.container) ? [] : ['-map', '0:s?']),
+        ...mapaSubtitulos(info.container),
         '-c:v', 'copy', '-c:s', 'copy',
         '-c:a', salida.codec,
         // `pan` ya ha dejado dos canales; pedir -ac otra vez volveria a mezclar.
@@ -628,7 +629,7 @@ export default async function playRoutes(app: FastifyInstance) {
         '-hide_banner', '-loglevel', 'error', '-nostdin',
         ...(start > 0 ? ['-ss', String(start)] : []),
         '-i', row.path,
-        '-map', '0:v:0', '-map', `0:${audioIndex}`, '-map', '0:s?',
+        '-map', '0:v:0', '-map', `0:${audioIndex}`, ...mapaSubtitulos(info.container),
         '-c', 'copy',
         // `disabled`, NO `make_zero`: con copia el corte empieza en el fotograma clave anterior y make_zero lo movia al 0 del flujo,
         // con lo que el segundo pedido caía hasta 10 s dentro del flujo y AVPlay sacaba los subtítulos de texto 10,0 s tarde cuando
@@ -687,7 +688,7 @@ export default async function playRoutes(app: FastifyInstance) {
         '-hide_banner', '-loglevel', 'error', '-nostdin',
         '-ss', String(start),
         '-i', row.path,
-        '-map', '0:v:0', '-map', '0:a?', '-map', '0:s?',
+        '-map', '0:v:0', '-map', '0:a?', ...mapaSubtitulos(info.container),
         '-c', 'copy',
         // `disabled`, NO `make_zero`: con copia el corte empieza en el fotograma clave anterior y make_zero lo movia al 0 del flujo,
         // con lo que el segundo pedido caía hasta 10 s dentro del flujo y AVPlay sacaba los subtítulos de texto 10,0 s tarde cuando
