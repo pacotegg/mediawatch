@@ -12,6 +12,10 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.96 — 21/11/2026
+
+- El menú lateral de Android TV se desplaza con el mando: con muchas bibliotecas las últimas entradas (Favoritas, Ver más tarde, Cambiar de perfil) quedaban fuera de pantalla y no se podía llegar a ellas.
+
 ## 3.95 — 09/11/2026
 
 - Marcar tramos ya no deja guardar una marca imposible: avisa si falta el segundo, si cae más allá del final de la película o si el fin de los créditos va antes que su inicio. Antes se guardaba en silencio un tramo sin sentido.

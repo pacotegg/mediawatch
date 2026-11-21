@@ -9,6 +9,8 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -213,8 +215,13 @@ private fun BarraLateral(ruta: String?, bibliotecaActual: Int?, irA: (String) ->
       )
       .onFocusChanged { abierta = it.hasFocus }
       .padding(start = 10.dp, top = 36.dp, end = 10.dp),
-    verticalArrangement = Arrangement.spacedBy(6.dp),
   ) {
+    // Las entradas van en una lista que se desplaza: con todas las bibliotecas no caben en una tele y las de abajo
+    // quedaban fuera de pantalla, sin forma de llegar con el mando. Versión y «Cambiar de perfil» quedan fijos abajo.
+    Column(
+      Modifier.weight(1f).verticalScroll(rememberScrollState()),
+      verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
     EntradaBarra("Buscar", ruta == "buscar", abierta, alPulsar = { irA("buscar") }) { IconoBuscar(it) }
     EntradaBarra("Inicio", ruta == "portada", abierta, alPulsar = { irA("portada") }) { IconoInicio(it) }
     bibliotecas.forEach { b: Biblioteca ->
@@ -231,7 +238,7 @@ private fun BarraLateral(ruta: String?, bibliotecaActual: Int?, irA: (String) ->
     EntradaBarra("Ver más tarde", ruta == "watchlist", abierta, alPulsar = { irA("watchlist") }) {
       IconoMarcador(it, rellena = ruta == "watchlist", tamano = 22.dp)
     }
-    Spacer(Modifier.weight(1f))
+    }
     if (abierta) {
       val ctx = LocalContext.current
       val ver = remember {
