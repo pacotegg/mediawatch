@@ -28,6 +28,7 @@ import { Reproductor, calcularRectDisplay } from './player.ts';
 import { abrirApp, cargarAppsInstaladas, idDeApp } from './plataformas.ts';
 import { apuntar } from './registro.ts';
 import { quitarEsquema, urlServidor } from './servidor-url.ts';
+import { posicionDeReintento } from './reintento.ts';
 import { colocarFilas } from './logos.ts';
 
 const marco = document.getElementById('app') as HTMLElement;
@@ -98,7 +99,7 @@ const ICONOS: Record<string, string> = {
 };
 
 /* La misma que `version` de public/config.xml: al subirla, subir las dos. */
-const VERSION_APP = '3.68.7';
+const VERSION_APP = '3.68.8';
 
 function versionTizen(): string {
   try {
@@ -4696,6 +4697,8 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
   let timerApagado = 0;
   let ocultarEn = 0;
   let ultimoGuardado = 0;
+  // Última posición que el reproductor dio por buena: si AVPlay pierde la conexión su reloj cae a 0.
+  let ultimaPosBuena = 0;
   let destinoSalto: number | null = null;
   let temporizadorSalto = 0;
   let temporizadorSub = 0;
@@ -5143,7 +5146,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     cargando.style.display = 'none';
     if (cerrado) return;
     reproductor.cerrar();
-    const donde = Math.max(0, destinoSalto !== null ? destinoSalto : reproductor.tiempo());
+    const donde = posicionDeReintento(destinoSalto, reproductor.tiempo(), ultimaPosBuena);
 
     const quitarCapaError = () => {
       window.clearTimeout(temporizadorReintento);
@@ -5245,6 +5248,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
   };
   const reproductor = new Reproductor({
     onTiempo: (segundos, duracion) => {
+      if (segundos > 0) ultimaPosBuena = segundos;
       if (capaError && capaError.parentElement) {
         window.clearTimeout(temporizadorReintento);
         capaError.parentElement.removeChild(capaError);
