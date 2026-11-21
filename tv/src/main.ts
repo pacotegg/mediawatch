@@ -29,6 +29,7 @@ import { abrirApp, cargarAppsInstaladas, idDeApp } from './plataformas.ts';
 import { apuntar } from './registro.ts';
 import { quitarEsquema, urlServidor } from './servidor-url.ts';
 import { posicionDeReintento } from './reintento.ts';
+import { etiquetaNR } from './edad.ts';
 import { colocarFilas } from './logos.ts';
 
 const marco = document.getElementById('app') as HTMLElement;
@@ -99,7 +100,7 @@ const ICONOS: Record<string, string> = {
 };
 
 /* La misma que `version` de public/config.xml: al subirla, subir las dos. */
-const VERSION_APP = '3.68.8';
+const VERSION_APP = '3.68.9';
 
 function versionTizen(): string {
   try {
@@ -2217,7 +2218,11 @@ function formatoAspecto(ancho?: number | null, alto?: number | null): string {
   const duracion = !esSerie && ficha.runtime
     ? (ficha.runtime >= 60 ? Math.floor(ficha.runtime / 60) + 'h ' + Math.round(ficha.runtime % 60) + 'm' : Math.round(ficha.runtime) + 'm')
     : '';
-  const datos = [ficha.year ? String(ficha.year) : '', duracion].filter(Boolean);
+  // Edad en la ficha: «Sin calificación»/NR si es NR; si no, la etiqueta del aviso de reproducción; sin dato, nada.
+  const edad = !(ficha.mpaa && String(ficha.mpaa).trim())
+    ? ''
+    : etiquetaNR(ficha.mpaa, ajustes().idiomaInterfaz === 'es') || generarAvisoEdad(ficha).badge;
+  const datos = [ficha.year ? String(ficha.year) : '', duracion, edad].filter(Boolean);
   const generos = (ficha.genres || []).slice(0, 4).join(', ');
   const direccion = (ficha.cast || []).filter((c) => c.role === 'director').map((c) => c.name).slice(0, 2).join(', ');
 
