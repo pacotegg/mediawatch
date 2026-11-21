@@ -75,6 +75,7 @@ private object RutasTele {
   const val BUSCAR = "buscar"
   const val FAVORITAS = "favoritas"
   const val WATCHLIST = "watchlist"
+  const val AJUSTES = "ajustes"
   const val BIBLIOTECA = "biblioteca/{id}/{nombre}"
   const val FICHA = "ficha/{id}"
   const val REPRODUCTOR = "ver/{fileId}/{itemId}/{episodioId}/{desde}"
@@ -102,7 +103,7 @@ fun NavegacionTele() {
   val entrada by nav.currentBackStackEntryAsState()
   val ruta = entrada?.destination?.route
   val bibliotecaActual = if (ruta == RutasTele.BIBLIOTECA) entrada?.arguments?.getInt("id") else null
-  val conBarra = ruta == RutasTele.PORTADA || ruta == RutasTele.BUSCAR || ruta == RutasTele.FAVORITAS || ruta == RutasTele.WATCHLIST || ruta == RutasTele.BIBLIOTECA
+  val conBarra = ruta == RutasTele.PORTADA || ruta == RutasTele.BUSCAR || ruta == RutasTele.FAVORITAS || ruta == RutasTele.WATCHLIST || ruta == RutasTele.AJUSTES || ruta == RutasTele.BIBLIOTECA
 
   fun aConexion() {
     Ajustes.olvidarSesion()
@@ -145,6 +146,7 @@ fun NavegacionTele() {
       composable(RutasTele.FAVORITAS) {
         FavoritasTele(alAbrirFicha = { nav.navigate(RutasTele.ficha(it)) }, alPerderSesion = ::aConexion)
       }
+      composable(RutasTele.AJUSTES) { AjustesTele() }
       composable(RutasTele.WATCHLIST) {
         WatchlistTele(alAbrirFicha = { nav.navigate(RutasTele.ficha(it)) }, alPerderSesion = ::aConexion)
       }
@@ -251,6 +253,7 @@ private fun BarraLateral(ruta: String?, bibliotecaActual: Int?, irA: (String) ->
         modifier = Modifier.padding(start = 14.dp, bottom = 6.dp),
       )
     }
+    EntradaBarra("Ajustes", ruta == "ajustes", abierta, alPulsar = { irA("ajustes") }) { casa.tvwatch.ui.IconoAjustes(it) }
     EntradaBarra("Cambiar de perfil", false, abierta, alPulsar = alSalir) { IconoUsuario(it) }
     Spacer(Modifier.height(20.dp))
   }

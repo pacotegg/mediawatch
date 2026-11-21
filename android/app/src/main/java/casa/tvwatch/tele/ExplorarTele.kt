@@ -48,6 +48,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -98,7 +99,9 @@ private fun FondoDelEnfocado(t: Titulo?) {
       animationSpec = tween(6000, easing = LinearEasing),
       label = "kenburns",
     )
-    Box(Modifier.fillMaxSize()) {
+    // clipToBounds: el zoom lento de la imagen (1,04×) se salía de la caja por la izquierda, bajo el menú cerrado, y allí no
+    // llegan las capas oscuras de abajo: se veía un trozo brillante del cartel con un corte seco.
+    Box(Modifier.fillMaxSize().clipToBounds()) {
       if (m != null && m.tieneFondo == 1) {
         Imagen(
           recordarUrl(m.id, "fanart", 1280),

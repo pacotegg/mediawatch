@@ -1206,7 +1206,7 @@ private fun BotonEpisodioMini(
  * es la ficha entera del ICAA y no le dice nada a nadie. Se queda el primer
  * trozo sin el país, que es lo que la gente reconoce: «A», «7», «12», «18».
  */
-private fun calificacion(mpaa: String?): String? {
+internal fun calificacion(mpaa: String?): String? {
   if (mpaa.isNullOrBlank()) return null
   val primero = mpaa.split('/')[0].trim().removePrefix("ES:").trim()
   return primero.ifBlank { null }

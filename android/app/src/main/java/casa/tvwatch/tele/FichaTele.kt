@@ -82,6 +82,10 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Constraints
+import kotlin.math.roundToInt
+import casa.tvwatch.ui.LogosDeEstudios
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -189,7 +193,16 @@ fun FichaTele(
   }
 
   val focoPlay = remember { FocusRequester() }
-  LaunchedEffect(f.id) { if (ultimoEpisodio == null) runCatching { focoPlay.requestFocus() } }
+  val lista = androidx.compose.foundation.lazy.rememberLazyListState()
+  LaunchedEffect(f.id) {
+    if (ultimoEpisodio == null) {
+      runCatching { focoPlay.requestFocus() }
+      // Al enfocar «Ver/Reproducir», la lista se desplazaba sola hasta enseñar los episodios y la cabecera (logo, notas,
+      // sinopsis) quedaba fuera por arriba. Se vuelve al principio una vez colocado el foco.
+      kotlinx.coroutines.delay(120)
+      lista.scrollToItem(0)
+    }
+  }
 
   Box(Modifier.fillMaxSize().background(Fondo)) {
     if (f.tieneFondo == 1) Imagen(recordarUrl(f.id, "fanart", 1280), null, Modifier.fillMaxSize())
@@ -199,21 +212,17 @@ fun FichaTele(
     var mostrarColeccionista by remember { mutableStateOf(false) }
     val es4k = remember(f) { f.files.any { (it.width ?: 0) >= 3800 || (it.height ?: 0) >= 2000 } }
 
-    if (Ajustes.estuche3D && f.tienePoster == 1) {
-      Box(
-        Modifier
-          .align(Alignment.TopEnd)
-          .padding(top = 56.dp, end = AireTele.lado)
-      ) {
-        Estuche3DTele(f.id, f.tieneDisco == 1, es4k = es4k, alAbrir = { mostrarColeccionista = true })
-      }
-    }
-
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = 56.dp, bottom = 60.dp)) {
+    // El estuche y las productoras van DENTRO de la cabecera (a la derecha) y se desplazan con ella: antes el estuche
+    // flotaba fijo encima y, al bajar a los episodios, los tapaba.
+    LazyColumn(Modifier.fillMaxSize(), state = lista, contentPadding = PaddingValues(top = 32.dp, bottom = 60.dp)) {
       item {
-        Column(Modifier.padding(horizontal = AireTele.lado).width(560.dp)) {
+        Row(
+          Modifier.padding(horizontal = AireTele.lado).fillMaxWidth(),
+          horizontalArrangement = Arrangement.spacedBy(28.dp),
+        ) {
+        Column(Modifier.weight(1f)) {
           if (f.tieneLogo == 1) {
-            Imagen(recordarUrl(f.id, "logo", 560), f.title, Modifier.heightIn(max = 90.dp).width(360.dp), escala = ContentScale.Fit, alineacion = Alignment.CenterStart)
+            Imagen(recordarUrl(f.id, "logo", 560), f.title, Modifier.heightIn(max = 72.dp).width(360.dp), escala = ContentScale.Fit, alineacion = Alignment.CenterStart)
             Spacer(Modifier.height(8.dp))
             Text(f.title, color = Texto, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
           } else {
@@ -224,7 +233,7 @@ fun FichaTele(
             listOfNotNull(
               f.year?.toString(),
               if (esSerie) "${temporadas.size} temporada${if (temporadas.size == 1) "" else "s"}" else duracionLegible(f.runtime).ifEmpty { null },
-              f.mpaa?.takeIf { it.isNotBlank() },
+              casa.tvwatch.ui.calificacion(f.mpaa),
               f.rating?.takeIf { it > 0 }?.let { "★ " + "%.1f".format(it) },
             ).joinToString("   "),
             color = Texto,
@@ -245,9 +254,19 @@ fun FichaTele(
           }
           f.plot?.takeIf { it.isNotBlank() }?.let {
             Spacer(Modifier.height(12.dp))
-            Text(it, color = TextoSuave, fontSize = 15.sp, lineHeight = 22.sp, maxLines = 5, overflow = TextOverflow.Ellipsis)
+            Text(it, color = TextoSuave, fontSize = 15.sp, lineHeight = 22.sp, maxLines = 7, overflow = TextOverflow.Ellipsis)
           }
-          Spacer(Modifier.height(22.dp))
+          Spacer(Modifier.height(14.dp))
+        }
+        Column(Modifier.width(236.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+          if (Ajustes.estuche3D && f.tienePoster == 1) {
+            Box(Modifier.escaladoFijo(0.6f)) {
+              Estuche3DTele(f.id, f.tieneDisco == 1, es4k = es4k, alAbrir = { mostrarColeccionista = true })
+            }
+            Spacer(Modifier.height(10.dp))
+          }
+          LogosDeEstudios(f.id, Modifier.fillMaxWidth())
+        }
         }
       }
 
@@ -360,6 +379,41 @@ fun FichaTele(
               TarjetaEpisodio(f, e, Modifier.focusRequester(pedir)) {
                 ultimoEpisodio = e.id
                 alReproducir(e.ficheroId!!, e.id, posicionDe(f, e.id))
+              }
+            }
+          }
+        }
+      }
+
+      val reparto = f.cast.filter { it.role == "actor" }.take(12)
+      if (reparto.isNotEmpty()) {
+        item {
+          Column(Modifier.padding(top = 16.dp)) {
+            Text(
+              "Reparto",
+              color = Texto,
+              fontSize = 18.sp,
+              fontWeight = FontWeight.Bold,
+              modifier = Modifier.padding(horizontal = AireTele.lado, vertical = 8.dp),
+            )
+            LazyRow(
+              contentPadding = PaddingValues(horizontal = AireTele.lado, vertical = 8.dp),
+              horizontalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+              items(reparto, key = { it.id }) { p ->
+                // Enfocable aunque no abra nada (la tele no tiene pantalla de persona): sin foco el mando no puede bajar hasta aquí.
+                Column(
+                  Modifier.width(104.dp).enfocable(RoundedCornerShape(14.dp), escala = 1.06f, alPulsar = {}).padding(6.dp),
+                  horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                  Box(Modifier.size(84.dp).clip(CircleShape).background(FondoTarjeta), contentAlignment = Alignment.Center) {
+                    if (p.tieneFoto == 1) Imagen(Api.fotoDePersona(p.id, 160), p.name, Modifier.fillMaxSize())
+                    else Text(p.name.take(1).uppercase(), color = TextoTenue, fontSize = 22.sp)
+                  }
+                  Spacer(Modifier.height(6.dp))
+                  Text(p.name, color = Texto, fontSize = 12.sp, maxLines = 2, lineHeight = 15.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                  p.character?.let { Text(it, color = TextoTenue, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                }
               }
             }
           }
@@ -587,6 +641,18 @@ private fun PanelResenas(resenas: List<Resena>, alCerrar: () -> Unit) {
           Text(r.contenido, color = TextoSuave, fontSize = 15.sp, lineHeight = 22.sp, maxLines = if (foco) 14 else 4, overflow = TextOverflow.Ellipsis)
         }
       }
+    }
+  }
+}
+
+/** Dibuja el contenido a `factor` de su tamaño y le reserva solo ese hueco (`graphicsLayer` por sí solo no cambia el diseño). */
+private fun Modifier.escaladoFijo(factor: Float): Modifier = this.layout { medida, _ ->
+  val p = medida.measure(Constraints())
+  layout((p.width * factor).roundToInt(), (p.height * factor).roundToInt()) {
+    p.placeWithLayer(0, 0) {
+      scaleX = factor
+      scaleY = factor
+      transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
     }
   }
 }
