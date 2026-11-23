@@ -66,10 +66,11 @@ export const CALIDADES: Calidad[] = [
 const AUDIO_BITRATE = 128_000;
 
 /** No se ofrece más alto que el original: subir de escala no añade detalle. */
-export function escalera(info: MediaInfo): Calidad[] {
+export function escalera(info: MediaInfo, maxAlto = Infinity): Calidad[] {
   const alto = info.video?.height ?? 1080;
   // Con margen: un 1036p (2,40:1 en 1920) es un 1080p a todos los efectos.
-  const utiles = CALIDADES.filter((c) => c.alto <= alto * 1.08);
+  // `maxAlto`: tope que pide el cliente (el Chromecast fuera de casa elegía 1080p y se cortaba por falta de subida).
+  const utiles = CALIDADES.filter((c) => c.alto <= alto * 1.08 && c.alto <= maxAlto);
   return utiles.length > 0 ? utiles : [CALIDADES[CALIDADES.length - 1]];
 }
 
@@ -97,11 +98,11 @@ export function audioEnvolvente(info: MediaInfo, audioStreamIndex: number, surro
 
 const SURROUND_BITRATE = 640_000;
 
-export function listaMaestra(fileId: number, info: MediaInfo, consulta: string, envolvente: { codec: string } | null = null) {
+export function listaMaestra(fileId: number, info: MediaInfo, consulta: string, envolvente: { codec: string } | null = null, maxAlto = Infinity) {
   const lineas = ['#EXTM3U', '#EXT-X-VERSION:6', '#EXT-X-INDEPENDENT-SEGMENTS'];
   if (envolvente) {
     const codecAudio = envolvente.codec === 'ac3' ? 'ac-3' : 'ec-3';
-    for (const c of escalera(info)) {
+    for (const c of escalera(info, maxAlto)) {
       const ancho = info.video ? Math.round((info.video.width * c.alto) / info.video.height / 2) * 2 : 0;
       lineas.push(
         `#EXT-X-STREAM-INF:BANDWIDTH=${c.bitrate + SURROUND_BITRATE},RESOLUTION=${ancho}x${c.alto},CODECS="avc1.640029,${codecAudio}",NAME="${c.nombreLegible} 5.1"`,
@@ -114,7 +115,7 @@ export function listaMaestra(fileId: number, info: MediaInfo, consulta: string, 
     const paramsSinSurround = new URLSearchParams(consulta.startsWith('?') ? consulta.slice(1) : consulta);
     paramsSinSurround.delete('surround');
     const qEstereo = paramsSinSurround.toString() ? `?${paramsSinSurround.toString()}` : '';
-    for (const c of escalera(info)) {
+    for (const c of escalera(info, maxAlto)) {
       const ancho = info.video ? Math.round((info.video.width * c.alto) / info.video.height / 2) * 2 : 0;
       lineas.push(
         `#EXT-X-STREAM-INF:BANDWIDTH=${c.bitrate + AUDIO_BITRATE},RESOLUTION=${ancho}x${c.alto},CODECS="avc1.640029,mp4a.40.2",NAME="${c.nombreLegible}"`,
@@ -122,7 +123,7 @@ export function listaMaestra(fileId: number, info: MediaInfo, consulta: string, 
       );
     }
   } else {
-    for (const c of escalera(info)) {
+    for (const c of escalera(info, maxAlto)) {
       const ancho = info.video ? Math.round((info.video.width * c.alto) / info.video.height / 2) * 2 : 0;
       lineas.push(
         `#EXT-X-STREAM-INF:BANDWIDTH=${c.bitrate + AUDIO_BITRATE},RESOLUTION=${ancho}x${c.alto},CODECS="avc1.640029,mp4a.40.2",NAME="${c.nombreLegible}"`,

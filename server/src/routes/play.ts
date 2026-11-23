@@ -805,6 +805,12 @@ export default async function playRoutes(app: FastifyInstance) {
     return s ? `?${s}` : '';
   };
 
+  /** `max=720` limita la lista maestra a esa altura; cualquier otra cosa no limita. */
+  const maxAltoPedido = (v: string | undefined) => {
+    const n = Number(v);
+    return Number.isInteger(n) && n >= 240 && n <= 4320 ? n : Infinity;
+  };
+
   app.get('/api/play/:fileId/hls/master.m3u8', async (req, reply) => {
     const fileId = Number((req.params as { fileId: string }).fileId);
     const row = fileRow(fileId);
@@ -823,7 +829,7 @@ export default async function playRoutes(app: FastifyInstance) {
     return reply
       .header('Content-Type', 'application/vnd.apple.mpegurl')
       .header('Cache-Control', 'no-store')
-      .send(listaMaestra(fileId, info, arrastrar(q), audioEnvolvente(info, audioIndexMaestro, q.surround === '1')));
+      .send(listaMaestra(fileId, info, arrastrar(q), audioEnvolvente(info, audioIndexMaestro, q.surround === '1'), maxAltoPedido(q.max)));
   });
 
   app.get('/api/play/:fileId/hls/:calidad.m3u8', async (req, reply) => {
