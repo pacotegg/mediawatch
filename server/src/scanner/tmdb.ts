@@ -89,7 +89,8 @@ async function tmdb<T>(path: string, params: Record<string, string> = {}): Promi
   const url = new URL(API + path);
   url.searchParams.set('api_key', config.tmdbApiKey);
   url.searchParams.set('language', config.tmdbLanguage);
-  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+  // Un valor vacío QUITA el parámetro: `language: ''` pide las imágenes en todos los idiomas.
+  for (const [k, v] of Object.entries(params)) { if (v === '') url.searchParams.delete(k); else url.searchParams.set(k, v); }
 
   for (let attempt = 0; attempt < 3; attempt++) {
     const res = await pedir(url, 15_000, { accept: 'application/json' });
@@ -618,7 +619,9 @@ export async function imagenesDeSaga(nombre: string): Promise<{ posters: ImagenD
 
 /** Solo los logotipos de TMDb con su idioma, para saber de dónde salió uno local. */
 export async function logosDeTmdb(tmdbId: number, kind: 'movie' | 'show'): Promise<{ url: string; vista: string; idioma: string }[]> {
-  const raw = await tmdb<any>(`/${endpoint(kind)}/${tmdbId}/images`, { include_image_language: 'null' });
+  // Todos los idiomas: sin `language` ni `include_image_language`. Antes pedía solo los «sin idioma» (`null`) y no
+  // llegaba ninguno con texto: el editor no ofrecía logos y el repaso de fanart.ts no reconocía uno en chino (23/11).
+  const raw = await tmdb<any>(`/${endpoint(kind)}/${tmdbId}/images`, { language: '' });
   return (raw.logos ?? [])
     .map((i: any) => ({ url: imageUrl(i.file_path) as string, vista: imageUrl(i.file_path, 'w300') as string, idioma: i.iso_639_1 ?? '' }))
     .filter((i: any) => i.url);

@@ -4,6 +4,8 @@
  *   node src/cli/completar-arte.ts            → rellena lo que falta
  *   node src/cli/completar-arte.ts --sustituir → y cambia logotipos y apaisadas
  *                                                en otros idiomas por español/inglés
+ *   … --simular                                → no cambia nada: deja en data/arte-propuestas.json
+ *                                                lo que cambiaría, para revisarlo antes
  *   … --forzar                                 → repite la comparación también en
  *                                                lo revisado hace menos de un mes
  *
@@ -12,14 +14,18 @@
  * en `data/artwork/<id>/` y marcado como fijado; las carpetas de la biblioteca
  * no se tocan. Ver `scanner/fanart.ts` para el detalle.
  */
-import { completarConFanart, estadoFanart } from '../scanner/fanart.ts';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { completarConFanart, estadoFanart, propuestasFanart } from '../scanner/fanart.ts';
+import { DATA_DIR } from '../config.ts';
 
 const sustituir = process.argv.includes('--sustituir');
 const forzar = process.argv.includes('--forzar');
+const simular = process.argv.includes('--simular');
 console.log(`Completando imágenes con fanart.tv y TheTVDB${sustituir ? ', y sustituyendo idiomas' : ''}…`);
 
 const empezado = Date.now();
-const pasada = completarConFanart(sustituir, forzar);
+const pasada = completarConFanart(sustituir, forzar, simular);
 
 // En una terminal, una línea que se sobreescribe; en un fichero de registro,
 // una línea nueva por minuto.
@@ -40,4 +46,9 @@ console.log('Nuevas:', e.rellenados);
 if (sustituir) console.log('Sustituidas:', e.sustituidos);
 console.log('Sin nada en fanart.tv:', e.sinFanart, '· sin identificar (sin TMDb/TVDB):', e.sinId);
 if (e.error) console.log('Falló:', e.error);
+if (simular) {
+  const fichero = join(DATA_DIR, 'arte-propuestas.json');
+  writeFileSync(fichero, JSON.stringify(propuestasFanart(), null, 1));
+  console.log('Simulado: nada cambiado. Propuestas en', fichero);
+}
 console.log(`Tiempo: ${((Date.now() - empezado) / 60000).toFixed(1)} min`);

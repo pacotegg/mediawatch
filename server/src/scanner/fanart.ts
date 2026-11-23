@@ -216,7 +216,13 @@ async function idDeFanart(f: Fila): Promise<string | null> {
   return null;
 }
 
-async function poner(f: Fila, papel: PapelFanart, url: string) {
+/** Modo simular: no baja ni escribe nada; apunta lo que haría en `propuestasFanart()`. */
+let simular = false;
+const propuestas: { id: number; titulo: string; papel: PapelFanart; url: string; motivo: string }[] = [];
+export function propuestasFanart() { return propuestas.slice(); }
+
+async function poner(f: Fila, papel: PapelFanart, url: string, motivo = 'falta') {
+  if (simular) { propuestas.push({ id: f.id, titulo: f.title, papel, url, motivo }); return; }
   const dir = join(ARTWORK_DIR, String(f.id));
   mkdirSync(dir, { recursive: true });
   const destino = await descargar(url, join(dir, FICHERO[papel]));
@@ -313,7 +319,7 @@ async function procesar(f: Fila, reemplazar: boolean, tmp: string) {
     let esAjena = false;
     for (const c of ajenas) { if (await seParece(c)) { esAjena = true; break; } }
     if (esAjena) {
-      await poner(f, papel, mejor.url);
+      await poner(f, papel, mejor.url, 'otro idioma');
       estado.sustituidos[papel]++;
       estado.ultimo = `${f.title}: ${papel} sustituido por ${mejor.idioma || 'sin idioma'}`;
     }
@@ -324,8 +330,10 @@ async function procesar(f: Fila, reemplazar: boolean, tmp: string) {
  * La pasada entera, en segundo plano. Un título por vuelta del bucle y una
  * pausa corta entre peticiones: fanart.tv es de una comunidad, no de Google.
  */
-export async function completarConFanart(reemplazar: boolean, forzar = false): Promise<void> {
+export async function completarConFanart(reemplazar: boolean, forzar = false, soloSimular = false): Promise<void> {
   if (estado.enCurso) return;
+  simular = soloSimular;
+  propuestas.length = 0;
   parar = false;
   // Lo revisado hace menos de un mes se salta, salvo que se fuerce: la
   // comparación de idiomas baja previsualizaciones y no cambia de un día a otro.
@@ -348,7 +356,7 @@ export async function completarConFanart(reemplazar: boolean, forzar = false): P
       try {
         const yaVisto = !forzar && f.arte_revisado != null && f.arte_revisado > reciente;
         await procesar(f, reemplazar && !yaVisto, tmp);
-        db.prepare('UPDATE items SET arte_revisado = ? WHERE id = ?').run(new Date().toISOString(), f.id);
+        if (!simular) db.prepare('UPDATE items SET arte_revisado = ? WHERE id = ?').run(new Date().toISOString(), f.id);
       } catch (err) {
         // Un título que falla no para la pasada; se apunta y se sigue.
         estado.ultimo = `${f.title}: ${(err as Error).message}`;
