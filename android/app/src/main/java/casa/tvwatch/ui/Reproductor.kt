@@ -700,10 +700,13 @@ private fun Reproduciendo(
    */
   var mensajeAdmin by remember { mutableStateOf("") }
   LaunchedEffect(fileId) {
+    // Sin red la espera se dobla hasta 2 min: viendo una descarga sin conexión, una tablet dejó 2.400 fallos en dos días.
+    var espera = 5_000L
     while (true) {
-      delay(5_000)
+      delay(espera)
       try {
         val a = withContext(Dispatchers.IO) { Api.avisos() }
+        espera = 5_000L
         if (!a.mensaje.isNullOrBlank()) {
           mensajeAdmin = a.mensaje
           launch { delay(8_000); mensajeAdmin = "" }
@@ -715,7 +718,7 @@ private fun Reproduciendo(
           android.widget.Toast.makeText(contexto, motivo, android.widget.Toast.LENGTH_LONG).show()
           salir()
         }
-      } catch (e: Exception) { /* sin red, sin avisos */ }
+      } catch (e: Exception) { espera = minOf(espera * 2, 120_000L) /* sin red, sin avisos */ }
     }
   }
 

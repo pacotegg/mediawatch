@@ -178,6 +178,12 @@ object Cast {
     val base = Servidor.baseParaCast()
     val token = Ajustes.token ?: return
     val surround = Ajustes.castCincoUno
+    /*
+     * Tope de calidad: la del ajuste de casa o de fuera. Con «Original» fuera de casa, 720p: el Chromecast
+     * elegía 1080p, el primer trozo (6,2 MB) tardó 14,6 s en llegar por la subida de casa y se paraba (20/11).
+     */
+    val tope = casa.tvwatch.datos.Calidad.actual().altura.takeIf { it > 0 }
+      ?: if (casa.tvwatch.datos.Servidor.enCasa()) 0 else 720
 
     // La lista de subtítulos se pide al servidor: fuera del hilo principal.
     CoroutineScope(Dispatchers.Main).launch {
@@ -233,6 +239,7 @@ object Cast {
     val info = MediaInfo.Builder(
       "$base/api/play/$fileId/hls/master.m3u8?token=$token" +
         (if (surround) "&surround=1" else "") +
+        (if (tope > 0) "&max=$tope" else "") +
         (audio?.let { "&audio=${it.id}" } ?: ""),
     )
       .setStreamType(MediaInfo.STREAM_TYPE_BUFFERED)
@@ -251,7 +258,7 @@ object Cast {
 
     // Qué tele es y a qué se le manda (sin el token), para poder leerlo en el registro si algo falla.
     val tele = s.castDevice
-    Registro.i("cast", "emitiendo a «${tele?.friendlyName}» (${tele?.modelName}) · fichero=$fileId desde=${desde.toInt()}s · servidor=$base")
+    Registro.i("cast", "tope ${if (tope > 0) "${tope}p" else "ninguno"} · emitiendo a «${tele?.friendlyName}» (${tele?.modelName}) · fichero=$fileId desde=${desde.toInt()}s · servidor=$base")
     cliente.load(
       MediaLoadRequestData.Builder()
         .setMediaInfo(info)

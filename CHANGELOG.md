@@ -12,6 +12,11 @@ Solo se escribe lo que sale de un commit o del dosier. Las versiones sin registr
 ni el dosier dice qué traían. Los commits que caen entre dos versiones se recogen
 al final, en bloques por intervalo, sin asignarlos a un número.
 
+## 3.98 — 23/11/2026
+
+- Chromecast desde fuera de casa: se envía como mucho a 720p (o a la calidad que tengas elegida para fuera). Antes iba a 1080p y, con la conexión de casa, se quedaba cargando y se paraba.
+- Sin conexión, el reproductor deja de preguntar al servidor cada 5 segundos: espera cada vez más, hasta 2 minutos. Ahorra batería viendo descargas.
+
 ## 3.97 — 21/11/2026
 
 - Ficha en Android TV rehecha para el mando: el estuche Blu-ray ya no flota sobre los episodios (va en la cabecera y se desplaza con ella), la sinopsis se ve casi entera, salen las productoras y el reparto, y la ficha ya no se abre desplazada.
