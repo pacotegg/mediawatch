@@ -179,11 +179,10 @@ object Cast {
     val token = Ajustes.token ?: return
     val surround = Ajustes.castCincoUno
     /*
-     * Tope de calidad: la del ajuste de casa o de fuera. Con «Original» fuera de casa, 720p: el Chromecast
-     * elegía 1080p, el primer trozo (6,2 MB) tardó 14,6 s en llegar por la subida de casa y se paraba (20/11).
+     * Tope de calidad: la que hayas elegido (ajuste de casa o de fuera, o el menú «Calidad» del reproductor).
+     * «Original» no pone tope. Fuera de casa, 1080p tardó 14,6 s en mandar el primer trozo y se paraba (20/11).
      */
-    val tope = casa.tvwatch.datos.Calidad.actual().altura.takeIf { it > 0 }
-      ?: if (casa.tvwatch.datos.Servidor.enCasa()) 0 else 720
+    val tope = casa.tvwatch.datos.Calidad.actual().altura
 
     // La lista de subtítulos se pide al servidor: fuera del hilo principal.
     CoroutineScope(Dispatchers.Main).launch {

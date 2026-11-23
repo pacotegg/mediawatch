@@ -14,7 +14,7 @@ al final, en bloques por intervalo, sin asignarlos a un número.
 
 ## 3.98 — 23/11/2026
 
-- Chromecast desde fuera de casa: se envía como mucho a 720p (o a la calidad que tengas elegida para fuera). Antes iba a 1080p y, con la conexión de casa, se quedaba cargando y se paraba.
+- Chromecast: envía con la calidad que elijas (en Ajustes o en el menú «Calidad» del reproductor). Antes siempre iba a la más alta y, desde fuera de casa, se quedaba cargando y se paraba. Si se corta, baja la calidad.
 - Sin conexión, el reproductor deja de preguntar al servidor cada 5 segundos: espera cada vez más, hasta 2 minutos. Ahorra batería viendo descargas.
 
 ## 3.97 — 21/11/2026
