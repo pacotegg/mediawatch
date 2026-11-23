@@ -1,6 +1,7 @@
 /** Cliente del servidor TvWatch para la televisión. */
 import { ajustes } from './ajustes';
 import { apuntar, confirmar, idAparato, pendientes } from './registro';
+import { alOcultar, alVolver, quitar as quitarDeVuelo, registrar } from './vuelo';
 
 const SERVIDOR_KEY = 'cineteca.tv.servidor';
 const TOKEN_KEY = 'cineteca.tv.token';
@@ -62,6 +63,13 @@ export function olvidarToken() {
  * `tope`: cuánto se espera la respuesta. 12 s valen para casi todo; las búsquedas y bajadas de subtítulos de internet
  * pueden tardar más en el servidor (su propio tope es de 90 s y 2 min) y la tele las daba por fallidas a los 12 s.
  */
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') alOcultar();
+    else alVolver();
+  });
+}
+
 async function pedir<T>(ruta: string, opciones?: RequestInit, tope = 12000, avisarLenta = true): Promise<T> {
   const cabeceras: Record<string, string> = {};
   if (opciones && opciones.body) cabeceras['Content-Type'] = 'application/json';
@@ -77,10 +85,12 @@ async function pedir<T>(ruta: string, opciones?: RequestInit, tope = 12000, avis
   for (let intento = 1; intento <= maxIntentos; intento++) {
     const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
     const reloj = ctrl ? window.setTimeout(() => ctrl.abort(), tope) : 0;
+    const vuelo = ctrl ? registrar(ctrl) : null;
     try {
       const opts = Object.assign({ headers: cabeceras }, opciones, ctrl ? { signal: ctrl.signal } : {});
       const res = await fetch(servidor() + ruta, opts);
       if (reloj) window.clearTimeout(reloj);
+      quitarDeVuelo(vuelo);
 
       if (!res.ok) {
         let mensaje = 'Error ' + res.status;
@@ -103,6 +113,9 @@ async function pedir<T>(ruta: string, opciones?: RequestInit, tope = 12000, avis
       return (await res.json()) as T;
     } catch (e) {
       if (reloj) window.clearTimeout(reloj);
+      quitarDeVuelo(vuelo);
+      // Cancelada al despertar la tele: se repite al momento y no cuenta como intento.
+      if (vuelo && vuelo.despertada) { intento--; continue; }
       // Un 401, 403 o 404 lo ha decidido el servidor: repetirlo no cambia la respuesta y retrasaba el aviso 2,4 s.
       if ((e as { status?: number }).status) throw e;
       ultimoError = e as Error;

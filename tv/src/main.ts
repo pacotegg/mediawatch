@@ -100,7 +100,7 @@ const ICONOS: Record<string, string> = {
 };
 
 /* La misma que `version` de public/config.xml: al subirla, subir las dos. */
-const VERSION_APP = '3.68.9';
+const VERSION_APP = '3.68.10';
 
 function versionTizen(): string {
   try {
@@ -5361,7 +5361,9 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
       if (est === 'PLAYING' || est === 'PAUSED') {
         pausadoAlSuspender = est === 'PAUSED';
         posAlSuspender = reproductor.tiempo();
-        try { reproductor.pausar(); } catch (e) { /* ya parado */ }
+        // Cerrar, no pausar: en pausa AVPlay mantenía abierta la conexión con el servidor y el decodificador
+        // durante todo el reposo de la tele, y al encender costaba arrancar. Al volver se reabre en la misma posición.
+        try { reproductor.cerrar(); } catch (e) { /* ya parado */ }
         suspendido = true;
       }
     } else if (suspendido) {
