@@ -100,7 +100,7 @@ const ICONOS: Record<string, string> = {
 };
 
 /* La misma que `version` de public/config.xml: al subirla, subir las dos. */
-const VERSION_APP = '3.68.10';
+const VERSION_APP = '3.68.11';
 
 function versionTizen(): string {
   try {
@@ -4704,6 +4704,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
   let ultimoGuardado = 0;
   // Última posición que el reproductor dio por buena: si AVPlay pierde la conexión su reloj cae a 0.
   let ultimaPosBuena = 0;
+  let ultimaMuestraPos = 0;
   let destinoSalto: number | null = null;
   let temporizadorSalto = 0;
   let temporizadorSub = 0;
@@ -4957,7 +4958,7 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
     // El servidor recorta con `-ss` y copia las pistas: el flujo empieza en ese
     // segundo y su reloj interno vuelve a cero, de ahí el desfase.
     const desfase = saltaReabriendo() && desdeSegundos > 1 ? Math.floor(desdeSegundos) : 0;
-    apuntar('abre fichero ' + fileId + ' desde ' + Math.round(desdeSegundos) + ' s' + (convertir ? ' convertido' : porTuberia() ? ' por tuberia' : ' directo') + (audioOrdinal ? ' audio ' + audioOrdinal : '') + (modoAudio !== 'normal' ? ' ' + modoAudio : ''));
+    apuntar('abre fichero ' + fileId + ' desde ' + Math.round(desdeSegundos) + ' s' + (convertir ? ' convertido' : porTuberia() ? ' por tuberia' : ' directo') + (audioOrdinal ? ' audio ' + audioOrdinal : '') + (modoAudio !== 'normal' ? ' ' + modoAudio : '') + ' · tecla hace ' + Math.round((Date.now() - ultimaTecla) / 1000) + ' s · iba por ' + Math.round(reproductor.tiempo()) + ' s ' + reproductor.estado());
     reproductor.cerrar();
     lienzo.innerHTML = '';
     cargando.style.display = 'block';
@@ -5254,6 +5255,11 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
   const reproductor = new Reproductor({
     onTiempo: (segundos, duracion) => {
       if (segundos > 0) ultimaPosBuena = segundos;
+      // Una muestra por minuto: si la película vuelve al principio sola, se ve en qué segundo iba justo antes.
+      if (Date.now() - ultimaMuestraPos > 60000) {
+        ultimaMuestraPos = Date.now();
+        apuntar('posicion ' + Math.round(segundos) + ' s fichero ' + fileId);
+      }
       if (capaError && capaError.parentElement) {
         window.clearTimeout(temporizadorReintento);
         capaError.parentElement.removeChild(capaError);
@@ -5290,9 +5296,11 @@ function pantallaReproductor(ficha: Ficha, fileId: number, episodeId: number | n
       if (osd.classList.contains('visible') && !enBotones && Date.now() > ocultarEn) osd.classList.remove('visible');
     },
     onBuffer: (esperando) => {
+      if (esperando) apuntar('buffer en ' + Math.round(reproductor.tiempo()) + ' s');
       cargando.style.display = esperando ? 'block' : 'none';
     },
     onFin: () => {
+      apuntar('fin del flujo en ' + Math.round(reproductor.tiempo()) + ' s de ' + Math.round(duracionFichero) + ' s');
       alTerminar();
     },
     onError: (mensaje) => {
