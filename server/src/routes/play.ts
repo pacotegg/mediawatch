@@ -129,6 +129,18 @@ function cerrarSiInactivo(stream: ReturnType<typeof createReadStream>, res: Serv
   res.on('close', () => clearInterval(vigia));
 }
 
+/**
+ * Deja constancia de las peticiones del fichero crudo que empiezan desde el principio (sin Range o en el byte 0):
+ * un reinicio de la película que la tele no pidió (23-24/11/2026) solo se puede explicar sabiendo si el reproductor
+ * volvió a pedir el fichero entero. Un salto normal pide otro byte, así que no sale aquí.
+ */
+function anotarCrudoDesdeElPrincipio(req: FastifyRequest, reply: { raw: ServerResponse }, fileId: number, startByte: number) {
+  if (startByte > 0) return;
+  const t0 = Date.now();
+  console.log(`[crudo] fichero ${fileId} pedido desde el principio · sesion ${sesionDe(req)} · range ${req.headers.range ?? 'ninguno'}`);
+  reply.raw.on('close', () => console.log(`[crudo] fichero ${fileId} desde el principio cerrado tras ${Math.round((Date.now() - t0) / 1000)} s · ${reply.raw.writableFinished ? 'completo' : 'cortado'}`));
+}
+
 export function fileRow(fileId: number) {
   return db
     .prepare(`SELECT f.id, f.path, f.item_id, f.episode_id,
@@ -741,6 +753,7 @@ export default async function playRoutes(app: FastifyInstance) {
         const { desde: startByte, hasta: endByte } = rango;
         const stream = createReadStream(row.path, { start: startByte, end: endByte });
         cerrarSiInactivo(stream, reply.raw);
+        anotarCrudoDesdeElPrincipio(req, reply, row.id, startByte);
         return reply
           .code(206)
           .header('Content-Range', `bytes ${startByte}-${endByte}/${stat.size}`)
@@ -749,6 +762,7 @@ export default async function playRoutes(app: FastifyInstance) {
       }
       const streamCompleto = createReadStream(row.path);
       cerrarSiInactivo(streamCompleto, reply.raw);
+      anotarCrudoDesdeElPrincipio(req, reply, row.id, 0);
       return reply.header('Content-Length', stat.size).send(streamCompleto);
     }
 

@@ -1279,6 +1279,10 @@ export default async function libraryRoutes(app: FastifyInstance) {
     const anterior = db.prepare('SELECT position, watched FROM progress WHERE user_id = ? AND item_id = ? AND episode_id IS ?')
       .get(user.id, itemId, episodeId ?? null) as { position: number; watched: number } | undefined;
     if (!anterior || watched || Math.abs(position - anterior.position) >= 1) marcarActividad();
+    // Un retroceso grande de golpe (de más de 10 min) deja constancia: así se ve cuándo una película vuelve al principio sola.
+    if (anterior && position < anterior.position - 600) {
+      console.log(`[progreso] retroceso de ${Math.round(anterior.position)} s a ${Math.round(position)} s · título ${itemId}${episodeId ? ' ep ' + episodeId : ''} · sesion ${sesionDe(req)}`);
+    }
     /*
      * Un cero no es una duración, es que el cliente no la sabía. Como el
      * guardado hace `COALESCE(?, duration)` y COALESCE solo esquiva NULL, un
