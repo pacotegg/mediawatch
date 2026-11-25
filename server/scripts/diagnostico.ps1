@@ -12,7 +12,7 @@ try {
     Get-WinEvent -FilterHashtable $filtro -MaxEvents $max -ErrorAction SilentlyContinue | ForEach-Object {
       [pscustomobject]@{
         hora = $_.TimeCreated.ToString('o'); id = $_.Id; origen = $_.ProviderName; nivel = $_.Level
-        texto = (($_.Message -replace '\s+', ' ') + '').Substring(0, [Math]::Min(300, ($_.Message + '').Length))
+        texto = & { $t = (($_.Message -replace '\s+', ' ') + ''); $t.Substring(0, [Math]::Min(300, $t.Length)) }
       }
     }
   }
